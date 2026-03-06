@@ -1,0 +1,609 @@
+--- backend/include/controllers/config_controller.h
++++ backend/include/controllers/config_controller.h
+@@ -16,4 +16,8 @@
+ void handleGetSettings(const httplib::Request& req, httplib::Response& res);
+ void handleUpdateSettings(const httplib::Request& req, httplib::Response& res);
+ 
++// Model config handlers
++void handleGetModelsConfig(const httplib::Request& req, httplib::Response& res);
++void handleUpdateModelsConfig(const httplib::Request& req, httplib::Response& res);
++
+ #endif // CONFIG_CONTROLLER_H
+--- backend/include/controllers/openrouter_controller.h
++++ backend/include/controllers/openrouter_controller.h
+@@ -6,7 +6,7 @@
+ 
+ void handleChat(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
+ void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
+-void handleModels(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
++void handleRemoteModels(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
+ void handlePricing(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
+ 
+ #endif // OPENROUTER_CONTROLLER_H
+--- backend/include/services/openrouter_service.h
++++ backend/include/services/openrouter_service.h
+@@ -26,7 +26,7 @@
+         std::function<void(const std::string&)> onError
+     ) const;
+     
+-    Json::Value getModels() const;
++    Json::Value getAllRemoteModels() const;
+     Json::Value getPricing() const;
+     
+ private:
+--- backend/src/controllers/config_controller.cpp
++++ backend/src/controllers/config_controller.cpp
+@@ -10,6 +10,7 @@
+     std::mutex config_mutex;
+     Json::Value promptTemplates;
+     Json::Value settings;
++    Json::Value modelsConfig;
+     bool config_loaded = false;
+ 
+     void loadConfig() {
+@@ -35,6 +36,36 @@
+             settings["temperature"] = 0.7;
+         }
+         
++        // Load models configuration
++        std::ifstream modelsFile("data/models.json");
++        if (modelsFile.is_open()) {
++            modelsFile >> modelsConfig;
++            modelsFile.close();
++        } else {
++            // Default models if file doesn't exist
++            modelsConfig = Json::Value(Json::arrayValue);
++            
++            auto addModel = [&](const std::string& id, const std::string& name, const std::string& provider, int ctx, int maxTokens) {
++                Json::Value m;
++                m["id"] = id;
++                m["name"] = name;
++                m["provider"] = provider;
++                m["context_length"] = ctx;
++                m["max_tokens"] = maxTokens;
++                modelsConfig.append(m);
++            };
++            
++            addModel("stepfun/step-3.5-flash:free", "StepFun-3.5 Flash", "StepFun", 256000, 8192);
++            addModel("arcee-ai/trinity-large-preview:free", "Arcee Trinity Large Preview", "Arcee AI", 131000, 8192);
++            addModel("upstage/solar-pro-3:free", "Upstage Solar Pro 3", "Upstage", 128000, 8192);
++            addModel("liquid/lfm-2.5-1.2b-thinking:free", "Liquid LFM 2.5 1.2B Thinking", "Liquid", 32000, 8192);
++            addModel("nvidia/nemotron-3-nano-30b-a3b:free", "Nvidia Nemotron 3 Nano 30B", "Nvidia", 256000, 8192);
++            
++            // Save immediately to create the file
++            std::ofstream outFile("data/models.json");
++            outFile << modelsConfig.toStyledString();
++            outFile.close();
++        }
++        
+         config_loaded = true;
+     }
+ 
+@@ -49,6 +80,12 @@
+         std::ofstream file("data/settings.json");
+         file << settings.toStyledString();
+         file.close();
++    }
++
++    void saveModelsConfig_nolock() {
++        std::ofstream file("data/models.json");
++        file << modelsConfig.toStyledString();
++        file.close();
+     }
+     
+     bool parseJsonBody(const std::string& body, Json::Value& result) {
+@@ -194,3 +231,34 @@
+     res.status = 200;
+     res.set_content(settings.toStyledString(), "application/json");
+ }
++
++void handleGetModelsConfig(const httplib::Request& req, httplib::Response& res) {
++    loadConfig();
++    
++    Json::Value response;
++    {
++        std::lock_guard<std::mutex> lock(config_mutex);
++        response["data"] = modelsConfig;
++    }
++    
++    res.status = 200;
++    res.set_content(response.toStyledString(), "application/json");
++}
++
++void handleUpdateModelsConfig(const httplib::Request& req, httplib::Response& res) {
++    loadConfig();
++    
++    Json::Value requestBody;
++    if (!parseJsonBody(req.body, requestBody)) {
++        res.status = 400;
++        res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
++        return;
++    }
++
++    std::lock_guard<std::mutex> lock(config_mutex);
++    modelsConfig = requestBody;
++    saveModelsConfig_nolock();
++
++    res.status = 200;
++    res.set_content("{\"status\": \"updated\"}", "application/json");
++}
+--- backend/src/controllers/openrouter_controller.cpp
++++ backend/src/controllers/openrouter_controller.cpp
+@@ -144,9 +144,9 @@
+     }
+ }
+ 
+-void handleModels(const httplib::Request& req, httplib::Response& res, OpenRouterService& service) {
++void handleRemoteModels(const httplib::Request& req, httplib::Response& res, OpenRouterService& service) {
+     try {
+-        auto models = service.getModels();
++        auto models = service.getAllRemoteModels();
+         res.status = 200;
+         res.set_content(models.toStyledString(), "application/json");
+ 
+--- backend/src/main.cpp
++++ backend/src/main.cpp
+@@ -179,7 +179,7 @@
+     svr.Options("/api/auth/verify", optionsHandler);
+     svr.Options("/api/chat", optionsHandler);
+     svr.Options("/api/chat/stream", optionsHandler);
+-    svr.Options("/api/models", optionsHandler);
++    svr.Options("/api/models", optionsHandler); // Local config list
++    svr.Options("/api/openrouter/models", optionsHandler); // Remote fetch
+     svr.Options("/api/pricing", optionsHandler);
+     svr.Options("/api/config/prompt-templates", optionsHandler);
+     svr.Options("/api/config/settings", optionsHandler);
+@@ -242,10 +242,23 @@
+         handleStreaming(req, res, openrouterService);
+     });
+ 
++    // Get configured models (from local JSON)
+     svr.Get("/api/models", [&](const httplib::Request& req, httplib::Response& res) {
+         addSecurityHeaders(res);
+         addCorsHeaders(res, req);
+-        handleModels(req, res, openrouterService);
++        handleGetModelsConfig(req, res);
++    });
++
++    // Update configured models (local JSON)
++    svr.Put("/api/models", [&](const httplib::Request& req, httplib::Response& res) {
++        addSecurityHeaders(res);
++        addCorsHeaders(res, req);
++        handleUpdateModelsConfig(req, res);
++    });
++
++    svr.Get("/api/openrouter/models", [&](const httplib::Request& req, httplib::Response& res) {
++        addSecurityHeaders(res);
++        addCorsHeaders(res, req);
++        handleRemoteModels(req, res, openrouterService);
+     });
+ 
+     svr.Get("/api/pricing", [&](const httplib::Request& req, httplib::Response& res) {
+@@ -317,7 +330,8 @@
+     std::cout << "  POST /api/chat" << std::endl;
+     std::cout << "  POST /api/chat/stream" << std::endl;
+     std::cout << "  GET  /api/models" << std::endl;
++    std::cout << "  PUT  /api/models" << std::endl;
++    std::cout << "  GET  /api/openrouter/models" << std::endl;
+     std::cout << "  GET  /api/pricing" << std::endl;
+     std::cout << "  GET  /api/config/prompt-templates" << std::endl;
+     std::cout << "  POST /api/config/prompt-templates" << std::endl;
+--- backend/src/services/openrouter_service.cpp
++++ backend/src/services/openrouter_service.cpp
+@@ -340,15 +340,7 @@
+     }
+ }
+ 
+-Json::Value OpenRouterService::getModels() const {
+-    std::vector<std::string> allowedModels = {
+-        "stepfun/step-3.5-flash:free",
+-        "arcee-ai/trinity-large-preview:free",
+-        "upstage/solar-pro-3:free",
+-        "liquid/lfm-2.5-1.2b-thinking:free",
+-        "nvidia/nemotron-3-nano-30b-a3b:free"
+-    };
+-
++Json::Value OpenRouterService::getAllRemoteModels() const {
+     // Try to fetch models from OpenRouter first
+     try {
+         std::string decryptedKey = decryptApiKey();
+@@ -387,12 +379,7 @@
+                             for (const auto& model : result["data"]) {
+                                 if (!model.isMember("id")) continue;
+                                 std::string id = model["id"].asString();
+-
+-                                if (std::find(allowedModels.begin(), allowedModels.end(), id) == allowedModels.end()) {
+-                                    continue;
+-                                }
+-
++                                
+                                 Json::Value normalizedModel;
+                                 normalizedModel["id"] = id;
+                                 if (model.isMember("name")) {
+@@ -434,18 +421,9 @@
+     
+     // Default models if API call fails
+     Json::Value response;
++    response["error"] = "Failed to fetch remote models";
+     response["data"] = Json::Value(Json::arrayValue);
+     
+-    Json::Value m1; m1["id"] = "stepfun/step-3.5-flash:free"; m1["name"] = "StepFun-3.5 Flash"; m1["provider"] = "StepFun"; m1["context_length"] = 256000; m1["max_tokens"] = 8192;
+-    response["data"].append(m1);
+-    
+-    Json::Value m2; m2["id"] = "arcee-ai/trinity-large-preview:free"; m2["name"] = "Arcee Trinity Large Preview"; m2["provider"] = "Arcee AI"; m2["context_length"] = 131000; m2["max_tokens"] = 8192;
+-    response["data"].append(m2);
+-    
+-    Json::Value m3; m3["id"] = "upstage/solar-pro-3:free"; m3["name"] = "Upstage Solar Pro 3"; m3["provider"] = "Upstage"; m3["context_length"] = 128000; m3["max_tokens"] = 8192;
+-    response["data"].append(m3);
+-    
+-    Json::Value m4; m4["id"] = "liquid/lfm-2.5-1.2b-thinking:free"; m4["name"] = "Liquid LFM 2.5 1.2B Thinking"; m4["provider"] = "Liquid"; m4["context_length"] = 32000; m4["max_tokens"] = 8192;
+-    response["data"].append(m4);
+-    
+-    Json::Value m5; m5["id"] = "nvidia/nemotron-3-nano-30b-a3b:free"; m5["name"] = "Nvidia Nemotron 3 Nano 30B"; m5["provider"] = "Nvidia"; m5["context_length"] = 256000; m5["max_tokens"] = 8192;
+-    response["data"].append(m5);
+-    
+     return response;
+ }
+ 
+--- ctrlpanel/css/content.css
++++ ctrlpanel/css/content.css
+@@ -293,3 +293,127 @@
+ .option-hint a {
+     color: var(--accent);
+ }
++
++/* Models Management */
++.models-list {
++    display: flex;
++    flex-direction: column;
++    gap: 8px;
++    border: 1px solid var(--border);
++    border-radius: var(--radius);
++    overflow: hidden;
++}
++
++.model-item {
++    display: flex;
++    align-items: center;
++    padding: 10px 16px;
++    background: var(--panel);
++    border-bottom: 1px solid var(--border);
++    gap: 12px;
++}
++
++.model-item:last-child {
++    border-bottom: none;
++}
++
++.model-info {
++    flex: 1;
++    min-width: 0;
++}
++
++.model-name {
++    font-weight: 500;
++    color: var(--text);
++}
++
++.model-id {
++    font-size: 0.8rem;
++    color: var(--muted);
++    overflow: hidden;
++    text-overflow: ellipsis;
++}
++
++.model-actions {
++    display: flex;
++    gap: 8px;
++}
++
++/* Add Model Modal */
++.modal-overlay {
++    position: fixed;
++    inset: 0;
++    background: rgba(0, 0, 0, 0.7);
++    backdrop-filter: blur(4px);
++    display: flex;
++    align-items: center;
++    justify-content: center;
++    z-index: 2000;
++    opacity: 0;
++    visibility: hidden;
++    transition: opacity 0.2s, visibility 0.2s;
++}
++
++.modal-overlay.open {
++    opacity: 1;
++    visibility: visible;
++}
++
++.modal-content {
++    background: var(--panel);
++    border: 1px solid var(--border);
++    border-radius: 8px;
++    width: 90%;
++    max-width: 600px;
++    max-height: 80vh;
++    display: flex;
++    flex-direction: column;
++    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
++}
++
++.modal-header {
++    padding: 16px;
++    border-bottom: 1px solid var(--border);
++    display: flex;
++    justify-content: space-between;
++    align-items: center;
++}
++
++.modal-title {
++    margin: 0;
++    font-size: 1.1rem;
++}
++
++.modal-body {
++    padding: 16px;
++    display: flex;
++    flex-direction: column;
++    gap: 16px;
++    overflow-y: auto;
++}
++
++.model-search-results {
++    display: flex;
++    flex-direction: column;
++    gap: 4px;
++    max-height: 300px;
++    overflow-y: auto;
++    border: 1px solid var(--border);
++    border-radius: var(--radius);
++}
++
++.search-result-item {
++    padding: 10px;
++    background: var(--bg);
++    cursor: pointer;
++    border-bottom: 1px solid var(--border);
++}
++
++.search-result-item:last-child {
++    border-bottom: none;
++}
++
++.search-result-item:hover {
++    background: color-mix(in srgb, var(--accent) 15%, var(--panel));
++}
++
+--- ctrlpanel/js/api.js
++++ ctrlpanel/js/api.js
+@@ -118,6 +118,18 @@
+     return makeRequest("/models");
+ }
+ 
++export async function updateModels(models) {
++    return makeRequest("/models", {
++        method: "PUT",
++        body: JSON.stringify(models),
++    });
++}
++
++// Fetch available models from OpenRouter (remote)
++export async function getRemoteModels() {
++    return makeRequest("/openrouter/models");
++}
++
+ export async function getPricing() {
+     return makeRequest("/pricing");
+ }
+--- ctrlpanel/js/theme.js
++++ ctrlpanel/js/theme.js
+@@ -1,7 +1,7 @@
+ export const THEME_KEY = "ctrlpanel:theme";
+ export const DEFAULT_THEME = "everforest-harddark-green";
+ 
+-import { verifyApiKey, getSettings, updateSettings, getModels } from "./api.js";
++import { verifyApiKey, getSettings, updateSettings, getModels, updateModels, getRemoteModels } from "./api.js";
+ 
+ export const PALETTES = {
+ 	everforest: {
+@@ -128,6 +128,143 @@
+ 	});
+ }
+ 
++function initModelManagement(root) {
++    const listContainer = root.querySelector("#models-list-container");
++    const addBtn = root.querySelector("#add-model-btn");
++    const modal = root.querySelector("#add-model-modal");
++    const closeModalBtn = root.querySelector("#close-model-modal");
++    const searchInput = root.querySelector("#model-search-input");
++    const resultsContainer = root.querySelector("#model-search-results");
++    
++    if (!listContainer || !addBtn || !modal) return;
++    
++    let currentModels = [];
++    let remoteModelsCache = [];
++    
++    // Render the local list of models
++    const renderList = () => {
++        listContainer.innerHTML = "";
++        if (currentModels.length === 0) {
++            listContainer.innerHTML = '<div style="padding:16px;color:var(--muted);text-align:center;">No models configured.</div>';
++            return;
++        }
++        
++        currentModels.forEach((model, index) => {
++            const div = document.createElement("div");
++            div.className = "model-item";
++            div.innerHTML = `
++                <div class="model-info">
++                    <div class="model-name">${model.name}</div>
++                    <div class="model-id">${model.id}</div>
++                </div>
++                <div class="model-actions">
++                    <button class="btn" data-action="remove" data-index="${index}" aria-label="Remove model">Remove</button>
++                </div>
++            `;
++            listContainer.appendChild(div);
++        });
++    };
++    
++    // Load current models from backend
++    const loadLocalModels = async () => {
++        try {
++            const res = await getModels();
++            currentModels = res.data || [];
++            renderList();
++        } catch (e) {
++            console.error("Failed to load models", e);
++            listContainer.innerHTML = '<div style="padding:16px;color:var(--ef-red);">Failed to load models.</div>';
++        }
++    };
++    
++    // Handle Remove
++    listContainer.addEventListener("click", async (e) => {
++        if (e.target.dataset.action === "remove") {
++            const idx = parseInt(e.target.dataset.index);
++            if (!isNaN(idx)) {
++                currentModels.splice(idx, 1);
++                renderList();
++                await updateModels(currentModels);
++            }
++        }
++    });
++    
++    // Open Modal
++    addBtn.addEventListener("click", async () => {
++        modal.classList.add("open");
++        searchInput.value = "";
++        resultsContainer.innerHTML = '<div style="padding:10px;color:var(--muted);">Loading OpenRouter models...</div>';
++        
++        try {
++            if (remoteModelsCache.length === 0) {
++                const res = await getRemoteModels();
++                remoteModelsCache = res.data || [];
++            }
++            resultsContainer.innerHTML = '<div style="padding:10px;color:var(--muted);">Type to search available models...</div>';
++            searchInput.focus();
++        } catch (e) {
++            resultsContainer.innerHTML = '<div style="padding:10px;color:var(--ef-red);">Failed to fetch OpenRouter models.</div>';
++        }
++    });
++    
++    // Close Modal
++    const closeModal = () => modal.classList.remove("open");
++    closeModalBtn.addEventListener("click", closeModal);
++    
++    // Search Logic
++    searchInput.addEventListener("input", (e) => {
++        const query = e.target.value.toLowerCase();
++        if (!query) {
++            resultsContainer.innerHTML = '<div style="padding:10px;color:var(--muted);">Type to search...</div>';
++            return;
++        }
++        
++        // Filter by substring (not strictly start-to-finish)
++        const matches = remoteModelsCache.filter(m => 
++            (m.name && m.name.toLowerCase().includes(query)) || 
++            (m.id && m.id.toLowerCase().includes(query))
++        ).slice(0, 50); // Limit results
++        
++        resultsContainer.innerHTML = "";
++        if (matches.length === 0) {
++            resultsContainer.innerHTML = '<div style="padding:10px;">No matches found</div>';
++            return;
++        }
++        
++        matches.forEach(m => {
++            const div = document.createElement("div");
++            div.className = "search-result-item";
++            div.innerHTML = `
++                <div class="model-name">${m.name}</div>
++                <div class="model-id" style="font-size:0.75rem;opacity:0.8;">${m.id}</div>
++                <div class="model-id" style="font-size:0.7rem;opacity:0.6;">Context: ${m.context_length || "?"} | Provider: ${m.provider || "Unknown"}</div>
++            `;
++            div.addEventListener("click", async () => {
++                // Add model
++                const newModel = {
++                    id: m.id,
++                    name: m.name,
++                    provider: m.provider,
++                    context_length: m.context_length || 8192,
++                    max_tokens: (m.top_provider && m.top_provider.max_completion_tokens) || 8192
++                };
++                
++                // Check duplicate
++                if (!currentModels.find(existing => existing.id === newModel.id)) {
++                    currentModels.push(newModel);
++                    renderList();
++                    await updateModels(currentModels);
++                }
++                closeModal();
++            });
++            resultsContainer.appendChild(div);
++        });
++    });
++    
++    // Initial load
++    loadLocalModels();
++}
++
+ export function initSettingsPage(root) {
+ 	if (!root) return;
+ 	const paletteList = root.querySelector("[data-palette-list]");
+@@ -231,4 +368,6 @@
+ 			}, 2000);
+ 		});
+ 	}
+-}
++
++    initModelManagement(root);
++}
+--- ctrlpanel/pages/settings.html
++++ ctrlpanel/pages/settings.html
+@@ -13,6 +13,44 @@
+         <p class="page-subtle">Personalise your control panel.</p>
+     </header>
+ 
++    <!-- Model Management Section -->
++    <section class="card" aria-labelledby="models-title">
++        <div style="display:flex;justify-content:space-between;align-items:center;">
++            <div>
++                <h2 class="card-title" id="models-title">AI Models</h2>
++                <p class="card-desc">Manage the list of available models from OpenRouter.</p>
++            </div>
++            <button id="add-model-btn" class="btn btn-primary" type="button">Add Model</button>
++        </div>
++        
++        <div id="models-list-container" class="models-list">
++            <!-- Models injected via JS -->
++            <div style="padding:16px;color:var(--muted);text-align:center;">Loading...</div>
++        </div>
++    </section>
++
++    <!-- Add Model Modal -->
++    <div id="add-model-modal" class="modal-overlay">
++        <div class="modal-content">
++            <div class="modal-header">
++                <h3 class="modal-title">Add OpenRouter Model</h3>
++                <button id="close-model-modal" class="btn" style="padding:4px 8px;">✕</button>
++            </div>
++            <div class="modal-body">
++                <div class="option-row" style="grid-template-columns: 80px 1fr;">
++                    <label>Provider</label>
++                    <select class="text-input" disabled>
++                        <option selected>OpenRouter</option>
++                    </select>
++                </div>
++                <div class="option-row" style="grid-template-columns: 80px 1fr;">
++                    <label>Search</label>
++                    <input type="text" id="model-search-input" class="text-input" placeholder="Type to search models (e.g. 'gpt-4', 'claude')..." autocomplete="off">
++                </div>
++                <div id="model-search-results" class="model-search-results"></div>
++            </div>
++        </div>
++    </div>
++
+     <section class="card" aria-labelledby="api-title">
+         <h2 class="card-title" id="api-title">API Configuration</h2>
+         <p class="card-desc">Status of your backend OpenRouter connection.</p>

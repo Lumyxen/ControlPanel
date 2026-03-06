@@ -1,0 +1,25 @@
+.page-enter {
+	opacity: 0;
+	transform: translateY(4px);
+	animation: fadeSlideIn 260ms ease forwards;
+}
+
+.page-exit {
+	opacity: 1;
+	transform: translateY(0);
+	animation: fadeOut 180ms ease forwards;
+}
+
+@keyframes fadeSlideIn {
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes fadeOut {
+	to {
+		opacity: 0;
+		transform: translateY(2px);
+	}
+}

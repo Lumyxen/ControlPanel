@@ -1,0 +1,48 @@
+Config loaded: yes (from "/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/config.json")
+API key source: environment variable
+API key status: present
+
+=== Control Panel Server ===
+Backend API:  HTTP on port 1024
+Frontend:     HTTP on port 1025
+===========================
+
+[Backend] Starting HTTP API server on 0.0.0.0:1024
+[Frontend] Starting HTTP static file server on 0.0.0.0:1025
+[Frontend] Serving files from: "/home/lumyxen/my_stuff/projects/websites/lumyxen.me/ctrlpanel"
+[Frontend] Static file server ready
+[Frontend] Attempting to listen on 0.0.0.0:1025
+[Backend] API Server ready. Endpoints:
+  GET  /health
+  GET  /api/health/external
+  POST /api/auth/verify
+  POST /api/chat
+  POST /api/chat/stream
+  GET  /api/models
+  GET  /api/pricing
+  GET  /api/config/prompt-templates
+  POST /api/config/prompt-templates
+  PUT  /api/config/prompt-templates/:id
+  DELETE /api/config/prompt-templates/:id
+  GET  /api/config/settings
+  PUT  /api/config/settings
+[Backend] Attempting to listen on 0.0.0.0:1024
+[HealthCheck] Starting OpenRouter health check thread
+
+=== Both HTTP servers started successfully ===
+Press Ctrl+C to stop the servers
+
+[HealthCheck] Initial OpenRouter status: healthy
+[HealthCheck] OpenRouter returned HTTP 408
+[HealthCheck] OpenRouter check failed (consecutive failures: 1)
+
+[Signal] Received signal 15, initiating graceful shutdown...
+[Signal] Stopping backend server...
+[Signal] Stopping frontend server...
+[Shutdown] Stopping health check thread...
+[HealthCheck] OpenRouter health check thread stopped
+[Shutdown] Health check thread stopped
+
+=== One or more servers have stopped ===
+[Status] Backend server stopped
+[Status] Frontend server stopped

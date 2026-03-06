@@ -1,0 +1,230 @@
+<section data-fragment="main" class="chat-page">
+    <div class="chat-container">
+        <div class="chat-messages" id="chatMessages">
+            <div class="chat-empty" id="chatEmpty">
+                <p>Start a conversation</p>
+            </div>
+        </div>
+
+        <form class="chat-form" id="chatForm">
+            <div
+                id="chatInput"
+                class="chat-input"
+                contenteditable="true"
+                role="textbox"
+                aria-label="Message input"
+                aria-multiline="true"
+                data-placeholder="Type your message here..."
+            ></div>
+
+            <div class="chat-toolbar">
+                <div class="chat-toolbar-left">
+                    <div class="chat-dropdown" data-dropdown="model">
+                        <button
+                            type="button"
+                            class="chat-dropdown-toggle chat-dropdown-plain"
+                            aria-haspopup="listbox"
+                            aria-expanded="false"
+                        >
+                            <span class="chat-dropdown-label">StepFun-3.5 Flash</span>
+                            <span
+                                class="chat-dropdown-chevron"
+                                aria-hidden="true"
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="m6 9 6 6 6-6" />
+                                </svg>
+                            </span>
+                        </button>
+                        <div class="chat-dropdown-menu" role="listbox">
+                            <button type="button" class="chat-dropdown-item selected" role="option" data-value="stepfun/step-3.5-flash:free" data-context-length="256000" aria-selected="true">StepFun-3.5 Flash</button>
+                            <button type="button" class="chat-dropdown-item" role="option" data-value="arcee-ai/trinity-large-preview:free" data-context-length="131000">Arcee Trinity Large Preview</button>
+                            <button type="button" class="chat-dropdown-item" role="option" data-value="upstage/solar-pro-3:free" data-context-length="128000">Upstage Solar Pro 3</button>
+                            <button type="button" class="chat-dropdown-item" role="option" data-value="liquid/lfm-2.5-1.2b-thinking:free" data-context-length="32000">Liquid LFM 2.5 1.2B Thinking</button>
+                            <button type="button" class="chat-dropdown-item" role="option" data-value="nvidia/nemotron-3-nano-30b-a3b:free" data-context-length="256000">Nvidia Nemotron 3 Nano 30B</button>
+                        </div>
+                    </div>
+
+                    <div class="chat-dropdown" data-dropdown="tools" data-multi>
+                        <button
+                            type="button"
+                            class="chat-dropdown-toggle chat-dropdown-icon-only"
+                            aria-haspopup="menu"
+                            aria-expanded="false"
+                            aria-label="Tools"
+                            title="Tools"
+                        >
+                            <span class="chat-dropdown-icon" aria-hidden="true">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                >
+                                    <path
+                                        d="M15.6316 7.63137C15.2356 7.23535 15.0376 7.03735 14.9634 6.80902C14.8981 6.60817 14.8981 6.39183 14.9634 6.19098C15.0376 5.96265 15.2356 5.76465 15.6316 5.36863L18.47 2.53026C17.7168 2.18962 16.8806 2 16.0002 2C12.6865 2 10.0002 4.68629 10.0002 8C10.0002 8.49104 10.0592 8.9683 10.1705 9.42509C10.2896 9.91424 10.3492 10.1588 10.3387 10.3133C10.3276 10.4751 10.3035 10.5612 10.2289 10.7051C10.1576 10.8426 10.0211 10.9791 9.74804 11.2522L3.50023 17.5C2.6718 18.3284 2.6718 19.6716 3.50023 20.5C4.32865 21.3284 5.6718 21.3284 6.50023 20.5L12.748 14.2522C13.0211 13.9791 13.1576 13.8426 13.2951 13.7714C13.4391 13.6968 13.5251 13.6727 13.6869 13.6616C13.8414 13.651 14.086 13.7106 14.5751 13.8297C15.0319 13.941 15.5092 14 16.0002 14C19.3139 14 22.0002 11.3137 22.0002 8C22.0002 7.11959 21.8106 6.28347 21.47 5.53026L18.6316 8.36863C18.2356 8.76465 18.0376 8.96265 17.8092 9.03684C17.6084 9.1021 17.3921 9.1021 17.1912 9.03684C16.9629 8.96265 16.7649 8.76465 16.3689 8.36863L15.6316 7.63137Z"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    />
+                                </svg>
+                            </span>
+                            <span
+                                class="chat-dropdown-chevron"
+                                aria-hidden="true"
+                            >
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <path d="m6 9 6 6 6-6" />
+                                </svg>
+                            </span>
+                        </button>
+
+                        <div
+                            class="chat-dropdown-menu chat-tools-menu"
+                            role="menu"
+                        >
+                            <label class="chat-tool-toggle">
+                                <input
+                                    type="checkbox"
+                                    name="tool"
+                                    value="web-search"
+                                />
+                                <span class="chat-tool-check" aria-hidden="true">
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="3"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <path d="M20 6L9 17l-5-5" />
+                                    </svg>
+                                </span>
+                                <span class="chat-tool-label">Web Search</span>
+                            </label>
+                            <label class="chat-tool-toggle">
+                                <input
+                                    type="checkbox"
+                                    name="tool"
+                                    value="code-exec"
+                                />
+                                <span class="chat-tool-check" aria-hidden="true">
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="3"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <path d="M20 6L9 17l-5-5" />
+                                    </svg>
+                                </span>
+                                <span class="chat-tool-label"
+                                    >Code Execution</span
+                                >
+                            </label>
+                            <label class="chat-tool-toggle">
+                                <input
+                                    type="checkbox"
+                                    name="tool"
+                                    value="file-read"
+                                />
+                                <span class="chat-tool-check" aria-hidden="true">
+                                    <svg
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="3"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                    >
+                                        <path d="M20 6L9 17l-5-5" />
+                                    </svg>
+                                </span>
+                                <span class="chat-tool-label">File Reading</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="chat-toolbar-btn"
+                        id="chatUploadBtn"
+                        aria-label="Upload files"
+                        title="Upload files"
+                    >
+                        <span class="chat-toolbar-btn-icon" aria-hidden="true">
+                            <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                            >
+                                <path
+                                    d="M13.5 3H12H7C5.89543 3 5 3.89543 5 5V19C5 20.1046 5.89543 21 7 21H7.5M13.5 3L19 8.625M13.5 3V7.625C13.5 8.17728 13.9477 8.625 14.5 8.625H19M19 8.625V9.75V12V19C19 20.1046 18.1046 21 17 21H16.5"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                />
+                                <path
+                                    d="M12 21L12 13M12 13L14.5 15.5M12 13L9.5 15.5"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                />
+                            </svg>
+                        </span>
+                        <span id="chatUploadLabel">Upload</span>
+                    </button>
+                    <input id="chatUploadInput" type="file" multiple hidden />
+                </div>
+
+                <div class="chat-toolbar-right">
+                    <div
+                        class="chat-context"
+                        id="chatContext"
+                        aria-label="Context window usage"
+                        title="Context usage (approx.)"
+                    >
+                        0/0
+                    </div>
+
+                    <button
+                        type="submit"
+                        class="chat-send-btn"
+                        aria-label="Send message"
+                        title="Send (Ctrl+Enter) • Send without reply (Ctrl+Shift+Enter)"
+                    >
+                        <svg
+                            viewBox="0 0 48 48"
+                            xmlns="http://www.w3.org/2000/svg"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="M44.9,23.2l-38-18L6,5A2,2,0,0,0,4,7l6,18L4,43a2,2,0,0,0,2,2l.9-.2,38-18A2,2,0,0,0,44.9,23.2ZM9.5,39.1l4-12.1H24a2,2,0,0,0,0-4H13.5l-4-12.1L39.3,25Z"
+                                fill="currentColor"
+                            />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</section>

@@ -1,0 +1,114 @@
+body {
+	display: flex;
+	flex-direction: column;
+	min-height: 100vh;
+}
+
+main {
+	flex: 1 0 auto;
+}
+
+footer {
+	flex-shrink: 0;
+}
+
+.wrap {
+	max-width: var(--maxw);
+	margin: 0 auto;
+	padding: 0 var(--s5);
+}
+
+main section {
+	border-top: 1px solid var(--hairline);
+	padding: var(--s7) 0;
+}
+
+header {
+	border-bottom: 1px solid var(--hairline);
+	position: sticky;
+	top: 0;
+	backdrop-filter: blur(6px);
+	background: color-mix(in oklab, var(--bg), transparent 70%);
+	z-index: 10;
+	user-select: none;
+}
+
+.nav {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: var(--s4) 0;
+	position: relative;
+}
+
+.id {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--s3);
+	font-weight: 600;
+	letter-spacing: 0.2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	header {
+		backdrop-filter: none;
+	}
+}
+
+.links {
+	display: flex;
+	gap: var(--s4);
+}
+
+.links a {
+	padding: 2px 0;
+	border-bottom: 1px solid transparent;
+}
+
+footer {
+	border-top: 1px solid var(--hairline);
+	padding: var(--s3) 0 var(--s4);
+	color: var(--muted);
+	font-size: 0.95rem;
+	user-select: none;
+}
+
+header,
+main,
+footer {
+	position: relative;
+	z-index: 1;
+}
+
+html[data-browser="ladybird"] header {
+	backdrop-filter: none;
+	background: rgba(15, 17, 21, 0.7);
+}
+
+.footer-row {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 12px;
+	min-height: 28px;
+}
+
+.footer-left,
+.footer-right {
+	flex: 0 1 auto;
+}
+
+.footer-center {
+	position: absolute;
+	left: 50%;
+	transform: translateX(-50%);
+	text-align: center;
+	opacity: 0;
+	transition: opacity 160ms ease;
+	white-space: nowrap;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}

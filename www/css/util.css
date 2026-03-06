@@ -1,0 +1,17 @@
+@media (min-width: 1200px) {
+	body::before {
+		content: "";
+		position: fixed;
+		inset: 0;
+		pointer-events: none;
+		background: repeating-linear-gradient(to right, transparent 0, transparent 23px, rgba(30, 37, 49, 0.3) 23px, rgba(30, 37, 49, 0.3) 24px);
+		opacity: 0.3;
+		z-index: 0;
+	}
+}
+
+@media (min-width: 1200px) {
+	html[data-browser="ladybird"] body::before {
+		display: none;
+	}
+}

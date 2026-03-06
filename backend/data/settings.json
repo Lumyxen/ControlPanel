@@ -1,0 +1,5 @@
+{
+    "defaultModel": "stepfun/step-3.5-flash:free",
+    "maxTokens": 2048,
+    "temperature": 0.7
+}

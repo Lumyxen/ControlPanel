@@ -1,0 +1,24 @@
+/* ctrlpanel/css/layout.css */
+body {
+	display: grid;
+	grid-template-columns: var(--sidebar-width) 1fr;
+	min-height: 100vh;
+	transition: grid-template-columns var(--sidebar-transition);
+}
+
+body.sidebar-collapsed {
+	grid-template-columns: 0 1fr;
+}
+
+.fixed-toggle {
+	position: fixed;
+	top: var(--toggle-offset);
+	left: var(--toggle-offset);
+	z-index: 1000;
+}
+
+@media (max-width: 800px) {
+	body {
+		grid-template-columns: 0 1fr;
+	}
+}

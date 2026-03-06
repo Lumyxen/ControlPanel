@@ -1,0 +1,301 @@
+/* Connection monitoring and demo mode styles */
+
+/* ====================
+   Connection Modal
+   ==================== */
+
+.connection-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.connection-modal-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.connection-modal {
+    background: var(--bg-primary, #1e2326);
+    border: 1px solid var(--border-color, #3c474d);
+    border-radius: 12px;
+    padding: 24px 28px;
+    max-width: 420px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    transform: scale(0.95);
+    transition: transform 0.3s ease;
+}
+
+.connection-modal-overlay.visible .connection-modal {
+    transform: scale(1);
+}
+
+.connection-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.connection-modal-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.connection-modal-icon.error {
+    background: rgba(230, 126, 126, 0.15);
+    color: #e67e7e;
+}
+
+.connection-modal-icon.warning {
+    background: rgba(252, 193, 120, 0.15);
+    color: #fcc178;
+}
+
+.connection-modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary, #d3c6aa);
+    margin: 0;
+}
+
+.connection-modal-message {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-secondary, #9da9a0);
+    margin-bottom: 20px;
+}
+
+.connection-modal-note {
+    font-size: 13px;
+    color: var(--text-muted, #7a8478);
+    font-style: italic;
+    margin-top: -12px;
+    margin-bottom: 16px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    border-left: 3px solid #fcc178;
+}
+
+.connection-modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.connection-modal-button {
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    outline: none;
+}
+
+.connection-modal-button.primary {
+    background: var(--accent-color, #7fbbb3);
+    color: var(--bg-primary, #1e2326);
+}
+
+.connection-modal-button.primary:hover {
+    background: var(--accent-hover, #8fc4bd);
+    transform: translateY(-1px);
+}
+
+.connection-modal-button.primary:active {
+    transform: translateY(0);
+}
+
+.connection-modal-button.secondary {
+    background: transparent;
+    color: var(--text-secondary, #9da9a0);
+    border: 1px solid var(--border-color, #3c474d);
+}
+
+.connection-modal-button.secondary:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary, #d3c6aa);
+}
+
+.connection-modal-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-muted, #7a8478);
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color, #3c474d);
+}
+
+.connection-modal-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+}
+
+.connection-modal-status-dot.reconnecting {
+    background: #fcc178;
+}
+
+.connection-modal-status-dot.offline {
+    background: #e67e7e;
+    animation: none;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.4;
+    }
+}
+
+/* ====================
+   Demo Mode Banner
+   ==================== */
+
+.demo-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #fcc178 0%, #e69875 100%);
+    color: #1e2326;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    z-index: 9999;
+    font-weight: 600;
+    font-size: 14px;
+    box-shadow: 0 2px 10px rgba(252, 193, 120, 0.3);
+}
+
+.demo-banner-icon {
+    font-size: 16px;
+}
+
+.demo-banner-text {
+    letter-spacing: 0.5px;
+}
+
+.demo-banner-close {
+    position: absolute;
+    right: 16px;
+    background: none;
+    border: none;
+    color: #1e2326;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+    padding: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+.demo-banner-close:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+/* Add padding to body when demo banner is present */
+body.demo-mode-active {
+    padding-top: 44px;
+}
+
+body.demo-mode-active .sidebar {
+    top: 44px;
+    height: calc(100vh - 44px);
+}
+
+/* ====================
+   Connection Status Indicator
+   (Optional - for inline status display)
+   ==================== */
+
+.connection-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted, #7a8478);
+}
+
+.connection-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.connection-status-dot.online {
+    background: #a7c080;
+}
+
+.connection-status-dot.offline {
+    background: #e67e7e;
+}
+
+.connection-status-dot.connecting {
+    background: #fcc178;
+    animation: pulse 1s infinite;
+}
+
+/* ====================
+   Responsive Adjustments
+   ==================== */
+
+@media (max-width: 480px) {
+    .connection-modal {
+        padding: 20px;
+        margin: 16px;
+    }
+    
+    .connection-modal-actions {
+        flex-direction: column;
+    }
+    
+    .connection-modal-button {
+        width: 100%;
+        text-align: center;
+    }
+    
+    .demo-banner {
+        font-size: 12px;
+        padding: 8px 16px;
+    }
+    
+    .demo-banner-close {
+        right: 8px;
+    }
+}
