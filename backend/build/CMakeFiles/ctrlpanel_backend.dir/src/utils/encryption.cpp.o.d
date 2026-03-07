@@ -1,7 +1,7 @@
 CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o: \
- /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/utils/encryption.cpp \
+ /home/lumyxen/websites/lumyxen.me/backend/src/utils/encryption.cpp \
  /usr/include/stdc-predef.h \
- /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include/utils/encryption.h \
+ /home/lumyxen/websites/lumyxen.me/backend/include/utils/encryption.h \
  /usr/include/c++/15.2.1/string \
  /usr/include/c++/15.2.1/bits/requires_hosted.h \
  /usr/include/c++/15.2.1/x86_64-pc-linux-gnu/bits/c++config.h \

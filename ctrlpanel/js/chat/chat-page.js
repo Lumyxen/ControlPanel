@@ -20,7 +20,7 @@ import {
 	setCurrentChatId,
 } from "./store.js";
 import { renderChatList } from "./sidebar.js";
-import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI, getAllModels } from "./context.js";
+import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI } from "./context.js";
 import { getModels } from "../api.js";
 import { formatBytes } from "./util.js";
 import { renderThread, showTyping } from "./thread-ui.js";
@@ -41,69 +41,6 @@ function escapeHtml(text) {
 	div.textContent = text;
 	return div.innerHTML;
 }
-
-function selectModelInDropdown(root, modelId) {
-	if (!root) return false;
-	const modelDropdown = root.querySelector('[data-dropdown="model"]');
-	if (!modelDropdown) return false;
-	
-	const items = modelDropdown.querySelectorAll('.chat-dropdown-item');
-	const label = modelDropdown.querySelector('.chat-dropdown-label');
-	
-	let found = false;
-	if (modelId) {
-		items.forEach((item) => {
-			if (item.dataset.value === modelId) {
-				item.classList.add("selected");
-				item.setAttribute("aria-selected", "true");
-				if (label) label.textContent = item.textContent;
-				found = true;
-			} else {
-				item.classList.remove("selected");
-				item.setAttribute("aria-selected", "false");
-			}
-		});
-	}
-	
-	// Fallback to first if not found
-	if (!found && items.length > 0) {
-		items.forEach(i => {
-			i.classList.remove("selected");
-			i.setAttribute("aria-selected", "false");
-		});
-		items[0].classList.add("selected");
-		items[0].setAttribute("aria-selected", "true");
-		if (label) label.textContent = items[0].textContent;
-		return true;
-	}
-	
-	return found;
-}
-
-function populateModelsSync(root) {
-	const models = getAllModels();
-	if (!models || models.length === 0) return false;
-	
-	const modelDropdown = root.querySelector('[data-dropdown="model"]');
-	const menu = modelDropdown?.querySelector('.chat-dropdown-menu');
-	if (!menu) return false;
-	
-	menu.innerHTML = '';
-	models.forEach((model) => {
-		const btn = document.createElement("button");
-		btn.type = "button";
-		btn.className = "chat-dropdown-item";
-		btn.setAttribute("role", "option");
-		btn.dataset.value = model.id;
-		if (model.context_length) {
-			btn.dataset.contextLength = model.context_length;
-		}
-		btn.textContent = model.name;
-		menu.appendChild(btn);
-	});
-	return true;
-}
-
 let chatPageAbort = null;
 
 function initDropdowns(root, signal) {
@@ -139,20 +76,6 @@ function initDropdowns(root, signal) {
 					if (label) label.textContent = item.textContent;
 					dropdown.classList.remove("open");
 					toggle?.setAttribute("aria-expanded", "false");
-					
-					if (dropdown.dataset.dropdown === "model") {
-						const modelId = item.dataset.value;
-						localStorage.setItem("ctrlpanel:lastSelectedModel", modelId);
-						const currentChatId = getCurrentChatId();
-						if (currentChatId) {
-							const chat = getChatById(currentChatId);
-							if (chat) {
-								chat.modelId = modelId;
-								saveChats();
-							}
-						}
-						updateContextUI(root, currentChatId ? getChatById(currentChatId) : null);
-					}
 				}, { signal });
 			});
 		} else {
@@ -173,7 +96,7 @@ function initDropdowns(root, signal) {
 function initTools(root, signal) {
 	const toolsDropdown = root.querySelector('[data-dropdown="tools"]');
 	if (!toolsDropdown) return;
-	const checkboxes = [...toolsDropdown.querySelectorAll('input[type="checkbox"][name="tool"]')];
+	const checkboxes =[...toolsDropdown.querySelectorAll('input[type="checkbox"][name="tool"]')];
 	const enabled = new Set(JSON.parse(localStorage.getItem(TOOLS_KEY) || "[]"));
 	checkboxes.forEach((cb) => cb.checked = enabled.has(cb.value));
 
@@ -333,22 +256,31 @@ async function loadAndPopulateModels(root, signal) {
 		const menu = modelDropdown?.querySelector('.chat-dropdown-menu');
 		if (!menu) return;
 		
-		menu.innerHTML = '';
-		models.forEach((model) => {
-			const btn = document.createElement("button");
-			btn.type = "button";
-			btn.className = "chat-dropdown-item";
-			btn.setAttribute("role", "option");
-			btn.dataset.value = model.id;
-			if (model.context_length) {
-				btn.dataset.contextLength = model.context_length;
+		const modelMap = new Map();
+		for (const model of models) {
+			if (model.id) {
+				modelMap.set(model.id, model);
 			}
-			btn.textContent = model.name;
-			menu.appendChild(btn);
-		});
+		}
+		
+		const existingItems = menu.querySelectorAll('.chat-dropdown-item');
+		for (const item of existingItems) {
+			const modelId = item.dataset.value;
+			if (modelId && modelMap.has(modelId)) {
+				const model = modelMap.get(modelId);
+				if (model.context_length) {
+					item.dataset.contextLength = model.context_length;
+				}
+			}
+		}
+		
+		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+		updateContextUI(root, chat);
 		
 	} catch (err) {
 		console.error('Failed to load models:', err);
+		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+		updateContextUI(root, chat);
 	}
 }
 
@@ -363,7 +295,6 @@ function ensureChatExists(setActiveCallback) {
 export function loadCurrentChat(setActiveCallback) {
 	const messages = document.getElementById("chatMessages");
 	const empty = document.getElementById("chatEmpty");
-	const root = document.querySelector('[data-fragment="main"]');
 	if (!messages) return;
 
 	const currentChatId = getCurrentChatId();
@@ -374,21 +305,6 @@ export function loadCurrentChat(setActiveCallback) {
 	if (empty) empty.hidden = Boolean(currentChatId) || hasMessages;
 	if (chat) renderThread(messages, chat, { editingNodeId: null, editingDraft: "" });
 	else messages.querySelectorAll(".chat-message, .chat-typing").forEach((el) => el.remove());
-
-	if (root) {
-		let modelToSelect = null;
-		if (chat && chat.modelId) {
-			modelToSelect = chat.modelId;
-		} else {
-			modelToSelect = localStorage.getItem("ctrlpanel:lastSelectedModel");
-		}
-		
-		if (modelToSelect) {
-			selectModelInDropdown(root, modelToSelect);
-		}
-		
-		updateContextUI(root, chat);
-	}
 
 	renderChatList();
 	setActiveCallback && setActiveCallback();
@@ -409,41 +325,19 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 	const attachmentManager = new InlineAttachmentManager(input);
 
-	// Process URL params and ensure the chat context is correct synchronously
+	await loadAndPopulateModels(root, signal);
+
+	initDropdowns(root, signal);
+	initTools(root, signal);
+	initUpload(root, input, attachmentManager, signal);
+	const resizeInput = initAutoResize(input, signal);
+
 	const urlParams = new URLSearchParams(location.hash.split("?")[1] || "");
 	const chatIdFromUrl = urlParams.get("chat");
 	if (chatIdFromUrl && getChatById(chatIdFromUrl)) {
 		setCurrentChatId(chatIdFromUrl);
 		saveChats();
 	}
-
-	// Inject the real model UI items synchronously using cached data to avoid visual jumps
-	populateModelsSync(root);
-
-	// Start background fetch for latest models without blocking execution
-	loadAndPopulateModels(root, signal).then(() => {
-		const cid = getCurrentChatId();
-		const chat = cid ? getChatById(cid) : null;
-		let targetModel = chat?.modelId || localStorage.getItem("ctrlpanel:lastSelectedModel");
-		
-		if (targetModel) {
-			selectModelInDropdown(root, targetModel);
-			updateContextUI(root, chat);
-		} else {
-			import("../api.js").then(m => m.getSettings()).then(settings => {
-				if (settings && settings.defaultModel) {
-					localStorage.setItem("ctrlpanel:lastSelectedModel", settings.defaultModel);
-					selectModelInDropdown(root, settings.defaultModel);
-					updateContextUI(root, chat);
-				}
-			}).catch(()=>{});
-		}
-	});
-
-	initDropdowns(root, signal);
-	initTools(root, signal);
-	initUpload(root, input, attachmentManager, signal);
-	const resizeInput = initAutoResize(input, signal);
 
 	const uiState = {
 		editingNodeId: null,
@@ -763,29 +657,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (uiState.editingNodeId) {
 			requestAnimationFrame(() => {
 				const el = messages.querySelector(`.chat-message[data-node-id="${uiState.editingNodeId}"] .chat-edit-input`);
-				if (el) {
-					el.style.height = "auto";
-					el.style.height = (el.scrollHeight + 2) + "px";
-					el.focus();
-				}
+				el?.focus();
 			});
 		}
 	};
 
-	// Sync execution finishes with loadCurrentChat (which also calls selectModelInDropdown ensuring correctness)
 	loadCurrentChat(() => setActiveCallback && setActiveCallback());
-	
-	// Fallback to fetch model default from settings strictly if missing completely
-	if (!localStorage.getItem("ctrlpanel:lastSelectedModel") && (!getCurrentChatId() || !getChatById(getCurrentChatId())?.modelId)) {
-		import("../api.js").then(m => m.getSettings()).then(settings => {
-			if (settings && settings.defaultModel) {
-				localStorage.setItem("ctrlpanel:lastSelectedModel", settings.defaultModel);
-				selectModelInDropdown(root, settings.defaultModel);
-				const c = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
-				updateContextUI(root, c);
-			}
-		}).catch(()=>{});
-	}
 
 	input.addEventListener("keydown", (e) => {
 		if (e.isComposing) return;
@@ -845,9 +722,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			edit: () => {
 				stopTyping();
 				uiState.editingNodeId = nodeId;
-				uiState.editingDraft = node.parts 
-					? node.parts.filter(p => p.type === "text").map(p => p.content).join("")
-					: String(node.content || "");
+				uiState.editingDraft = String(node.content || "");
 				uiState.editingSaveMode = null;
 				rerender();
 			},
@@ -1039,8 +914,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const nodeId = msgEl?.dataset.nodeId;
 		if (nodeId && uiState.editingNodeId === nodeId) {
 			uiState.editingDraft = textarea.value;
-			textarea.style.height = "auto";
-			textarea.style.height = (textarea.scrollHeight + 2) + "px";
 		}
 	}, { signal });
 
@@ -1052,17 +925,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (!parts || parts.length === 0) return;
 
 		ensureChatExists(setActiveCallback);
-		const chatId = getCurrentChatId();
-		
-		// Save the model used to the chat
-		const chat = getChatById(chatId);
-		if (chat) {
-			const modelSelect = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
-			if (modelSelect && modelSelect.dataset.value) {
-				chat.modelId = modelSelect.dataset.value;
-			}
-		}
-
 		if (empty) empty.hidden = true;
 
 		stopTyping();
@@ -1070,7 +932,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		uiState.editingDraft = "";
 		uiState.editingSaveMode = null;
 
-		const userNode = addMessageToChat(chatId, "user", "", null, parts);
+		const userNode = addMessageToChat(getCurrentChatId(), "user", "", null, parts);
 		
 		attachmentManager.clear();
 		const uploadBtn = root.querySelector("#chatUploadBtn");
@@ -1095,5 +957,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		updateContextUI(root, chat);
 	}, { signal });
 
+	updateContextUI(root, getCurrentChatId() ? getChatById(getCurrentChatId()) : null);
 	input.focus();
 }

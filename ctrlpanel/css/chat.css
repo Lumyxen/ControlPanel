@@ -1092,11 +1092,9 @@
 /* Edit textarea inside a bubble */
 .chat-edit-input {
     width: 100%;
-    min-height: 40px;
-    max-height: 60vh;
-    resize: none;
-    overflow-y: auto;
-    box-sizing: border-box;
+    min-height: 72px;
+    max-height: 240px;
+    resize: vertical;
 
     appearance: none;
     background: transparent;

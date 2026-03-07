@@ -29,14 +29,6 @@ export function getModelMetadata(modelId) {
 }
 
 /**
- * Get all cached models
- * @returns {Array} Array of model objects
- */
-export function getAllModels() {
-	return Array.from(modelMetadata.values());
-}
-
-/**
  * Get the currently selected model ID from the UI
  * @param {HTMLElement} root - Root element
  * @returns {string|null} Selected model ID or null

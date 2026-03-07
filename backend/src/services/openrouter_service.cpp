@@ -4,7 +4,6 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
-#include <algorithm>
 
 // libcurl write callback
 size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
@@ -127,7 +126,7 @@ size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, void* user
         if (line.find("data: ") == 0) {
             std::string data = line.substr(6);
             if (data == "[DONE]") {
-                // Forward the[DONE] marker as-is
+                // Forward the [DONE] marker as-is
                 if (ctx->onChunk) {
                     ctx->onChunk("data: [DONE]\n\n");
                 }
@@ -424,14 +423,6 @@ void OpenRouterService::streamingChatWithCallback(
 }
 
 Json::Value OpenRouterService::getModels() const {
-    std::vector<std::string> allowedModels = {
-        "stepfun/step-3.5-flash:free",
-        "arcee-ai/trinity-large-preview:free",
-        "upstage/solar-pro-3:free",
-        "liquid/lfm-2.5-1.2b-thinking:free",
-        "nvidia/nemotron-3-nano-30b-a3b:free"
-    };
-
     // Try to fetch models from OpenRouter first
     try {
         std::string decryptedKey = decryptApiKey();
@@ -464,19 +455,17 @@ Json::Value OpenRouterService::getModels() const {
                     std::istringstream stream(responseStr);
                     if (Json::parseFromStream(reader, stream, &result, &errs)) {
                         if (result.isMember("data") && result["data"].isArray()) {
+                            // Normalize the response to ensure consistent field names
                             Json::Value normalizedResponse;
                             normalizedResponse["data"] = Json::Value(Json::arrayValue);
                             
                             for (const auto& model : result["data"]) {
-                                if (!model.isMember("id")) continue;
-                                std::string id = model["id"].asString();
-
-                                if (std::find(allowedModels.begin(), allowedModels.end(), id) == allowedModels.end()) {
-                                    continue;
-                                }
-
                                 Json::Value normalizedModel;
-                                normalizedModel["id"] = id;
+
+                                // Copy basic fields
+                                if (model.isMember("id")) {
+                                    normalizedModel["id"] = model["id"];
+                                }
                                 if (model.isMember("name")) {
                                     normalizedModel["name"] = model["name"];
                                 }
@@ -484,12 +473,14 @@ Json::Value OpenRouterService::getModels() const {
                                     normalizedModel["provider"] = model["provider"];
                                 }
 
+                                // Extract context_length
                                 int contextLength = 0;
                                 if (model.isMember("context_length")) {
                                     contextLength = model["context_length"].asInt();
                                     normalizedModel["context_length"] = contextLength;
                                 }
 
+                                // Extract strictly the max output tokens from OpenRouter
                                 int maxTokens = 0;
                                 if (model.isMember("top_provider") && model["top_provider"].isObject()) {
                                     const auto& topProvider = model["top_provider"];
@@ -498,11 +489,15 @@ Json::Value OpenRouterService::getModels() const {
                                     }
                                 }
 
+                                // Default to 8192 if the API omits the completion limit entirely
+                                const int DEFAULT_MAX_TOKENS = 8192;
+
                                 if (maxTokens <= 0) {
-                                    maxTokens = 8192;
+                                    maxTokens = DEFAULT_MAX_TOKENS;
                                 }
 
                                 normalizedModel["max_tokens"] = maxTokens;
+
                                 normalizedResponse["data"].append(normalizedModel);
                             }
                             
@@ -520,20 +515,37 @@ Json::Value OpenRouterService::getModels() const {
     Json::Value response;
     response["data"] = Json::Value(Json::arrayValue);
     
-    Json::Value m1; m1["id"] = "stepfun/step-3.5-flash:free"; m1["name"] = "StepFun-3.5 Flash"; m1["provider"] = "StepFun"; m1["context_length"] = 256000; m1["max_tokens"] = 8192;
-    response["data"].append(m1);
+    Json::Value model1;
+    model1["id"] = "openai/gpt-4o-mini";
+    model1["name"] = "OpenAI GPT-4o Mini";
+    model1["provider"] = "OpenAI";
+    model1["context_length"] = 128000;
+    model1["max_tokens"] = 16384;
+    response["data"].append(model1);
     
-    Json::Value m2; m2["id"] = "arcee-ai/trinity-large-preview:free"; m2["name"] = "Arcee Trinity Large Preview"; m2["provider"] = "Arcee AI"; m2["context_length"] = 131000; m2["max_tokens"] = 8192;
-    response["data"].append(m2);
+    Json::Value model2;
+    model2["id"] = "google/gemma-2-9b-it";
+    model2["name"] = "Google Gemma 2 9B";
+    model2["provider"] = "Google";
+    model2["context_length"] = 8192;
+    model2["max_tokens"] = 8192;
+    response["data"].append(model2);
     
-    Json::Value m3; m3["id"] = "upstage/solar-pro-3:free"; m3["name"] = "Upstage Solar Pro 3"; m3["provider"] = "Upstage"; m3["context_length"] = 128000; m3["max_tokens"] = 8192;
-    response["data"].append(m3);
+    Json::Value model3;
+    model3["id"] = "meta-llama/llama-3-8b-instruct";
+    model3["name"] = "Meta Llama 3 8B";
+    model3["provider"] = "Meta";
+    model3["context_length"] = 8192;
+    model3["max_tokens"] = 8192;
+    response["data"].append(model3);
     
-    Json::Value m4; m4["id"] = "liquid/lfm-2.5-1.2b-thinking:free"; m4["name"] = "Liquid LFM 2.5 1.2B Thinking"; m4["provider"] = "Liquid"; m4["context_length"] = 32000; m4["max_tokens"] = 8192;
-    response["data"].append(m4);
-    
-    Json::Value m5; m5["id"] = "nvidia/nemotron-3-nano-30b-a3b:free"; m5["name"] = "Nvidia Nemotron 3 Nano 30B"; m5["provider"] = "Nvidia"; m5["context_length"] = 256000; m5["max_tokens"] = 8192;
-    response["data"].append(m5);
+    Json::Value model4;
+    model4["id"] = "mistralai/mistral-7b-instruct-v0.3";
+    model4["name"] = "Mistral 7B Instruct v0.3";
+    model4["provider"] = "Mistral";
+    model4["context_length"] = 32768;
+    model4["max_tokens"] = 8192;
+    response["data"].append(model4);
     
     return response;
 }
@@ -541,7 +553,31 @@ Json::Value OpenRouterService::getModels() const {
 Json::Value OpenRouterService::getPricing() const {
     Json::Value response;
     response["data"] = Json::Value(Json::arrayValue);
-    // Left as empty/placeholder since the models are completely free
+    
+    Json::Value model1Pricing;
+    model1Pricing["id"] = "openai/gpt-4o-mini";
+    model1Pricing["price_per_1k_input"] = 0.00000015;
+    model1Pricing["price_per_1k_output"] = 0.0000006;
+    response["data"].append(model1Pricing);
+    
+    Json::Value model2Pricing;
+    model2Pricing["id"] = "google/gemma-2-9b-it";
+    model2Pricing["price_per_1k_input"] = 0.00000003;
+    model2Pricing["price_per_1k_output"] = 0.00000009;
+    response["data"].append(model2Pricing);
+    
+    Json::Value model3Pricing;
+    model3Pricing["id"] = "meta-llama/llama-3-8b-instruct";
+    model3Pricing["price_per_1k_input"] = 0.00000003;
+    model3Pricing["price_per_1k_output"] = 0.00000004;
+    response["data"].append(model3Pricing);
+    
+    Json::Value model4Pricing;
+    model4Pricing["id"] = "mistralai/mistral-7b-instruct-v0.3";
+    model4Pricing["price_per_1k_input"] = 0.0000002;
+    model4Pricing["price_per_1k_output"] = 0.0000002;
+    response["data"].append(model4Pricing);
+    
     return response;
 }
 

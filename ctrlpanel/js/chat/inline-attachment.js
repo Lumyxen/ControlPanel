@@ -1,5 +1,3 @@
-// ctrlpanel/js/chat/inline-attachment.js
-
 /**
  * InlineAttachmentManager - Handles inline file attachments in contenteditable
  * 
@@ -374,7 +372,7 @@ export class InlineAttachmentManager {
 	 * Get all chips within a range
 	 */
 	getChipsInRange(range) {
-		const chips =[];
+		const chips = [];
 		const walker = document.createTreeWalker(
 			range.commonAncestorContainer,
 			NodeFilter.SHOW_ELEMENT,
@@ -920,85 +918,49 @@ export class InlineAttachmentManager {
 	 */
 	extractParts() {
 		// Don't normalize here - it could interfere with cursor position
-		// Just read the DOM recursively
+		// Just read the DOM as-is
 		
-		const parts =[];
+		const parts = [];
 		
-		const appendText = (text) => {
-			if (!text) return;
-			const lastPart = parts[parts.length - 1];
-			if (lastPart?.type === "text") {
-				lastPart.content += text;
-			} else {
-				parts.push({ type: "text", content: text });
-			}
-		};
-		
-		const processNode = (node) => {
-			if (node.nodeType === Node.TEXT_NODE) {
-				// Replace non-breaking spaces with regular spaces
-				const text = node.textContent.replace(/\u00A0/g, " ");
-				appendText(text);
-			} else if (node.nodeType === Node.ELEMENT_NODE) {
-				if (node.tagName === "BR") {
-					appendText("\n");
-				} else if (node.classList?.contains("inline-attachment")) {
-					const id = node.dataset.attachmentId;
-					const attachment = this.attachments.get(id);
-					if (attachment) {
-						parts.push({
-							type: "attachment",
-							id: attachment.id,
-							name: attachment.name,
-							size: attachment.size,
-							mimeType: attachment.type,
-							isImage: attachment.isImage,
-							data: attachment.data,
-						});
-					}
-				} else {
-					// Block elements frequently created by browsers on Enter
-					const isBlock =["DIV", "P", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "SECTION", "TR"].includes(node.tagName);
-					
-					// If starting a new block, ensure we are on a new line
-					if (isBlock && parts.length > 0) {
-						const lastPart = parts[parts.length - 1];
-						if (lastPart.type === "text" && !lastPart.content.endsWith("\n")) {
-							appendText("\n");
-						} else if (lastPart.type === "attachment") {
-							appendText("\n");
-						}
-					}
-
-					// Process all children recursively
-					for (const child of node.childNodes) {
-						processNode(child);
-					}
-					
-					// Finishing a block should ideally ensure the next thing starts on a new line
-					if (isBlock) {
-						const lastChild = node.lastChild;
-						// If the last child was a BR, it already added a newline.
-						if (lastChild && lastChild.tagName === "BR") {
-							// skip
-						} else {
-							// Add a newline if we don't already end with one
-							const lp = parts[parts.length - 1];
-							if (lp && lp.type === "text" && !lp.content.endsWith("\n")) {
-								appendText("\n");
-							}
-						}
+		for (const child of this.el.childNodes) {
+			if (child.nodeType === Node.TEXT_NODE) {
+				// Get text content
+				const text = child.textContent;
+				if (text) {
+					// Merge with previous text part if exists
+					const lastPart = parts[parts.length - 1];
+					if (lastPart?.type === "text") {
+						lastPart.content += text;
+					} else {
+						parts.push({ type: "text", content: text });
 					}
 				}
+			} else if (child.tagName === "BR") {
+				// Handle line breaks - add newline to previous text part or create new one
+				const lastPart = parts[parts.length - 1];
+				if (lastPart?.type === "text") {
+					lastPart.content += "\n";
+				} else {
+					parts.push({ type: "text", content: "\n" });
+				}
+			} else if (child.nodeType === Node.ELEMENT_NODE && child.classList?.contains("inline-attachment")) {
+				const id = child.dataset.attachmentId;
+				const attachment = this.attachments.get(id);
+				if (attachment) {
+					parts.push({
+						type: "attachment",
+						id: attachment.id,
+						name: attachment.name,
+						size: attachment.size,
+						mimeType: attachment.type,
+						isImage: attachment.isImage,
+						data: attachment.data,
+					});
+				}
 			}
-		};
-
-		// Parse the root level
-		for (const child of this.el.childNodes) {
-			processNode(child);
 		}
 		
-		// Trim trailing whitespace and extraneous newlines from the final output
+		// Trim trailing whitespace from the last text part
 		const lastPart = parts[parts.length - 1];
 		if (lastPart?.type === "text") {
 			lastPart.content = lastPart.content.trimEnd();

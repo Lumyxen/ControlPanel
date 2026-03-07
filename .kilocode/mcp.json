@@ -1,1 +1,0 @@
-{"mcpServers":{"Web Search":{"command":"uvx","args":["mcp-searxng"],"env":{"SEARXNG_URL":"http://192.168.1.2:8080","USE_RANDOM_INSTANCE":"false"},"alwaysAllow":["search"]}}}

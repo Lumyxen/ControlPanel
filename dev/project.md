@@ -1,4 +1,4 @@
-/home/lumyxen/my_stuff/projects/websites/lumyxen.me
+/home/lumyxen/websites/lumyxen.me
 ├── backend
 │   ├── backend.log
 │   ├── build
@@ -362,9 +362,350 @@ Finish steps from https://t3.chat/chat/a5007f5c-25f4-430e-9b74-1de1b941a3d1
 
 ```
 
-### ./.kilocode/mcp.json:
-```json
-{"mcpServers":{"Web Search":{"command":"uvx","args":["mcp-searxng"],"env":{"SEARXNG_URL":"http://192.168.1.2:8080","USE_RANDOM_INSTANCE":"false"},"alwaysAllow":["search"]}}}
+### ./ctrlpanel/index.html:
+```html
+<!-- ctrlpanel/index.html -->
+<!DOCTYPE html>
+<html lang="en" data-theme="everforest-harddark-green">
+
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Control Panel</title>
+	<link rel="stylesheet" href="css/variables.css" />
+	<link rel="stylesheet" href="css/base.css" />
+	<link rel="stylesheet" href="css/layout.css" />
+	<link rel="stylesheet" href="css/sidebar.css" />
+	<link rel="stylesheet" href="css/content.css" />
+	<link rel="stylesheet" href="css/chat.css" />
+	<link rel="stylesheet" href="css/connection-monitor.css" />
+	<!-- KaTeX Styles -->
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+</head>
+
+<body>
+	<aside class="sidebar" id="sidebar">
+		<div class="sidebar-top">
+			<button id="sidebarToggle" class="icon-button fixed-toggle" aria-label="Toggle sidebar"
+				aria-controls="sidebar" aria-expanded="true" title="Toggle sidebar">
+				<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+					stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+					aria-hidden="true" focusable="false">
+					<rect width="18" height="18" x="3" y="3" rx="2"></rect>
+					<path d="M9 3v18"></path>
+				</svg>
+			</button>
+			<button id="quickNewChat" class="icon-button fixed-toggle quick-new-chat" aria-label="New chat"
+				title="New chat" type="button">
+				<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+					stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+					aria-hidden="true" focusable="false">
+					<path d="M12 5v14M5 12h14" />
+				</svg>
+			</button>
+			<div class="brand">Control Panel</div>
+		</div>
+		<div class="sidebar-inner">
+			<div class="sidebar-search" role="search">
+				<span class="search-icon" aria-hidden="true">
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" focusable="false" aria-hidden="true">
+						<path fill="currentColor"
+							d="M 21 3 C 11.601563 3 4 10.601563 4 20 C 4 29.398438 11.601563 37 21 37 C 24.355469 37 27.460938 36.015625 30.09375 34.34375 L 42.375 46.625 L 46.625 42.375 L 34.5 30.28125 C 36.679688 27.421875 38 23.878906 38 20 C 38 10.601563 30.398438 3 21 3 Z M 21 7 C 28.199219 7 34 12.800781 34 20 C 34 27.199219 28.199219 33 21 33 C 13.800781 33 8 27.199219 8 20 C 8 12.800781 13.800781 7 21 7 Z">
+						</path>
+					</svg>
+				</span>
+				<input id="sidebarSearch" type="search" placeholder="Search pages" aria-label="Search pages"
+					autocomplete="off" />
+			</div>
+			<nav class="nav">
+				<a href="#pages/home.html" data-route class="active">
+					<span class="nav-icon" aria-hidden="true">
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true"
+							focusable="false">
+							<g fill="currentColor" fill-rule="nonzero" stroke="none" stroke-width="1"
+								stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10">
+								<g transform="scale(5.33333,5.33333)">
+									<path
+										d="M23.95117,4c-0.31984,0.01092 -0.62781,0.12384 -0.87891,0.32227l-14.21289,11.19727c-1.8039,1.42163 -2.85937,3.59398 -2.85937,5.89063v19.08984c0,1.36359 1.13641,2.5 2.5,2.5h10c1.36359,0 2.5,-1.13641 2.5,-2.5v-10c0,-0.29504 0.20496,-0.5 0.5,-0.5h5c0.29504,0 0.5,0.20496 0.5,0.5v10c0,1.36359 1.13641,2.5 2.5,2.5h10c1.36359,0 2.5,-1.13641 2.5,-2.5v-19.08984c0,-2.29665 -1.05548,-4.46899 -2.85937,-5.89062l-14.21289,-11.19727c-0.27738,-0.21912 -0.62324,-0.33326 -0.97656,-0.32227zM24,7.41016l13.28516,10.4668c1.0841,0.85437 1.71484,2.15385 1.71484,3.5332v18.58984h-9v-9.5c0,-1.91495 -1.58505,-3.5 -3.5,-3.5h-5c-1.91495,0 -3.5,1.58505 -3.5,3.5v9.5h-9v-18.58984c0,-1.37935 0.63074,-2.67883 1.71484,-3.5332z">
+									</path>
+								</g>
+							</g>
+						</svg>
+					</span>
+					<span class="nav-label">Home</span>
+				</a>
+				<div class="nav-group" data-nav-group="ai-chat">
+					<button class="nav-group-toggle" aria-expanded="true" aria-controls="ai-chat-list">
+						<span class="nav-icon" aria-hidden="true">
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+								stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+								<path
+									d="M5.59961 19.9203L7.12357 18.7012L7.13478 18.6926C7.45249 18.4384 7.61281 18.3101 7.79168 18.2188C7.95216 18.1368 8.12328 18.0771 8.2998 18.0408C8.49877 18 8.70603 18 9.12207 18H17.8031C18.921 18 19.4806 18 19.908 17.7822C20.2843 17.5905 20.5905 17.2842 20.7822 16.9079C21 16.4805 21 15.9215 21 14.8036V7.19691C21 6.07899 21 5.5192 20.7822 5.0918C20.5905 4.71547 20.2837 4.40973 19.9074 4.21799C19.4796 4 18.9203 4 17.8002 4H6.2002C5.08009 4 4.51962 4 4.0918 4.21799C3.71547 4.40973 3.40973 4.71547 3.21799 5.0918C3 5.51962 3 6.08009 3 7.2002V18.6712C3 19.7369 3 20.2696 3.21846 20.5433C3.40845 20.7813 3.69644 20.9198 4.00098 20.9195C4.35115 20.9191 4.76744 20.5861 5.59961 19.9203Z">
+								</path>
+							</svg>
+						</span>
+						<span class="nav-label">AI Chat</span>
+						<span class="nav-chevron" aria-hidden="true">
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+								stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<path d="m6 9 6 6 6-6" />
+							</svg>
+						</span>
+					</button>
+					<div class="nav-group-content" id="ai-chat-list">
+						<a href="#pages/ai-chat.html" data-route data-new-chat class="nav-subitem nav-new-chat">
+							<span class="nav-subicon" aria-hidden="true">
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+									stroke="currentColor" stroke-width="2" stroke-linecap="round"
+									stroke-linejoin="round">
+									<path d="M12 5v14M5 12h14" />
+								</svg>
+							</span>
+							<span class="nav-label">New Chat</span>
+						</a>
+						<div class="nav-chat-list" id="savedChatsList"></div>
+					</div>
+				</div>
+			</nav>
+			<div class="sidebar-bottom">
+				<a href="#pages/settings.html" data-route>
+					<span class="nav-icon" aria-hidden="true">
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" focusable="false" aria-hidden="true"
+							stroke="currentColor" stroke-width="1.5">
+							<path
+								d="M 22.205078 2 A 1.0001 1.0001 0 0 0 21.21875 2.8378906 L 20.246094 8.7929688 C 19.076509 9.1331971 17.961243 9.5922728 16.910156 10.164062 L 11.996094 6.6542969 A 1.0001 1.0001 0 0 0 10.708984 6.7597656 L 6.8183594 10.646484 A 1.0001 1.0001 0 0 0 6.7070312 11.927734 L 10.164062 16.873047 C 9.583454 17.930271 9.1142098 19.051824 8.765625 20.232422 L 2.8359375 21.21875 A 1.0001 1.0001 0 0 0 2.0019531 22.205078 L 2.0019531 27.705078 A 1.0001 1.0001 0 0 0 2.8261719 28.691406 L 8.7597656 29.742188 C 9.1064607 30.920739 9.5727226 32.043065 10.154297 33.101562 L 6.6542969 37.998047 A 1.0001 1.0001 0 0 0 6.7597656 39.285156 L 10.648438 43.175781 A 1.0001 1.0001 0 0 0 11.927734 43.289062 L 16.882812 39.820312 C 17.936999 40.39548 19.054994 40.857928 20.228516 41.201172 L 21.21875 47.164062 A 1.0001 1.0001 0 0 0 22.205078 48 L 27.705078 48 A 1.0001 1.0001 0 0 0 28.691406 47.173828 L 29.751953 41.1875 C 30.920633 40.838997 32.033372 40.369697 33.082031 39.791016 L 38.070312 43.291016 A 1.0001 1.0001 0 0 0 39.351562 43.179688 L 43.240234 39.287109 A 1.0001 1.0001 0 0 0 43.34375 37.996094 L 39.787109 33.058594 C 40.355783 32.014958 40.813915 30.908875 41.154297 29.748047 L 47.171875 28.693359 A 1.0001 1.0001 0 0 0 47.998047 27.707031 L 47.998047 22.207031 A 1.0001 1.0001 0 0 0 47.160156 21.220703 L 41.152344 20.238281 C 40.80968 19.078827 40.350281 17.974723 39.78125 16.931641 L 43.289062 11.933594 A 1.0001 1.0001 0 0 0 43.177734 10.652344 L 39.287109 6.7636719 A 1.0001 1.0001 0 0 0 37.996094 6.6601562 L 33.072266 10.201172 C 32.023186 9.6248101 30.909713 9.1579916 29.738281 8.8125 L 28.691406 2.828125 A 1.0001 1.0001 0 0 0 27.705078 2 L 22.205078 2 z M 23.056641 4 L 26.865234 4 L 27.861328 9.6855469 A 1.0001 1.0001 0 0 0 28.603516 10.484375 C 30.066026 10.848832 31.439607 11.426549 32.693359 12.185547 A 1.0001 1.0001 0 0 0 33.794922 12.142578 L 38.474609 8.7792969 L 41.167969 11.472656 L 37.835938 16.220703 A 1.0001 1.0001 0 0 0 37.796875 17.310547 C 38.548366 18.561471 39.118333 19.926379 39.482422 21.380859 A 1.0001 1.0001 0 0 0 40.291016 22.125 L 45.998047 23.058594 L 45.998047 26.867188 L 40.279297 27.871094 A 1.0001 1.0001 0 0 0 39.482422 28.617188 C 39.122545 30.069817 38.552234 31.434687 37.800781 32.685547 A 1.0001 1.0001 0 0 0 37.845703 33.785156 L 41.224609 38.474609 L 38.53125 41.169922 L 33.791016 37.84375 A 1.0001 1.0001 0 0 0 32.697266 37.808594 C 31.44975 38.567585 30.074755 39.148028 28.617188 39.517578 A 1.0001 1.0001 0 0 0 27.876953 40.3125 L 26.867188 46 L 23.052734 46 L 22.111328 40.337891 A 1.0001 1.0001 0 0 0 21.365234 39.53125 C 19.90185 39.170557 18.522094 38.59371 17.259766 37.835938 A 1.0001 1.0001 0 0 0 16.171875 37.875 L 11.46875 41.169922 L 8.7734375 38.470703 L 12.097656 33.824219 A 1.0001 1.0001 0 0 0 12.138672 32.724609 C 11.372652 31.458855 10.793319 30.079213 10.427734 28.609375 A 1.0001 1.0001 0 0 0 9.6328125 27.867188 L 4.0019531 26.867188 L 4.0019531 23.052734 L 9.6289062 22.117188 A 1.0001 1.0001 0 0 0 10.435547 21.373047 C 10.804273 19.898143 11.383325 18.518729 12.146484 17.255859 A 1.0001 1.0001 0 0 0 12.111328 16.164062 L 8.8261719 11.46875 L 11.523438 8.7734375 L 16.185547 12.105469 A 1.0001 1.0001 0 0 0 17.28125 12.148438 C 18.536908 11.394293 19.919867 10.822081 21.384766 10.462891 A 1.0001 1.0001 0 0 0 22.132812 9.6523438 L 23.056641 4 z M 25 17 C 20.593567 17 17 20.593567 17 25 C 17 29.406433 20.593567 33 25 33 C 29.406433 33 33 29.406433 33 25 C 33 20.593567 29.406433 17 25 17 z M 25 19 C 28.325553 19 31 21.674447 31 25 C 31 28.325553 28.325553 31 25 31 C 21.674447 31 19 28.325553 19 25 C 19 21.674447 21.674447 19 25 19 z">
+							</path>
+						</svg>
+					</span>
+					<span class="nav-label">Settings</span>
+				</a>
+			</div>
+		</div>
+	</aside>
+	<main id="content" class="content" data-fragment="main"></main>
+	<!-- App Scripts -->
+	<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+	<script type="module" src="js/app.js?v=2"></script>
+	<script src="js/browser-detect.js?v=2"></script>
+</body>
+
+</html>
+
+```
+
+### ./plans/chat-rename-click-outside-plan.md:
+```md
+# Chat Rename Component - Click-Outside Event Handling Plan
+
+## Overview
+
+Update the chat renaming component in [`sidebar.js`](ctrlpanel/js/chat/sidebar.js) to replace the current `blur`-based closure mechanism with a click-outside listener. This ensures that clicking inside the text field preserves the editing state and allows full interaction, while clicking outside strictly triggers closure of renaming mode.
+
+## Current Implementation Analysis
+
+### Location
+- **File**: [`ctrlpanel/js/chat/sidebar.js`](ctrlpanel/js/chat/sidebar.js:56-109)
+- **Function**: `renderChatList()` → rename button click handler
+
+### Current Event Handling (Lines 56-109)
+
+```javascript
+// Current problematic implementation
+input.addEventListener("blur", commitEdit);  // Line 103
+```
+
+**Issues with current approach:**
+1. The `blur` event fires whenever the input loses focus
+2. This can happen unintentionally (e.g., window switching, certain browser interactions)
+3. Does not distinguish between clicking inside vs. outside the input field
+
+## Proposed Solution
+
+### Event Flow Diagram
+
+```mermaid
+flowchart TD
+    A[User clicks Rename Button] --> B[Create Input Element]
+    B --> C[Add Document Click Listener]
+    C --> D[User Interacts]
+    
+    D -->|Click Inside Input| E[Allow Default Behavior - Stay in Edit Mode]
+    D -->|Press Enter| F[Commit Edit and Cleanup]
+    D -->|Press Escape| G[Cancel Edit and Cleanup]
+    D -->|Click Outside Input| H[Commit Edit and Cleanup]
+    
+    F --> I[Remove Document Click Listener]
+    G --> I
+    H --> I
+    
+    I --> J[Remove Input Element]
+    J --> K[Restore Label Display]
+```
+
+### Implementation Changes
+
+#### 1. Remove `blur` Event Listener
+Remove line 103 which adds the blur listener:
+```javascript
+// REMOVE THIS
+input.addEventListener("blur", commitEdit);
+```
+
+#### 2. Add Click-Outside Listener
+Add a document-level click listener that checks if the click target is within the input field:
+
+```javascript
+// Click-outside handler
+const handleClickOutside = (event) => {
+    if (!input.contains(event.target)) {
+        commitEdit();
+    }
+};
+
+// Add listener with slight delay to prevent immediate trigger
+setTimeout(() => {
+    document.addEventListener("click", handleClickOutside);
+}, 0);
+```
+
+#### 3. Cleanup Event Listener
+Modify `commitEdit` and `cancelEdit` functions to remove the document click listener:
+
+```javascript
+const commitEdit = () => {
+    document.removeEventListener("click", handleClickOutside);
+    const newTitle = input.value.trim();
+    if (newTitle) {
+        renameChat(chat.id, newTitle);
+        label.textContent = newTitle;
+    }
+    input.remove();
+    label.style.display = "";
+};
+
+const cancelEdit = () => {
+    document.removeEventListener("click", handleClickOutside);
+    input.remove();
+    label.style.display = "";
+};
+```
+
+### Complete Modified Code Block
+
+Replace lines 56-109 with the following implementation:
+
+```javascript
+renameBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Hide the label
+    label.style.display = "none";
+
+    // Create inline input
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "nav-chat-rename-input";
+    input.value = chat.title;
+    input.setAttribute("aria-label", "Edit chat title");
+
+    // Prevent chat item click when interacting with input
+    input.addEventListener("click", (ie) => {
+        ie.preventDefault();
+        ie.stopPropagation();
+    });
+
+    // Click-outside handler - strictly checks if click is outside input
+    const handleClickOutside = (event) => {
+        if (!input.contains(event.target)) {
+            commitEdit();
+        }
+    };
+
+    // Handle commit on Enter
+    const commitEdit = () => {
+        document.removeEventListener("click", handleClickOutside);
+        const newTitle = input.value.trim();
+        if (newTitle) {
+            renameChat(chat.id, newTitle);
+            label.textContent = newTitle;
+        }
+        input.remove();
+        label.style.display = "";
+    };
+
+    // Handle cancel on Escape
+    const cancelEdit = () => {
+        document.removeEventListener("click", handleClickOutside);
+        input.remove();
+        label.style.display = "";
+    };
+
+    input.addEventListener("keydown", (ke) => {
+        if (ke.key === "Enter") {
+            ke.preventDefault();
+            commitEdit();
+        } else if (ke.key === "Escape") {
+            ke.preventDefault();
+            cancelEdit();
+        }
+    });
+
+    // Insert input after label's original position (after icon)
+    icon.after(input);
+    input.focus();
+    input.select();
+
+    // Add click-outside listener with delay to prevent immediate trigger
+    setTimeout(() => {
+        document.addEventListener("click", handleClickOutside);
+    }, 0);
+});
+```
+
+## Key Implementation Details
+
+### 1. Delay on Click Listener Attachment
+```javascript
+setTimeout(() => {
+    document.addEventListener("click", handleClickOutside);
+}, 0);
+```
+The `setTimeout(..., 0)` ensures the current click event that triggered the rename button completes before attaching the click-outside listener. This prevents the listener from immediately firing due to the same click event.
+
+### 2. `contains()` for Boundary Check
+```javascript
+if (!input.contains(event.target))
+```
+Using `input.contains(event.target)` accurately determines if the click occurred within the input element or any of its descendants.
+
+### 3. Cleanup in Both Exit Paths
+Both `commitEdit()` and `cancelEdit()` must remove the document click listener to prevent memory leaks and unexpected behavior.
+
+## Testing Checklist
+
+- [ ] Click rename button - input appears and is focused
+- [ ] Click inside input field - editing continues (no closure)
+- [ ] Click outside input field - editing commits and closes
+- [ ] Press Enter - editing commits and closes
+- [ ] Press Escape - editing cancels and closes
+- [ ] Click another chat item - editing commits and navigates
+- [ ] Click rename button of another chat - previous edit commits, new edit starts
+- [ ] No memory leaks - event listener properly removed in all exit scenarios
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| [`ctrlpanel/js/chat/sidebar.js`](ctrlpanel/js/chat/sidebar.js) | Update rename button click handler (lines 56-109) |
+
+## Benefits of This Approach
+
+1. **Precise boundary detection**: Only closes when truly clicking outside
+2. **Better UX**: Users can click inside the input freely without losing focus
+3. **Explicit cleanup**: Event listeners are properly managed
+4. **Maintainable**: Clear separation of concerns between commit and cancel actions
+
 ```
 
 ### ./plans/inline-attachments-plan.md:
@@ -990,360 +1331,110 @@ make test
 
 ```
 
-### ./plans/chat-rename-click-outside-plan.md:
-```md
-# Chat Rename Component - Click-Outside Event Handling Plan
+### ./backend/backend.log:
+```log
+Config loaded: yes (from "/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/config.json")
+API key source: environment variable
+API key status: present
 
-## Overview
+=== Control Panel Server ===
+Backend API:  HTTP on port 1024
+Frontend:     HTTP on port 1025
+===========================
 
-Update the chat renaming component in [`sidebar.js`](ctrlpanel/js/chat/sidebar.js) to replace the current `blur`-based closure mechanism with a click-outside listener. This ensures that clicking inside the text field preserves the editing state and allows full interaction, while clicking outside strictly triggers closure of renaming mode.
+[Backend] Starting HTTP API server on 0.0.0.0:1024
+[Frontend] Starting HTTP static file server on 0.0.0.0:1025
+[Frontend] Serving files from: "/home/lumyxen/my_stuff/projects/websites/lumyxen.me/ctrlpanel"
+[Frontend] Static file server ready
+[Frontend] Attempting to listen on 0.0.0.0:1025
+[Backend] API Server ready. Endpoints:
+  GET  /health
+  GET  /api/health/external
+  POST /api/auth/verify
+  POST /api/chat
+  POST /api/chat/stream
+  GET  /api/models
+  GET  /api/pricing
+  GET  /api/config/prompt-templates
+  POST /api/config/prompt-templates
+  PUT  /api/config/prompt-templates/:id
+  DELETE /api/config/prompt-templates/:id
+  GET  /api/config/settings
+  PUT  /api/config/settings
+[Backend] Attempting to listen on 0.0.0.0:1024
+[HealthCheck] Starting OpenRouter health check thread
 
-## Current Implementation Analysis
+=== Both HTTP servers started successfully ===
+Press Ctrl+C to stop the servers
 
-### Location
-- **File**: [`ctrlpanel/js/chat/sidebar.js`](ctrlpanel/js/chat/sidebar.js:56-109)
-- **Function**: `renderChatList()` → rename button click handler
+[HealthCheck] Initial OpenRouter status: healthy
+[HealthCheck] OpenRouter returned HTTP 408
+[HealthCheck] OpenRouter check failed (consecutive failures: 1)
 
-### Current Event Handling (Lines 56-109)
+[Signal] Received signal 15, initiating graceful shutdown...
+[Signal] Stopping backend server...
+[Signal] Stopping frontend server...
+[Shutdown] Stopping health check thread...
+[HealthCheck] OpenRouter health check thread stopped
+[Shutdown] Health check thread stopped
 
-```javascript
-// Current problematic implementation
-input.addEventListener("blur", commitEdit);  // Line 103
-```
-
-**Issues with current approach:**
-1. The `blur` event fires whenever the input loses focus
-2. This can happen unintentionally (e.g., window switching, certain browser interactions)
-3. Does not distinguish between clicking inside vs. outside the input field
-
-## Proposed Solution
-
-### Event Flow Diagram
-
-```mermaid
-flowchart TD
-    A[User clicks Rename Button] --> B[Create Input Element]
-    B --> C[Add Document Click Listener]
-    C --> D[User Interacts]
-    
-    D -->|Click Inside Input| E[Allow Default Behavior - Stay in Edit Mode]
-    D -->|Press Enter| F[Commit Edit and Cleanup]
-    D -->|Press Escape| G[Cancel Edit and Cleanup]
-    D -->|Click Outside Input| H[Commit Edit and Cleanup]
-    
-    F --> I[Remove Document Click Listener]
-    G --> I
-    H --> I
-    
-    I --> J[Remove Input Element]
-    J --> K[Restore Label Display]
-```
-
-### Implementation Changes
-
-#### 1. Remove `blur` Event Listener
-Remove line 103 which adds the blur listener:
-```javascript
-// REMOVE THIS
-input.addEventListener("blur", commitEdit);
-```
-
-#### 2. Add Click-Outside Listener
-Add a document-level click listener that checks if the click target is within the input field:
-
-```javascript
-// Click-outside handler
-const handleClickOutside = (event) => {
-    if (!input.contains(event.target)) {
-        commitEdit();
-    }
-};
-
-// Add listener with slight delay to prevent immediate trigger
-setTimeout(() => {
-    document.addEventListener("click", handleClickOutside);
-}, 0);
-```
-
-#### 3. Cleanup Event Listener
-Modify `commitEdit` and `cancelEdit` functions to remove the document click listener:
-
-```javascript
-const commitEdit = () => {
-    document.removeEventListener("click", handleClickOutside);
-    const newTitle = input.value.trim();
-    if (newTitle) {
-        renameChat(chat.id, newTitle);
-        label.textContent = newTitle;
-    }
-    input.remove();
-    label.style.display = "";
-};
-
-const cancelEdit = () => {
-    document.removeEventListener("click", handleClickOutside);
-    input.remove();
-    label.style.display = "";
-};
-```
-
-### Complete Modified Code Block
-
-Replace lines 56-109 with the following implementation:
-
-```javascript
-renameBtn.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Hide the label
-    label.style.display = "none";
-
-    // Create inline input
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "nav-chat-rename-input";
-    input.value = chat.title;
-    input.setAttribute("aria-label", "Edit chat title");
-
-    // Prevent chat item click when interacting with input
-    input.addEventListener("click", (ie) => {
-        ie.preventDefault();
-        ie.stopPropagation();
-    });
-
-    // Click-outside handler - strictly checks if click is outside input
-    const handleClickOutside = (event) => {
-        if (!input.contains(event.target)) {
-            commitEdit();
-        }
-    };
-
-    // Handle commit on Enter
-    const commitEdit = () => {
-        document.removeEventListener("click", handleClickOutside);
-        const newTitle = input.value.trim();
-        if (newTitle) {
-            renameChat(chat.id, newTitle);
-            label.textContent = newTitle;
-        }
-        input.remove();
-        label.style.display = "";
-    };
-
-    // Handle cancel on Escape
-    const cancelEdit = () => {
-        document.removeEventListener("click", handleClickOutside);
-        input.remove();
-        label.style.display = "";
-    };
-
-    input.addEventListener("keydown", (ke) => {
-        if (ke.key === "Enter") {
-            ke.preventDefault();
-            commitEdit();
-        } else if (ke.key === "Escape") {
-            ke.preventDefault();
-            cancelEdit();
-        }
-    });
-
-    // Insert input after label's original position (after icon)
-    icon.after(input);
-    input.focus();
-    input.select();
-
-    // Add click-outside listener with delay to prevent immediate trigger
-    setTimeout(() => {
-        document.addEventListener("click", handleClickOutside);
-    }, 0);
-});
-```
-
-## Key Implementation Details
-
-### 1. Delay on Click Listener Attachment
-```javascript
-setTimeout(() => {
-    document.addEventListener("click", handleClickOutside);
-}, 0);
-```
-The `setTimeout(..., 0)` ensures the current click event that triggered the rename button completes before attaching the click-outside listener. This prevents the listener from immediately firing due to the same click event.
-
-### 2. `contains()` for Boundary Check
-```javascript
-if (!input.contains(event.target))
-```
-Using `input.contains(event.target)` accurately determines if the click occurred within the input element or any of its descendants.
-
-### 3. Cleanup in Both Exit Paths
-Both `commitEdit()` and `cancelEdit()` must remove the document click listener to prevent memory leaks and unexpected behavior.
-
-## Testing Checklist
-
-- [ ] Click rename button - input appears and is focused
-- [ ] Click inside input field - editing continues (no closure)
-- [ ] Click outside input field - editing commits and closes
-- [ ] Press Enter - editing commits and closes
-- [ ] Press Escape - editing cancels and closes
-- [ ] Click another chat item - editing commits and navigates
-- [ ] Click rename button of another chat - previous edit commits, new edit starts
-- [ ] No memory leaks - event listener properly removed in all exit scenarios
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| [`ctrlpanel/js/chat/sidebar.js`](ctrlpanel/js/chat/sidebar.js) | Update rename button click handler (lines 56-109) |
-
-## Benefits of This Approach
-
-1. **Precise boundary detection**: Only closes when truly clicking outside
-2. **Better UX**: Users can click inside the input freely without losing focus
-3. **Explicit cleanup**: Event listeners are properly managed
-4. **Maintainable**: Clear separation of concerns between commit and cancel actions
+=== One or more servers have stopped ===
+[Status] Backend server stopped
+[Status] Frontend server stopped
 
 ```
 
-### ./ctrlpanel/index.html:
-```html
-<!-- ctrlpanel/index.html -->
-<!DOCTYPE html>
-<html lang="en" data-theme="everforest-harddark-green">
+### ./backend/CMakeLists.txt:
+```txt
+cmake_minimum_required(VERSION 3.16)
+project(ctrlpanel_backend CXX)
 
-<head>
-	<meta charset="utf-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<title>Control Panel</title>
-	<link rel="stylesheet" href="css/variables.css" />
-	<link rel="stylesheet" href="css/base.css" />
-	<link rel="stylesheet" href="css/layout.css" />
-	<link rel="stylesheet" href="css/sidebar.css" />
-	<link rel="stylesheet" href="css/content.css" />
-	<link rel="stylesheet" href="css/chat.css" />
-	<link rel="stylesheet" href="css/connection-monitor.css" />
-	<!-- KaTeX Styles -->
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
-</head>
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-<body>
-	<aside class="sidebar" id="sidebar">
-		<div class="sidebar-top">
-			<button id="sidebarToggle" class="icon-button fixed-toggle" aria-label="Toggle sidebar"
-				aria-controls="sidebar" aria-expanded="true" title="Toggle sidebar">
-				<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-					stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-					aria-hidden="true" focusable="false">
-					<rect width="18" height="18" x="3" y="3" rx="2"></rect>
-					<path d="M9 3v18"></path>
-				</svg>
-			</button>
-			<button id="quickNewChat" class="icon-button fixed-toggle quick-new-chat" aria-label="New chat"
-				title="New chat" type="button">
-				<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-					stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-					aria-hidden="true" focusable="false">
-					<path d="M12 5v14M5 12h14" />
-				</svg>
-			</button>
-			<div class="brand">Control Panel</div>
-		</div>
-		<div class="sidebar-inner">
-			<div class="sidebar-search" role="search">
-				<span class="search-icon" aria-hidden="true">
-					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" focusable="false" aria-hidden="true">
-						<path fill="currentColor"
-							d="M 21 3 C 11.601563 3 4 10.601563 4 20 C 4 29.398438 11.601563 37 21 37 C 24.355469 37 27.460938 36.015625 30.09375 34.34375 L 42.375 46.625 L 46.625 42.375 L 34.5 30.28125 C 36.679688 27.421875 38 23.878906 38 20 C 38 10.601563 30.398438 3 21 3 Z M 21 7 C 28.199219 7 34 12.800781 34 20 C 34 27.199219 28.199219 33 21 33 C 13.800781 33 8 27.199219 8 20 C 8 12.800781 13.800781 7 21 7 Z">
-						</path>
-					</svg>
-				</span>
-				<input id="sidebarSearch" type="search" placeholder="Search pages" aria-label="Search pages"
-					autocomplete="off" />
-			</div>
-			<nav class="nav">
-				<a href="#pages/home.html" data-route class="active">
-					<span class="nav-icon" aria-hidden="true">
-						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true"
-							focusable="false">
-							<g fill="currentColor" fill-rule="nonzero" stroke="none" stroke-width="1"
-								stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10">
-								<g transform="scale(5.33333,5.33333)">
-									<path
-										d="M23.95117,4c-0.31984,0.01092 -0.62781,0.12384 -0.87891,0.32227l-14.21289,11.19727c-1.8039,1.42163 -2.85937,3.59398 -2.85937,5.89063v19.08984c0,1.36359 1.13641,2.5 2.5,2.5h10c1.36359,0 2.5,-1.13641 2.5,-2.5v-10c0,-0.29504 0.20496,-0.5 0.5,-0.5h5c0.29504,0 0.5,0.20496 0.5,0.5v10c0,1.36359 1.13641,2.5 2.5,2.5h10c1.36359,0 2.5,-1.13641 2.5,-2.5v-19.08984c0,-2.29665 -1.05548,-4.46899 -2.85937,-5.89062l-14.21289,-11.19727c-0.27738,-0.21912 -0.62324,-0.33326 -0.97656,-0.32227zM24,7.41016l13.28516,10.4668c1.0841,0.85437 1.71484,2.15385 1.71484,3.5332v18.58984h-9v-9.5c0,-1.91495 -1.58505,-3.5 -3.5,-3.5h-5c-1.91495,0 -3.5,1.58505 -3.5,3.5v9.5h-9v-18.58984c0,-1.37935 0.63074,-2.67883 1.71484,-3.5332z">
-									</path>
-								</g>
-							</g>
-						</svg>
-					</span>
-					<span class="nav-label">Home</span>
-				</a>
-				<div class="nav-group" data-nav-group="ai-chat">
-					<button class="nav-group-toggle" aria-expanded="true" aria-controls="ai-chat-list">
-						<span class="nav-icon" aria-hidden="true">
-							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-								stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-								<path
-									d="M5.59961 19.9203L7.12357 18.7012L7.13478 18.6926C7.45249 18.4384 7.61281 18.3101 7.79168 18.2188C7.95216 18.1368 8.12328 18.0771 8.2998 18.0408C8.49877 18 8.70603 18 9.12207 18H17.8031C18.921 18 19.4806 18 19.908 17.7822C20.2843 17.5905 20.5905 17.2842 20.7822 16.9079C21 16.4805 21 15.9215 21 14.8036V7.19691C21 6.07899 21 5.5192 20.7822 5.0918C20.5905 4.71547 20.2837 4.40973 19.9074 4.21799C19.4796 4 18.9203 4 17.8002 4H6.2002C5.08009 4 4.51962 4 4.0918 4.21799C3.71547 4.40973 3.40973 4.71547 3.21799 5.0918C3 5.51962 3 6.08009 3 7.2002V18.6712C3 19.7369 3 20.2696 3.21846 20.5433C3.40845 20.7813 3.69644 20.9198 4.00098 20.9195C4.35115 20.9191 4.76744 20.5861 5.59961 19.9203Z">
-								</path>
-							</svg>
-						</span>
-						<span class="nav-label">AI Chat</span>
-						<span class="nav-chevron" aria-hidden="true">
-							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-								stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-								<path d="m6 9 6 6 6-6" />
-							</svg>
-						</span>
-					</button>
-					<div class="nav-group-content" id="ai-chat-list">
-						<a href="#pages/ai-chat.html" data-route data-new-chat class="nav-subitem nav-new-chat">
-							<span class="nav-subicon" aria-hidden="true">
-								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-									stroke="currentColor" stroke-width="2" stroke-linecap="round"
-									stroke-linejoin="round">
-									<path d="M12 5v14M5 12h14" />
-								</svg>
-							</span>
-							<span class="nav-label">New Chat</span>
-						</a>
-						<div class="nav-chat-list" id="savedChatsList"></div>
-					</div>
-				</div>
-			</nav>
-			<div class="sidebar-bottom">
-				<a href="#pages/settings.html" data-route>
-					<span class="nav-icon" aria-hidden="true">
-						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" focusable="false" aria-hidden="true"
-							stroke="currentColor" stroke-width="1.5">
-							<path
-								d="M 22.205078 2 A 1.0001 1.0001 0 0 0 21.21875 2.8378906 L 20.246094 8.7929688 C 19.076509 9.1331971 17.961243 9.5922728 16.910156 10.164062 L 11.996094 6.6542969 A 1.0001 1.0001 0 0 0 10.708984 6.7597656 L 6.8183594 10.646484 A 1.0001 1.0001 0 0 0 6.7070312 11.927734 L 10.164062 16.873047 C 9.583454 17.930271 9.1142098 19.051824 8.765625 20.232422 L 2.8359375 21.21875 A 1.0001 1.0001 0 0 0 2.0019531 22.205078 L 2.0019531 27.705078 A 1.0001 1.0001 0 0 0 2.8261719 28.691406 L 8.7597656 29.742188 C 9.1064607 30.920739 9.5727226 32.043065 10.154297 33.101562 L 6.6542969 37.998047 A 1.0001 1.0001 0 0 0 6.7597656 39.285156 L 10.648438 43.175781 A 1.0001 1.0001 0 0 0 11.927734 43.289062 L 16.882812 39.820312 C 17.936999 40.39548 19.054994 40.857928 20.228516 41.201172 L 21.21875 47.164062 A 1.0001 1.0001 0 0 0 22.205078 48 L 27.705078 48 A 1.0001 1.0001 0 0 0 28.691406 47.173828 L 29.751953 41.1875 C 30.920633 40.838997 32.033372 40.369697 33.082031 39.791016 L 38.070312 43.291016 A 1.0001 1.0001 0 0 0 39.351562 43.179688 L 43.240234 39.287109 A 1.0001 1.0001 0 0 0 43.34375 37.996094 L 39.787109 33.058594 C 40.355783 32.014958 40.813915 30.908875 41.154297 29.748047 L 47.171875 28.693359 A 1.0001 1.0001 0 0 0 47.998047 27.707031 L 47.998047 22.207031 A 1.0001 1.0001 0 0 0 47.160156 21.220703 L 41.152344 20.238281 C 40.80968 19.078827 40.350281 17.974723 39.78125 16.931641 L 43.289062 11.933594 A 1.0001 1.0001 0 0 0 43.177734 10.652344 L 39.287109 6.7636719 A 1.0001 1.0001 0 0 0 37.996094 6.6601562 L 33.072266 10.201172 C 32.023186 9.6248101 30.909713 9.1579916 29.738281 8.8125 L 28.691406 2.828125 A 1.0001 1.0001 0 0 0 27.705078 2 L 22.205078 2 z M 23.056641 4 L 26.865234 4 L 27.861328 9.6855469 A 1.0001 1.0001 0 0 0 28.603516 10.484375 C 30.066026 10.848832 31.439607 11.426549 32.693359 12.185547 A 1.0001 1.0001 0 0 0 33.794922 12.142578 L 38.474609 8.7792969 L 41.167969 11.472656 L 37.835938 16.220703 A 1.0001 1.0001 0 0 0 37.796875 17.310547 C 38.548366 18.561471 39.118333 19.926379 39.482422 21.380859 A 1.0001 1.0001 0 0 0 40.291016 22.125 L 45.998047 23.058594 L 45.998047 26.867188 L 40.279297 27.871094 A 1.0001 1.0001 0 0 0 39.482422 28.617188 C 39.122545 30.069817 38.552234 31.434687 37.800781 32.685547 A 1.0001 1.0001 0 0 0 37.845703 33.785156 L 41.224609 38.474609 L 38.53125 41.169922 L 33.791016 37.84375 A 1.0001 1.0001 0 0 0 32.697266 37.808594 C 31.44975 38.567585 30.074755 39.148028 28.617188 39.517578 A 1.0001 1.0001 0 0 0 27.876953 40.3125 L 26.867188 46 L 23.052734 46 L 22.111328 40.337891 A 1.0001 1.0001 0 0 0 21.365234 39.53125 C 19.90185 39.170557 18.522094 38.59371 17.259766 37.835938 A 1.0001 1.0001 0 0 0 16.171875 37.875 L 11.46875 41.169922 L 8.7734375 38.470703 L 12.097656 33.824219 A 1.0001 1.0001 0 0 0 12.138672 32.724609 C 11.372652 31.458855 10.793319 30.079213 10.427734 28.609375 A 1.0001 1.0001 0 0 0 9.6328125 27.867188 L 4.0019531 26.867188 L 4.0019531 23.052734 L 9.6289062 22.117188 A 1.0001 1.0001 0 0 0 10.435547 21.373047 C 10.804273 19.898143 11.383325 18.518729 12.146484 17.255859 A 1.0001 1.0001 0 0 0 12.111328 16.164062 L 8.8261719 11.46875 L 11.523438 8.7734375 L 16.185547 12.105469 A 1.0001 1.0001 0 0 0 17.28125 12.148438 C 18.536908 11.394293 19.919867 10.822081 21.384766 10.462891 A 1.0001 1.0001 0 0 0 22.132812 9.6523438 L 23.056641 4 z M 25 17 C 20.593567 17 17 20.593567 17 25 C 17 29.406433 20.593567 33 25 33 C 29.406433 33 33 29.406433 33 25 C 33 20.593567 29.406433 17 25 17 z M 25 19 C 28.325553 19 31 21.674447 31 25 C 31 28.325553 28.325553 31 25 31 C 21.674447 31 19 28.325553 19 25 C 19 21.674447 21.674447 19 25 19 z">
-							</path>
-						</svg>
-					</span>
-					<span class="nav-label">Settings</span>
-				</a>
-			</div>
-		</div>
-	</aside>
-	<main id="content" class="content" data-fragment="main"></main>
-	<!-- App Scripts -->
-	<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-	<script type="module" src="js/app.js?v=2"></script>
-	<script src="js/browser-detect.js?v=2"></script>
-</body>
+# Find dependencies
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSONCPP REQUIRED jsoncpp)
+pkg_check_modules(LIBCURL REQUIRED libcurl)
+pkg_check_modules(OPENSSL REQUIRED openssl)
 
-</html>
+# Include directories
+include_directories(${JSONCPP_INCLUDE_DIRS})
+include_directories(${LIBCURL_INCLUDE_DIRS})
+include_directories(${OPENSSL_INCLUDE_DIRS})
+include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_SOURCE_DIR}/src)
 
-```
+# httplib is header-only, just include the path
+set(HTTPLIB_DIR "${CMAKE_SOURCE_DIR}/third_party/httplib")
+include_directories(${HTTPLIB_DIR})
 
-### ./backend/config.json:
-```json
-{
-    "port": 1024,
-    "frontendPort": 1025,
-    "host": "0.0.0.0",
-    "frontendDir": "../../ctrlpanel"
-}
+
+
+# Source files
+set(SOURCES
+    src/main.cpp
+    src/config/config.h
+    src/utils/encryption.cpp
+    src/services/openrouter_service.cpp
+    src/controllers/auth_controller.cpp
+    src/controllers/openrouter_controller.cpp
+    src/controllers/config_controller.cpp
+)
+
+# Create executable
+add_executable(ctrlpanel_backend ${SOURCES})
+
+# Link libraries
+target_link_libraries(ctrlpanel_backend
+    ${JSONCPP_LIBRARIES}
+    ${LIBCURL_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
+    pthread
+)
+
+# Install target
+install(TARGETS ctrlpanel_backend DESTINATION bin)
 
 ```
 
@@ -1473,261 +1564,14 @@ openssl verify -CAfile ~/.local/share/mkcert/rootCA.pem certs/localhost+2.pem
 
 ```
 
-### ./backend/backend.log:
-```log
-Config loaded: yes (from "/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/config.json")
-API key source: environment variable
-API key status: present
-
-=== Control Panel Server ===
-Backend API:  HTTP on port 1024
-Frontend:     HTTP on port 1025
-===========================
-
-[Backend] Starting HTTP API server on 0.0.0.0:1024
-[Frontend] Starting HTTP static file server on 0.0.0.0:1025
-[Frontend] Serving files from: "/home/lumyxen/my_stuff/projects/websites/lumyxen.me/ctrlpanel"
-[Frontend] Static file server ready
-[Frontend] Attempting to listen on 0.0.0.0:1025
-[Backend] API Server ready. Endpoints:
-  GET  /health
-  GET  /api/health/external
-  POST /api/auth/verify
-  POST /api/chat
-  POST /api/chat/stream
-  GET  /api/models
-  GET  /api/pricing
-  GET  /api/config/prompt-templates
-  POST /api/config/prompt-templates
-  PUT  /api/config/prompt-templates/:id
-  DELETE /api/config/prompt-templates/:id
-  GET  /api/config/settings
-  PUT  /api/config/settings
-[Backend] Attempting to listen on 0.0.0.0:1024
-[HealthCheck] Starting OpenRouter health check thread
-
-=== Both HTTP servers started successfully ===
-Press Ctrl+C to stop the servers
-
-[HealthCheck] Initial OpenRouter status: healthy
-[HealthCheck] OpenRouter returned HTTP 408
-[HealthCheck] OpenRouter check failed (consecutive failures: 1)
-
-[Signal] Received signal 15, initiating graceful shutdown...
-[Signal] Stopping backend server...
-[Signal] Stopping frontend server...
-[Shutdown] Stopping health check thread...
-[HealthCheck] OpenRouter health check thread stopped
-[Shutdown] Health check thread stopped
-
-=== One or more servers have stopped ===
-[Status] Backend server stopped
-[Status] Frontend server stopped
-
-```
-
-### ./backend/CMakeLists.txt:
-```txt
-cmake_minimum_required(VERSION 3.16)
-project(ctrlpanel_backend CXX)
-
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# Find dependencies
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(JSONCPP REQUIRED jsoncpp)
-pkg_check_modules(LIBCURL REQUIRED libcurl)
-pkg_check_modules(OPENSSL REQUIRED openssl)
-
-# Include directories
-include_directories(${JSONCPP_INCLUDE_DIRS})
-include_directories(${LIBCURL_INCLUDE_DIRS})
-include_directories(${OPENSSL_INCLUDE_DIRS})
-include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/src)
-
-# httplib is header-only, just include the path
-set(HTTPLIB_DIR "${CMAKE_SOURCE_DIR}/third_party/httplib")
-include_directories(${HTTPLIB_DIR})
-
-
-
-# Source files
-set(SOURCES
-    src/main.cpp
-    src/config/config.h
-    src/utils/encryption.cpp
-    src/services/openrouter_service.cpp
-    src/controllers/auth_controller.cpp
-    src/controllers/openrouter_controller.cpp
-    src/controllers/config_controller.cpp
-)
-
-# Create executable
-add_executable(ctrlpanel_backend ${SOURCES})
-
-# Link libraries
-target_link_libraries(ctrlpanel_backend
-    ${JSONCPP_LIBRARIES}
-    ${LIBCURL_LIBRARIES}
-    ${OPENSSL_LIBRARIES}
-    pthread
-)
-
-# Install target
-install(TARGETS ctrlpanel_backend DESTINATION bin)
-
-```
-
-### ./backend/scripts/setup.sh:
-```sh
-#!/bin/bash
-set -e
-
-echo "Setting up dependencies for ctrlpanel_backend..."
-
-# Create third_party directory
-mkdir -p third_party
-cd third_party
-
-# Download httplib (header-only HTTP library)
-if [ ! -d "httplib" ]; then
-    echo "Downloading httplib..."
-    git clone https://github.com/yhirose/cpp-httplib.git
-fi
-
-cd ..
-
-echo "Dependencies installed!"
-echo ""
-echo "To build:"
-echo "  mkdir build && cd build"
-echo "  cmake .."
-echo "  make -j\$(nproc)"
-echo ""
-echo "To run:"
-echo "  ./ctrlpanel_backend"
-
-```
-
-### ./backend/certs/server.crt:
-```crt
------BEGIN CERTIFICATE-----
-MIIDJzCCAg+gAwIBAgIUC2an8EOupVTco0Ylubz4hdxVwXAwDQYJKoZIhvcNAQEL
-BQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MDMwMzE4MDczMloXDTI3MDMw
-MzE4MDczMlowFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEF
-AAOCAQ8AMIIBCgKCAQEApRepsNruvT8hml9r9iIWeV9fKpOVqpiBdZ6D78Yspvn3
-NJ17KKS11didjESTKDJcWuKXlWDWmfzT+MuHkFZCRTa5WRNw0zVS8ZN2PpcLTafG
-wanTbsGb1nqxDVxhmNF7z/EqIjv5dXp2qas6WPIYyyhdP1+pCH9eIf/hEx+HYI0F
-qo68UlxWjCYdehWyN6S1quxmJCxltQYDcImBrAEv2mwSetRJ7blV5xYYxNu5pDTL
-FYT/kSxO9M58PtDFweRSTEHX8YeFRZmVLSchQmY/WG8qs82c+FJuZnYxkrf4JID1
-QH2nu/Pvkuaz/A2rtSyoSdBi/PhjdtAqxFeCzPjKDQIDAQABo3EwbzALBgNVHQ8E
-BAMCBDAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwLAYDVR0RBCUwI4IJbG9jYWxob3N0
-hwR/AAABhxAAAAAAAAAAAAAAAAAAAAABMB0GA1UdDgQWBBRzrFPDiL4G2lN8Q8Yt
-2R50N2ruCjANBgkqhkiG9w0BAQsFAAOCAQEAdlyIrkGGhe0ExKCNz0uBvV3nOWl6
-+sG0tPXEeUL5inAHKSuPOOpxmVKRgINVjCYXBL0NPNmrdXatCtsgtHCGiqRvzHeD
-zKqWv/+3k8CvkzDN51j7/ECinbJTSAkf+DPi2Gvx2S1MowJ2+5VhKTFWwKVBM4Yz
-44r4TkYQ/NhWI+tH83d5+04ZzrXRdvaYIBhAf21H9MbHVXqlCfqJquE3XsRzYIJ0
-zZ7G/MtOWV3wDE7x1zRazffs5o7Boqd0E8lATuflMxEJsqJTex8DGRne3NNlrn82
-+6y3GMjc8qimfj9zLCHYqh+Ol+ddtLlOOJeGL1VSo0bBCgBeIzni9HSLVA==
------END CERTIFICATE-----
-
-```
-
-### ./backend/certs/localhost+2.pem:
-```pem
------BEGIN CERTIFICATE-----
-MIIEHjCCAoagAwIBAgIQT2JnuYG/HRP9COspAm8PTDANBgkqhkiG9w0BAQsFADBb
-MR4wHAYDVQQKExVta2NlcnQgZGV2ZWxvcG1lbnQgQ0ExGDAWBgNVBAsMD2x1bXl4
-ZW5AZHV5ZmtlbjEfMB0GA1UEAwwWbWtjZXJ0IGx1bXl4ZW5AZHV5ZmtlbjAeFw0y
-NjAzMDMxOTIwNTFaFw0yODA2MDMxODIwNTFaMEMxJzAlBgNVBAoTHm1rY2VydCBk
-ZXZlbG9wbWVudCBjZXJ0aWZpY2F0ZTEYMBYGA1UECwwPbHVteXhlbkBkdXlma2Vu
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqPUvErkZGuHkMuMYLJsv
-VsvPbouPAgERSvZodbLx2hoKlJVxOKYkvvoVTuwP6ABlx5veu283lfyhLirBbHfv
-dvzdAtJrtW/Z+82bSN5cTitDgXQ9kZTjokqns+6ajuGgJUoLSWGbJKsc53as6yrp
-1qBaZ47yv6whVmCFKw9lzFHpr0qGas0ocmKgQLXujR5So+Vq1W8Q41qEE5lv542w
-gUINe8NjkZK0bHbWNOcDbKY2kOz6IgNYiYmECW7nBDK9M8iGvapMgh9QX5j5IDG2
-0ADjYGZyqZZsw4jGEBPmMzUQFi71Pt9A6fX5lv97wrXZGFbquD7d9DlqRvybkmmT
-tQIDAQABo3YwdDAOBgNVHQ8BAf8EBAMCBaAwEwYDVR0lBAwwCgYIKwYBBQUHAwEw
-HwYDVR0jBBgwFoAUdo1vVADEdpaAN33Ip3epVCU/jNcwLAYDVR0RBCUwI4IJbG9j
-YWxob3N0hwR/AAABhxAAAAAAAAAAAAAAAAAAAAABMA0GCSqGSIb3DQEBCwUAA4IB
-gQBCYR6+mQtJ3Tn3ah7KIzGpyYE5fO/6orwpvUx/qo6xOZixbosHyZEe3Dgnyc/t
-HVamSzOYtjCWCZN3FyxBFydEjmoeoxKAm0dRlWFjScE0kYnHIT8tJFuccQCCU88P
-TzdWE1f73i+bbksgSuriulNcDZXyFTM9A6JqrKUUqZJ6M1QMeqIzZeSR9aCs3mVw
-8erxbxWJ1qvRIbDTnWqzQ9ogFiSxb9+k4i9lbD6vottJBy/wK4pcsfvXq8y8nEX+
-u3zFdyKLGNMLBVBxz5nbfZRlV/uH7G6YDz0GpS/mr6YpnNiap/sGigM3DZ9+8K8R
-nkKUt3sPKaIkFlN3DV3pS5tru50k+zXjr0tQDkDIVPideSO/D8lgGeoLbOsJd/pb
-lH014E/cOI7KxWgv8ZF3XBK5cg3McTpgY1L6ENeADywVj/s3mu4DDhggnB4vjnlP
-3l7WbqPGDtYwWU/MkcF+90S1A1r0mhog0oqU0HBKcFISbWIck1dcC7xQ5uDxhtBX
-E8I=
------END CERTIFICATE-----
-
-```
-
-### ./backend/certs/server.key:
-```key
------BEGIN PRIVATE KEY-----
-MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQClF6mw2u69PyGa
-X2v2IhZ5X18qk5WqmIF1noPvxiym+fc0nXsopLXV2J2MRJMoMlxa4peVYNaZ/NP4
-y4eQVkJFNrlZE3DTNVLxk3Y+lwtNp8bBqdNuwZvWerENXGGY0XvP8SoiO/l1enap
-qzpY8hjLKF0/X6kIf14h/+ETH4dgjQWqjrxSXFaMJh16FbI3pLWq7GYkLGW1BgNw
-iYGsAS/abBJ61EntuVXnFhjE27mkNMsVhP+RLE70znw+0MXB5FJMQdfxh4VFmZUt
-JyFCZj9YbyqzzZz4Um5mdjGSt/gkgPVAfae78++S5rP8Dau1LKhJ0GL8+GN20CrE
-V4LM+MoNAgMBAAECggEAAZqTPsaXCdDyhfS7WxlwV8mCESsnNGW64ZD3/dJSXg+Q
-7o/rwbSn7OXn0emwoZ6roFkR2T+m62QLYyAHDHM/aDtkiDr/c5h8WnXGRkwNWLnH
-3TBwf2OeHJ1LLwgLYq1WTeotMJvzNnL0HX3ZA+2GKXhrlNFca7ALvWTQ+PCWI21M
-n0iGck9MI0oBehZ7ZMkFyNBiyYLIVxoj6NfIhZM8pw3h5XYFaXv5sviUMgWon5BZ
-6PH3SDgYyyCwBtqSlS0V5wZjYzskjlcaj6gT2PRuafPFFpvVwG7nG6e8vOMUvLLR
-r6Zr8N4fEugEcFHF7XtlgFHTp3bz4pDQEofjJHriQQKBgQDbzrFeQzK6+7o4ao9k
-rL8n9TAJIZyo5RXGjAMFObXBCQfh+LjjlqB89c/4XBrcZQHciCPP8wjsjN2gVcDS
-+nMEvrMQYahwspo3iE59Z7Ag9xU8mFl27cgUd3EMTxprw08jYaB+xZSSGWhvnAV8
-kl5D9q2vTkJd1529lGHxGqzsyQKBgQDARqDk08FrWFatiLSeQYxT38DQDOu+Mu2v
-w61XtjYqE6flLbNO8xZ+wsmLZIXmIzJW1/N0+Lmg6I02KfXnnxk2dILRoieK/26E
-ebMK6Ve/EFKKxZIG1oqJKAuwZ+Byd1qtwvEpP4dUe7wvVLApAH90QS1vV+H6SfDD
-Ozvu1auJJQKBgQChYpLLuN7odqZ1gZeivUrklZsdOTaCsyBX1Ljq/0I5Zt4IxctK
-Hm/bD8gQe9+k7ex99N8GcVSeCZc3f37B6OzGERX78xfvFtMv7r5iSN0Cdyd6hAk7
-zr3WeRPhi7rEYHQccDOcoIjC9DC/sXg9zGG12MoRKo6DxCmm5ek7UvCgMQKBgFoz
-iB1xfea2/YrRfDJV+9gJOzIfLaT/zWPMf5CLaaOZrwUjyF+8SIxVIynikbJiRqZZ
-DtyMJsFm94A2dSchCznxtMFVuglKRXWehjETQNfgd2ikwRm2Ii2v/LPYN4Jbnc2w
-i2RXakxm8+ScbTv/AMvwG7mFV/0MHQfpzPcBhESFAoGBAJ+af1ynKyODURE/hbSU
-M6B0NDNbV9AnN6nh03/Ov7kIPBhfISiONMeJ1T7O+2LoD/uZp566Ry6PlGvGshbr
-RgjPDJEk58osD7JEUF8Zv3QrfoTo/aw6fkw3dDaZPwb+wSIXYe0LkQaPxDfE6Gl9
-YsQR6o4V0ijtl6fel0wXxozm
------END PRIVATE KEY-----
-
-```
-
-### ./backend/certs/localhost+2-key.pem:
-```pem
------BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCo9S8SuRka4eQy
-4xgsmy9Wy89ui48CARFK9mh1svHaGgqUlXE4piS++hVO7A/oAGXHm967bzeV/KEu
-KsFsd+92/N0C0mu1b9n7zZtI3lxOK0OBdD2RlOOiSqez7pqO4aAlSgtJYZskqxzn
-dqzrKunWoFpnjvK/rCFWYIUrD2XMUemvSoZqzShyYqBAte6NHlKj5WrVbxDjWoQT
-mW/njbCBQg17w2ORkrRsdtY05wNspjaQ7PoiA1iJiYQJbucEMr0zyIa9qkyCH1Bf
-mPkgMbbQAONgZnKplmzDiMYQE+YzNRAWLvU+30Dp9fmW/3vCtdkYVuq4Pt30OWpG
-/JuSaZO1AgMBAAECggEBAJXOLxquu6+2Mhtcd4a1YdfXhehCHV5ti+Onbx9Mtlvn
-UxJDHsxXo6UhH9uGOuQ91gCSF36hMevuvwqsJiwCe3RI570kzRNmRSSaPODzJ2y3
-t3cElcKK/Ppcry0+lhOxwcjOSguaW3C7tzkTZGZu+j6ulvnTKTEBcd2gXvK7CEuL
-tB49adhtLoK3vdL/HaAdmjO34dmD7XH/XWRcHO5dtH1wufCDU931Igqm4mUIpa4E
-0bC3nmqDaQ4BejCfcpMt6ZlC5dBazwFk9TqMBqe5bI23BxSAygNz1Ah8vyCYYDOe
-cIgTb/2x680hwiIVInMCcoojnxbNHGetW4YSg+FgIQECgYEA2rAcXpJxz+3ljV8Q
-U6s+eOmDgI1Vg43h8zH9j3eXARu7IXyxftYH2Y3fwZ3IjfTvZdsaXeZYBc5xv4k3
-vGs2gnR1uLY3RVc4bVdjYjlzTGjNL36YEIW5p0VPqfPVtCVCuCZbsFw0g4mHYadO
-pyc0Oyr4sFVtYoulRASBsYeMogUCgYEAxcjzFcqvp+OaqMhj0WjG55dOB7109r4J
-2Ow1/wTTX/53VCyePHx8NfXdfqjecUeGCbG1/tIe8gNZ2b6A2VjR8zRH5pAOG4nD
-YkSGb3+0ncsxbQZNe3rfnGV10g4lsmpvTZBUcNAeq7AhjUICDLLjIdh530SKzWJe
-LPnwAZYdafECgYAdhyP9fQaTDcsuAIUC1x9zUgxogizmu3Sj0r8q7Pnds3Hb/qs0
-tg+PR4HL8dMPn9/nP+NahGykNBDVzOBSt6M/kBwJGclyumkrEl6f96Pi0E/MNuqv
-aG797/TmvL7BOTq+BKfis0B/9kTqYZ3UIg4CYzX7ET3YzYQ+H+GnJ+dMRQKBgGw0
-SbjsUDkbbetU5jcUiWz9+/SEE89BnIWOhOPlsfZcctAcMN2KhTHINssqe7ehl5UK
-IjUsoz1n0+oqLLe7vfC983AR84XhUoEaWCn7xcZl+b5Zql4ZlOgtIc4vazQ2wnm+
-slOdqInpLBHpwNFNtLE5i0M4bm96l2cnvcRAagshAoGAcoHBf20NLWg1KIaaT5vo
-qBjKlELH5U091dMLA3aHH/tn9tt9cdsDu20hpLrZOL22/7P8kQtw9cKa3jPXtoan
-f39+U94xqBKXZKnPnPmAGdSwAJg/r6USy/83cmWvr8SdGtT9ZMEmQ8e6TtOiwIak
-AEEOKoKOx29JXwy4IuZM7lY=
------END PRIVATE KEY-----
+### ./backend/config.json:
+```json
+{
+    "port": 1024,
+    "frontendPort": 1025,
+    "host": "0.0.0.0",
+    "frontendDir": "../../ctrlpanel"
+}
 
 ```
 
@@ -2387,6 +2231,126 @@ int main() {
 
 ```
 
+### ./backend/certs/server.crt:
+```crt
+-----BEGIN CERTIFICATE-----
+MIIDJzCCAg+gAwIBAgIUC2an8EOupVTco0Ylubz4hdxVwXAwDQYJKoZIhvcNAQEL
+BQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MDMwMzE4MDczMloXDTI3MDMw
+MzE4MDczMlowFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEF
+AAOCAQ8AMIIBCgKCAQEApRepsNruvT8hml9r9iIWeV9fKpOVqpiBdZ6D78Yspvn3
+NJ17KKS11didjESTKDJcWuKXlWDWmfzT+MuHkFZCRTa5WRNw0zVS8ZN2PpcLTafG
+wanTbsGb1nqxDVxhmNF7z/EqIjv5dXp2qas6WPIYyyhdP1+pCH9eIf/hEx+HYI0F
+qo68UlxWjCYdehWyN6S1quxmJCxltQYDcImBrAEv2mwSetRJ7blV5xYYxNu5pDTL
+FYT/kSxO9M58PtDFweRSTEHX8YeFRZmVLSchQmY/WG8qs82c+FJuZnYxkrf4JID1
+QH2nu/Pvkuaz/A2rtSyoSdBi/PhjdtAqxFeCzPjKDQIDAQABo3EwbzALBgNVHQ8E
+BAMCBDAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwLAYDVR0RBCUwI4IJbG9jYWxob3N0
+hwR/AAABhxAAAAAAAAAAAAAAAAAAAAABMB0GA1UdDgQWBBRzrFPDiL4G2lN8Q8Yt
+2R50N2ruCjANBgkqhkiG9w0BAQsFAAOCAQEAdlyIrkGGhe0ExKCNz0uBvV3nOWl6
++sG0tPXEeUL5inAHKSuPOOpxmVKRgINVjCYXBL0NPNmrdXatCtsgtHCGiqRvzHeD
+zKqWv/+3k8CvkzDN51j7/ECinbJTSAkf+DPi2Gvx2S1MowJ2+5VhKTFWwKVBM4Yz
+44r4TkYQ/NhWI+tH83d5+04ZzrXRdvaYIBhAf21H9MbHVXqlCfqJquE3XsRzYIJ0
+zZ7G/MtOWV3wDE7x1zRazffs5o7Boqd0E8lATuflMxEJsqJTex8DGRne3NNlrn82
++6y3GMjc8qimfj9zLCHYqh+Ol+ddtLlOOJeGL1VSo0bBCgBeIzni9HSLVA==
+-----END CERTIFICATE-----
+
+```
+
+### ./backend/certs/localhost+2-key.pem:
+```pem
+-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCo9S8SuRka4eQy
+4xgsmy9Wy89ui48CARFK9mh1svHaGgqUlXE4piS++hVO7A/oAGXHm967bzeV/KEu
+KsFsd+92/N0C0mu1b9n7zZtI3lxOK0OBdD2RlOOiSqez7pqO4aAlSgtJYZskqxzn
+dqzrKunWoFpnjvK/rCFWYIUrD2XMUemvSoZqzShyYqBAte6NHlKj5WrVbxDjWoQT
+mW/njbCBQg17w2ORkrRsdtY05wNspjaQ7PoiA1iJiYQJbucEMr0zyIa9qkyCH1Bf
+mPkgMbbQAONgZnKplmzDiMYQE+YzNRAWLvU+30Dp9fmW/3vCtdkYVuq4Pt30OWpG
+/JuSaZO1AgMBAAECggEBAJXOLxquu6+2Mhtcd4a1YdfXhehCHV5ti+Onbx9Mtlvn
+UxJDHsxXo6UhH9uGOuQ91gCSF36hMevuvwqsJiwCe3RI570kzRNmRSSaPODzJ2y3
+t3cElcKK/Ppcry0+lhOxwcjOSguaW3C7tzkTZGZu+j6ulvnTKTEBcd2gXvK7CEuL
+tB49adhtLoK3vdL/HaAdmjO34dmD7XH/XWRcHO5dtH1wufCDU931Igqm4mUIpa4E
+0bC3nmqDaQ4BejCfcpMt6ZlC5dBazwFk9TqMBqe5bI23BxSAygNz1Ah8vyCYYDOe
+cIgTb/2x680hwiIVInMCcoojnxbNHGetW4YSg+FgIQECgYEA2rAcXpJxz+3ljV8Q
+U6s+eOmDgI1Vg43h8zH9j3eXARu7IXyxftYH2Y3fwZ3IjfTvZdsaXeZYBc5xv4k3
+vGs2gnR1uLY3RVc4bVdjYjlzTGjNL36YEIW5p0VPqfPVtCVCuCZbsFw0g4mHYadO
+pyc0Oyr4sFVtYoulRASBsYeMogUCgYEAxcjzFcqvp+OaqMhj0WjG55dOB7109r4J
+2Ow1/wTTX/53VCyePHx8NfXdfqjecUeGCbG1/tIe8gNZ2b6A2VjR8zRH5pAOG4nD
+YkSGb3+0ncsxbQZNe3rfnGV10g4lsmpvTZBUcNAeq7AhjUICDLLjIdh530SKzWJe
+LPnwAZYdafECgYAdhyP9fQaTDcsuAIUC1x9zUgxogizmu3Sj0r8q7Pnds3Hb/qs0
+tg+PR4HL8dMPn9/nP+NahGykNBDVzOBSt6M/kBwJGclyumkrEl6f96Pi0E/MNuqv
+aG797/TmvL7BOTq+BKfis0B/9kTqYZ3UIg4CYzX7ET3YzYQ+H+GnJ+dMRQKBgGw0
+SbjsUDkbbetU5jcUiWz9+/SEE89BnIWOhOPlsfZcctAcMN2KhTHINssqe7ehl5UK
+IjUsoz1n0+oqLLe7vfC983AR84XhUoEaWCn7xcZl+b5Zql4ZlOgtIc4vazQ2wnm+
+slOdqInpLBHpwNFNtLE5i0M4bm96l2cnvcRAagshAoGAcoHBf20NLWg1KIaaT5vo
+qBjKlELH5U091dMLA3aHH/tn9tt9cdsDu20hpLrZOL22/7P8kQtw9cKa3jPXtoan
+f39+U94xqBKXZKnPnPmAGdSwAJg/r6USy/83cmWvr8SdGtT9ZMEmQ8e6TtOiwIak
+AEEOKoKOx29JXwy4IuZM7lY=
+-----END PRIVATE KEY-----
+
+```
+
+### ./backend/certs/server.key:
+```key
+-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQClF6mw2u69PyGa
+X2v2IhZ5X18qk5WqmIF1noPvxiym+fc0nXsopLXV2J2MRJMoMlxa4peVYNaZ/NP4
+y4eQVkJFNrlZE3DTNVLxk3Y+lwtNp8bBqdNuwZvWerENXGGY0XvP8SoiO/l1enap
+qzpY8hjLKF0/X6kIf14h/+ETH4dgjQWqjrxSXFaMJh16FbI3pLWq7GYkLGW1BgNw
+iYGsAS/abBJ61EntuVXnFhjE27mkNMsVhP+RLE70znw+0MXB5FJMQdfxh4VFmZUt
+JyFCZj9YbyqzzZz4Um5mdjGSt/gkgPVAfae78++S5rP8Dau1LKhJ0GL8+GN20CrE
+V4LM+MoNAgMBAAECggEAAZqTPsaXCdDyhfS7WxlwV8mCESsnNGW64ZD3/dJSXg+Q
+7o/rwbSn7OXn0emwoZ6roFkR2T+m62QLYyAHDHM/aDtkiDr/c5h8WnXGRkwNWLnH
+3TBwf2OeHJ1LLwgLYq1WTeotMJvzNnL0HX3ZA+2GKXhrlNFca7ALvWTQ+PCWI21M
+n0iGck9MI0oBehZ7ZMkFyNBiyYLIVxoj6NfIhZM8pw3h5XYFaXv5sviUMgWon5BZ
+6PH3SDgYyyCwBtqSlS0V5wZjYzskjlcaj6gT2PRuafPFFpvVwG7nG6e8vOMUvLLR
+r6Zr8N4fEugEcFHF7XtlgFHTp3bz4pDQEofjJHriQQKBgQDbzrFeQzK6+7o4ao9k
+rL8n9TAJIZyo5RXGjAMFObXBCQfh+LjjlqB89c/4XBrcZQHciCPP8wjsjN2gVcDS
++nMEvrMQYahwspo3iE59Z7Ag9xU8mFl27cgUd3EMTxprw08jYaB+xZSSGWhvnAV8
+kl5D9q2vTkJd1529lGHxGqzsyQKBgQDARqDk08FrWFatiLSeQYxT38DQDOu+Mu2v
+w61XtjYqE6flLbNO8xZ+wsmLZIXmIzJW1/N0+Lmg6I02KfXnnxk2dILRoieK/26E
+ebMK6Ve/EFKKxZIG1oqJKAuwZ+Byd1qtwvEpP4dUe7wvVLApAH90QS1vV+H6SfDD
+Ozvu1auJJQKBgQChYpLLuN7odqZ1gZeivUrklZsdOTaCsyBX1Ljq/0I5Zt4IxctK
+Hm/bD8gQe9+k7ex99N8GcVSeCZc3f37B6OzGERX78xfvFtMv7r5iSN0Cdyd6hAk7
+zr3WeRPhi7rEYHQccDOcoIjC9DC/sXg9zGG12MoRKo6DxCmm5ek7UvCgMQKBgFoz
+iB1xfea2/YrRfDJV+9gJOzIfLaT/zWPMf5CLaaOZrwUjyF+8SIxVIynikbJiRqZZ
+DtyMJsFm94A2dSchCznxtMFVuglKRXWehjETQNfgd2ikwRm2Ii2v/LPYN4Jbnc2w
+i2RXakxm8+ScbTv/AMvwG7mFV/0MHQfpzPcBhESFAoGBAJ+af1ynKyODURE/hbSU
+M6B0NDNbV9AnN6nh03/Ov7kIPBhfISiONMeJ1T7O+2LoD/uZp566Ry6PlGvGshbr
+RgjPDJEk58osD7JEUF8Zv3QrfoTo/aw6fkw3dDaZPwb+wSIXYe0LkQaPxDfE6Gl9
+YsQR6o4V0ijtl6fel0wXxozm
+-----END PRIVATE KEY-----
+
+```
+
+### ./backend/certs/localhost+2.pem:
+```pem
+-----BEGIN CERTIFICATE-----
+MIIEHjCCAoagAwIBAgIQT2JnuYG/HRP9COspAm8PTDANBgkqhkiG9w0BAQsFADBb
+MR4wHAYDVQQKExVta2NlcnQgZGV2ZWxvcG1lbnQgQ0ExGDAWBgNVBAsMD2x1bXl4
+ZW5AZHV5ZmtlbjEfMB0GA1UEAwwWbWtjZXJ0IGx1bXl4ZW5AZHV5ZmtlbjAeFw0y
+NjAzMDMxOTIwNTFaFw0yODA2MDMxODIwNTFaMEMxJzAlBgNVBAoTHm1rY2VydCBk
+ZXZlbG9wbWVudCBjZXJ0aWZpY2F0ZTEYMBYGA1UECwwPbHVteXhlbkBkdXlma2Vu
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqPUvErkZGuHkMuMYLJsv
+VsvPbouPAgERSvZodbLx2hoKlJVxOKYkvvoVTuwP6ABlx5veu283lfyhLirBbHfv
+dvzdAtJrtW/Z+82bSN5cTitDgXQ9kZTjokqns+6ajuGgJUoLSWGbJKsc53as6yrp
+1qBaZ47yv6whVmCFKw9lzFHpr0qGas0ocmKgQLXujR5So+Vq1W8Q41qEE5lv542w
+gUINe8NjkZK0bHbWNOcDbKY2kOz6IgNYiYmECW7nBDK9M8iGvapMgh9QX5j5IDG2
+0ADjYGZyqZZsw4jGEBPmMzUQFi71Pt9A6fX5lv97wrXZGFbquD7d9DlqRvybkmmT
+tQIDAQABo3YwdDAOBgNVHQ8BAf8EBAMCBaAwEwYDVR0lBAwwCgYIKwYBBQUHAwEw
+HwYDVR0jBBgwFoAUdo1vVADEdpaAN33Ip3epVCU/jNcwLAYDVR0RBCUwI4IJbG9j
+YWxob3N0hwR/AAABhxAAAAAAAAAAAAAAAAAAAAABMA0GCSqGSIb3DQEBCwUAA4IB
+gQBCYR6+mQtJ3Tn3ah7KIzGpyYE5fO/6orwpvUx/qo6xOZixbosHyZEe3Dgnyc/t
+HVamSzOYtjCWCZN3FyxBFydEjmoeoxKAm0dRlWFjScE0kYnHIT8tJFuccQCCU88P
+TzdWE1f73i+bbksgSuriulNcDZXyFTM9A6JqrKUUqZJ6M1QMeqIzZeSR9aCs3mVw
+8erxbxWJ1qvRIbDTnWqzQ9ogFiSxb9+k4i9lbD6vottJBy/wK4pcsfvXq8y8nEX+
+u3zFdyKLGNMLBVBxz5nbfZRlV/uH7G6YDz0GpS/mr6YpnNiap/sGigM3DZ9+8K8R
+nkKUt3sPKaIkFlN3DV3pS5tru50k+zXjr0tQDkDIVPideSO/D8lgGeoLbOsJd/pb
+lH014E/cOI7KxWgv8ZF3XBK5cg3McTpgY1L6ENeADywVj/s3mu4DDhggnB4vjnlP
+3l7WbqPGDtYwWU/MkcF+90S1A1r0mhog0oqU0HBKcFISbWIck1dcC7xQ5uDxhtBX
+E8I=
+-----END CERTIFICATE-----
+
+```
+
 ### ./backend/data/prompt_templates.json:
 ```json
 []
@@ -2403,81 +2367,671 @@ int main() {
 
 ```
 
-### ./backend/src/utils/encryption.cpp:
-```cpp
-#include "utils/encryption.h"
-#include <openssl/aes.h>
-#include <openssl/rand.h>
-#include <stdexcept>
-#include <vector>
+### ./backend/scripts/setup.sh:
+```sh
+#!/bin/bash
+set -e
+
+echo "Setting up dependencies for ctrlpanel_backend..."
+
+# Create third_party directory
+mkdir -p third_party
+cd third_party
+
+# Download httplib (header-only HTTP library)
+if [ ! -d "httplib" ]; then
+    echo "Downloading httplib..."
+    git clone https://github.com/yhirose/cpp-httplib.git
+fi
+
+cd ..
+
+echo "Dependencies installed!"
+echo ""
+echo "To build:"
+echo "  mkdir build && cd build"
+echo "  cmake .."
+echo "  make -j\$(nproc)"
+echo ""
+echo "To run:"
+echo "  ./ctrlpanel_backend"
+
+```
+
+### ./backend/include/controllers/auth_controller.h:
+```h
+#ifndef AUTH_CONTROLLER_H
+#define AUTH_CONTROLLER_H
+
+#include <httplib.h>
+#include "config/config.h"
+
+void handleAuthVerify(const httplib::Request& req, httplib::Response& res, const Config& config);
+
+#endif // AUTH_CONTROLLER_H
+
+```
+
+### ./backend/include/controllers/config_controller.h:
+```h
+#ifndef CONFIG_CONTROLLER_H
+#define CONFIG_CONTROLLER_H
+
+#include "httplib.h"
+
+// Prompt template handlers
+void handleGetPromptTemplates(const httplib::Request& req, httplib::Response& res);
+void handleCreatePromptTemplate(const httplib::Request& req, httplib::Response& res);
+void handleUpdatePromptTemplate(const httplib::Request& req, httplib::Response& res);
+void handleDeletePromptTemplate(const httplib::Request& req, httplib::Response& res);
+
+// Settings handlers
+void handleGetSettings(const httplib::Request& req, httplib::Response& res);
+void handleUpdateSettings(const httplib::Request& req, httplib::Response& res);
+
+#endif // CONFIG_CONTROLLER_H
+
+```
+
+### ./backend/include/controllers/openrouter_controller.h:
+```h
+#ifndef OPENROUTER_CONTROLLER_H
+#define OPENROUTER_CONTROLLER_H
+
+#include "httplib.h"
+#include "services/openrouter_service.h"
+
+void handleChat(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
+void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
+void handleModels(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
+void handlePricing(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
+
+#endif // OPENROUTER_CONTROLLER_H
+
+```
+
+### ./backend/include/services/openrouter_service.h:
+```h
+#ifndef OPENROUTER_SERVICE_H
+#define OPENROUTER_SERVICE_H
+
 #include <string>
+#include <vector>
+#include <functional>
+#include <json/json.h>
+#include "utils/encryption.h"
 
-Encryption::Encryption(const std::string& encryptionKey) : key(encryptionKey) {
-    if (key.empty()) {
-        throw std::invalid_argument("Encryption key cannot be empty");
+// Stream context for handling chunked responses
+struct StreamContext {
+    std::function<void(const std::string&)> onChunk;
+    std::string buffer;
+};
+
+class OpenRouterService {
+private:
+    std::string apiKey;
+    Encryption& encryption;
+
+public:
+    OpenRouterService(const std::string& apiKey, Encryption& encryption);
+    
+    Json::Value chat(const std::string& model, const std::string& prompt, int maxTokens = 2048) const;
+    Json::Value streamingChat(const std::string& model, const std::string& prompt, int maxTokens = 2048) const;
+    
+    // Streaming with callback for SSE
+    void streamingChatWithCallback(
+        const std::string& model, 
+        const std::string& prompt, 
+        int maxTokens,
+        std::function<void(const std::string&)> onChunk,
+        std::function<void(const std::string&)> onError
+    ) const;
+    
+    Json::Value getModels() const;
+    Json::Value getPricing() const;
+    
+private:
+    Json::Value makeRequest(const std::string& endpoint, const Json::Value& body) const;
+    std::string decryptApiKey() const;
+    Json::Value parseConversationHistory(const std::string& prompt) const;
+};
+
+#endif // OPENROUTER_SERVICE_H
+
+```
+
+### ./backend/include/utils/encryption.h:
+```h
+#ifndef ENCRYPTION_H
+#define ENCRYPTION_H
+
+#include <string>
+#include <vector>
+#include <stdexcept>
+
+class Encryption {
+private:
+    std::string key;
+
+public:
+    Encryption(const std::string& encryptionKey);
+    
+    std::string encrypt(const std::string& data) const;
+    std::string decrypt(const std::string& encryptedData) const;
+    std::vector<unsigned char> encryptBinary(const std::vector<unsigned char>& data) const;
+    std::vector<unsigned char> decryptBinary(const std::vector<unsigned char>& encryptedData) const;
+};
+
+#endif // ENCRYPTION_H
+
+```
+
+### ./backend/src/controllers/config_controller.cpp:
+```cpp
+#include "controllers/config_controller.h"
+#include <json/json.h>
+#include <fstream>
+#include <mutex>
+#include <ctime>
+#include <sstream>
+
+namespace {
+    std::mutex config_mutex;
+    Json::Value promptTemplates;
+    Json::Value settings;
+    bool config_loaded = false;
+
+    void loadConfig() {
+        std::lock_guard<std::mutex> lock(config_mutex);
+        if (config_loaded) return;
+        
+        // Load prompt templates
+        std::ifstream ptFile("data/prompt_templates.json");
+        if (ptFile.is_open()) {
+            ptFile >> promptTemplates;
+            ptFile.close();
+        } else {
+            promptTemplates = Json::Value(Json::arrayValue);
+        }
+
+        // Load settings
+        std::ifstream settingsFile("data/settings.json");
+        if (settingsFile.is_open()) {
+            settingsFile >> settings;
+            settingsFile.close();
+        } else {
+            settings = Json::Value();
+            settings["defaultModel"] = "arcee-ai/trinity-large-preview:free";
+            settings["maxTokens"] = 2048;
+            settings["temperature"] = 0.7;
+        }
+        
+        config_loaded = true;
+    }
+
+    void savePromptTemplates() {
+        std::lock_guard<std::mutex> lock(config_mutex);
+        std::ofstream file("data/prompt_templates.json");
+        file << promptTemplates.toStyledString();
+        file.close();
+    }
+
+    void saveSettings() {
+        std::lock_guard<std::mutex> lock(config_mutex);
+        std::ofstream file("data/settings.json");
+        file << settings.toStyledString();
+        file.close();
+    }
+    
+    bool parseJsonBody(const std::string& body, Json::Value& result) {
+        Json::CharReaderBuilder reader;
+        std::string errs;
+        std::istringstream stream(body);
+        return Json::parseFromStream(reader, stream, &result, &errs);
     }
 }
 
-std::string Encryption::encrypt(const std::string& data) const {
-    std::vector<unsigned char> dataBytes(data.begin(), data.end());
-    std::vector<unsigned char> encrypted = encryptBinary(dataBytes);
-    return std::string(encrypted.begin(), encrypted.end());
+void handleGetPromptTemplates(const httplib::Request& req, httplib::Response& res) {
+    loadConfig();
+    
+    res.status = 200;
+    res.set_content(promptTemplates.toStyledString(), "application/json");
 }
 
-std::string Encryption::decrypt(const std::string& encryptedData) const {
-    std::vector<unsigned char> encryptedBytes(encryptedData.begin(), encryptedData.end());
-    std::vector<unsigned char> decrypted = decryptBinary(encryptedBytes);
-    return std::string(decrypted.begin(), decrypted.end());
+void handleCreatePromptTemplate(const httplib::Request& req, httplib::Response& res) {
+    loadConfig();
+    
+    Json::Value requestBody;
+    if (!parseJsonBody(req.body, requestBody)) {
+        res.status = 400;
+        res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
+        return;
+    }
+
+    if (!requestBody.isMember("name") || !requestBody.isMember("template")) {
+        res.status = 400;
+        res.set_content("{\"error\": \"Missing required fields: name, template\"}", "application/json");
+        return;
+    }
+
+    Json::Value newTemplate;
+    newTemplate["id"] = std::to_string(std::time(nullptr));
+    newTemplate["name"] = requestBody["name"];
+    newTemplate["template"] = requestBody["template"];
+    newTemplate["created_at"] = std::to_string(std::time(nullptr));
+
+    std::lock_guard<std::mutex> lock(config_mutex);
+    promptTemplates.append(newTemplate);
+    savePromptTemplates();
+
+    res.status = 201;
+    res.set_content(newTemplate.toStyledString(), "application/json");
 }
 
-std::vector<unsigned char> Encryption::encryptBinary(const std::vector<unsigned char>& data) const {
-    if (data.empty()) {
-        return {};
+void handleUpdatePromptTemplate(const httplib::Request& req, httplib::Response& res) {
+    loadConfig();
+    
+    // Get ID from path - httplib uses match group
+    std::string id = req.matches[1];
+
+    Json::Value requestBody;
+    if (!parseJsonBody(req.body, requestBody)) {
+        res.status = 400;
+        res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
+        return;
     }
 
-    // Generate random IV
-    unsigned char iv[AES_BLOCK_SIZE];
-    if (RAND_bytes(iv, AES_BLOCK_SIZE) != 1) {
-        throw std::runtime_error("Failed to generate random IV");
+    std::lock_guard<std::mutex> lock(config_mutex);
+    bool found = false;
+    for (auto& template_obj : promptTemplates) {
+        if (template_obj["id"].asString() == id) {
+            if (requestBody.isMember("name")) {
+                template_obj["name"] = requestBody["name"];
+            }
+            if (requestBody.isMember("template")) {
+                template_obj["template"] = requestBody["template"];
+            }
+            template_obj["updated_at"] = std::to_string(std::time(nullptr));
+            found = true;
+            savePromptTemplates();
+            break;
+        }
     }
 
-    // Prepare output buffer (data + IV)
-    std::vector<unsigned char> output(data.size() + AES_BLOCK_SIZE);
-    std::copy(iv, iv + AES_BLOCK_SIZE, output.begin());
-
-    // Encrypt data
-    AES_KEY aesKey;
-    if (AES_set_encrypt_key(reinterpret_cast<const unsigned char*>(key.c_str()), key.size() * 8, &aesKey) != 0) {
-        throw std::runtime_error("Failed to set AES encryption key");
+    if (!found) {
+        res.status = 404;
+        res.set_content("{\"error\": \"Template not found\"}", "application/json");
+        return;
     }
 
-    AES_cbc_encrypt(data.data(), output.data() + AES_BLOCK_SIZE, data.size(), &aesKey, iv, AES_ENCRYPT);
-
-    return output;
+    res.status = 200;
+    res.set_content("{\"status\": \"updated\"}", "application/json");
 }
 
-std::vector<unsigned char> Encryption::decryptBinary(const std::vector<unsigned char>& encryptedData) const {
-    if (encryptedData.size() < AES_BLOCK_SIZE) {
-        throw std::invalid_argument("Encrypted data too small");
+void handleDeletePromptTemplate(const httplib::Request& req, httplib::Response& res) {
+    loadConfig();
+    
+    std::string id = req.matches[1];
+    
+    std::lock_guard<std::mutex> lock(config_mutex);
+    bool found = false;
+    Json::Value newArray(Json::arrayValue);
+    
+    for (auto& template_obj : promptTemplates) {
+        if (template_obj["id"].asString() != id) {
+            newArray.append(template_obj);
+        } else {
+            found = true;
+        }
     }
 
-    // Extract IV
-    unsigned char iv[AES_BLOCK_SIZE];
-    std::copy(encryptedData.begin(), encryptedData.begin() + AES_BLOCK_SIZE, iv);
-
-    // Prepare output buffer
-    std::vector<unsigned char> output(encryptedData.size() - AES_BLOCK_SIZE);
-
-    // Decrypt data
-    AES_KEY aesKey;
-    if (AES_set_decrypt_key(reinterpret_cast<const unsigned char*>(key.c_str()), key.size() * 8, &aesKey) != 0) {
-        throw std::runtime_error("Failed to set AES decryption key");
+    if (!found) {
+        res.status = 404;
+        res.set_content("{\"error\": \"Template not found\"}", "application/json");
+        return;
     }
 
-    AES_cbc_encrypt(encryptedData.data() + AES_BLOCK_SIZE, output.data(), output.size(), &aesKey, iv, AES_DECRYPT);
+    promptTemplates = newArray;
+    savePromptTemplates();
 
-    return output;
+    res.status = 200;
+    res.set_content("{\"status\": \"deleted\"}", "application/json");
 }
+
+void handleGetSettings(const httplib::Request& req, httplib::Response& res) {
+    loadConfig();
+    
+    res.status = 200;
+    res.set_content(settings.toStyledString(), "application/json");
+}
+
+void handleUpdateSettings(const httplib::Request& req, httplib::Response& res) {
+    loadConfig();
+    
+    Json::Value requestBody;
+    if (!parseJsonBody(req.body, requestBody)) {
+        res.status = 400;
+        res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(config_mutex);
+    if (requestBody.isMember("defaultModel")) {
+        settings["defaultModel"] = requestBody["defaultModel"];
+    }
+    if (requestBody.isMember("maxTokens")) {
+        settings["maxTokens"] = requestBody["maxTokens"];
+    }
+    if (requestBody.isMember("temperature")) {
+        settings["temperature"] = requestBody["temperature"];
+    }
+    
+    saveSettings();
+
+    res.status = 200;
+    res.set_content(settings.toStyledString(), "application/json");
+}
+
+```
+
+### ./backend/src/controllers/auth_controller.cpp:
+```cpp
+#include "controllers/auth_controller.h"
+#include <json/json.h>
+#include <memory>
+
+void handleAuthVerify(const httplib::Request& req, httplib::Response& res, const Config& config) {
+    // Check for API key header
+    auto apiKeyIt = req.headers.find("x-api-key");
+    
+    if (apiKeyIt == req.headers.end()) {
+        res.status = 401;
+        res.set_content("{\"error\": \"Missing API key\"}", "application/json");
+        return;
+    }
+
+    std::string apiKey = apiKeyIt->second;
+    
+    if (apiKey.empty()) {
+        res.status = 401;
+        res.set_content("{\"error\": \"Invalid API key\"}", "application/json");
+        return;
+    }
+
+    Json::Value response;
+    response["status"] = "valid";
+    response["user"] = "admin";
+    response["permissions"] = Json::Value(Json::arrayValue);
+    response["permissions"].append("chat");
+    response["permissions"].append("models");
+    response["permissions"].append("config");
+
+    res.status = 200;
+    res.set_content(response.toStyledString(), "application/json");
+}
+
+```
+
+### ./backend/src/controllers/openrouter_controller.cpp:
+```cpp
+#include "controllers/openrouter_controller.h"
+#include <json/json.h>
+#include <sstream>
+#include <mutex>
+#include <deque>
+#include <thread>
+#include <chrono>
+#include <cstring>
+#include <iostream>
+
+void handleChat(const httplib::Request& req, httplib::Response& res, OpenRouterService& service) {
+    try {
+        Json::Value requestBody;
+        Json::CharReaderBuilder reader;
+        std::string errs;
+        
+        std::istringstream stream(req.body);
+        if (!Json::parseFromStream(reader, stream, &requestBody, &errs)) {
+            res.status = 400;
+            res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
+            return;
+        }
+
+        if (!requestBody.isMember("model") || !requestBody.isMember("prompt")) {
+            res.status = 400;
+            res.set_content("{\"error\": \"Missing required fields: model, prompt\"}", "application/json");
+            return;
+        }
+
+        std::string model = requestBody["model"].asString();
+        std::string prompt = requestBody["prompt"].asString();
+        int maxTokens = requestBody.isMember("max_tokens") ? requestBody["max_tokens"].asInt() : 2048;
+
+        auto response = service.chat(model, prompt, maxTokens);
+
+        res.status = 200;
+        res.set_content(response.toStyledString(), "application/json");
+
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
+    }
+}
+
+// Thread-safe chunk queue for streaming
+struct StreamingContext {
+    std::deque<std::string> chunks;
+    std::mutex mutex;
+    bool done = false;
+    std::string error;
+};
+
+void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRouterService& service) {
+    try {
+        Json::Value requestBody;
+        Json::CharReaderBuilder reader;
+        std::string errs;
+        
+        std::istringstream stream(req.body);
+        if (!Json::parseFromStream(reader, stream, &requestBody, &errs)) {
+            res.status = 400;
+            res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
+            return;
+        }
+
+        if (!requestBody.isMember("model") || !requestBody.isMember("prompt")) {
+            res.status = 400;
+            res.set_content("{\"error\": \"Missing required fields: model, prompt\"}", "application/json");
+            return;
+        }
+
+        std::string model = requestBody["model"].asString();
+        std::string prompt = requestBody["prompt"].asString();
+        int maxTokens = requestBody.isMember("max_tokens") ? requestBody["max_tokens"].asInt() : 2048;
+
+        // Set up SSE response headers
+        res.set_header("Content-Type", "text/event-stream");
+        res.set_header("Cache-Control", "no-cache");
+        res.set_header("Connection", "keep-alive");
+        
+        // Create streaming context
+        auto ctx = std::make_shared<StreamingContext>();
+        
+        // Start streaming in background
+        std::thread([ctx, &service, model, prompt, maxTokens]() {
+            service.streamingChatWithCallback(
+                model, 
+                prompt, 
+                maxTokens,
+                // onChunk callback
+                [ctx](const std::string& chunk) {
+                    std::lock_guard<std::mutex> lock(ctx->mutex);
+                    ctx->chunks.push_back(chunk);
+                },
+                // onError callback
+                [ctx](const std::string& error) {
+                    std::lock_guard<std::mutex> lock(ctx->mutex);
+                    ctx->error = error;
+                    ctx->done = true;
+                }
+            );
+            
+            {
+                std::lock_guard<std::mutex> lock(ctx->mutex);
+                ctx->done = true;
+            }
+        }).detach();
+        
+        // Use content provider to stream chunks as they arrive
+        res.set_content_provider(
+            "text/event-stream",
+            [ctx](size_t offset, httplib::DataSink& sink) -> bool {
+                std::string to_write;
+                bool is_done = false;
+                
+                {
+                    std::lock_guard<std::mutex> lock(ctx->mutex);
+
+                    if (!ctx->error.empty()) {
+                        Json::Value errObj;
+                        errObj["error"] = ctx->error;
+                        // Use compact JSON writer to avoid multi-line SSE issues
+                        Json::StreamWriterBuilder writer;
+                        writer["indentation"] = "";
+                        std::string errJson = Json::writeString(writer, errObj);
+                        std::string errChunk = "data: " + errJson + "\n\n";
+                        sink.write(errChunk.data(), errChunk.size());
+                        sink.done();
+                        return true;
+                    }
+                    
+                    if (ctx->chunks.empty()) {
+                        if (ctx->done) {
+                            is_done = true;
+                        }
+                    } else {
+                        // Gather chunks
+                        while (!ctx->chunks.empty()) {
+                            to_write += ctx->chunks.front();
+                            ctx->chunks.pop_front();
+                        }
+                    }
+                }
+                
+                if (!to_write.empty()) {
+                    sink.write(to_write.data(), to_write.size());
+                } 
+                
+                if (is_done) {
+                    sink.done();
+                } else if (to_write.empty()) {
+                    // Only sleep if queue was empty to prevent spinlocking CPU
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                }
+                
+                return true; // Return true to keep connection alive until done()
+            }
+        );
+
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
+    }
+}
+
+void handleModels(const httplib::Request& req, httplib::Response& res, OpenRouterService& service) {
+    try {
+        auto models = service.getModels();
+        res.status = 200;
+        res.set_content(models.toStyledString(), "application/json");
+
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
+    }
+}
+
+void handlePricing(const httplib::Request& req, httplib::Response& res, OpenRouterService& service) {
+    try {
+        auto pricing = service.getPricing();
+        res.status = 200;
+        res.set_content(pricing.toStyledString(), "application/json");
+
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
+    }
+}
+```
+
+### ./backend/src/config/config.h:
+```h
+#ifndef CONFIG_H
+#define CONFIG_H
+
+#include <string>
+#include <fstream>
+#include <json/json.h>
+#include <stdexcept>
+
+class Config {
+private:
+    int port;
+    int frontendPort;
+    std::string host;
+    std::string frontendDir;
+
+public:
+    Config() : port(1024), frontendPort(1025), host("0.0.0.0"), frontendDir("../ctrlpanel") {}
+
+    bool loadFromFile(const std::string& filePath) {
+        try {
+            Json::Value config;
+            std::ifstream file(filePath);
+            if (!file.is_open()) {
+                return false;
+            }
+
+            file >> config;
+            file.close();
+
+            if (config.isMember("port")) {
+                port = config["port"].asInt();
+            }
+            if (config.isMember("frontendPort")) {
+                frontendPort = config["frontendPort"].asInt();
+            }
+            if (config.isMember("host")) {
+                host = config["host"].asString();
+            }
+            if (config.isMember("frontendDir")) {
+                frontendDir = config["frontendDir"].asString();
+            }
+
+            return true;
+        } catch (const std::exception& e) {
+            return false;
+        }
+    }
+
+    int getPort() const {
+        return port;
+    }
+
+    int getFrontendPort() const {
+        return frontendPort;
+    }
+
+    std::string getHost() const {
+        return host;
+    }
+
+    std::string getFrontendDir() const {
+        return frontendDir;
+    }
+};
+
+#endif // CONFIG_H
 
 ```
 
@@ -2489,7 +3043,6 @@ std::vector<unsigned char> Encryption::decryptBinary(const std::vector<unsigned 
 #include <iostream>
 #include <sstream>
 #include <vector>
-#include <algorithm>
 
 // libcurl write callback
 size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
@@ -2612,7 +3165,7 @@ size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, void* user
         if (line.find("data: ") == 0) {
             std::string data = line.substr(6);
             if (data == "[DONE]") {
-                // Forward the[DONE] marker as-is
+                // Forward the [DONE] marker as-is
                 if (ctx->onChunk) {
                     ctx->onChunk("data: [DONE]\n\n");
                 }
@@ -2909,14 +3462,6 @@ void OpenRouterService::streamingChatWithCallback(
 }
 
 Json::Value OpenRouterService::getModels() const {
-    std::vector<std::string> allowedModels = {
-        "stepfun/step-3.5-flash:free",
-        "arcee-ai/trinity-large-preview:free",
-        "upstage/solar-pro-3:free",
-        "liquid/lfm-2.5-1.2b-thinking:free",
-        "nvidia/nemotron-3-nano-30b-a3b:free"
-    };
-
     // Try to fetch models from OpenRouter first
     try {
         std::string decryptedKey = decryptApiKey();
@@ -2949,19 +3494,17 @@ Json::Value OpenRouterService::getModels() const {
                     std::istringstream stream(responseStr);
                     if (Json::parseFromStream(reader, stream, &result, &errs)) {
                         if (result.isMember("data") && result["data"].isArray()) {
+                            // Normalize the response to ensure consistent field names
                             Json::Value normalizedResponse;
                             normalizedResponse["data"] = Json::Value(Json::arrayValue);
                             
                             for (const auto& model : result["data"]) {
-                                if (!model.isMember("id")) continue;
-                                std::string id = model["id"].asString();
-
-                                if (std::find(allowedModels.begin(), allowedModels.end(), id) == allowedModels.end()) {
-                                    continue;
-                                }
-
                                 Json::Value normalizedModel;
-                                normalizedModel["id"] = id;
+
+                                // Copy basic fields
+                                if (model.isMember("id")) {
+                                    normalizedModel["id"] = model["id"];
+                                }
                                 if (model.isMember("name")) {
                                     normalizedModel["name"] = model["name"];
                                 }
@@ -2969,12 +3512,14 @@ Json::Value OpenRouterService::getModels() const {
                                     normalizedModel["provider"] = model["provider"];
                                 }
 
+                                // Extract context_length
                                 int contextLength = 0;
                                 if (model.isMember("context_length")) {
                                     contextLength = model["context_length"].asInt();
                                     normalizedModel["context_length"] = contextLength;
                                 }
 
+                                // Extract strictly the max output tokens from OpenRouter
                                 int maxTokens = 0;
                                 if (model.isMember("top_provider") && model["top_provider"].isObject()) {
                                     const auto& topProvider = model["top_provider"];
@@ -2983,11 +3528,15 @@ Json::Value OpenRouterService::getModels() const {
                                     }
                                 }
 
+                                // Default to 8192 if the API omits the completion limit entirely
+                                const int DEFAULT_MAX_TOKENS = 8192;
+
                                 if (maxTokens <= 0) {
-                                    maxTokens = 8192;
+                                    maxTokens = DEFAULT_MAX_TOKENS;
                                 }
 
                                 normalizedModel["max_tokens"] = maxTokens;
+
                                 normalizedResponse["data"].append(normalizedModel);
                             }
                             
@@ -3005,20 +3554,37 @@ Json::Value OpenRouterService::getModels() const {
     Json::Value response;
     response["data"] = Json::Value(Json::arrayValue);
     
-    Json::Value m1; m1["id"] = "stepfun/step-3.5-flash:free"; m1["name"] = "StepFun-3.5 Flash"; m1["provider"] = "StepFun"; m1["context_length"] = 256000; m1["max_tokens"] = 8192;
-    response["data"].append(m1);
+    Json::Value model1;
+    model1["id"] = "openai/gpt-4o-mini";
+    model1["name"] = "OpenAI GPT-4o Mini";
+    model1["provider"] = "OpenAI";
+    model1["context_length"] = 128000;
+    model1["max_tokens"] = 16384;
+    response["data"].append(model1);
     
-    Json::Value m2; m2["id"] = "arcee-ai/trinity-large-preview:free"; m2["name"] = "Arcee Trinity Large Preview"; m2["provider"] = "Arcee AI"; m2["context_length"] = 131000; m2["max_tokens"] = 8192;
-    response["data"].append(m2);
+    Json::Value model2;
+    model2["id"] = "google/gemma-2-9b-it";
+    model2["name"] = "Google Gemma 2 9B";
+    model2["provider"] = "Google";
+    model2["context_length"] = 8192;
+    model2["max_tokens"] = 8192;
+    response["data"].append(model2);
     
-    Json::Value m3; m3["id"] = "upstage/solar-pro-3:free"; m3["name"] = "Upstage Solar Pro 3"; m3["provider"] = "Upstage"; m3["context_length"] = 128000; m3["max_tokens"] = 8192;
-    response["data"].append(m3);
+    Json::Value model3;
+    model3["id"] = "meta-llama/llama-3-8b-instruct";
+    model3["name"] = "Meta Llama 3 8B";
+    model3["provider"] = "Meta";
+    model3["context_length"] = 8192;
+    model3["max_tokens"] = 8192;
+    response["data"].append(model3);
     
-    Json::Value m4; m4["id"] = "liquid/lfm-2.5-1.2b-thinking:free"; m4["name"] = "Liquid LFM 2.5 1.2B Thinking"; m4["provider"] = "Liquid"; m4["context_length"] = 32000; m4["max_tokens"] = 8192;
-    response["data"].append(m4);
-    
-    Json::Value m5; m5["id"] = "nvidia/nemotron-3-nano-30b-a3b:free"; m5["name"] = "Nvidia Nemotron 3 Nano 30B"; m5["provider"] = "Nvidia"; m5["context_length"] = 256000; m5["max_tokens"] = 8192;
-    response["data"].append(m5);
+    Json::Value model4;
+    model4["id"] = "mistralai/mistral-7b-instruct-v0.3";
+    model4["name"] = "Mistral 7B Instruct v0.3";
+    model4["provider"] = "Mistral";
+    model4["context_length"] = 32768;
+    model4["max_tokens"] = 8192;
+    response["data"].append(model4);
     
     return response;
 }
@@ -3026,7 +3592,31 @@ Json::Value OpenRouterService::getModels() const {
 Json::Value OpenRouterService::getPricing() const {
     Json::Value response;
     response["data"] = Json::Value(Json::arrayValue);
-    // Left as empty/placeholder since the models are completely free
+    
+    Json::Value model1Pricing;
+    model1Pricing["id"] = "openai/gpt-4o-mini";
+    model1Pricing["price_per_1k_input"] = 0.00000015;
+    model1Pricing["price_per_1k_output"] = 0.0000006;
+    response["data"].append(model1Pricing);
+    
+    Json::Value model2Pricing;
+    model2Pricing["id"] = "google/gemma-2-9b-it";
+    model2Pricing["price_per_1k_input"] = 0.00000003;
+    model2Pricing["price_per_1k_output"] = 0.00000009;
+    response["data"].append(model2Pricing);
+    
+    Json::Value model3Pricing;
+    model3Pricing["id"] = "meta-llama/llama-3-8b-instruct";
+    model3Pricing["price_per_1k_input"] = 0.00000003;
+    model3Pricing["price_per_1k_output"] = 0.00000004;
+    response["data"].append(model3Pricing);
+    
+    Json::Value model4Pricing;
+    model4Pricing["id"] = "mistralai/mistral-7b-instruct-v0.3";
+    model4Pricing["price_per_1k_input"] = 0.0000002;
+    model4Pricing["price_per_1k_output"] = 0.0000002;
+    response["data"].append(model4Pricing);
+    
     return response;
 }
 
@@ -3126,926 +3716,698 @@ std::string OpenRouterService::decryptApiKey() const {
         return apiKey;
     }
 }
+
 ```
 
-### ./backend/src/controllers/openrouter_controller.cpp:
+### ./backend/src/utils/encryption.cpp:
 ```cpp
-#include "controllers/openrouter_controller.h"
-#include <json/json.h>
-#include <sstream>
-#include <mutex>
-#include <deque>
-#include <thread>
-#include <chrono>
-#include <cstring>
-#include <iostream>
-
-void handleChat(const httplib::Request& req, httplib::Response& res, OpenRouterService& service) {
-    try {
-        Json::Value requestBody;
-        Json::CharReaderBuilder reader;
-        std::string errs;
-        
-        std::istringstream stream(req.body);
-        if (!Json::parseFromStream(reader, stream, &requestBody, &errs)) {
-            res.status = 400;
-            res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
-            return;
-        }
-
-        if (!requestBody.isMember("model") || !requestBody.isMember("prompt")) {
-            res.status = 400;
-            res.set_content("{\"error\": \"Missing required fields: model, prompt\"}", "application/json");
-            return;
-        }
-
-        std::string model = requestBody["model"].asString();
-        std::string prompt = requestBody["prompt"].asString();
-        int maxTokens = requestBody.isMember("max_tokens") ? requestBody["max_tokens"].asInt() : 2048;
-
-        auto response = service.chat(model, prompt, maxTokens);
-
-        res.status = 200;
-        res.set_content(response.toStyledString(), "application/json");
-
-    } catch (const std::exception& e) {
-        res.status = 500;
-        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
-    }
-}
-
-// Thread-safe chunk queue for streaming
-struct StreamingContext {
-    std::deque<std::string> chunks;
-    std::mutex mutex;
-    bool done = false;
-    std::string error;
-};
-
-void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRouterService& service) {
-    try {
-        Json::Value requestBody;
-        Json::CharReaderBuilder reader;
-        std::string errs;
-        
-        std::istringstream stream(req.body);
-        if (!Json::parseFromStream(reader, stream, &requestBody, &errs)) {
-            res.status = 400;
-            res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
-            return;
-        }
-
-        if (!requestBody.isMember("model") || !requestBody.isMember("prompt")) {
-            res.status = 400;
-            res.set_content("{\"error\": \"Missing required fields: model, prompt\"}", "application/json");
-            return;
-        }
-
-        std::string model = requestBody["model"].asString();
-        std::string prompt = requestBody["prompt"].asString();
-        int maxTokens = requestBody.isMember("max_tokens") ? requestBody["max_tokens"].asInt() : 2048;
-
-        // Set up SSE response headers
-        res.set_header("Content-Type", "text/event-stream");
-        res.set_header("Cache-Control", "no-cache");
-        res.set_header("Connection", "keep-alive");
-        
-        // Create streaming context
-        auto ctx = std::make_shared<StreamingContext>();
-        
-        // Start streaming in background
-        std::thread([ctx, &service, model, prompt, maxTokens]() {
-            service.streamingChatWithCallback(
-                model, 
-                prompt, 
-                maxTokens,
-                // onChunk callback
-                [ctx](const std::string& chunk) {
-                    std::lock_guard<std::mutex> lock(ctx->mutex);
-                    ctx->chunks.push_back(chunk);
-                },
-                // onError callback
-                [ctx](const std::string& error) {
-                    std::lock_guard<std::mutex> lock(ctx->mutex);
-                    ctx->error = error;
-                    ctx->done = true;
-                }
-            );
-            
-            {
-                std::lock_guard<std::mutex> lock(ctx->mutex);
-                ctx->done = true;
-            }
-        }).detach();
-        
-        // Use content provider to stream chunks as they arrive
-        res.set_content_provider(
-            "text/event-stream",
-            [ctx](size_t offset, httplib::DataSink& sink) -> bool {
-                std::string to_write;
-                bool is_done = false;
-                
-                {
-                    std::lock_guard<std::mutex> lock(ctx->mutex);
-
-                    if (!ctx->error.empty()) {
-                        Json::Value errObj;
-                        errObj["error"] = ctx->error;
-                        // Use compact JSON writer to avoid multi-line SSE issues
-                        Json::StreamWriterBuilder writer;
-                        writer["indentation"] = "";
-                        std::string errJson = Json::writeString(writer, errObj);
-                        std::string errChunk = "data: " + errJson + "\n\n";
-                        sink.write(errChunk.data(), errChunk.size());
-                        sink.done();
-                        return true;
-                    }
-                    
-                    if (ctx->chunks.empty()) {
-                        if (ctx->done) {
-                            is_done = true;
-                        }
-                    } else {
-                        // Gather chunks
-                        while (!ctx->chunks.empty()) {
-                            to_write += ctx->chunks.front();
-                            ctx->chunks.pop_front();
-                        }
-                    }
-                }
-                
-                if (!to_write.empty()) {
-                    sink.write(to_write.data(), to_write.size());
-                } 
-                
-                if (is_done) {
-                    sink.done();
-                } else if (to_write.empty()) {
-                    // Only sleep if queue was empty to prevent spinlocking CPU
-                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-                }
-                
-                return true; // Return true to keep connection alive until done()
-            }
-        );
-
-    } catch (const std::exception& e) {
-        res.status = 500;
-        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
-    }
-}
-
-void handleModels(const httplib::Request& req, httplib::Response& res, OpenRouterService& service) {
-    try {
-        auto models = service.getModels();
-        res.status = 200;
-        res.set_content(models.toStyledString(), "application/json");
-
-    } catch (const std::exception& e) {
-        res.status = 500;
-        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
-    }
-}
-
-void handlePricing(const httplib::Request& req, httplib::Response& res, OpenRouterService& service) {
-    try {
-        auto pricing = service.getPricing();
-        res.status = 200;
-        res.set_content(pricing.toStyledString(), "application/json");
-
-    } catch (const std::exception& e) {
-        res.status = 500;
-        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
-    }
-}
-```
-
-### ./backend/src/controllers/config_controller.cpp:
-```cpp
-#include "controllers/config_controller.h"
-#include <json/json.h>
-#include <fstream>
-#include <mutex>
-#include <ctime>
-#include <sstream>
-
-namespace {
-    std::mutex config_mutex;
-    Json::Value promptTemplates;
-    Json::Value settings;
-    bool config_loaded = false;
-
-    void loadConfig() {
-        std::lock_guard<std::mutex> lock(config_mutex);
-        if (config_loaded) return;
-        
-        // Load prompt templates
-        std::ifstream ptFile("data/prompt_templates.json");
-        if (ptFile.is_open()) {
-            ptFile >> promptTemplates;
-            ptFile.close();
-        } else {
-            promptTemplates = Json::Value(Json::arrayValue);
-        }
-
-        // Load settings
-        std::ifstream settingsFile("data/settings.json");
-        if (settingsFile.is_open()) {
-            settingsFile >> settings;
-            settingsFile.close();
-        } else {
-            settings = Json::Value();
-            settings["defaultModel"] = "stepfun/step-3.5-flash:free";
-            settings["maxTokens"] = 2048;
-            settings["temperature"] = 0.7;
-        }
-        
-        config_loaded = true;
-    }
-
-    // Call these ONLY when the mutex is already locked by the caller
-    void savePromptTemplates_nolock() {
-        std::ofstream file("data/prompt_templates.json");
-        file << promptTemplates.toStyledString();
-        file.close();
-    }
-
-    void saveSettings_nolock() {
-        std::ofstream file("data/settings.json");
-        file << settings.toStyledString();
-        file.close();
-    }
-    
-    bool parseJsonBody(const std::string& body, Json::Value& result) {
-        Json::CharReaderBuilder reader;
-        std::string errs;
-        std::istringstream stream(body);
-        return Json::parseFromStream(reader, stream, &result, &errs);
-    }
-}
-
-void handleGetPromptTemplates(const httplib::Request& req, httplib::Response& res) {
-    loadConfig();
-    
-    res.status = 200;
-    res.set_content(promptTemplates.toStyledString(), "application/json");
-}
-
-void handleCreatePromptTemplate(const httplib::Request& req, httplib::Response& res) {
-    loadConfig();
-    
-    Json::Value requestBody;
-    if (!parseJsonBody(req.body, requestBody)) {
-        res.status = 400;
-        res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
-        return;
-    }
-
-    if (!requestBody.isMember("name") || !requestBody.isMember("template")) {
-        res.status = 400;
-        res.set_content("{\"error\": \"Missing required fields: name, template\"}", "application/json");
-        return;
-    }
-
-    Json::Value newTemplate;
-    newTemplate["id"] = std::to_string(std::time(nullptr));
-    newTemplate["name"] = requestBody["name"];
-    newTemplate["template"] = requestBody["template"];
-    newTemplate["created_at"] = std::to_string(std::time(nullptr));
-
-    std::lock_guard<std::mutex> lock(config_mutex);
-    promptTemplates.append(newTemplate);
-    savePromptTemplates_nolock();
-
-    res.status = 201;
-    res.set_content(newTemplate.toStyledString(), "application/json");
-}
-
-void handleUpdatePromptTemplate(const httplib::Request& req, httplib::Response& res) {
-    loadConfig();
-    
-    // Get ID from path - httplib uses match group
-    std::string id = req.matches[1];
-
-    Json::Value requestBody;
-    if (!parseJsonBody(req.body, requestBody)) {
-        res.status = 400;
-        res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(config_mutex);
-    bool found = false;
-    for (auto& template_obj : promptTemplates) {
-        if (template_obj["id"].asString() == id) {
-            if (requestBody.isMember("name")) {
-                template_obj["name"] = requestBody["name"];
-            }
-            if (requestBody.isMember("template")) {
-                template_obj["template"] = requestBody["template"];
-            }
-            template_obj["updated_at"] = std::to_string(std::time(nullptr));
-            found = true;
-            savePromptTemplates_nolock();
-            break;
-        }
-    }
-
-    if (!found) {
-        res.status = 404;
-        res.set_content("{\"error\": \"Template not found\"}", "application/json");
-        return;
-    }
-
-    res.status = 200;
-    res.set_content("{\"status\": \"updated\"}", "application/json");
-}
-
-void handleDeletePromptTemplate(const httplib::Request& req, httplib::Response& res) {
-    loadConfig();
-    
-    std::string id = req.matches[1];
-    
-    std::lock_guard<std::mutex> lock(config_mutex);
-    bool found = false;
-    Json::Value newArray(Json::arrayValue);
-    
-    for (auto& template_obj : promptTemplates) {
-        if (template_obj["id"].asString() != id) {
-            newArray.append(template_obj);
-        } else {
-            found = true;
-        }
-    }
-
-    if (!found) {
-        res.status = 404;
-        res.set_content("{\"error\": \"Template not found\"}", "application/json");
-        return;
-    }
-
-    promptTemplates = newArray;
-    savePromptTemplates_nolock();
-
-    res.status = 200;
-    res.set_content("{\"status\": \"deleted\"}", "application/json");
-}
-
-void handleGetSettings(const httplib::Request& req, httplib::Response& res) {
-    loadConfig();
-    
-    res.status = 200;
-    res.set_content(settings.toStyledString(), "application/json");
-}
-
-void handleUpdateSettings(const httplib::Request& req, httplib::Response& res) {
-    loadConfig();
-    
-    Json::Value requestBody;
-    if (!parseJsonBody(req.body, requestBody)) {
-        res.status = 400;
-        res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(config_mutex);
-    if (requestBody.isMember("defaultModel")) {
-        settings["defaultModel"] = requestBody["defaultModel"];
-    }
-    if (requestBody.isMember("maxTokens")) {
-        settings["maxTokens"] = requestBody["maxTokens"];
-    }
-    if (requestBody.isMember("temperature")) {
-        settings["temperature"] = requestBody["temperature"];
-    }
-    
-    saveSettings_nolock();
-
-    res.status = 200;
-    res.set_content(settings.toStyledString(), "application/json");
-}
-```
-
-### ./backend/src/controllers/auth_controller.cpp:
-```cpp
-#include "controllers/auth_controller.h"
-#include <json/json.h>
-#include <memory>
-#include <cstdlib>
-
-void handleAuthVerify(const httplib::Request& req, httplib::Response& res, const Config& config) {
-    bool hasBackendKey = false;
-    const char* envApiKey = std::getenv("OPENROUTER_API_KEY");
-    if (envApiKey != nullptr && std::string(envApiKey).length() > 0) {
-        hasBackendKey = true;
-    }
-
-    auto apiKeyIt = req.headers.find("x-api-key");
-    
-    if (apiKeyIt == req.headers.end() && !hasBackendKey) {
-        res.status = 401;
-        res.set_content("{\"error\": \"Missing API key\"}", "application/json");
-        return;
-    }
-
-    if (!hasBackendKey && apiKeyIt != req.headers.end()) {
-        std::string apiKey = apiKeyIt->second;
-        if (apiKey.empty()) {
-            res.status = 401;
-            res.set_content("{\"error\": \"Invalid API key\"}", "application/json");
-            return;
-        }
-    }
-
-    Json::Value response;
-    response["status"] = "valid";
-    response["user"] = "admin";
-    response["permissions"] = Json::Value(Json::arrayValue);
-    response["permissions"].append("chat");
-    response["permissions"].append("models");
-    response["permissions"].append("config");
-
-    res.status = 200;
-    res.set_content(response.toStyledString(), "application/json");
-}
-```
-
-### ./backend/src/config/config.h:
-```h
-#ifndef CONFIG_H
-#define CONFIG_H
-
-#include <string>
-#include <fstream>
-#include <json/json.h>
-#include <stdexcept>
-
-class Config {
-private:
-    int port;
-    int frontendPort;
-    std::string host;
-    std::string frontendDir;
-
-public:
-    Config() : port(1024), frontendPort(1025), host("0.0.0.0"), frontendDir("../ctrlpanel") {}
-
-    bool loadFromFile(const std::string& filePath) {
-        try {
-            Json::Value config;
-            std::ifstream file(filePath);
-            if (!file.is_open()) {
-                return false;
-            }
-
-            file >> config;
-            file.close();
-
-            if (config.isMember("port")) {
-                port = config["port"].asInt();
-            }
-            if (config.isMember("frontendPort")) {
-                frontendPort = config["frontendPort"].asInt();
-            }
-            if (config.isMember("host")) {
-                host = config["host"].asString();
-            }
-            if (config.isMember("frontendDir")) {
-                frontendDir = config["frontendDir"].asString();
-            }
-
-            return true;
-        } catch (const std::exception& e) {
-            return false;
-        }
-    }
-
-    int getPort() const {
-        return port;
-    }
-
-    int getFrontendPort() const {
-        return frontendPort;
-    }
-
-    std::string getHost() const {
-        return host;
-    }
-
-    std::string getFrontendDir() const {
-        return frontendDir;
-    }
-};
-
-#endif // CONFIG_H
-
-```
-
-### ./backend/include/utils/encryption.h:
-```h
-#ifndef ENCRYPTION_H
-#define ENCRYPTION_H
-
-#include <string>
-#include <vector>
-#include <stdexcept>
-
-class Encryption {
-private:
-    std::string key;
-
-public:
-    Encryption(const std::string& encryptionKey);
-    
-    std::string encrypt(const std::string& data) const;
-    std::string decrypt(const std::string& encryptedData) const;
-    std::vector<unsigned char> encryptBinary(const std::vector<unsigned char>& data) const;
-    std::vector<unsigned char> decryptBinary(const std::vector<unsigned char>& encryptedData) const;
-};
-
-#endif // ENCRYPTION_H
-
-```
-
-### ./backend/include/services/openrouter_service.h:
-```h
-#ifndef OPENROUTER_SERVICE_H
-#define OPENROUTER_SERVICE_H
-
-#include <string>
-#include <vector>
-#include <functional>
-#include <json/json.h>
 #include "utils/encryption.h"
+#include <openssl/aes.h>
+#include <openssl/rand.h>
+#include <stdexcept>
+#include <vector>
+#include <string>
 
-// Stream context for handling chunked responses
-struct StreamContext {
-    std::function<void(const std::string&)> onChunk;
-    std::string buffer;
-};
+Encryption::Encryption(const std::string& encryptionKey) : key(encryptionKey) {
+    if (key.empty()) {
+        throw std::invalid_argument("Encryption key cannot be empty");
+    }
+}
 
-class OpenRouterService {
-private:
-    std::string apiKey;
-    Encryption& encryption;
+std::string Encryption::encrypt(const std::string& data) const {
+    std::vector<unsigned char> dataBytes(data.begin(), data.end());
+    std::vector<unsigned char> encrypted = encryptBinary(dataBytes);
+    return std::string(encrypted.begin(), encrypted.end());
+}
 
-public:
-    OpenRouterService(const std::string& apiKey, Encryption& encryption);
-    
-    Json::Value chat(const std::string& model, const std::string& prompt, int maxTokens = 2048) const;
-    Json::Value streamingChat(const std::string& model, const std::string& prompt, int maxTokens = 2048) const;
-    
-    // Streaming with callback for SSE
-    void streamingChatWithCallback(
-        const std::string& model, 
-        const std::string& prompt, 
-        int maxTokens,
-        std::function<void(const std::string&)> onChunk,
-        std::function<void(const std::string&)> onError
-    ) const;
-    
-    Json::Value getModels() const;
-    Json::Value getPricing() const;
-    
-private:
-    Json::Value makeRequest(const std::string& endpoint, const Json::Value& body) const;
-    std::string decryptApiKey() const;
-    Json::Value parseConversationHistory(const std::string& prompt) const;
-};
+std::string Encryption::decrypt(const std::string& encryptedData) const {
+    std::vector<unsigned char> encryptedBytes(encryptedData.begin(), encryptedData.end());
+    std::vector<unsigned char> decrypted = decryptBinary(encryptedBytes);
+    return std::string(decrypted.begin(), decrypted.end());
+}
 
-#endif // OPENROUTER_SERVICE_H
+std::vector<unsigned char> Encryption::encryptBinary(const std::vector<unsigned char>& data) const {
+    if (data.empty()) {
+        return {};
+    }
 
-```
+    // Generate random IV
+    unsigned char iv[AES_BLOCK_SIZE];
+    if (RAND_bytes(iv, AES_BLOCK_SIZE) != 1) {
+        throw std::runtime_error("Failed to generate random IV");
+    }
 
-### ./backend/include/controllers/openrouter_controller.h:
-```h
-#ifndef OPENROUTER_CONTROLLER_H
-#define OPENROUTER_CONTROLLER_H
+    // Prepare output buffer (data + IV)
+    std::vector<unsigned char> output(data.size() + AES_BLOCK_SIZE);
+    std::copy(iv, iv + AES_BLOCK_SIZE, output.begin());
 
-#include "httplib.h"
-#include "services/openrouter_service.h"
+    // Encrypt data
+    AES_KEY aesKey;
+    if (AES_set_encrypt_key(reinterpret_cast<const unsigned char*>(key.c_str()), key.size() * 8, &aesKey) != 0) {
+        throw std::runtime_error("Failed to set AES encryption key");
+    }
 
-void handleChat(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
-void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
-void handleModels(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
-void handlePricing(const httplib::Request& req, httplib::Response& res, OpenRouterService& service);
+    AES_cbc_encrypt(data.data(), output.data() + AES_BLOCK_SIZE, data.size(), &aesKey, iv, AES_ENCRYPT);
 
-#endif // OPENROUTER_CONTROLLER_H
+    return output;
+}
 
-```
+std::vector<unsigned char> Encryption::decryptBinary(const std::vector<unsigned char>& encryptedData) const {
+    if (encryptedData.size() < AES_BLOCK_SIZE) {
+        throw std::invalid_argument("Encrypted data too small");
+    }
 
-### ./backend/include/controllers/config_controller.h:
-```h
-#ifndef CONFIG_CONTROLLER_H
-#define CONFIG_CONTROLLER_H
+    // Extract IV
+    unsigned char iv[AES_BLOCK_SIZE];
+    std::copy(encryptedData.begin(), encryptedData.begin() + AES_BLOCK_SIZE, iv);
 
-#include "httplib.h"
+    // Prepare output buffer
+    std::vector<unsigned char> output(encryptedData.size() - AES_BLOCK_SIZE);
 
-// Prompt template handlers
-void handleGetPromptTemplates(const httplib::Request& req, httplib::Response& res);
-void handleCreatePromptTemplate(const httplib::Request& req, httplib::Response& res);
-void handleUpdatePromptTemplate(const httplib::Request& req, httplib::Response& res);
-void handleDeletePromptTemplate(const httplib::Request& req, httplib::Response& res);
+    // Decrypt data
+    AES_KEY aesKey;
+    if (AES_set_decrypt_key(reinterpret_cast<const unsigned char*>(key.c_str()), key.size() * 8, &aesKey) != 0) {
+        throw std::runtime_error("Failed to set AES decryption key");
+    }
 
-// Settings handlers
-void handleGetSettings(const httplib::Request& req, httplib::Response& res);
-void handleUpdateSettings(const httplib::Request& req, httplib::Response& res);
+    AES_cbc_encrypt(encryptedData.data() + AES_BLOCK_SIZE, output.data(), output.size(), &aesKey, iv, AES_DECRYPT);
 
-#endif // CONFIG_CONTROLLER_H
+    return output;
+}
 
 ```
 
-### ./backend/include/controllers/auth_controller.h:
-```h
-#ifndef AUTH_CONTROLLER_H
-#define AUTH_CONTROLLER_H
-
-#include <httplib.h>
-#include "config/config.h"
-
-void handleAuthVerify(const httplib::Request& req, httplib::Response& res, const Config& config);
-
-#endif // AUTH_CONTROLLER_H
-
-```
-
-### ./ctrlpanel/js/api.js:
+### ./ctrlpanel/js/chat.js:
 ```js
-// API service for backend communication
-import {
-    isDemoEnabled,
-    mockVerifyApiKey,
-    mockGetModels,
-    mockGetPricing,
-    mockSendChatMessage,
-    mockStreamChatMessage,
-    mockGetSettings,
-    mockUpdateSettings,
-    mockGetPromptTemplates,
-    mockCreatePromptTemplate,
-    mockUpdatePromptTemplate,
-    mockDeletePromptTemplate,
-} from './demo-mode.js';
+const CHATS_KEY = "ctrlpanel:chats";
+const CURRENT_CHAT_KEY = "ctrlpanel:currentChat";
 
-// Dynamically use the current hostname to allow LAN access
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:1024/api`;
+let chats = [];
+let currentChatId = null;
 
-let apiKey = localStorage.getItem("ctrlpanel:apiKey") || "";
-
-export function setApiKey(key) {
-    apiKey = key;
-    localStorage.setItem("ctrlpanel:apiKey", key);
+export function generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-export function getApiKey() {
-    return apiKey;
-}
-
-async function makeRequest(endpoint, options = {}) {
-    // If in demo mode, return mock responses
-    if (isDemoEnabled()) {
-        return makeMockRequest(endpoint, options);
-    }
-    
-    const url = `${API_BASE}${endpoint}`;
-    const headers = {
-        "Content-Type": "application/json",
-        ...(apiKey ? { "x-api-key": apiKey } : {}),
-        ...options.headers,
-    };
-
+export function loadChats() {
     try {
-        const response = await fetch(url, {
-            ...options,
-            headers,
+        const stored = localStorage.getItem(CHATS_KEY);
+        chats = stored ? JSON.parse(stored) : [];
+    } catch {
+        chats = [];
+    }
+    try {
+        currentChatId = localStorage.getItem(CURRENT_CHAT_KEY) || null;
+    } catch {
+        currentChatId = null;
+    }
+}
+
+export function saveChats() {
+    try {
+        localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+        if (currentChatId) {
+            localStorage.setItem(CURRENT_CHAT_KEY, currentChatId);
+        } else {
+            localStorage.removeItem(CURRENT_CHAT_KEY);
+        }
+    } catch {}
+}
+
+export function getChats() {
+    return chats;
+}
+
+export function getCurrentChatId() {
+    return currentChatId;
+}
+
+export function setCurrentChatId(id) {
+    currentChatId = id;
+}
+
+export function getChatById(id) {
+    return chats.find((c) => c.id === id);
+}
+
+export function createNewChat() {
+    const chat = {
+        id: generateId(),
+        title: "New Chat",
+        messages: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+    };
+    chats.unshift(chat);
+    currentChatId = chat.id;
+    saveChats();
+    renderChatList();
+    return chat;
+}
+
+export function deleteChat(id, onRouteChange) {
+    chats = chats.filter((c) => c.id !== id);
+    if (currentChatId === id) {
+        currentChatId = chats.length > 0 ? chats[0].id : null;
+    }
+    saveChats();
+    renderChatList();
+    if (onRouteChange) onRouteChange();
+}
+
+export function updateChatTitle(id, firstMessage) {
+    const chat = getChatById(id);
+    if (chat && chat.title === "New Chat" && firstMessage) {
+        chat.title =
+            firstMessage.slice(0, 30) +
+            (firstMessage.length > 30 ? "..." : "");
+        chat.updatedAt = Date.now();
+        saveChats();
+        renderChatList();
+    }
+}
+
+export function addMessageToChat(id, role, content) {
+    const chat = getChatById(id);
+    if (chat) {
+        chat.messages.push({ role, content, timestamp: Date.now() });
+        chat.updatedAt = Date.now();
+        if (chat.messages.length === 1 && role === "user") {
+            updateChatTitle(id, content);
+        }
+        saveChats();
+    }
+}
+
+export function renderChatList(onDelete) {
+    const list = document.getElementById("savedChatsList");
+    if (!list) return;
+
+    list.innerHTML = "";
+
+    chats.forEach((chat) => {
+        const item = document.createElement("a");
+        item.href = `#pages/ai-chat.html?chat=${chat.id}`;
+        item.className = "nav-subitem nav-chat-item";
+        item.dataset.route = "";
+        item.dataset.chatId = chat.id;
+
+        if (chat.id === currentChatId) {
+            item.classList.add("active");
+        }
+
+        const icon = document.createElement("span");
+        icon.className = "nav-subicon";
+        icon.setAttribute("aria-hidden", "true");
+        icon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+
+        const label = document.createElement("span");
+        label.className = "nav-label";
+        label.textContent = chat.title;
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "nav-chat-delete";
+        deleteBtn.setAttribute("aria-label", "Delete chat");
+        deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
+        deleteBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            deleteChat(chat.id, onDelete);
         });
 
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({}));
-            const errMsg = typeof error.error === 'object' && error.error !== null
-                ? (error.error.message || JSON.stringify(error.error))
-                : error.error;
-            throw new Error(errMsg || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    } catch (err) {
-        console.error("API request failed:", err);
-        throw err;
-    }
-}
-
-/**
- * Make mock request for demo mode
- * @param {string} endpoint - API endpoint
- * @param {Object} options - request options
- * @returns {Promise<any>}
- */
-async function makeMockRequest(endpoint, options = {}) {
-    console.log(`[DemoMode] Mock API call: ${endpoint}`);
-    
-    // Parse body if present
-    let body = {};
-    if (options.body) {
-        try {
-            body = JSON.parse(options.body);
-        } catch (e) {
-            // Ignore parse errors
-        }
-    }
-    
-    // Route to appropriate mock function
-    switch (endpoint) {
-        case '/auth/verify':
-            return mockVerifyApiKey();
-        case '/models':
-            return mockGetModels();
-        case '/pricing':
-            return mockGetPricing();
-        case '/chat':
-            return mockSendChatMessage(body.model, body.prompt, body.max_tokens);
-        case '/config/settings':
-            if (options.method === 'PUT') {
-                return mockUpdateSettings(body);
-            }
-            return mockGetSettings();
-        case '/config/prompt-templates':
-            if (options.method === 'POST') {
-                return mockCreatePromptTemplate(body.name, body.template);
-            }
-            return mockGetPromptTemplates();
-        default:
-            // Handle paths with IDs
-            if (endpoint.startsWith('/config/prompt-templates/')) {
-                const id = parseInt(endpoint.split('/').pop());
-                if (options.method === 'PUT') {
-                    return mockUpdatePromptTemplate(id, body);
-                } else if (options.method === 'DELETE') {
-                    return mockDeletePromptTemplate(id);
-                }
-            }
-            throw new Error(`Unknown endpoint: ${endpoint}`);
-    }
-}
-
-export async function verifyApiKey() {
-    // Force POST method since the backend strictly expects POST for this endpoint
-    return makeRequest("/auth/verify", { method: "POST" });
-}
-
-export async function getModels() {
-    return makeRequest("/models");
-}
-
-export async function getPricing() {
-    return makeRequest("/pricing");
-}
-
-export async function sendChatMessage(model, prompt, maxTokens = 2048) {
-    return makeRequest("/chat", {
-        method: "POST",
-        body: JSON.stringify({
-            model,
-            prompt,
-            max_tokens: maxTokens,
-        }),
+        item.append(icon, label, deleteBtn);
+        list.appendChild(item);
     });
 }
 
-export async function streamChatMessage(model, prompt, maxTokens = 2048, onChunk, signal = null) {
-    // If in demo mode, use mock streaming
-    if (isDemoEnabled()) {
-        return mockStreamChatMessage(model, prompt, maxTokens, onChunk);
+export function appendMessage(container, role, text, scroll = true) {
+    const div = document.createElement("div");
+    div.className = `chat-message ${role}`;
+    div.setAttribute("role", "article");
+    div.setAttribute("aria-label", role === "user" ? "You" : "Assistant");
+
+    const p = document.createElement("p");
+    p.textContent = text;
+    div.appendChild(p);
+
+    container.appendChild(div);
+    if (scroll) {
+        container.scrollTop = container.scrollHeight;
     }
-    
-    const url = new URL(`${API_BASE}/chat/stream`);
+}
 
-    const headers = {
-        "Content-Type": "application/json",
-        ...(apiKey ? { "x-api-key": apiKey } : {}),
-    };
+export function showTyping(container) {
+    const div = document.createElement("div");
+    div.className = "chat-typing";
+    div.setAttribute("aria-label", "Assistant is typing");
+    div.innerHTML = "<span></span><span></span><span></span>";
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return div;
+}
 
-    try {
-        const response = await fetch(url.toString(), {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-                model,
-                prompt,
-                max_tokens: maxTokens,
-            }),
-            signal
+export function loadCurrentChat(setActiveCallback) {
+    const messages = document.getElementById("chatMessages");
+    const empty = document.getElementById("chatEmpty");
+    if (!messages) return;
+
+    messages
+        .querySelectorAll(".chat-message, .chat-typing")
+        .forEach((el) => el.remove());
+
+    const chat = getChatById(currentChatId);
+    if (chat && chat.messages.length > 0) {
+        if (empty) empty.hidden = true;
+        chat.messages.forEach((msg) => {
+            appendMessage(messages, msg.role, msg.content, false);
+        });
+    } else {
+        if (empty) empty.hidden = false;
+    }
+
+    renderChatList();
+    if (setActiveCallback) setActiveCallback();
+}
+
+function initChatDropdowns(root) {
+    const dropdowns = root.querySelectorAll(".chat-dropdown");
+
+    dropdowns.forEach((dropdown) => {
+        const toggle = dropdown.querySelector(".chat-dropdown-toggle");
+        const menu = dropdown.querySelector(".chat-dropdown-menu");
+        const isMulti = dropdown.hasAttribute("data-multi");
+
+        toggle?.addEventListener("click", (e) => {
+            e.preventDefault();
+            const isOpen = dropdown.classList.contains("open");
+
+            root.querySelectorAll(".chat-dropdown.open").forEach((d) => {
+                if (d !== dropdown) {
+                    d.classList.remove("open");
+                    d.querySelector(".chat-dropdown-toggle")?.setAttribute(
+                        "aria-expanded",
+                        "false"
+                    );
+                }
+            });
+
+            dropdown.classList.toggle("open", !isOpen);
+            toggle.setAttribute("aria-expanded", String(!isOpen));
         });
 
-        if (!response.ok) {
-            let error = {};
-            try {
-                error = await response.json();
-            } catch (e) {}
-            const errMsg = typeof error.error === 'object' && error.error !== null
-                ? (error.error.message || JSON.stringify(error.error))
-                : error.error;
-            throw new Error(errMsg || `HTTP ${response.status}`);
-        }
+        if (!isMulti) {
+            const items = dropdown.querySelectorAll(".chat-dropdown-item");
+            const label = dropdown.querySelector(".chat-dropdown-label");
 
-        const reader = response.body?.getReader();
-        if (!reader) {
-            throw new Error("Response body is not readable");
-        }
+            items.forEach((item) => {
+                item.addEventListener("click", () => {
+                    items.forEach((i) => {
+                        i.classList.remove("selected");
+                        i.setAttribute("aria-selected", "false");
+                    });
+                    item.classList.add("selected");
+                    item.setAttribute("aria-selected", "true");
 
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let streamError = null;
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value, { stream: true });
-            console.debug("[API] Received chunk:", chunk);
-            buffer += chunk;
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-
-            let streamFinished = false; // Flag to instantly kill the stream
-
-            for (const line of lines) {
-                console.debug("[API] Processing line:", line);
-                if (line.startsWith("data: ")) {
-                    const data = line.slice(6);
-                    console.debug("[API] SSE data:", data);
-                    
-                    // Stop waiting for the server to close the socket
-                    if (data === "[DONE]") {
-                        streamFinished = true;
-                        break; 
+                    if (label) {
+                        label.textContent = item.textContent;
                     }
-                    
-                    try {
-                        const parsed = JSON.parse(data);
-                        console.debug("[API] Parsed JSON:", parsed);
-                        // Check for error in the stream
-                        if (parsed.error) {
-                            const errorMsg = typeof parsed.error === 'object' && parsed.error !== null
-                                ? (parsed.error.message || JSON.stringify(parsed.error))
-                                : String(parsed.error);
-                            console.debug("[API] Error detected in stream:", errorMsg);
-                            streamError = new Error(errorMsg);
-                        }
-                        if (onChunk) onChunk(parsed);
-                    } catch (e) {
-                        console.debug("[API] Failed to parse JSON:", e, "Data was:", data);
-                    }
-                }
-            }
-            if (streamFinished) break; // Break the while loop
+
+                    dropdown.classList.remove("open");
+                    toggle?.setAttribute("aria-expanded", "false");
+                });
+            });
         }
 
-        // If we encountered an error in the stream, throw it after processing
-        if (streamError) {
-            throw streamError;
+        if (isMulti) {
+            menu?.addEventListener("click", (e) => {
+                e.stopPropagation();
+            });
         }
-    } catch (err) {
-        if (err.name === 'AbortError') throw err; // Re-throw to be handled gracefully
-        console.error("Streaming request failed:", err);
-        throw err;
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!e.target.closest(".chat-dropdown")) {
+            root.querySelectorAll(".chat-dropdown.open").forEach((d) => {
+                d.classList.remove("open");
+                d.querySelector(".chat-dropdown-toggle")?.setAttribute(
+                    "aria-expanded",
+                    "false"
+                );
+            });
+        }
+    });
+}
+
+export function initChatPage(root, currentRouteGetter, setActiveCallback) {
+    if (!root) return;
+
+    const form = root.querySelector("#chatForm");
+    const input = root.querySelector("#chatInput");
+    const messages = root.querySelector("#chatMessages");
+    const empty = root.querySelector("#chatEmpty");
+    if (!form || !input || !messages) return;
+
+    initChatDropdowns(root);
+
+    const urlParams = new URLSearchParams(
+        location.hash.split("?")[1] || ""
+    );
+    const chatIdFromUrl = urlParams.get("chat");
+
+    if (chatIdFromUrl && getChatById(chatIdFromUrl)) {
+        currentChatId = chatIdFromUrl;
+        saveChats();
     }
-}
 
-export async function getSettings() {
-    return makeRequest("/config/settings");
-}
+    loadCurrentChat(setActiveCallback);
 
-export async function updateSettings(settings) {
-    return makeRequest("/config/settings", {
-        method: "PUT",
-        body: JSON.stringify(settings),
+    const resizeInput = () => {
+        input.style.height = "auto";
+        input.style.height = Math.min(input.scrollHeight, 150) + "px";
+    };
+
+    input.addEventListener("input", resizeInput);
+
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            form.requestSubmit();
+        }
     });
-}
 
-export async function getPromptTemplates() {
-    return makeRequest("/config/prompt-templates");
-}
+    form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const text = input.value.trim();
+        if (!text) return;
 
-export async function createPromptTemplate(name, template) {
-    return makeRequest("/config/prompt-templates", {
-        method: "POST",
-        body: JSON.stringify({ name, template }),
+        if (!currentChatId || !getChatById(currentChatId)) {
+            createNewChat();
+        }
+
+        if (empty) empty.hidden = true;
+        appendMessage(messages, "user", text);
+        addMessageToChat(currentChatId, "user", text);
+        input.value = "";
+        input.style.height = "auto";
+
+        const typing = showTyping(messages);
+        setTimeout(() => {
+            typing.remove();
+            const response =
+                "This is a placeholder response. Connect your AI backend to enable real conversations.";
+            appendMessage(messages, "assistant", response);
+            addMessageToChat(currentChatId, "assistant", response);
+        }, 1000 + Math.random() * 500);
     });
+
+    input.focus();
 }
 
-export async function updatePromptTemplate(id, data) {
-    return makeRequest(`/config/prompt-templates/${id}`, {
-        method: "PUT",
-        body: JSON.stringify(data),
-    });
+export function clearCurrentChatId() {
+    currentChatId = null;
+    localStorage.removeItem(CURRENT_CHAT_KEY);
 }
 
-export async function deletePromptTemplate(id) {
-    return makeRequest(`/config/prompt-templates/${id}`, {
-        method: "DELETE",
-    });
+```
+
+### ./ctrlpanel/js/theme.js:
+```js
+export const THEME_KEY = "ctrlpanel:theme";
+export const DEFAULT_THEME = "everforest-harddark-green";
+
+import { setApiKey, getApiKey, verifyApiKey } from "./api.js";
+
+export const PALETTES = {
+	everforest: {
+		label: "Everforest",
+		flavours: {
+			harddark: { label: "Hard Dark", dark: true },
+			dark: { label: "Dark", dark: true },
+			softdark: { label: "Soft Dark", dark: true },
+			hardlight: { label: "Hard Light", dark: false },
+			light: { label: "Light", dark: false },
+			softlight: { label: "Soft Light", dark: false },
+		},
+		accents: ["red", "orange", "yellow", "green", "aqua", "blue", "purple"],
+		defaultFlavour: "harddark",
+		defaultAccent: "green",
+		accentVar: "--ef",
+	},
+	catppuccin: {
+		label: "Catppuccin",
+		flavours: {
+			latte: { label: "Latte", dark: false },
+			frappe: { label: "Frappé", dark: true },
+			macchiato: { label: "Macchiato", dark: true },
+			mocha: { label: "Mocha", dark: true },
+		},
+		accents: ["rosewater", "flamingo", "pink", "mauve", "red", "maroon", "peach", "yellow", "green", "teal", "sky", "sapphire", "blue", "lavender"],
+		defaultFlavour: "mocha",
+		defaultAccent: "green",
+		accentVar: "--ctp",
+	},
+};
+
+export const PALETTE_ORDER = ["everforest", "catppuccin"];
+
+let currentTheme = null;
+
+export function splitThemeKey(key) {
+	const parts = String(key || "").split("-");
+	if (parts.length < 3) return { palette: null, flavour: null, accent: null };
+	return {
+		palette: parts[0],
+		flavour: parts.slice(1, -1).join("-"),
+		accent: parts.at(-1),
+	};
 }
+
+export const isValidPalette = (p) => p in PALETTES;
+export const isValidFlavour = (p, f) => isValidPalette(p) && f in PALETTES[p].flavours;
+export const isValidAccent = (p, a) => isValidPalette(p) && PALETTES[p].accents.includes(a);
+
+export function coerceTheme(key) {
+	const { palette, flavour, accent } = splitThemeKey(key);
+	const fixedPalette = isValidPalette(palette) ? palette : "everforest";
+	const data = PALETTES[fixedPalette];
+	const fixedFlavour = isValidFlavour(fixedPalette, flavour) ? flavour : data.defaultFlavour;
+	const fixedAccent = isValidAccent(fixedPalette, accent) ? accent : data.defaultAccent;
+	return `${fixedPalette}-${fixedFlavour}-${fixedAccent}`;
+}
+
+export function getCurrentTheme() { return currentTheme; }
+
+export function setTheme(themeKey, { persist = true, syncUI = true } = {}) {
+	const coerced = coerceTheme(themeKey);
+	document.documentElement.setAttribute("data-theme", coerced);
+	currentTheme = coerced;
+	if (persist) {
+		try { localStorage.setItem(THEME_KEY, coerced); } catch {}
+	}
+	if (syncUI) {
+		const outlet = document.querySelector('[data-fragment="main"]');
+		if (outlet) syncSettingsUI(outlet);
+	}
+}
+
+export function initTheme() {
+	let initial;
+	try { initial = localStorage.getItem(THEME_KEY); } catch {}
+	initial ||= document.documentElement.getAttribute("data-theme") || DEFAULT_THEME;
+	setTheme(initial, { persist: false, syncUI: false });
+}
+
+function createTile(type, name, value, labelText) {
+	const label = document.createElement("label");
+	label.className = `${type}-tile`;
+	label.setAttribute("aria-checked", "false");
+	const input = document.createElement("input");
+	input.type = "radio";
+	input.name = name;
+	input.value = value;
+	const dot = document.createElement("span");
+	dot.className = "dot";
+	dot.setAttribute("aria-hidden", "true");
+	const text = document.createElement("span");
+	text.textContent = labelText;
+	label.append(input, dot, text);
+	return label;
+}
+
+function generatePaletteSelector(container) {
+	container.innerHTML = "";
+	PALETTE_ORDER.forEach((id) => {
+		container.appendChild(createTile("palette", "palette", id, PALETTES[id].label));
+	});
+}
+
+function generateFlavourSelector(container, paletteId) {
+	container.innerHTML = "";
+	const palette = PALETTES[paletteId];
+	if (!palette) return;
+	Object.entries(palette.flavours).forEach(([id, data]) => {
+		container.appendChild(createTile("flavour", "flavour", id, data.label));
+	});
+}
+
+function generateAccentSelector(container, paletteId) {
+	container.innerHTML = "";
+	const palette = PALETTES[paletteId];
+	if (!palette) return;
+	palette.accents.forEach((id) => {
+		const btn = document.createElement("button");
+		btn.type = "button";
+		btn.className = "accent-chip";
+		btn.setAttribute("role", "radio");
+		btn.dataset.accent = id;
+		btn.style.setProperty("--swatch", `var(${palette.accentVar}-${id})`);
+		btn.setAttribute("aria-label", id.charAt(0).toUpperCase() + id.slice(1));
+		btn.setAttribute("aria-checked", "false");
+		btn.tabIndex = -1;
+		container.appendChild(btn);
+	});
+}
+
+export function syncSettingsUI(root) {
+	if (!root || !currentTheme) return;
+	const { palette, flavour, accent } = splitThemeKey(currentTheme);
+
+	root.querySelectorAll('input[name="palette"]').forEach((input) => {
+		const checked = input.value === palette;
+		input.checked = checked;
+		const tile = input.closest(".palette-tile");
+		if (tile) {
+			tile.classList.toggle("selected", checked);
+			tile.setAttribute("aria-checked", String(checked));
+		}
+	});
+
+	root.querySelectorAll('input[name="flavour"]').forEach((input) => {
+		const checked = input.value === flavour;
+		input.checked = checked;
+		const tile = input.closest(".flavour-tile");
+		if (tile) {
+			tile.classList.toggle("selected", checked);
+			tile.setAttribute("aria-checked", String(checked));
+		}
+	});
+
+	root.querySelectorAll('button[data-accent][role="radio"]').forEach((btn) => {
+		const active = btn.dataset.accent === accent;
+		btn.classList.toggle("selected", active);
+		btn.setAttribute("aria-checked", String(active));
+		btn.tabIndex = active ? 0 : -1;
+	});
+}
+
+export function initSettingsPage(root) {
+	if (!root) return;
+	const paletteList = root.querySelector("[data-palette-list]");
+	const flavourList = root.querySelector("[data-flavour-list]");
+	const accentGrid = root.querySelector("[data-accent-grid]");
+	if (!paletteList || !flavourList || !accentGrid) return;
+
+	const { palette: currentPalette } = splitThemeKey(currentTheme);
+
+	generatePaletteSelector(paletteList);
+	generateFlavourSelector(flavourList, currentPalette);
+	generateAccentSelector(accentGrid, currentPalette);
+
+	paletteList.addEventListener("change", (e) => {
+		if (e.target.name !== "palette") return;
+		const newPalette = e.target.value;
+		const data = PALETTES[newPalette];
+		if (!data) return;
+		generateFlavourSelector(flavourList, newPalette);
+		generateAccentSelector(accentGrid, newPalette);
+		setTheme(`${newPalette}-${data.defaultFlavour}-${data.defaultAccent}`);
+	});
+
+	flavourList.addEventListener("change", (e) => {
+		if (e.target.name !== "flavour") return;
+		const { palette, accent } = splitThemeKey(currentTheme);
+		const fixedAccent = isValidAccent(palette, accent) ? accent : PALETTES[palette].defaultAccent;
+		setTheme(`${palette}-${e.target.value}-${fixedAccent}`);
+	});
+
+	accentGrid.addEventListener("click", (e) => {
+		const btn = e.target.closest("button[data-accent]");
+		if (!btn) return;
+		const { palette, flavour } = splitThemeKey(currentTheme);
+		const accent = btn.dataset.accent;
+		if (isValidAccent(palette, accent)) setTheme(`${palette}-${flavour}-${accent}`);
+	});
+
+	accentGrid.addEventListener("keydown", (e) => {
+		const navKeys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
+		if (!navKeys.includes(e.key) && e.key !== " " && e.key !== "Enter") return;
+		const items = [...accentGrid.querySelectorAll('button[data-accent][role="radio"]')];
+		if (!items.length) return;
+		const currentIdx = items.findIndex((el) => el.classList.contains("selected"));
+		let nextIdx = currentIdx;
+
+		if (navKeys.includes(e.key)) {
+			e.preventDefault();
+			const cols = parseInt(getComputedStyle(accentGrid).getPropertyValue("--cols") || "7", 10);
+			const moves = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols };
+			nextIdx = (currentIdx + moves[e.key] + items.length) % items.length;
+			items[nextIdx]?.focus();
+		} else {
+			e.preventDefault();
+			(document.activeElement?.closest('button[data-accent][role="radio"]') || items[currentIdx])?.click();
+		}
+	});
+
+	syncSettingsUI(root);
+
+	// API Key configuration
+	const apiKeyInput = root.querySelector("#api-key-input");
+	const saveApiKeyBtn = root.querySelector("#save-api-key");
+	const apiStatus = root.querySelector("#api-status");
+
+	if (apiKeyInput && saveApiKeyBtn && apiStatus) {
+		// Load saved API key
+		const savedKey = getApiKey();
+		if (savedKey) {
+			apiKeyInput.value = savedKey;
+		}
+
+		// Update status
+		const updateStatus = async () => {
+			if (!getApiKey()) {
+				apiStatus.textContent = "Not configured";
+				apiStatus.className = "badge";
+				return;
+			}
+			try {
+				await verifyApiKey();
+				apiStatus.textContent = "Connected";
+				apiStatus.className = "badge badge-success";
+			} catch (err) {
+				apiStatus.textContent = "Error: " + err.message;
+				apiStatus.className = "badge badge-error";
+			}
+		};
+
+		saveApiKeyBtn.addEventListener("click", async () => {
+			const key = apiKeyInput.value.trim();
+			if (!key) {
+				setApiKey("");
+				apiStatus.textContent = "Cleared";
+				apiStatus.className = "badge";
+				return;
+			}
+			setApiKey(key);
+			apiStatus.textContent = "Verifying...";
+			apiStatus.className = "badge";
+			await updateStatus();
+		});
+
+		// Check status on load
+		updateStatus();
+	}
+}
+
 ```
 
 ### ./ctrlpanel/js/router.js:
@@ -4156,6 +4518,504 @@ export function initSidebarToggle() {
 	});
 	toggleBtn.setAttribute("aria-expanded", String(!document.body.classList.contains("sidebar-collapsed")));
 }
+
+```
+
+### ./ctrlpanel/js/connection-ui.js:
+```js
+// Connection monitoring UI - handles modal popups and demo mode initialization
+import {
+    startMonitoring,
+    stopMonitoring,
+    setConnectionChangeCallback,
+    setOpenRouterChangeCallback,
+    retryConnection,
+    startAutoRetry,
+    stopAutoRetry,
+    isBackendConnected,
+} from './connection-monitor.js';
+import { initDemoMode, isDemoEnabled } from './demo-mode.js';
+
+// Modal state
+let connectionModal = null;
+let openRouterModal = null;
+let isConnectionModalVisible = false;
+let isOpenRouterModalVisible = false;
+
+/**
+ * Initialize connection monitoring and demo mode
+ * Call this early in app initialization
+ */
+export function initConnectionUI() {
+    // Initialize demo mode first (checks URL params)
+    initDemoMode();
+    
+    // If in demo mode, skip connection monitoring
+    if (isDemoEnabled()) {
+        console.log('[ConnectionUI] Demo mode active - skipping connection monitoring');
+        return;
+    }
+    
+    // Set up connection state change callbacks
+    setConnectionChangeCallback(handleConnectionChange);
+    setOpenRouterChangeCallback(handleOpenRouterChange);
+    
+    // Start monitoring
+    startMonitoring();
+    
+    console.log('[ConnectionUI] Connection monitoring initialized');
+}
+
+/**
+ * Handle backend connection state changes
+ * @param {boolean} isConnected - new connection state
+ */
+function handleConnectionChange(isConnected) {
+    if (isConnected) {
+        // Connection restored
+        hideConnectionModal();
+    } else {
+        // Connection lost
+        showConnectionModal();
+    }
+}
+
+/**
+ * Handle OpenRouter availability changes
+ * @param {boolean} isAvailable - new availability state
+ */
+function handleOpenRouterChange(isAvailable) {
+    if (isAvailable) {
+        // OpenRouter available
+        hideOpenRouterModal();
+    } else {
+        // OpenRouter unavailable
+        showOpenRouterModal();
+    }
+}
+
+/**
+ * Create and show the connection lost modal
+ */
+function showConnectionModal() {
+    if (isConnectionModalVisible) return;
+    
+    // Remove existing modal if any
+    hideConnectionModal();
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'connection-modal-overlay';
+    overlay.id = 'connection-modal';
+    
+    overlay.innerHTML = `
+        <div class="connection-modal">
+            <div class="connection-modal-header">
+                <div class="connection-modal-icon error">📡</div>
+                <h3 class="connection-modal-title">Connection Lost</h3>
+            </div>
+            <p class="connection-modal-message">
+                Lost connection to backend server. The application requires a connection to function properly.
+            </p>
+            <div class="connection-modal-actions">
+                <button class="connection-modal-button secondary" id="conn-modal-cancel">Cancel</button>
+                <button class="connection-modal-button primary" id="conn-modal-retry">Retry Connection</button>
+            </div>
+            <div class="connection-modal-status">
+                <span class="connection-modal-status-dot reconnecting"></span>
+                <span id="conn-modal-status-text">Auto-retrying every 3 seconds...</span>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    connectionModal = overlay;
+    
+    // Add event listeners
+    overlay.querySelector('#conn-modal-retry').addEventListener('click', async () => {
+        const statusText = overlay.querySelector('#conn-modal-status-text');
+        const statusDot = overlay.querySelector('.connection-modal-status-dot');
+        statusText.textContent = 'Retrying now...';
+        statusDot.className = 'connection-modal-status-dot reconnecting';
+        
+        const connected = await retryConnection();
+        if (connected) {
+            hideConnectionModal();
+        } else {
+            statusText.textContent = 'Still disconnected. Auto-retrying every 3 seconds...';
+        }
+    });
+    
+    overlay.querySelector('#conn-modal-cancel').addEventListener('click', () => {
+        stopAutoRetry();
+        hideConnectionModal();
+    });
+    
+    // Show modal with animation
+    requestAnimationFrame(() => {
+        overlay.classList.add('visible');
+    });
+    
+    isConnectionModalVisible = true;
+    
+    // Start auto-retry
+    startAutoRetry((connected) => {
+        if (connected) {
+            hideConnectionModal();
+        }
+    });
+}
+
+/**
+ * Hide the connection modal
+ */
+function hideConnectionModal() {
+    if (!connectionModal) return;
+    
+    stopAutoRetry();
+    
+    connectionModal.classList.remove('visible');
+    
+    setTimeout(() => {
+        if (connectionModal && connectionModal.parentNode) {
+            connectionModal.parentNode.removeChild(connectionModal);
+        }
+        connectionModal = null;
+        isConnectionModalVisible = false;
+    }, 300);
+}
+
+/**
+ * Create and show the OpenRouter unavailable modal
+ */
+function showOpenRouterModal() {
+    if (isOpenRouterModalVisible) return;
+    
+    // Remove existing modal if any
+    hideOpenRouterModal();
+    
+    const overlay = document.createElement('div');
+    overlay.className = 'connection-modal-overlay';
+    overlay.id = 'openrouter-modal';
+    
+    overlay.innerHTML = `
+        <div class="connection-modal">
+            <div class="connection-modal-header">
+                <div class="connection-modal-icon warning">⚠️</div>
+                <h3 class="connection-modal-title">OpenRouter API Unavailable</h3>
+            </div>
+            <p class="connection-modal-message">
+                The OpenRouter API is currently unreachable. AI chat features may not work properly.
+            </p>
+            <div class="connection-modal-note">
+                💡 Note: Local features like settings and prompt templates will continue to work.
+            </div>
+            <div class="connection-modal-actions">
+                <button class="connection-modal-button secondary" id="or-modal-dismiss">Dismiss</button>
+                <button class="connection-modal-button primary" id="or-modal-retry">Retry Connection</button>
+            </div>
+            <div class="connection-modal-status">
+                <span class="connection-modal-status-dot offline"></span>
+                <span id="or-modal-status-text">OpenRouter API offline</span>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    openRouterModal = overlay;
+    
+    // Add event listeners
+    overlay.querySelector('#or-modal-retry').addEventListener('click', async () => {
+        const statusText = overlay.querySelector('#or-modal-status-text');
+        const statusDot = overlay.querySelector('.connection-modal-status-dot');
+        statusText.textContent = 'Checking OpenRouter status...';
+        statusDot.className = 'connection-modal-status-dot reconnecting';
+        
+        // Trigger a health check
+        const event = new CustomEvent('checkOpenRouterHealth');
+        window.dispatchEvent(event);
+    });
+    
+    overlay.querySelector('#or-modal-dismiss').addEventListener('click', () => {
+        hideOpenRouterModal();
+    });
+    
+    // Show modal with animation
+    requestAnimationFrame(() => {
+        overlay.classList.add('visible');
+    });
+    
+    isOpenRouterModalVisible = true;
+}
+
+/**
+ * Hide the OpenRouter modal
+ */
+function hideOpenRouterModal() {
+    if (!openRouterModal) return;
+    
+    openRouterModal.classList.remove('visible');
+    
+    setTimeout(() => {
+        if (openRouterModal && openRouterModal.parentNode) {
+            openRouterModal.parentNode.removeChild(openRouterModal);
+        }
+        openRouterModal = null;
+        isOpenRouterModalVisible = false;
+    }, 300);
+}
+
+/**
+ * Manually check connection status
+ * @returns {boolean}
+ */
+export function checkConnection() {
+    return isBackendConnected();
+}
+
+/**
+ * Clean up connection monitoring on app shutdown
+ */
+export function cleanupConnectionUI() {
+    stopMonitoring();
+    hideConnectionModal();
+    hideOpenRouterModal();
+}
+
+```
+
+### ./ctrlpanel/js/connection-monitor.js:
+```js
+// Connection monitoring module for backend health checks
+const API_BASE = "http://127.0.0.1:1024";
+
+// Connection state
+let isConnected = true;
+let isOpenRouterAvailable = true;
+let healthCheckInterval = null;
+let openRouterCheckInterval = null;
+let retryInterval = null;
+
+// Callbacks for state changes
+let onConnectionChange = null;
+let onOpenRouterChange = null;
+
+// Configuration
+const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
+const RETRY_INTERVAL = 3000; // 3 seconds
+
+/**
+ * Check if backend is connected
+ * @returns {boolean}
+ */
+export function isBackendConnected() {
+    return isConnected;
+}
+
+/**
+ * Check if OpenRouter is available
+ * @returns {boolean}
+ */
+export function isOpenRouterHealthy() {
+    return isOpenRouterAvailable;
+}
+
+/**
+ * Set callback for connection state changes
+ * @param {function(boolean)} callback - called with new connection state
+ */
+export function setConnectionChangeCallback(callback) {
+    onConnectionChange = callback;
+}
+
+/**
+ * Set callback for OpenRouter state changes
+ * @param {function(boolean)} callback - called with new OpenRouter availability
+ */
+export function setOpenRouterChangeCallback(callback) {
+    onOpenRouterChange = callback;
+}
+
+/**
+ * Perform health check on backend
+ * @returns {Promise<boolean>}
+ */
+async function checkBackendHealth() {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch(`${API_BASE}/health`, {
+            method: 'GET',
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        return response.ok;
+    } catch (err) {
+        return false;
+    }
+}
+
+/**
+ * Check OpenRouter availability via backend
+ * @returns {Promise<boolean>}
+ */
+async function checkOpenRouterHealth() {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(`${API_BASE}/api/health/external`, {
+            method: 'GET',
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            return false;
+        }
+        
+        const data = await response.json();
+        return data.openrouter === true;
+    } catch (err) {
+        return false;
+    }
+}
+
+/**
+ * Perform health check and update state
+ */
+async function performHealthCheck() {
+    const wasConnected = isConnected;
+    isConnected = await checkBackendHealth();
+    
+    if (wasConnected !== isConnected) {
+        console.log(`[ConnectionMonitor] Backend connection: ${isConnected ? 'connected' : 'disconnected'}`);
+        if (onConnectionChange) {
+            onConnectionChange(isConnected);
+        }
+    }
+    
+    return isConnected;
+}
+
+/**
+ * Perform OpenRouter health check
+ */
+async function performOpenRouterCheck() {
+    // Only check OpenRouter if backend is connected
+    if (!isConnected) {
+        if (isOpenRouterAvailable) {
+            isOpenRouterAvailable = false;
+            if (onOpenRouterChange) {
+                onOpenRouterChange(false);
+            }
+        }
+        return;
+    }
+    
+    const wasAvailable = isOpenRouterAvailable;
+    isOpenRouterAvailable = await checkOpenRouterHealth();
+    
+    if (wasAvailable !== isOpenRouterAvailable) {
+        console.log(`[ConnectionMonitor] OpenRouter: ${isOpenRouterAvailable ? 'available' : 'unavailable'}`);
+        if (onOpenRouterChange) {
+            onOpenRouterChange(isOpenRouterAvailable);
+        }
+    }
+}
+
+/**
+ * Start the connection monitoring
+ */
+export function startMonitoring() {
+    if (healthCheckInterval) {
+        console.log('[ConnectionMonitor] Already monitoring');
+        return;
+    }
+    
+    console.log('[ConnectionMonitor] Starting health checks');
+    
+    // Perform initial checks
+    performHealthCheck();
+    performOpenRouterCheck();
+    
+    // Start periodic health checks
+    healthCheckInterval = setInterval(performHealthCheck, HEALTH_CHECK_INTERVAL);
+    openRouterCheckInterval = setInterval(performOpenRouterCheck, HEALTH_CHECK_INTERVAL);
+}
+
+/**
+ * Stop the connection monitoring
+ */
+export function stopMonitoring() {
+    if (healthCheckInterval) {
+        clearInterval(healthCheckInterval);
+        healthCheckInterval = null;
+    }
+    if (openRouterCheckInterval) {
+        clearInterval(openRouterCheckInterval);
+        openRouterCheckInterval = null;
+    }
+    if (retryInterval) {
+        clearInterval(retryInterval);
+        retryInterval = null;
+    }
+    console.log('[ConnectionMonitor] Stopped monitoring');
+}
+
+/**
+ * Manual retry connection - returns promise that resolves when connected
+ * @returns {Promise<boolean>}
+ */
+export async function retryConnection() {
+    console.log('[ConnectionMonitor] Manual retry initiated');
+    return await performHealthCheck();
+}
+
+/**
+ * Start auto-retry mechanism
+ * @param {function} onRetry - callback called on each retry attempt
+ */
+export function startAutoRetry(onRetry) {
+    if (retryInterval) {
+        clearInterval(retryInterval);
+    }
+    
+    retryInterval = setInterval(async () => {
+        const connected = await performHealthCheck();
+        if (connected && retryInterval) {
+            clearInterval(retryInterval);
+            retryInterval = null;
+        }
+        if (onRetry) {
+            onRetry(connected);
+        }
+    }, RETRY_INTERVAL);
+}
+
+/**
+ * Stop auto-retry mechanism
+ */
+export function stopAutoRetry() {
+    if (retryInterval) {
+        clearInterval(retryInterval);
+        retryInterval = null;
+    }
+}
+
+```
+
+### ./ctrlpanel/js/browser-detect.js:
+```js
+(function () {
+	try {
+		const ua = (navigator.userAgent || "").toLowerCase();
+		if (ua.includes("ladybird")) document.documentElement.dataset.browser = "ladybird";
+		else if (ua.includes("firefox")) document.documentElement.dataset.browser = "firefox";
+	} catch {}
+})();
 
 ```
 
@@ -4496,18 +5356,6 @@ export async function mockExternalHealthCheck() {
 
 ```
 
-### ./ctrlpanel/js/browser-detect.js:
-```js
-(function () {
-	try {
-		const ua = (navigator.userAgent || "").toLowerCase();
-		if (ua.includes("ladybird")) document.documentElement.dataset.browser = "ladybird";
-		else if (ua.includes("firefox")) document.documentElement.dataset.browser = "firefox";
-	} catch {}
-})();
-
-```
-
 ### ./ctrlpanel/js/app.js:
 ```js
 import { initConnectionUI } from "./connection-ui.js";
@@ -4648,1119 +5496,282 @@ if (quickNewChatBtn) {
 
 ```
 
-### ./ctrlpanel/js/theme.js:
+### ./ctrlpanel/js/api.js:
 ```js
-export const THEME_KEY = "ctrlpanel:theme";
-export const DEFAULT_THEME = "everforest-harddark-green";
-
-import { verifyApiKey, getSettings, updateSettings, getModels } from "./api.js";
-
-export const PALETTES = {
-	everforest: {
-		label: "Everforest",
-		flavours: {
-			harddark: { label: "Hard Dark", dark: true },
-			dark: { label: "Dark", dark: true },
-			softdark: { label: "Soft Dark", dark: true },
-			hardlight: { label: "Hard Light", dark: false },
-			light: { label: "Light", dark: false },
-			softlight: { label: "Soft Light", dark: false },
-		},
-		accents:["red", "orange", "yellow", "green", "aqua", "blue", "purple"],
-		defaultFlavour: "harddark",
-		defaultAccent: "green",
-		accentVar: "--ef",
-	},
-	catppuccin: {
-		label: "Catppuccin",
-		flavours: {
-			latte: { label: "Latte", dark: false },
-			frappe: { label: "Frappé", dark: true },
-			macchiato: { label: "Macchiato", dark: true },
-			mocha: { label: "Mocha", dark: true },
-		},
-		accents:["rosewater", "flamingo", "pink", "mauve", "red", "maroon", "peach", "yellow", "green", "teal", "sky", "sapphire", "blue", "lavender"],
-		defaultFlavour: "mocha",
-		defaultAccent: "green",
-		accentVar: "--ctp",
-	},
-};
-
-export const PALETTE_ORDER = ["everforest", "catppuccin"];
-
-let currentTheme = null;
-
-export function splitThemeKey(key) {
-	const parts = String(key || "").split("-");
-	if (parts.length < 3) return { palette: null, flavour: null, accent: null };
-	return {
-		palette: parts[0],
-		flavour: parts.slice(1, -1).join("-"),
-		accent: parts.at(-1),
-	};
-}
-
-export const isValidPalette = (p) => p in PALETTES;
-export const isValidFlavour = (p, f) => isValidPalette(p) && f in PALETTES[p].flavours;
-export const isValidAccent = (p, a) => isValidPalette(p) && PALETTES[p].accents.includes(a);
-
-export function coerceTheme(key) {
-	const { palette, flavour, accent } = splitThemeKey(key);
-	const fixedPalette = isValidPalette(palette) ? palette : "everforest";
-	const data = PALETTES[fixedPalette];
-	const fixedFlavour = isValidFlavour(fixedPalette, flavour) ? flavour : data.defaultFlavour;
-	const fixedAccent = isValidAccent(fixedPalette, accent) ? accent : data.defaultAccent;
-	return `${fixedPalette}-${fixedFlavour}-${fixedAccent}`;
-}
-
-export function getCurrentTheme() { return currentTheme; }
-
-export function setTheme(themeKey, { persist = true, syncUI = true } = {}) {
-	const coerced = coerceTheme(themeKey);
-	document.documentElement.setAttribute("data-theme", coerced);
-	currentTheme = coerced;
-	if (persist) {
-		try { localStorage.setItem(THEME_KEY, coerced); } catch {}
-	}
-	if (syncUI) {
-		const outlet = document.querySelector('[data-fragment="main"]');
-		if (outlet) syncSettingsUI(outlet);
-	}
-}
-
-export function initTheme() {
-	let initial;
-	try { initial = localStorage.getItem(THEME_KEY); } catch {}
-	initial ||= document.documentElement.getAttribute("data-theme") || DEFAULT_THEME;
-	setTheme(initial, { persist: false, syncUI: false });
-}
-
-function createTile(type, name, value, labelText) {
-	const label = document.createElement("label");
-	label.className = `${type}-tile`;
-	label.setAttribute("aria-checked", "false");
-	const input = document.createElement("input");
-	input.type = "radio";
-	input.name = name;
-	input.value = value;
-	const dot = document.createElement("span");
-	dot.className = "dot";
-	dot.setAttribute("aria-hidden", "true");
-	const text = document.createElement("span");
-	text.textContent = labelText;
-	label.append(input, dot, text);
-	return label;
-}
-
-function generatePaletteSelector(container) {
-	container.innerHTML = "";
-	PALETTE_ORDER.forEach((id) => {
-		container.appendChild(createTile("palette", "palette", id, PALETTES[id].label));
-	});
-}
-
-function generateFlavourSelector(container, paletteId) {
-	container.innerHTML = "";
-	const palette = PALETTES[paletteId];
-	if (!palette) return;
-	Object.entries(palette.flavours).forEach(([id, data]) => {
-		container.appendChild(createTile("flavour", "flavour", id, data.label));
-	});
-}
-
-function generateAccentSelector(container, paletteId) {
-	container.innerHTML = "";
-	const palette = PALETTES[paletteId];
-	if (!palette) return;
-	palette.accents.forEach((id) => {
-		const btn = document.createElement("button");
-		btn.type = "button";
-		btn.className = "accent-chip";
-		btn.setAttribute("role", "radio");
-		btn.dataset.accent = id;
-		btn.style.setProperty("--swatch", `var(${palette.accentVar}-${id})`);
-		btn.setAttribute("aria-label", id.charAt(0).toUpperCase() + id.slice(1));
-		btn.setAttribute("aria-checked", "false");
-		btn.tabIndex = -1;
-		container.appendChild(btn);
-	});
-}
-
-export function syncSettingsUI(root) {
-	if (!root || !currentTheme) return;
-	const { palette, flavour, accent } = splitThemeKey(currentTheme);
-
-	root.querySelectorAll('input[name="palette"]').forEach((input) => {
-		const checked = input.value === palette;
-		input.checked = checked;
-		const tile = input.closest(".palette-tile");
-		if (tile) {
-			tile.classList.toggle("selected", checked);
-			tile.setAttribute("aria-checked", String(checked));
-		}
-	});
-
-	root.querySelectorAll('input[name="flavour"]').forEach((input) => {
-		const checked = input.value === flavour;
-		input.checked = checked;
-		const tile = input.closest(".flavour-tile");
-		if (tile) {
-			tile.classList.toggle("selected", checked);
-			tile.setAttribute("aria-checked", String(checked));
-		}
-	});
-
-	root.querySelectorAll('button[data-accent][role="radio"]').forEach((btn) => {
-		const active = btn.dataset.accent === accent;
-		btn.classList.toggle("selected", active);
-		btn.setAttribute("aria-checked", String(active));
-		btn.tabIndex = active ? 0 : -1;
-	});
-}
-
-export function initSettingsPage(root) {
-	if (!root) return;
-	const paletteList = root.querySelector("[data-palette-list]");
-	const flavourList = root.querySelector("[data-flavour-list]");
-	const accentGrid = root.querySelector("[data-accent-grid]");
-	if (!paletteList || !flavourList || !accentGrid) return;
-
-	const { palette: currentPalette } = splitThemeKey(currentTheme);
-
-	generatePaletteSelector(paletteList);
-	generateFlavourSelector(flavourList, currentPalette);
-	generateAccentSelector(accentGrid, currentPalette);
-
-	paletteList.addEventListener("change", (e) => {
-		if (e.target.name !== "palette") return;
-		const newPalette = e.target.value;
-		const data = PALETTES[newPalette];
-		if (!data) return;
-		generateFlavourSelector(flavourList, newPalette);
-		generateAccentSelector(accentGrid, newPalette);
-		setTheme(`${newPalette}-${data.defaultFlavour}-${data.defaultAccent}`);
-	});
-
-	flavourList.addEventListener("change", (e) => {
-		if (e.target.name !== "flavour") return;
-		const { palette, accent } = splitThemeKey(currentTheme);
-		const fixedAccent = isValidAccent(palette, accent) ? accent : PALETTES[palette].defaultAccent;
-		setTheme(`${palette}-${e.target.value}-${fixedAccent}`);
-	});
-
-	accentGrid.addEventListener("click", (e) => {
-		const btn = e.target.closest("button[data-accent]");
-		if (!btn) return;
-		const { palette, flavour } = splitThemeKey(currentTheme);
-		const accent = btn.dataset.accent;
-		if (isValidAccent(palette, accent)) setTheme(`${palette}-${flavour}-${accent}`);
-	});
-
-	accentGrid.addEventListener("keydown", (e) => {
-		const navKeys =["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
-		if (!navKeys.includes(e.key) && e.key !== " " && e.key !== "Enter") return;
-		const items = [...accentGrid.querySelectorAll('button[data-accent][role="radio"]')];
-		if (!items.length) return;
-		const currentIdx = items.findIndex((el) => el.classList.contains("selected"));
-		let nextIdx = currentIdx;
-
-		if (navKeys.includes(e.key)) {
-			e.preventDefault();
-			const cols = parseInt(getComputedStyle(accentGrid).getPropertyValue("--cols") || "7", 10);
-			const moves = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -cols, ArrowDown: cols };
-			nextIdx = (currentIdx + moves[e.key] + items.length) % items.length;
-			items[nextIdx]?.focus();
-		} else {
-			e.preventDefault();
-			(document.activeElement?.closest('button[data-accent][role="radio"]') || items[currentIdx])?.click();
-		}
-	});
-
-	syncSettingsUI(root);
-
-	// API Status configuration
-	const apiStatus = root.querySelector("#api-status");
-
-	if (apiStatus) {
-		const updateStatus = async () => {
-			try {
-				await verifyApiKey();
-				apiStatus.textContent = "Connected";
-				apiStatus.className = "badge badge-success";
-			} catch (err) {
-				apiStatus.textContent = "Error: " + err.message;
-				apiStatus.className = "badge badge-error";
-			}
-		};
-		updateStatus();
-	}
-
-	// Default model setting
-	const defaultModelSelect = root.querySelector("#default-model-select");
-	const saveDefaultModelBtn = root.querySelector("#save-default-model");
-	if (defaultModelSelect && saveDefaultModelBtn) {
-		(async () => {
-			try {
-				const modelsRes = await getModels();
-				const models = modelsRes.data ||[];
-				
-				defaultModelSelect.innerHTML = '';
-				for (const m of models) {
-					const option = document.createElement("option");
-					option.value = m.id;
-					option.textContent = m.name;
-					defaultModelSelect.appendChild(option);
-				}
-				
-				const settings = await getSettings();
-				if (settings.defaultModel) {
-					defaultModelSelect.value = settings.defaultModel;
-				}
-			} catch (err) {
-				console.error("Failed to load models for settings", err);
-				defaultModelSelect.innerHTML = '<option value="">Error loading models</option>';
-			}
-		})();
-
-		saveDefaultModelBtn.addEventListener("click", async () => {
-			const val = defaultModelSelect.value;
-			if (!val) return;
-			const originalText = saveDefaultModelBtn.textContent;
-			saveDefaultModelBtn.textContent = "Saving...";
-			saveDefaultModelBtn.disabled = true;
-			try {
-				await updateSettings({ defaultModel: val });
-				saveDefaultModelBtn.textContent = "Saved!";
-			} catch (e) {
-				console.error("Failed to update default model", e);
-				saveDefaultModelBtn.textContent = "Error";
-			}
-			setTimeout(() => {
-				saveDefaultModelBtn.textContent = originalText;
-				saveDefaultModelBtn.disabled = false;
-			}, 2000);
-		});
-	}
-}
-```
-
-### ./ctrlpanel/js/connection-ui.js:
-```js
-// Connection monitoring UI - handles modal popups and demo mode initialization
+// API service for backend communication
 import {
-    startMonitoring,
-    stopMonitoring,
-    setConnectionChangeCallback,
-    setOpenRouterChangeCallback,
-    retryConnection,
-    startAutoRetry,
-    stopAutoRetry,
-    isBackendConnected,
-} from './connection-monitor.js';
-import { initDemoMode, isDemoEnabled } from './demo-mode.js';
+    isDemoEnabled,
+    mockVerifyApiKey,
+    mockGetModels,
+    mockGetPricing,
+    mockSendChatMessage,
+    mockStreamChatMessage,
+    mockGetSettings,
+    mockUpdateSettings,
+    mockGetPromptTemplates,
+    mockCreatePromptTemplate,
+    mockUpdatePromptTemplate,
+    mockDeletePromptTemplate,
+} from './demo-mode.js';
 
-// Modal state
-let connectionModal = null;
-let openRouterModal = null;
-let isConnectionModalVisible = false;
-let isOpenRouterModalVisible = false;
+const API_BASE = "http://127.0.0.1:1024/api";
 
-/**
- * Initialize connection monitoring and demo mode
- * Call this early in app initialization
- */
-export function initConnectionUI() {
-    // Initialize demo mode first (checks URL params)
-    initDemoMode();
-    
-    // If in demo mode, skip connection monitoring
+let apiKey = localStorage.getItem("ctrlpanel:apiKey") || "";
+
+export function setApiKey(key) {
+    apiKey = key;
+    localStorage.setItem("ctrlpanel:apiKey", key);
+}
+
+export function getApiKey() {
+    return apiKey;
+}
+
+async function makeRequest(endpoint, options = {}) {
+    // If in demo mode, return mock responses
     if (isDemoEnabled()) {
-        console.log('[ConnectionUI] Demo mode active - skipping connection monitoring');
-        return;
+        return makeMockRequest(endpoint, options);
     }
     
-    // Set up connection state change callbacks
-    setConnectionChangeCallback(handleConnectionChange);
-    setOpenRouterChangeCallback(handleOpenRouterChange);
-    
-    // Start monitoring
-    startMonitoring();
-    
-    console.log('[ConnectionUI] Connection monitoring initialized');
-}
-
-/**
- * Handle backend connection state changes
- * @param {boolean} isConnected - new connection state
- */
-function handleConnectionChange(isConnected) {
-    if (isConnected) {
-        // Connection restored
-        hideConnectionModal();
-    } else {
-        // Connection lost
-        showConnectionModal();
-    }
-}
-
-/**
- * Handle OpenRouter availability changes
- * @param {boolean} isAvailable - new availability state
- */
-function handleOpenRouterChange(isAvailable) {
-    if (isAvailable) {
-        // OpenRouter available
-        hideOpenRouterModal();
-    } else {
-        // OpenRouter unavailable
-        showOpenRouterModal();
-    }
-}
-
-/**
- * Create and show the connection lost modal
- */
-function showConnectionModal() {
-    if (isConnectionModalVisible) return;
-    
-    // Remove existing modal if any
-    hideConnectionModal();
-    
-    const overlay = document.createElement('div');
-    overlay.className = 'connection-modal-overlay';
-    overlay.id = 'connection-modal';
-    
-    overlay.innerHTML = `
-        <div class="connection-modal">
-            <div class="connection-modal-header">
-                <div class="connection-modal-icon error">📡</div>
-                <h3 class="connection-modal-title">Connection Lost</h3>
-            </div>
-            <p class="connection-modal-message">
-                Lost connection to backend server. The application requires a connection to function properly.
-            </p>
-            <div class="connection-modal-actions">
-                <button class="connection-modal-button secondary" id="conn-modal-cancel">Cancel</button>
-                <button class="connection-modal-button primary" id="conn-modal-retry">Retry Connection</button>
-            </div>
-            <div class="connection-modal-status">
-                <span class="connection-modal-status-dot reconnecting"></span>
-                <span id="conn-modal-status-text">Auto-retrying every 3 seconds...</span>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(overlay);
-    connectionModal = overlay;
-    
-    // Add event listeners
-    overlay.querySelector('#conn-modal-retry').addEventListener('click', async () => {
-        const statusText = overlay.querySelector('#conn-modal-status-text');
-        const statusDot = overlay.querySelector('.connection-modal-status-dot');
-        statusText.textContent = 'Retrying now...';
-        statusDot.className = 'connection-modal-status-dot reconnecting';
-        
-        const connected = await retryConnection();
-        if (connected) {
-            hideConnectionModal();
-        } else {
-            statusText.textContent = 'Still disconnected. Auto-retrying every 3 seconds...';
-        }
-    });
-    
-    overlay.querySelector('#conn-modal-cancel').addEventListener('click', () => {
-        stopAutoRetry();
-        hideConnectionModal();
-    });
-    
-    // Show modal with animation
-    requestAnimationFrame(() => {
-        overlay.classList.add('visible');
-    });
-    
-    isConnectionModalVisible = true;
-    
-    // Start auto-retry
-    startAutoRetry((connected) => {
-        if (connected) {
-            hideConnectionModal();
-        }
-    });
-}
-
-/**
- * Hide the connection modal
- */
-function hideConnectionModal() {
-    if (!connectionModal) return;
-    
-    stopAutoRetry();
-    
-    connectionModal.classList.remove('visible');
-    
-    setTimeout(() => {
-        if (connectionModal && connectionModal.parentNode) {
-            connectionModal.parentNode.removeChild(connectionModal);
-        }
-        connectionModal = null;
-        isConnectionModalVisible = false;
-    }, 300);
-}
-
-/**
- * Create and show the OpenRouter unavailable modal
- */
-function showOpenRouterModal() {
-    if (isOpenRouterModalVisible) return;
-    
-    // Remove existing modal if any
-    hideOpenRouterModal();
-    
-    const overlay = document.createElement('div');
-    overlay.className = 'connection-modal-overlay';
-    overlay.id = 'openrouter-modal';
-    
-    overlay.innerHTML = `
-        <div class="connection-modal">
-            <div class="connection-modal-header">
-                <div class="connection-modal-icon warning">⚠️</div>
-                <h3 class="connection-modal-title">OpenRouter API Unavailable</h3>
-            </div>
-            <p class="connection-modal-message">
-                The OpenRouter API is currently unreachable. AI chat features may not work properly.
-            </p>
-            <div class="connection-modal-note">
-                💡 Note: Local features like settings and prompt templates will continue to work.
-            </div>
-            <div class="connection-modal-actions">
-                <button class="connection-modal-button secondary" id="or-modal-dismiss">Dismiss</button>
-                <button class="connection-modal-button primary" id="or-modal-retry">Retry Connection</button>
-            </div>
-            <div class="connection-modal-status">
-                <span class="connection-modal-status-dot offline"></span>
-                <span id="or-modal-status-text">OpenRouter API offline</span>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(overlay);
-    openRouterModal = overlay;
-    
-    // Add event listeners
-    overlay.querySelector('#or-modal-retry').addEventListener('click', async () => {
-        const statusText = overlay.querySelector('#or-modal-status-text');
-        const statusDot = overlay.querySelector('.connection-modal-status-dot');
-        statusText.textContent = 'Checking OpenRouter status...';
-        statusDot.className = 'connection-modal-status-dot reconnecting';
-        
-        // Trigger a health check
-        const event = new CustomEvent('checkOpenRouterHealth');
-        window.dispatchEvent(event);
-    });
-    
-    overlay.querySelector('#or-modal-dismiss').addEventListener('click', () => {
-        hideOpenRouterModal();
-    });
-    
-    // Show modal with animation
-    requestAnimationFrame(() => {
-        overlay.classList.add('visible');
-    });
-    
-    isOpenRouterModalVisible = true;
-}
-
-/**
- * Hide the OpenRouter modal
- */
-function hideOpenRouterModal() {
-    if (!openRouterModal) return;
-    
-    openRouterModal.classList.remove('visible');
-    
-    setTimeout(() => {
-        if (openRouterModal && openRouterModal.parentNode) {
-            openRouterModal.parentNode.removeChild(openRouterModal);
-        }
-        openRouterModal = null;
-        isOpenRouterModalVisible = false;
-    }, 300);
-}
-
-/**
- * Manually check connection status
- * @returns {boolean}
- */
-export function checkConnection() {
-    return isBackendConnected();
-}
-
-/**
- * Clean up connection monitoring on app shutdown
- */
-export function cleanupConnectionUI() {
-    stopMonitoring();
-    hideConnectionModal();
-    hideOpenRouterModal();
-}
-
-```
-
-### ./ctrlpanel/js/chat.js:
-```js
-const CHATS_KEY = "ctrlpanel:chats";
-const CURRENT_CHAT_KEY = "ctrlpanel:currentChat";
-
-let chats = [];
-let currentChatId = null;
-
-export function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
-export function loadChats() {
-    try {
-        const stored = localStorage.getItem(CHATS_KEY);
-        chats = stored ? JSON.parse(stored) : [];
-    } catch {
-        chats = [];
-    }
-    try {
-        currentChatId = localStorage.getItem(CURRENT_CHAT_KEY) || null;
-    } catch {
-        currentChatId = null;
-    }
-}
-
-export function saveChats() {
-    try {
-        localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
-        if (currentChatId) {
-            localStorage.setItem(CURRENT_CHAT_KEY, currentChatId);
-        } else {
-            localStorage.removeItem(CURRENT_CHAT_KEY);
-        }
-    } catch {}
-}
-
-export function getChats() {
-    return chats;
-}
-
-export function getCurrentChatId() {
-    return currentChatId;
-}
-
-export function setCurrentChatId(id) {
-    currentChatId = id;
-}
-
-export function getChatById(id) {
-    return chats.find((c) => c.id === id);
-}
-
-export function createNewChat() {
-    const chat = {
-        id: generateId(),
-        title: "New Chat",
-        messages: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-    };
-    chats.unshift(chat);
-    currentChatId = chat.id;
-    saveChats();
-    renderChatList();
-    return chat;
-}
-
-export function deleteChat(id, onRouteChange) {
-    chats = chats.filter((c) => c.id !== id);
-    if (currentChatId === id) {
-        currentChatId = chats.length > 0 ? chats[0].id : null;
-    }
-    saveChats();
-    renderChatList();
-    if (onRouteChange) onRouteChange();
-}
-
-export function updateChatTitle(id, firstMessage) {
-    const chat = getChatById(id);
-    if (chat && chat.title === "New Chat" && firstMessage) {
-        chat.title =
-            firstMessage.slice(0, 30) +
-            (firstMessage.length > 30 ? "..." : "");
-        chat.updatedAt = Date.now();
-        saveChats();
-        renderChatList();
-    }
-}
-
-export function addMessageToChat(id, role, content) {
-    const chat = getChatById(id);
-    if (chat) {
-        chat.messages.push({ role, content, timestamp: Date.now() });
-        chat.updatedAt = Date.now();
-        if (chat.messages.length === 1 && role === "user") {
-            updateChatTitle(id, content);
-        }
-        saveChats();
-    }
-}
-
-export function renderChatList(onDelete) {
-    const list = document.getElementById("savedChatsList");
-    if (!list) return;
-
-    list.innerHTML = "";
-
-    chats.forEach((chat) => {
-        const item = document.createElement("a");
-        item.href = `#pages/ai-chat.html?chat=${chat.id}`;
-        item.className = "nav-subitem nav-chat-item";
-        item.dataset.route = "";
-        item.dataset.chatId = chat.id;
-
-        if (chat.id === currentChatId) {
-            item.classList.add("active");
-        }
-
-        const icon = document.createElement("span");
-        icon.className = "nav-subicon";
-        icon.setAttribute("aria-hidden", "true");
-        icon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
-
-        const label = document.createElement("span");
-        label.className = "nav-label";
-        label.textContent = chat.title;
-
-        const deleteBtn = document.createElement("button");
-        deleteBtn.className = "nav-chat-delete";
-        deleteBtn.setAttribute("aria-label", "Delete chat");
-        deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
-        deleteBtn.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            deleteChat(chat.id, onDelete);
-        });
-
-        item.append(icon, label, deleteBtn);
-        list.appendChild(item);
-    });
-}
-
-export function appendMessage(container, role, text, scroll = true) {
-    const div = document.createElement("div");
-    div.className = `chat-message ${role}`;
-    div.setAttribute("role", "article");
-    div.setAttribute("aria-label", role === "user" ? "You" : "Assistant");
-
-    const p = document.createElement("p");
-    p.textContent = text;
-    div.appendChild(p);
-
-    container.appendChild(div);
-    if (scroll) {
-        container.scrollTop = container.scrollHeight;
-    }
-}
-
-export function showTyping(container) {
-    const div = document.createElement("div");
-    div.className = "chat-typing";
-    div.setAttribute("aria-label", "Assistant is typing");
-    div.innerHTML = "<span></span><span></span><span></span>";
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
-    return div;
-}
-
-export function loadCurrentChat(setActiveCallback) {
-    const messages = document.getElementById("chatMessages");
-    const empty = document.getElementById("chatEmpty");
-    if (!messages) return;
-
-    messages
-        .querySelectorAll(".chat-message, .chat-typing")
-        .forEach((el) => el.remove());
-
-    const chat = getChatById(currentChatId);
-    if (chat && chat.messages.length > 0) {
-        if (empty) empty.hidden = true;
-        chat.messages.forEach((msg) => {
-            appendMessage(messages, msg.role, msg.content, false);
-        });
-    } else {
-        if (empty) empty.hidden = false;
-    }
-
-    renderChatList();
-    if (setActiveCallback) setActiveCallback();
-}
-
-function initChatDropdowns(root) {
-    const dropdowns = root.querySelectorAll(".chat-dropdown");
-
-    dropdowns.forEach((dropdown) => {
-        const toggle = dropdown.querySelector(".chat-dropdown-toggle");
-        const menu = dropdown.querySelector(".chat-dropdown-menu");
-        const isMulti = dropdown.hasAttribute("data-multi");
-
-        toggle?.addEventListener("click", (e) => {
-            e.preventDefault();
-            const isOpen = dropdown.classList.contains("open");
-
-            root.querySelectorAll(".chat-dropdown.open").forEach((d) => {
-                if (d !== dropdown) {
-                    d.classList.remove("open");
-                    d.querySelector(".chat-dropdown-toggle")?.setAttribute(
-                        "aria-expanded",
-                        "false"
-                    );
-                }
-            });
-
-            dropdown.classList.toggle("open", !isOpen);
-            toggle.setAttribute("aria-expanded", String(!isOpen));
-        });
-
-        if (!isMulti) {
-            const items = dropdown.querySelectorAll(".chat-dropdown-item");
-            const label = dropdown.querySelector(".chat-dropdown-label");
-
-            items.forEach((item) => {
-                item.addEventListener("click", () => {
-                    items.forEach((i) => {
-                        i.classList.remove("selected");
-                        i.setAttribute("aria-selected", "false");
-                    });
-                    item.classList.add("selected");
-                    item.setAttribute("aria-selected", "true");
-
-                    if (label) {
-                        label.textContent = item.textContent;
-                    }
-
-                    dropdown.classList.remove("open");
-                    toggle?.setAttribute("aria-expanded", "false");
-                });
-            });
-        }
-
-        if (isMulti) {
-            menu?.addEventListener("click", (e) => {
-                e.stopPropagation();
-            });
-        }
-    });
-
-    document.addEventListener("click", (e) => {
-        if (!e.target.closest(".chat-dropdown")) {
-            root.querySelectorAll(".chat-dropdown.open").forEach((d) => {
-                d.classList.remove("open");
-                d.querySelector(".chat-dropdown-toggle")?.setAttribute(
-                    "aria-expanded",
-                    "false"
-                );
-            });
-        }
-    });
-}
-
-export function initChatPage(root, currentRouteGetter, setActiveCallback) {
-    if (!root) return;
-
-    const form = root.querySelector("#chatForm");
-    const input = root.querySelector("#chatInput");
-    const messages = root.querySelector("#chatMessages");
-    const empty = root.querySelector("#chatEmpty");
-    if (!form || !input || !messages) return;
-
-    initChatDropdowns(root);
-
-    const urlParams = new URLSearchParams(
-        location.hash.split("?")[1] || ""
-    );
-    const chatIdFromUrl = urlParams.get("chat");
-
-    if (chatIdFromUrl && getChatById(chatIdFromUrl)) {
-        currentChatId = chatIdFromUrl;
-        saveChats();
-    }
-
-    loadCurrentChat(setActiveCallback);
-
-    const resizeInput = () => {
-        input.style.height = "auto";
-        input.style.height = Math.min(input.scrollHeight, 150) + "px";
+    const url = `${API_BASE}${endpoint}`;
+    const headers = {
+        "Content-Type": "application/json",
+        ...(apiKey ? { "x-api-key": apiKey } : {}),
+        ...options.headers,
     };
 
-    input.addEventListener("input", resizeInput);
-
-    input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            form.requestSubmit();
-        }
-    });
-
-    form.addEventListener("submit", (e) => {
-        e.preventDefault();
-        const text = input.value.trim();
-        if (!text) return;
-
-        if (!currentChatId || !getChatById(currentChatId)) {
-            createNewChat();
-        }
-
-        if (empty) empty.hidden = true;
-        appendMessage(messages, "user", text);
-        addMessageToChat(currentChatId, "user", text);
-        input.value = "";
-        input.style.height = "auto";
-
-        const typing = showTyping(messages);
-        setTimeout(() => {
-            typing.remove();
-            const response =
-                "This is a placeholder response. Connect your AI backend to enable real conversations.";
-            appendMessage(messages, "assistant", response);
-            addMessageToChat(currentChatId, "assistant", response);
-        }, 1000 + Math.random() * 500);
-    });
-
-    input.focus();
-}
-
-export function clearCurrentChatId() {
-    currentChatId = null;
-    localStorage.removeItem(CURRENT_CHAT_KEY);
-}
-
-```
-
-### ./ctrlpanel/js/connection-monitor.js:
-```js
-// Connection monitoring module for backend health checks
-// Dynamically use the current hostname to allow LAN access
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:1024`;
-
-// Connection state
-let isConnected = true;
-let isOpenRouterAvailable = true;
-let healthCheckInterval = null;
-let openRouterCheckInterval = null;
-let retryInterval = null;
-
-// Callbacks for state changes
-let onConnectionChange = null;
-let onOpenRouterChange = null;
-
-// Configuration
-const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
-const RETRY_INTERVAL = 3000; // 3 seconds
-
-/**
- * Check if backend is connected
- * @returns {boolean}
- */
-export function isBackendConnected() {
-    return isConnected;
-}
-
-/**
- * Check if OpenRouter is available
- * @returns {boolean}
- */
-export function isOpenRouterHealthy() {
-    return isOpenRouterAvailable;
-}
-
-/**
- * Set callback for connection state changes
- * @param {function(boolean)} callback - called with new connection state
- */
-export function setConnectionChangeCallback(callback) {
-    onConnectionChange = callback;
-}
-
-/**
- * Set callback for OpenRouter state changes
- * @param {function(boolean)} callback - called with new OpenRouter availability
- */
-export function setOpenRouterChangeCallback(callback) {
-    onOpenRouterChange = callback;
-}
-
-/**
- * Perform health check on backend
- * @returns {Promise<boolean>}
- */
-async function checkBackendHealth() {
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        
-        const response = await fetch(`${API_BASE}/health`, {
-            method: 'GET',
-            signal: controller.signal
+        const response = await fetch(url, {
+            ...options,
+            headers,
         });
-        
-        clearTimeout(timeoutId);
-        return response.ok;
-    } catch (err) {
-        return false;
-    }
-}
 
-/**
- * Check OpenRouter availability via backend
- * @returns {Promise<boolean>}
- */
-async function checkOpenRouterHealth() {
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-        
-        const response = await fetch(`${API_BASE}/api/health/external`, {
-            method: 'GET',
-            signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
         if (!response.ok) {
-            return false;
+            const error = await response.json().catch(() => ({}));
+            const errMsg = typeof error.error === 'object' && error.error !== null
+                ? (error.error.message || JSON.stringify(error.error))
+                : error.error;
+            throw new Error(errMsg || `HTTP ${response.status}`);
         }
-        
-        const data = await response.json();
-        return data.openrouter === true;
+
+        return await response.json();
     } catch (err) {
-        return false;
+        console.error("API request failed:", err);
+        throw err;
     }
 }
 
 /**
- * Perform health check and update state
+ * Make mock request for demo mode
+ * @param {string} endpoint - API endpoint
+ * @param {Object} options - request options
+ * @returns {Promise<any>}
  */
-async function performHealthCheck() {
-    const wasConnected = isConnected;
-    isConnected = await checkBackendHealth();
+async function makeMockRequest(endpoint, options = {}) {
+    console.log(`[DemoMode] Mock API call: ${endpoint}`);
     
-    if (wasConnected !== isConnected) {
-        console.log(`[ConnectionMonitor] Backend connection: ${isConnected ? 'connected' : 'disconnected'}`);
-        if (onConnectionChange) {
-            onConnectionChange(isConnected);
+    // Parse body if present
+    let body = {};
+    if (options.body) {
+        try {
+            body = JSON.parse(options.body);
+        } catch (e) {
+            // Ignore parse errors
         }
     }
     
-    return isConnected;
-}
-
-/**
- * Perform OpenRouter health check
- */
-async function performOpenRouterCheck() {
-    // Only check OpenRouter if backend is connected
-    if (!isConnected) {
-        if (isOpenRouterAvailable) {
-            isOpenRouterAvailable = false;
-            if (onOpenRouterChange) {
-                onOpenRouterChange(false);
+    // Route to appropriate mock function
+    switch (endpoint) {
+        case '/auth/verify':
+            return mockVerifyApiKey();
+        case '/models':
+            return mockGetModels();
+        case '/pricing':
+            return mockGetPricing();
+        case '/chat':
+            return mockSendChatMessage(body.model, body.prompt, body.max_tokens);
+        case '/config/settings':
+            if (options.method === 'PUT') {
+                return mockUpdateSettings(body);
             }
+            return mockGetSettings();
+        case '/config/prompt-templates':
+            if (options.method === 'POST') {
+                return mockCreatePromptTemplate(body.name, body.template);
+            }
+            return mockGetPromptTemplates();
+        default:
+            // Handle paths with IDs
+            if (endpoint.startsWith('/config/prompt-templates/')) {
+                const id = parseInt(endpoint.split('/').pop());
+                if (options.method === 'PUT') {
+                    return mockUpdatePromptTemplate(id, body);
+                } else if (options.method === 'DELETE') {
+                    return mockDeletePromptTemplate(id);
+                }
+            }
+            throw new Error(`Unknown endpoint: ${endpoint}`);
+    }
+}
+
+export async function verifyApiKey() {
+    return makeRequest("/auth/verify");
+}
+
+export async function getModels() {
+    return makeRequest("/models");
+}
+
+export async function getPricing() {
+    return makeRequest("/pricing");
+}
+
+export async function sendChatMessage(model, prompt, maxTokens = 2048) {
+    return makeRequest("/chat", {
+        method: "POST",
+        body: JSON.stringify({
+            model,
+            prompt,
+            max_tokens: maxTokens,
+        }),
+    });
+}
+
+export async function streamChatMessage(model, prompt, maxTokens = 2048, onChunk, signal = null) {
+    // If in demo mode, use mock streaming
+    if (isDemoEnabled()) {
+        return mockStreamChatMessage(model, prompt, maxTokens, onChunk);
+    }
+    
+    const url = new URL(`${API_BASE}/chat/stream`);
+
+    const headers = {
+        "Content-Type": "application/json",
+        ...(apiKey ? { "x-api-key": apiKey } : {}),
+    };
+
+    try {
+        const response = await fetch(url.toString(), {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+                model,
+                prompt,
+                max_tokens: maxTokens,
+            }),
+            signal
+        });
+
+        if (!response.ok) {
+            let error = {};
+            try {
+                error = await response.json();
+            } catch (e) {}
+            const errMsg = typeof error.error === 'object' && error.error !== null
+                ? (error.error.message || JSON.stringify(error.error))
+                : error.error;
+            throw new Error(errMsg || `HTTP ${response.status}`);
         }
-        return;
-    }
-    
-    const wasAvailable = isOpenRouterAvailable;
-    isOpenRouterAvailable = await checkOpenRouterHealth();
-    
-    if (wasAvailable !== isOpenRouterAvailable) {
-        console.log(`[ConnectionMonitor] OpenRouter: ${isOpenRouterAvailable ? 'available' : 'unavailable'}`);
-        if (onOpenRouterChange) {
-            onOpenRouterChange(isOpenRouterAvailable);
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+            throw new Error("Response body is not readable");
         }
-    }
-}
 
-/**
- * Start the connection monitoring
- */
-export function startMonitoring() {
-    if (healthCheckInterval) {
-        console.log('[ConnectionMonitor] Already monitoring');
-        return;
-    }
-    
-    console.log('[ConnectionMonitor] Starting health checks');
-    
-    // Perform initial checks
-    performHealthCheck();
-    performOpenRouterCheck();
-    
-    // Start periodic health checks
-    healthCheckInterval = setInterval(performHealthCheck, HEALTH_CHECK_INTERVAL);
-    openRouterCheckInterval = setInterval(performOpenRouterCheck, HEALTH_CHECK_INTERVAL);
-}
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let streamError = null;
 
-/**
- * Stop the connection monitoring
- */
-export function stopMonitoring() {
-    if (healthCheckInterval) {
-        clearInterval(healthCheckInterval);
-        healthCheckInterval = null;
-    }
-    if (openRouterCheckInterval) {
-        clearInterval(openRouterCheckInterval);
-        openRouterCheckInterval = null;
-    }
-    if (retryInterval) {
-        clearInterval(retryInterval);
-        retryInterval = null;
-    }
-    console.log('[ConnectionMonitor] Stopped monitoring');
-}
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-/**
- * Manual retry connection - returns promise that resolves when connected
- * @returns {Promise<boolean>}
- */
-export async function retryConnection() {
-    console.log('[ConnectionMonitor] Manual retry initiated');
-    return await performHealthCheck();
-}
+            const chunk = decoder.decode(value, { stream: true });
+            console.debug("[API] Received chunk:", chunk);
+            buffer += chunk;
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
 
-/**
- * Start auto-retry mechanism
- * @param {function} onRetry - callback called on each retry attempt
- */
-export function startAutoRetry(onRetry) {
-    if (retryInterval) {
-        clearInterval(retryInterval);
-    }
-    
-    retryInterval = setInterval(async () => {
-        const connected = await performHealthCheck();
-        if (connected && retryInterval) {
-            clearInterval(retryInterval);
-            retryInterval = null;
+            let streamFinished = false; // Flag to instantly kill the stream
+
+            for (const line of lines) {
+                console.debug("[API] Processing line:", line);
+                if (line.startsWith("data: ")) {
+                    const data = line.slice(6);
+                    console.debug("[API] SSE data:", data);
+                    
+                    // Stop waiting for the server to close the socket
+                    if (data === "[DONE]") {
+                        streamFinished = true;
+                        break; 
+                    }
+                    
+                    try {
+                        const parsed = JSON.parse(data);
+                        console.debug("[API] Parsed JSON:", parsed);
+                        // Check for error in the stream
+                        if (parsed.error) {
+                            const errorMsg = typeof parsed.error === 'object' && parsed.error !== null
+                                ? (parsed.error.message || JSON.stringify(parsed.error))
+                                : String(parsed.error);
+                            console.debug("[API] Error detected in stream:", errorMsg);
+                            streamError = new Error(errorMsg);
+                        }
+                        if (onChunk) onChunk(parsed);
+                    } catch (e) {
+                        console.debug("[API] Failed to parse JSON:", e, "Data was:", data);
+                    }
+                }
+            }
+            if (streamFinished) break; // Break the while loop
         }
-        if (onRetry) {
-            onRetry(connected);
-        }
-    }, RETRY_INTERVAL);
-}
 
-/**
- * Stop auto-retry mechanism
- */
-export function stopAutoRetry() {
-    if (retryInterval) {
-        clearInterval(retryInterval);
-        retryInterval = null;
+        // If we encountered an error in the stream, throw it after processing
+        if (streamError) {
+            throw streamError;
+        }
+    } catch (err) {
+        if (err.name === 'AbortError') throw err; // Re-throw to be handled gracefully
+        console.error("Streaming request failed:", err);
+        throw err;
     }
 }
+
+export async function getSettings() {
+    return makeRequest("/config/settings");
+}
+
+export async function updateSettings(settings) {
+    return makeRequest("/config/settings", {
+        method: "PUT",
+        body: JSON.stringify(settings),
+    });
+}
+
+export async function getPromptTemplates() {
+    return makeRequest("/config/prompt-templates");
+}
+
+export async function createPromptTemplate(name, template) {
+    return makeRequest("/config/prompt-templates", {
+        method: "POST",
+        body: JSON.stringify({ name, template }),
+    });
+}
+
+export async function updatePromptTemplate(id, data) {
+    return makeRequest(`/config/prompt-templates/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+    });
+}
+
+export async function deletePromptTemplate(id) {
+    return makeRequest(`/config/prompt-templates/${id}`, {
+        method: "DELETE",
+    });
+}
+
 ```
 
 ### ./ctrlpanel/css/base.css:
@@ -5834,312 +5845,6 @@ textarea {
 
 ```
 
-### ./ctrlpanel/css/connection-monitor.css:
-```css
-/* Connection monitoring and demo mode styles */
-
-/* ====================
-   Connection Modal
-   ==================== */
-
-.connection-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s ease, visibility 0.3s ease;
-}
-
-.connection-modal-overlay.visible {
-    opacity: 1;
-    visibility: visible;
-}
-
-.connection-modal {
-    background: var(--bg-primary, #1e2326);
-    border: 1px solid var(--border-color, #3c474d);
-    border-radius: 12px;
-    padding: 24px 28px;
-    max-width: 420px;
-    width: 90%;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    transform: scale(0.95);
-    transition: transform 0.3s ease;
-}
-
-.connection-modal-overlay.visible .connection-modal {
-    transform: scale(1);
-}
-
-.connection-modal-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 16px;
-}
-
-.connection-modal-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    flex-shrink: 0;
-}
-
-.connection-modal-icon.error {
-    background: rgba(230, 126, 126, 0.15);
-    color: #e67e7e;
-}
-
-.connection-modal-icon.warning {
-    background: rgba(252, 193, 120, 0.15);
-    color: #fcc178;
-}
-
-.connection-modal-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--text-primary, #d3c6aa);
-    margin: 0;
-}
-
-.connection-modal-message {
-    font-size: 14px;
-    line-height: 1.6;
-    color: var(--text-secondary, #9da9a0);
-    margin-bottom: 20px;
-}
-
-.connection-modal-note {
-    font-size: 13px;
-    color: var(--text-muted, #7a8478);
-    font-style: italic;
-    margin-top: -12px;
-    margin-bottom: 16px;
-    padding: 8px 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 6px;
-    border-left: 3px solid #fcc178;
-}
-
-.connection-modal-actions {
-    display: flex;
-    gap: 12px;
-    justify-content: flex-end;
-}
-
-.connection-modal-button {
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    border: none;
-    outline: none;
-}
-
-.connection-modal-button.primary {
-    background: var(--accent-color, #7fbbb3);
-    color: var(--bg-primary, #1e2326);
-}
-
-.connection-modal-button.primary:hover {
-    background: var(--accent-hover, #8fc4bd);
-    transform: translateY(-1px);
-}
-
-.connection-modal-button.primary:active {
-    transform: translateY(0);
-}
-
-.connection-modal-button.secondary {
-    background: transparent;
-    color: var(--text-secondary, #9da9a0);
-    border: 1px solid var(--border-color, #3c474d);
-}
-
-.connection-modal-button.secondary:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-primary, #d3c6aa);
-}
-
-.connection-modal-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--text-muted, #7a8478);
-    margin-top: 16px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border-color, #3c474d);
-}
-
-.connection-modal-status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    animation: pulse 1.5s infinite;
-}
-
-.connection-modal-status-dot.reconnecting {
-    background: #fcc178;
-}
-
-.connection-modal-status-dot.offline {
-    background: #e67e7e;
-    animation: none;
-}
-
-@keyframes pulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.4;
-    }
-}
-
-/* ====================
-   Demo Mode Banner
-   ==================== */
-
-.demo-banner {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    background: linear-gradient(135deg, #fcc178 0%, #e69875 100%);
-    color: #1e2326;
-    padding: 10px 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    z-index: 9999;
-    font-weight: 600;
-    font-size: 14px;
-    box-shadow: 0 2px 10px rgba(252, 193, 120, 0.3);
-}
-
-.demo-banner-icon {
-    font-size: 16px;
-}
-
-.demo-banner-text {
-    letter-spacing: 0.5px;
-}
-
-.demo-banner-close {
-    position: absolute;
-    right: 16px;
-    background: none;
-    border: none;
-    color: #1e2326;
-    font-size: 24px;
-    line-height: 1;
-    cursor: pointer;
-    opacity: 0.7;
-    transition: opacity 0.2s;
-    padding: 0;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-}
-
-.demo-banner-close:hover {
-    opacity: 1;
-    background: rgba(0, 0, 0, 0.1);
-}
-
-/* Add padding to body when demo banner is present */
-body.demo-mode-active {
-    padding-top: 44px;
-}
-
-body.demo-mode-active .sidebar {
-    top: 44px;
-    height: calc(100vh - 44px);
-}
-
-/* ====================
-   Connection Status Indicator
-   (Optional - for inline status display)
-   ==================== */
-
-.connection-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: var(--text-muted, #7a8478);
-}
-
-.connection-status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-}
-
-.connection-status-dot.online {
-    background: #a7c080;
-}
-
-.connection-status-dot.offline {
-    background: #e67e7e;
-}
-
-.connection-status-dot.connecting {
-    background: #fcc178;
-    animation: pulse 1s infinite;
-}
-
-/* ====================
-   Responsive Adjustments
-   ==================== */
-
-@media (max-width: 480px) {
-    .connection-modal {
-        padding: 20px;
-        margin: 16px;
-    }
-    
-    .connection-modal-actions {
-        flex-direction: column;
-    }
-    
-    .connection-modal-button {
-        width: 100%;
-        text-align: center;
-    }
-    
-    .demo-banner {
-        font-size: 12px;
-        padding: 8px 16px;
-    }
-    
-    .demo-banner-close {
-        right: 8px;
-    }
-}
-
-```
-
 ### ./ctrlpanel/css/layout.css:
 ```css
 /* ctrlpanel/css/layout.css */
@@ -6166,285 +5871,6 @@ body.sidebar-collapsed {
 		grid-template-columns: 0 1fr;
 	}
 }
-
-```
-
-### ./ctrlpanel/css/variables.css:
-```css
-:root {
-    --radius-none: 0px;
-    --sidebar-width: 240px;
-    --toggle-size: 28px;
-    --toggle-offset: 6px;
-    --toggle-safe-gap: 8px;
-    --toggle-stack: calc(var(--toggle-offset) + var(--toggle-size) + var(--toggle-safe-gap));
-    --nav-item-height: 36px;
-    --nav-icon-size: 18px;
-    --search-height: 36px;
-    --sidebar-transition: 200ms ease;
-    --topbar-height: var(--toggle-size);
-}
-
-html[data-theme^="catppuccin-mocha-"] {
-    color-scheme: dark;
-    --ctp-base: #1e1e2e;
-    --ctp-mantle: #181825;
-    --ctp-crust: #11111b;
-    --ctp-text: #cdd6f4;
-    --ctp-subtext0: #a6adc8;
-    --ctp-surface0: #313244;
-    --ctp-rosewater: #f5e0dc;
-    --ctp-flamingo: #f2cdcd;
-    --ctp-pink: #f5c2e7;
-    --ctp-mauve: #cba6f7;
-    --ctp-red: #f38ba8;
-    --ctp-maroon: #eba0ac;
-    --ctp-peach: #fab387;
-    --ctp-yellow: #f9e2af;
-    --ctp-green: #a6e3a1;
-    --ctp-teal: #94e2d5;
-    --ctp-sky: #89dceb;
-    --ctp-sapphire: #74c7ec;
-    --ctp-blue: #89b4fa;
-    --ctp-lavender: #b4befe;
-    --bg: var(--ctp-crust);
-    --panel: var(--ctp-base);
-    --text: var(--ctp-text);
-    --muted: var(--ctp-subtext0);
-    --border: var(--ctp-surface0);
-}
-
-html[data-theme^="catppuccin-macchiato-"] {
-    color-scheme: dark;
-    --ctp-base: #24273a;
-    --ctp-mantle: #1e2030;
-    --ctp-crust: #181926;
-    --ctp-text: #cad3f5;
-    --ctp-subtext0: #a5adcb;
-    --ctp-surface0: #363a4f;
-    --ctp-rosewater: #f4dbd6;
-    --ctp-flamingo: #f0c6c6;
-    --ctp-pink: #f5bde6;
-    --ctp-mauve: #c6a0f6;
-    --ctp-red: #ed8796;
-    --ctp-maroon: #ee99a0;
-    --ctp-peach: #f5a97f;
-    --ctp-yellow: #eed49f;
-    --ctp-green: #a6da95;
-    --ctp-teal: #8bd5ca;
-    --ctp-sky: #91d7e3;
-    --ctp-sapphire: #7dc4e4;
-    --ctp-blue: #8aadf4;
-    --ctp-lavender: #b7bdf8;
-    --bg: var(--ctp-crust);
-    --panel: var(--ctp-base);
-    --text: var(--ctp-text);
-    --muted: var(--ctp-subtext0);
-    --border: var(--ctp-surface0);
-}
-
-html[data-theme^="catppuccin-frappe-"] {
-    color-scheme: dark;
-    --ctp-base: #303446;
-    --ctp-mantle: #292c3c;
-    --ctp-crust: #232634;
-    --ctp-text: #c6d0f5;
-    --ctp-subtext0: #a5adce;
-    --ctp-surface0: #414559;
-    --ctp-rosewater: #f2d5cf;
-    --ctp-flamingo: #eebebe;
-    --ctp-pink: #f4b8e4;
-    --ctp-mauve: #ca9ee6;
-    --ctp-red: #e78284;
-    --ctp-maroon: #ea999c;
-    --ctp-peach: #ef9f76;
-    --ctp-yellow: #e5c890;
-    --ctp-green: #a6d189;
-    --ctp-teal: #81c8be;
-    --ctp-sky: #99d1db;
-    --ctp-sapphire: #85c1dc;
-    --ctp-blue: #8caaee;
-    --ctp-lavender: #babbf1;
-    --bg: var(--ctp-crust);
-    --panel: var(--ctp-base);
-    --text: var(--ctp-text);
-    --muted: var(--ctp-subtext0);
-    --border: var(--ctp-surface0);
-}
-
-html[data-theme^="catppuccin-latte-"] {
-    color-scheme: light;
-    --ctp-base: #eff1f5;
-    --ctp-mantle: #e6e9ef;
-    --ctp-crust: #dce0e8;
-    --ctp-text: #4c4f69;
-    --ctp-subtext0: #6c6f85;
-    --ctp-surface0: #ccd0da;
-    --ctp-rosewater: #dc8a78;
-    --ctp-flamingo: #dd7878;
-    --ctp-pink: #ea76cb;
-    --ctp-mauve: #8839ef;
-    --ctp-red: #d20f39;
-    --ctp-maroon: #e64553;
-    --ctp-peach: #fe640b;
-    --ctp-yellow: #df8e1d;
-    --ctp-green: #40a02b;
-    --ctp-teal: #179299;
-    --ctp-sky: #04a5e5;
-    --ctp-sapphire: #209fb5;
-    --ctp-blue: #1e66f5;
-    --ctp-lavender: #7287fd;
-    --bg: var(--ctp-crust);
-    --panel: var(--ctp-base);
-    --text: var(--ctp-text);
-    --muted: var(--ctp-subtext0);
-    --border: var(--ctp-surface0);
-}
-
-html[data-theme^="catppuccin-"][data-theme$="-rosewater"] { --accent: var(--ctp-rosewater); }
-html[data-theme^="catppuccin-"][data-theme$="-flamingo"] { --accent: var(--ctp-flamingo); }
-html[data-theme^="catppuccin-"][data-theme$="-pink"] { --accent: var(--ctp-pink); }
-html[data-theme^="catppuccin-"][data-theme$="-mauve"] { --accent: var(--ctp-mauve); }
-html[data-theme^="catppuccin-"][data-theme$="-red"] { --accent: var(--ctp-red); }
-html[data-theme^="catppuccin-"][data-theme$="-maroon"] { --accent: var(--ctp-maroon); }
-html[data-theme^="catppuccin-"][data-theme$="-peach"] { --accent: var(--ctp-peach); }
-html[data-theme^="catppuccin-"][data-theme$="-yellow"] { --accent: var(--ctp-yellow); }
-html[data-theme^="catppuccin-"][data-theme$="-green"] { --accent: var(--ctp-green); }
-html[data-theme^="catppuccin-"][data-theme$="-teal"] { --accent: var(--ctp-teal); }
-html[data-theme^="catppuccin-"][data-theme$="-sky"] { --accent: var(--ctp-sky); }
-html[data-theme^="catppuccin-"][data-theme$="-sapphire"] { --accent: var(--ctp-sapphire); }
-html[data-theme^="catppuccin-"][data-theme$="-blue"] { --accent: var(--ctp-blue); }
-html[data-theme^="catppuccin-"][data-theme$="-lavender"] { --accent: var(--ctp-lavender); }
-
-html[data-theme^="everforest-harddark-"],
-html[data-theme^="everforest-dark-"],
-html[data-theme^="everforest-softdark-"] {
-    color-scheme: dark;
-    --ef-fg: #d3c6aa;
-    --ef-red: #e67e80;
-    --ef-orange: #e69875;
-    --ef-yellow: #dbbc7f;
-    --ef-green: #a7c080;
-    --ef-aqua: #83c092;
-    --ef-blue: #7fbbb3;
-    --ef-purple: #d699b6;
-    --ef-grey0: #7a8478;
-    --ef-grey1: #859289;
-    --ef-grey2: #9da9a0;
-    --text: var(--ef-fg);
-    --muted: var(--ef-grey1);
-}
-
-html[data-theme^="everforest-harddark-"] {
-    --ef-bg-dim: #1d2021;
-    --ef-bg0: #272e33;
-    --ef-bg1: #2e383c;
-    --ef-bg2: #374145;
-    --ef-bg3: #414b50;
-    --ef-bg4: #495156;
-    --ef-bg5: #4f5b58;
-    --bg: var(--ef-bg-dim);
-    --panel: var(--ef-bg0);
-    --border: var(--ef-bg3);
-    --ctp-mantle: var(--ef-bg1);
-}
-
-html[data-theme^="everforest-dark-"] {
-    --ef-bg-dim: #232a2e;
-    --ef-bg0: #2d353b;
-    --ef-bg1: #343f44;
-    --ef-bg2: #3d484d;
-    --ef-bg3: #475258;
-    --ef-bg4: #4f585e;
-    --ef-bg5: #56635f;
-    --bg: var(--ef-bg-dim);
-    --panel: var(--ef-bg0);
-    --border: var(--ef-bg3);
-    --ctp-mantle: var(--ef-bg1);
-}
-
-html[data-theme^="everforest-softdark-"] {
-    --ef-bg-dim: #293136;
-    --ef-bg0: #333c43;
-    --ef-bg1: #3a464c;
-    --ef-bg2: #434f55;
-    --ef-bg3: #4d5960;
-    --ef-bg4: #555f66;
-    --ef-bg5: #5c6a72;
-    --bg: var(--ef-bg-dim);
-    --panel: var(--ef-bg0);
-    --border: var(--ef-bg3);
-    --ctp-mantle: var(--ef-bg1);
-}
-
-html[data-theme^="everforest-hardlight-"],
-html[data-theme^="everforest-light-"],
-html[data-theme^="everforest-softlight-"] {
-    color-scheme: light;
-    --ef-fg: #5c6a72;
-    --ef-red: #f85552;
-    --ef-orange: #f57d26;
-    --ef-yellow: #dfa000;
-    --ef-green: #8da101;
-    --ef-aqua: #35a77c;
-    --ef-blue: #3a94c5;
-    --ef-purple: #df69ba;
-    --ef-grey0: #a6b0a0;
-    --ef-grey1: #939f91;
-    --ef-grey2: #829181;
-    --text: var(--ef-fg);
-    --muted: var(--ef-grey1);
-}
-
-html[data-theme^="everforest-hardlight-"] {
-    --ef-bg-dim: #f2efdf;
-    --ef-bg0: #fffbef;
-    --ef-bg1: #f8f5e4;
-    --ef-bg2: #f2efdf;
-    --ef-bg3: #edeada;
-    --ef-bg4: #e8e5d5;
-    --ef-bg5: #bec5b2;
-    --bg: var(--ef-bg-dim);
-    --panel: var(--ef-bg0);
-    --border: var(--ef-bg4);
-    --ctp-mantle: var(--ef-bg1);
-}
-
-html[data-theme^="everforest-light-"] {
-    --ef-bg-dim: #efebd4;
-    --ef-bg0: #fdf6e3;
-    --ef-bg1: #f4f0d9;
-    --ef-bg2: #efebd4;
-    --ef-bg3: #e6e2cc;
-    --ef-bg4: #e0dcc7;
-    --ef-bg5: #bdc3af;
-    --bg: var(--ef-bg-dim);
-    --panel: var(--ef-bg0);
-    --border: var(--ef-bg4);
-    --ctp-mantle: var(--ef-bg1);
-}
-
-html[data-theme^="everforest-softlight-"] {
-    --ef-bg-dim: #e5dfc5;
-    --ef-bg0: #f3ead3;
-    --ef-bg1: #eae4ca;
-    --ef-bg2: #e5dfc5;
-    --ef-bg3: #ddd8be;
-    --ef-bg4: #d8d3ba;
-    --ef-bg5: #b9c0ab;
-    --bg: var(--ef-bg-dim);
-    --panel: var(--ef-bg0);
-    --border: var(--ef-bg4);
-    --ctp-mantle: var(--ef-bg1);
-}
-
-html[data-theme^="everforest-"][data-theme$="-red"] { --accent: var(--ef-red); }
-html[data-theme^="everforest-"][data-theme$="-orange"] { --accent: var(--ef-orange); }
-html[data-theme^="everforest-"][data-theme$="-yellow"] { --accent: var(--ef-yellow); }
-html[data-theme^="everforest-"][data-theme$="-green"] { --accent: var(--ef-green); }
-html[data-theme^="everforest-"][data-theme$="-aqua"] { --accent: var(--ef-aqua); }
-html[data-theme^="everforest-"][data-theme$="-blue"] { --accent: var(--ef-blue); }
-html[data-theme^="everforest-"][data-theme$="-purple"] { --accent: var(--ef-purple); }
 
 ```
 
@@ -8143,11 +7569,9 @@ body.sidebar-collapsed .quick-new-chat {
 /* Edit textarea inside a bubble */
 .chat-edit-input {
     width: 100%;
-    min-height: 40px;
-    max-height: 60vh;
-    resize: none;
-    overflow-y: auto;
-    box-sizing: border-box;
+    min-height: 72px;
+    max-height: 240px;
+    resize: vertical;
 
     appearance: none;
     background: transparent;
@@ -8954,6 +8378,600 @@ body.sidebar-collapsed .content {
 
 ```
 
+### ./ctrlpanel/css/connection-monitor.css:
+```css
+/* Connection monitoring and demo mode styles */
+
+/* ====================
+   Connection Modal
+   ==================== */
+
+.connection-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.connection-modal-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.connection-modal {
+    background: var(--bg-primary, #1e2326);
+    border: 1px solid var(--border-color, #3c474d);
+    border-radius: 12px;
+    padding: 24px 28px;
+    max-width: 420px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    transform: scale(0.95);
+    transition: transform 0.3s ease;
+}
+
+.connection-modal-overlay.visible .connection-modal {
+    transform: scale(1);
+}
+
+.connection-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.connection-modal-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.connection-modal-icon.error {
+    background: rgba(230, 126, 126, 0.15);
+    color: #e67e7e;
+}
+
+.connection-modal-icon.warning {
+    background: rgba(252, 193, 120, 0.15);
+    color: #fcc178;
+}
+
+.connection-modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary, #d3c6aa);
+    margin: 0;
+}
+
+.connection-modal-message {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-secondary, #9da9a0);
+    margin-bottom: 20px;
+}
+
+.connection-modal-note {
+    font-size: 13px;
+    color: var(--text-muted, #7a8478);
+    font-style: italic;
+    margin-top: -12px;
+    margin-bottom: 16px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    border-left: 3px solid #fcc178;
+}
+
+.connection-modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.connection-modal-button {
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    outline: none;
+}
+
+.connection-modal-button.primary {
+    background: var(--accent-color, #7fbbb3);
+    color: var(--bg-primary, #1e2326);
+}
+
+.connection-modal-button.primary:hover {
+    background: var(--accent-hover, #8fc4bd);
+    transform: translateY(-1px);
+}
+
+.connection-modal-button.primary:active {
+    transform: translateY(0);
+}
+
+.connection-modal-button.secondary {
+    background: transparent;
+    color: var(--text-secondary, #9da9a0);
+    border: 1px solid var(--border-color, #3c474d);
+}
+
+.connection-modal-button.secondary:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary, #d3c6aa);
+}
+
+.connection-modal-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-muted, #7a8478);
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color, #3c474d);
+}
+
+.connection-modal-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+}
+
+.connection-modal-status-dot.reconnecting {
+    background: #fcc178;
+}
+
+.connection-modal-status-dot.offline {
+    background: #e67e7e;
+    animation: none;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.4;
+    }
+}
+
+/* ====================
+   Demo Mode Banner
+   ==================== */
+
+.demo-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #fcc178 0%, #e69875 100%);
+    color: #1e2326;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    z-index: 9999;
+    font-weight: 600;
+    font-size: 14px;
+    box-shadow: 0 2px 10px rgba(252, 193, 120, 0.3);
+}
+
+.demo-banner-icon {
+    font-size: 16px;
+}
+
+.demo-banner-text {
+    letter-spacing: 0.5px;
+}
+
+.demo-banner-close {
+    position: absolute;
+    right: 16px;
+    background: none;
+    border: none;
+    color: #1e2326;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+    padding: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+.demo-banner-close:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+/* Add padding to body when demo banner is present */
+body.demo-mode-active {
+    padding-top: 44px;
+}
+
+body.demo-mode-active .sidebar {
+    top: 44px;
+    height: calc(100vh - 44px);
+}
+
+/* ====================
+   Connection Status Indicator
+   (Optional - for inline status display)
+   ==================== */
+
+.connection-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted, #7a8478);
+}
+
+.connection-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.connection-status-dot.online {
+    background: #a7c080;
+}
+
+.connection-status-dot.offline {
+    background: #e67e7e;
+}
+
+.connection-status-dot.connecting {
+    background: #fcc178;
+    animation: pulse 1s infinite;
+}
+
+/* ====================
+   Responsive Adjustments
+   ==================== */
+
+@media (max-width: 480px) {
+    .connection-modal {
+        padding: 20px;
+        margin: 16px;
+    }
+    
+    .connection-modal-actions {
+        flex-direction: column;
+    }
+    
+    .connection-modal-button {
+        width: 100%;
+        text-align: center;
+    }
+    
+    .demo-banner {
+        font-size: 12px;
+        padding: 8px 16px;
+    }
+    
+    .demo-banner-close {
+        right: 8px;
+    }
+}
+
+```
+
+### ./ctrlpanel/css/variables.css:
+```css
+:root {
+    --radius-none: 0px;
+    --sidebar-width: 240px;
+    --toggle-size: 28px;
+    --toggle-offset: 6px;
+    --toggle-safe-gap: 8px;
+    --toggle-stack: calc(var(--toggle-offset) + var(--toggle-size) + var(--toggle-safe-gap));
+    --nav-item-height: 36px;
+    --nav-icon-size: 18px;
+    --search-height: 36px;
+    --sidebar-transition: 200ms ease;
+    --topbar-height: var(--toggle-size);
+}
+
+html[data-theme^="catppuccin-mocha-"] {
+    color-scheme: dark;
+    --ctp-base: #1e1e2e;
+    --ctp-mantle: #181825;
+    --ctp-crust: #11111b;
+    --ctp-text: #cdd6f4;
+    --ctp-subtext0: #a6adc8;
+    --ctp-surface0: #313244;
+    --ctp-rosewater: #f5e0dc;
+    --ctp-flamingo: #f2cdcd;
+    --ctp-pink: #f5c2e7;
+    --ctp-mauve: #cba6f7;
+    --ctp-red: #f38ba8;
+    --ctp-maroon: #eba0ac;
+    --ctp-peach: #fab387;
+    --ctp-yellow: #f9e2af;
+    --ctp-green: #a6e3a1;
+    --ctp-teal: #94e2d5;
+    --ctp-sky: #89dceb;
+    --ctp-sapphire: #74c7ec;
+    --ctp-blue: #89b4fa;
+    --ctp-lavender: #b4befe;
+    --bg: var(--ctp-crust);
+    --panel: var(--ctp-base);
+    --text: var(--ctp-text);
+    --muted: var(--ctp-subtext0);
+    --border: var(--ctp-surface0);
+}
+
+html[data-theme^="catppuccin-macchiato-"] {
+    color-scheme: dark;
+    --ctp-base: #24273a;
+    --ctp-mantle: #1e2030;
+    --ctp-crust: #181926;
+    --ctp-text: #cad3f5;
+    --ctp-subtext0: #a5adcb;
+    --ctp-surface0: #363a4f;
+    --ctp-rosewater: #f4dbd6;
+    --ctp-flamingo: #f0c6c6;
+    --ctp-pink: #f5bde6;
+    --ctp-mauve: #c6a0f6;
+    --ctp-red: #ed8796;
+    --ctp-maroon: #ee99a0;
+    --ctp-peach: #f5a97f;
+    --ctp-yellow: #eed49f;
+    --ctp-green: #a6da95;
+    --ctp-teal: #8bd5ca;
+    --ctp-sky: #91d7e3;
+    --ctp-sapphire: #7dc4e4;
+    --ctp-blue: #8aadf4;
+    --ctp-lavender: #b7bdf8;
+    --bg: var(--ctp-crust);
+    --panel: var(--ctp-base);
+    --text: var(--ctp-text);
+    --muted: var(--ctp-subtext0);
+    --border: var(--ctp-surface0);
+}
+
+html[data-theme^="catppuccin-frappe-"] {
+    color-scheme: dark;
+    --ctp-base: #303446;
+    --ctp-mantle: #292c3c;
+    --ctp-crust: #232634;
+    --ctp-text: #c6d0f5;
+    --ctp-subtext0: #a5adce;
+    --ctp-surface0: #414559;
+    --ctp-rosewater: #f2d5cf;
+    --ctp-flamingo: #eebebe;
+    --ctp-pink: #f4b8e4;
+    --ctp-mauve: #ca9ee6;
+    --ctp-red: #e78284;
+    --ctp-maroon: #ea999c;
+    --ctp-peach: #ef9f76;
+    --ctp-yellow: #e5c890;
+    --ctp-green: #a6d189;
+    --ctp-teal: #81c8be;
+    --ctp-sky: #99d1db;
+    --ctp-sapphire: #85c1dc;
+    --ctp-blue: #8caaee;
+    --ctp-lavender: #babbf1;
+    --bg: var(--ctp-crust);
+    --panel: var(--ctp-base);
+    --text: var(--ctp-text);
+    --muted: var(--ctp-subtext0);
+    --border: var(--ctp-surface0);
+}
+
+html[data-theme^="catppuccin-latte-"] {
+    color-scheme: light;
+    --ctp-base: #eff1f5;
+    --ctp-mantle: #e6e9ef;
+    --ctp-crust: #dce0e8;
+    --ctp-text: #4c4f69;
+    --ctp-subtext0: #6c6f85;
+    --ctp-surface0: #ccd0da;
+    --ctp-rosewater: #dc8a78;
+    --ctp-flamingo: #dd7878;
+    --ctp-pink: #ea76cb;
+    --ctp-mauve: #8839ef;
+    --ctp-red: #d20f39;
+    --ctp-maroon: #e64553;
+    --ctp-peach: #fe640b;
+    --ctp-yellow: #df8e1d;
+    --ctp-green: #40a02b;
+    --ctp-teal: #179299;
+    --ctp-sky: #04a5e5;
+    --ctp-sapphire: #209fb5;
+    --ctp-blue: #1e66f5;
+    --ctp-lavender: #7287fd;
+    --bg: var(--ctp-crust);
+    --panel: var(--ctp-base);
+    --text: var(--ctp-text);
+    --muted: var(--ctp-subtext0);
+    --border: var(--ctp-surface0);
+}
+
+html[data-theme^="catppuccin-"][data-theme$="-rosewater"] { --accent: var(--ctp-rosewater); }
+html[data-theme^="catppuccin-"][data-theme$="-flamingo"] { --accent: var(--ctp-flamingo); }
+html[data-theme^="catppuccin-"][data-theme$="-pink"] { --accent: var(--ctp-pink); }
+html[data-theme^="catppuccin-"][data-theme$="-mauve"] { --accent: var(--ctp-mauve); }
+html[data-theme^="catppuccin-"][data-theme$="-red"] { --accent: var(--ctp-red); }
+html[data-theme^="catppuccin-"][data-theme$="-maroon"] { --accent: var(--ctp-maroon); }
+html[data-theme^="catppuccin-"][data-theme$="-peach"] { --accent: var(--ctp-peach); }
+html[data-theme^="catppuccin-"][data-theme$="-yellow"] { --accent: var(--ctp-yellow); }
+html[data-theme^="catppuccin-"][data-theme$="-green"] { --accent: var(--ctp-green); }
+html[data-theme^="catppuccin-"][data-theme$="-teal"] { --accent: var(--ctp-teal); }
+html[data-theme^="catppuccin-"][data-theme$="-sky"] { --accent: var(--ctp-sky); }
+html[data-theme^="catppuccin-"][data-theme$="-sapphire"] { --accent: var(--ctp-sapphire); }
+html[data-theme^="catppuccin-"][data-theme$="-blue"] { --accent: var(--ctp-blue); }
+html[data-theme^="catppuccin-"][data-theme$="-lavender"] { --accent: var(--ctp-lavender); }
+
+html[data-theme^="everforest-harddark-"],
+html[data-theme^="everforest-dark-"],
+html[data-theme^="everforest-softdark-"] {
+    color-scheme: dark;
+    --ef-fg: #d3c6aa;
+    --ef-red: #e67e80;
+    --ef-orange: #e69875;
+    --ef-yellow: #dbbc7f;
+    --ef-green: #a7c080;
+    --ef-aqua: #83c092;
+    --ef-blue: #7fbbb3;
+    --ef-purple: #d699b6;
+    --ef-grey0: #7a8478;
+    --ef-grey1: #859289;
+    --ef-grey2: #9da9a0;
+    --text: var(--ef-fg);
+    --muted: var(--ef-grey1);
+}
+
+html[data-theme^="everforest-harddark-"] {
+    --ef-bg-dim: #1d2021;
+    --ef-bg0: #272e33;
+    --ef-bg1: #2e383c;
+    --ef-bg2: #374145;
+    --ef-bg3: #414b50;
+    --ef-bg4: #495156;
+    --ef-bg5: #4f5b58;
+    --bg: var(--ef-bg-dim);
+    --panel: var(--ef-bg0);
+    --border: var(--ef-bg3);
+    --ctp-mantle: var(--ef-bg1);
+}
+
+html[data-theme^="everforest-dark-"] {
+    --ef-bg-dim: #232a2e;
+    --ef-bg0: #2d353b;
+    --ef-bg1: #343f44;
+    --ef-bg2: #3d484d;
+    --ef-bg3: #475258;
+    --ef-bg4: #4f585e;
+    --ef-bg5: #56635f;
+    --bg: var(--ef-bg-dim);
+    --panel: var(--ef-bg0);
+    --border: var(--ef-bg3);
+    --ctp-mantle: var(--ef-bg1);
+}
+
+html[data-theme^="everforest-softdark-"] {
+    --ef-bg-dim: #293136;
+    --ef-bg0: #333c43;
+    --ef-bg1: #3a464c;
+    --ef-bg2: #434f55;
+    --ef-bg3: #4d5960;
+    --ef-bg4: #555f66;
+    --ef-bg5: #5c6a72;
+    --bg: var(--ef-bg-dim);
+    --panel: var(--ef-bg0);
+    --border: var(--ef-bg3);
+    --ctp-mantle: var(--ef-bg1);
+}
+
+html[data-theme^="everforest-hardlight-"],
+html[data-theme^="everforest-light-"],
+html[data-theme^="everforest-softlight-"] {
+    color-scheme: light;
+    --ef-fg: #5c6a72;
+    --ef-red: #f85552;
+    --ef-orange: #f57d26;
+    --ef-yellow: #dfa000;
+    --ef-green: #8da101;
+    --ef-aqua: #35a77c;
+    --ef-blue: #3a94c5;
+    --ef-purple: #df69ba;
+    --ef-grey0: #a6b0a0;
+    --ef-grey1: #939f91;
+    --ef-grey2: #829181;
+    --text: var(--ef-fg);
+    --muted: var(--ef-grey1);
+}
+
+html[data-theme^="everforest-hardlight-"] {
+    --ef-bg-dim: #f2efdf;
+    --ef-bg0: #fffbef;
+    --ef-bg1: #f8f5e4;
+    --ef-bg2: #f2efdf;
+    --ef-bg3: #edeada;
+    --ef-bg4: #e8e5d5;
+    --ef-bg5: #bec5b2;
+    --bg: var(--ef-bg-dim);
+    --panel: var(--ef-bg0);
+    --border: var(--ef-bg4);
+    --ctp-mantle: var(--ef-bg1);
+}
+
+html[data-theme^="everforest-light-"] {
+    --ef-bg-dim: #efebd4;
+    --ef-bg0: #fdf6e3;
+    --ef-bg1: #f4f0d9;
+    --ef-bg2: #efebd4;
+    --ef-bg3: #e6e2cc;
+    --ef-bg4: #e0dcc7;
+    --ef-bg5: #bdc3af;
+    --bg: var(--ef-bg-dim);
+    --panel: var(--ef-bg0);
+    --border: var(--ef-bg4);
+    --ctp-mantle: var(--ef-bg1);
+}
+
+html[data-theme^="everforest-softlight-"] {
+    --ef-bg-dim: #e5dfc5;
+    --ef-bg0: #f3ead3;
+    --ef-bg1: #eae4ca;
+    --ef-bg2: #e5dfc5;
+    --ef-bg3: #ddd8be;
+    --ef-bg4: #d8d3ba;
+    --ef-bg5: #b9c0ab;
+    --bg: var(--ef-bg-dim);
+    --panel: var(--ef-bg0);
+    --border: var(--ef-bg4);
+    --ctp-mantle: var(--ef-bg1);
+}
+
+html[data-theme^="everforest-"][data-theme$="-red"] { --accent: var(--ef-red); }
+html[data-theme^="everforest-"][data-theme$="-orange"] { --accent: var(--ef-orange); }
+html[data-theme^="everforest-"][data-theme$="-yellow"] { --accent: var(--ef-yellow); }
+html[data-theme^="everforest-"][data-theme$="-green"] { --accent: var(--ef-green); }
+html[data-theme^="everforest-"][data-theme$="-aqua"] { --accent: var(--ef-aqua); }
+html[data-theme^="everforest-"][data-theme$="-blue"] { --accent: var(--ef-blue); }
+html[data-theme^="everforest-"][data-theme$="-purple"] { --accent: var(--ef-purple); }
+
+```
+
+### ./ctrlpanel/pages/home.html:
+```html
+<section data-fragment="main">
+    <h1>Home</h1>
+    <p>Welcome to the control panel.</p>
+</section>
+
+```
+
 ### ./ctrlpanel/pages/settings.html:
 ```html
 <section data-fragment="main">
@@ -8971,24 +8989,20 @@ body.sidebar-collapsed .content {
 
     <section class="card" aria-labelledby="api-title">
         <h2 class="card-title" id="api-title">API Configuration</h2>
-        <p class="card-desc">Status of your backend OpenRouter connection.</p>
+        <p class="card-desc">Configure your OpenRouter API key for AI chat.</p>
+
+        <div class="option-row">
+            <label for="api-key-input">OpenRouter API Key</label>
+            <div class="input-group">
+                <input type="password" id="api-key-input" class="text-input" placeholder="sk-or-..." />
+                <button type="button" id="save-api-key" class="btn btn-primary">Save</button>
+            </div>
+            <p class="option-hint">Get your free API key from <a href="https://openrouter.ai/" target="_blank" rel="noopener">openrouter.ai</a></p>
+        </div>
+
         <div class="option-row">
             <label>API Status</label>
-            <span id="api-status" class="badge">Checking...</span>
-        </div>
-    </section>
-
-    <section class="card" aria-labelledby="model-title">
-        <h2 class="card-title" id="model-title">Default Model</h2>
-        <p class="card-desc">Set the default AI model for new chats.</p>
-        <div class="option-row">
-            <label for="default-model-select">Default Model</label>
-            <div class="input-group">
-                <select id="default-model-select" class="text-input">
-                    <option value="">Loading models...</option>
-                </select>
-                <button type="button" id="save-default-model" class="btn btn-primary">Save</button>
-            </div>
+            <span id="api-status" class="badge">Not configured</span>
         </div>
     </section>
 
@@ -9012,6 +9026,7 @@ body.sidebar-collapsed .content {
         </div>
     </section>
 </section>
+
 ```
 
 ### ./ctrlpanel/pages/ai-chat.html:
@@ -9044,7 +9059,7 @@ body.sidebar-collapsed .content {
                             aria-haspopup="listbox"
                             aria-expanded="false"
                         >
-                            <span class="chat-dropdown-label">StepFun-3.5 Flash</span>
+                            <span class="chat-dropdown-label">Arcee Trinity Large</span>
                             <span
                                 class="chat-dropdown-chevron"
                                 aria-hidden="true"
@@ -9062,11 +9077,34 @@ body.sidebar-collapsed .content {
                             </span>
                         </button>
                         <div class="chat-dropdown-menu" role="listbox">
-                            <button type="button" class="chat-dropdown-item selected" role="option" data-value="stepfun/step-3.5-flash:free" data-context-length="256000" aria-selected="true">StepFun-3.5 Flash</button>
-                            <button type="button" class="chat-dropdown-item" role="option" data-value="arcee-ai/trinity-large-preview:free" data-context-length="131000">Arcee Trinity Large Preview</button>
-                            <button type="button" class="chat-dropdown-item" role="option" data-value="upstage/solar-pro-3:free" data-context-length="128000">Upstage Solar Pro 3</button>
-                            <button type="button" class="chat-dropdown-item" role="option" data-value="liquid/lfm-2.5-1.2b-thinking:free" data-context-length="32000">Liquid LFM 2.5 1.2B Thinking</button>
-                            <button type="button" class="chat-dropdown-item" role="option" data-value="nvidia/nemotron-3-nano-30b-a3b:free" data-context-length="256000">Nvidia Nemotron 3 Nano 30B</button>
+                            <button
+                                type="button"
+                                class="chat-dropdown-item selected"
+                                role="option"
+                                data-value="arcee-ai/trinity-large-preview:free"
+                                data-context-length="32768"
+                                aria-selected="true"
+                            >
+                                Arcee Trinity Large
+                            </button>
+                            <button
+                                type="button"
+                                class="chat-dropdown-item"
+                                role="option"
+                                data-value="arcee-ai/trinity-mini:free"
+                                data-context-length="32768"
+                            >
+                                Arcee Trinity Mini
+                            </button>
+                            <button
+                                type="button"
+                                class="chat-dropdown-item"
+                                role="option"
+                                data-value="z-ai/glm-4.5-air:free"
+                                data-context-length="128000"
+                            >
+                                Z AI GLM 4.5 Air
+                            </button>
                         </div>
                     </div>
 
@@ -9246,3659 +9284,6 @@ body.sidebar-collapsed .content {
         </form>
     </div>
 </section>
-```
-
-### ./ctrlpanel/pages/home.html:
-```html
-<section data-fragment="main">
-    <h1>Home</h1>
-    <p>Welcome to the control panel.</p>
-</section>
-
-```
-
-### ./ctrlpanel/js/chat/util.js:
-```js
-export function generateId() {
-	return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-}
-
-export function formatBytes(bytes) {
-	const n = Number(bytes) || 0;
-	if (n < 1024) return `${n} B`;
-	const units = ["KiB", "MiB", "GiB", "TiB"];
-	let v = n / 1024;
-	let i = 0;
-	while (v >= 1024 && i < units.length - 1) {
-		v /= 1024;
-		i++;
-	}
-	return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
-}
-
-```
-
-### ./ctrlpanel/js/chat/store.js:
-```js
-import { createEmptyGraph, ensureGraph } from "./graph.js";
-import { generateId } from "./util.js";
-
-const CHATS_KEY = "ctrlpanel:chats";
-const CURRENT_CHAT_KEY = "ctrlpanel:currentChat";
-const PINS_KEY = "ctrlpanel:pins";
-
-let chats =[];
-let currentChatId = null;
-
-export function loadChats() {
-	try {
-		const stored = localStorage.getItem(CHATS_KEY);
-		chats = stored ? JSON.parse(stored) : [];
-		if (!Array.isArray(chats)) chats =[];
-	} catch {
-		chats =[];
-	}
-	chats.forEach((c) => ensureGraph(c));
-	try {
-		currentChatId = localStorage.getItem(CURRENT_CHAT_KEY) || null;
-	} catch {
-		currentChatId = null;
-	}
-}
-
-export function saveChats() {
-	try {
-		localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
-		if (currentChatId) localStorage.setItem(CURRENT_CHAT_KEY, currentChatId);
-		else localStorage.removeItem(CURRENT_CHAT_KEY);
-	} catch {}
-}
-
-export function getChats() { return chats; }
-export function getChatById(id) { return chats.find((c) => c.id === id); }
-export function getCurrentChatId() { return currentChatId; }
-export function setCurrentChatId(id) { currentChatId = id; }
-
-export function clearCurrentChatId() {
-	currentChatId = null;
-	try { localStorage.removeItem(CURRENT_CHAT_KEY); } catch {}
-}
-
-export function createNewChat() {
-	const chat = {
-		id: generateId(),
-		title: "New Chat",
-		createdAt: Date.now(),
-		updatedAt: Date.now(),
-		graph: createEmptyGraph(),
-		modelId: localStorage.getItem("ctrlpanel:lastSelectedModel") || null,
-	};
-	chats.unshift(chat);
-	currentChatId = chat.id;
-	saveChats();
-	return chat;
-}
-
-export function updateChatTitle(chatId, firstMessage) {
-	const chat = getChatById(chatId);
-	if (chat && chat.title === "New Chat" && firstMessage) {
-		chat.title = firstMessage.slice(0, 30) + (firstMessage.length > 30 ? "..." : "");
-		chat.updatedAt = Date.now();
-		saveChats();
-	}
-}
-
-export function renameChat(chatId, newTitle) {
-	const chat = getChatById(chatId);
-	if (chat && typeof newTitle === "string" && newTitle.trim()) {
-		chat.title = newTitle.trim();
-		chat.updatedAt = Date.now();
-		saveChats();
-		return true;
-	}
-	return false;
-}
-
-function loadPinnedChatIds() {
-	try {
-		const raw = localStorage.getItem(PINS_KEY);
-		const parsed = raw ? JSON.parse(raw) :[];
-		return Array.isArray(parsed) ? parsed.map(String) : [];
-	} catch {
-		return[];
-	}
-}
-
-function savePinnedChatIds(ids) {
-	try { localStorage.setItem(PINS_KEY, JSON.stringify(ids)); } catch {}
-}
-
-export function isChatPinned(chatId) {
-	return new Set(loadPinnedChatIds()).has(String(chatId));
-}
-
-export function togglePinChat(chatId) {
-	const id = String(chatId || "");
-	if (!id) return;
-	const pinned = new Set(loadPinnedChatIds());
-	if (pinned.has(id)) pinned.delete(id);
-	else pinned.add(id);
-	savePinnedChatIds([...pinned]);
-}
-
-export function deleteChat(chatId) {
-	const id = String(chatId || "");
-	if (!id) return;
-	chats = chats.filter((c) => c.id !== id);
-	if (currentChatId === id) currentChatId = chats.length ? chats[0].id : null;
-	const pinned = new Set(loadPinnedChatIds());
-	if (pinned.has(id)) {
-		pinned.delete(id);
-		savePinnedChatIds([...pinned]);
-	}
-	saveChats();
-}
-
-export function addMessageToChat(chatId, role, content, attachments = null, parts = null) {
-	const chat = getChatById(chatId);
-	if (!chat) return null;
-	const graph = ensureGraph(chat);
-	
-	// Just get the current end of the thread
-	const parentId = graph.leafId || graph.rootId;
-	
-	// Append directly as a child of the current leaf
-	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts });
-	
-	chat.updatedAt = Date.now();
-	if (computeThreadNodeIds(graph).length === 1 && role === "user") {
-		// For title, use text content from parts or content string
-		const titleText = parts
-			? parts.filter(p => p.type === "text").map(p => p.content).join(" ")
-			: String(content || "");
-		updateChatTitle(chatId, titleText);
-	}
-	saveChats();
-	return node;
-}
-
-export function addChildMessageToChat(chatId, parentId, role, content, attachments = null, parts = null) {
-	const chat = getChatById(chatId);
-	if (!chat) return null;
-	const graph = ensureGraph(chat);
-	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts });
-	chat.updatedAt = Date.now();
-	saveChats();
-	return node;
-}
-
-// Re-imported here to avoid circular dependency issues at module load time
-import { appendNode, computeThreadNodeIds } from "./graph.js";
-```
-
-### ./ctrlpanel/js/chat/inline-attachment.js:
-```js
-// ctrlpanel/js/chat/inline-attachment.js
-
-/**
- * InlineAttachmentManager - Handles inline file attachments in contenteditable
- * 
- * Features:
- * - Insert attachment chips at cursor position
- * - Track attachment data associated with each chip
- * - Handle backspace/delete to remove chips
- * - Alt+Up/Down to move content
- * - Extract content as parts array
- */
-
-import { generateId } from "./util.js";
-import { formatBytes } from "./util.js";
-
-// Filetype icons as SVG strings
-const FILETYPE_ICONS = {
-	// Archives
-	zip: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/><path d="M12 11v6M9 14h6"/></svg>`,
-	tar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 7h8M8 12h8M8 17h4"/></svg>`,
-	gz: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/><path d="M12 11v6M9 14h6"/></svg>`,
-	rar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/><path d="M9 9h6M9 13h6"/></svg>`,
-	
-	// Code
-	js: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>`,
-	ts: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/><text x="12" y="14" font-size="6" fill="currentColor" stroke="none">TS</text></svg>`,
-	py: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C6.5 2 6 4 6 6v3h6v1H4c-2 0-4 1.5-4 5s2 5 4 5h2v-3c0-2 1.5-4 4-4h6c2 0 4-2 4-4V6c0-2-2-4-8-4zm-2 2.5a1 1 0 110 2 1 1 0 010-2z"/><path d="M12 22c5.5 0 6-2 6-4v-3h-6v-1h8c2 0 4-1.5 4-5s-2-5-4-5h-2v3c0 2-1.5 4-4 4H8c-2 0-4 2-4 4v3c0 2 2 4 8 4zm2-2.5a1 1 0 110-2 1 1 0 010 2z"/></svg>`,
-	java: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 20c-2 0-3-1-3-3 2-2 6-2 8-5 1 2 1 4-1 6-2 2-4 2-4 2z"/><path d="M16 4c0 2-2 4-6 6-2 1-3 3-3 5 0 0 1-2 4-3 4-1 6-4 5-8z"/><path d="M18 12c0 1-1 2-3 3-1 1-2 2-2 3"/></svg>`,
-	jar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="6" y="3" width="12" height="18" rx="1"/><path d="M6 7h12M6 11h12M6 15h12"/><circle cx="12" cy="19" r="1"/></svg>`,
-	json: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2h-2"/><path d="M7 8h2M7 12h4M7 16h2"/></svg>`,
-	html: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l2 16 6 2 6-2 2-16H4z"/><path d="M8 8h8l-1 8-3 1-3-1-.5-4h3"/></svg>`,
-	css: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l2 16 6 2 6-2 2-16H4z"/><path d="M8 8h8M8 12h7M9 16l3 1 3-1"/></svg>`,
-	
-	// Documents
-	pdf: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>`,
-	doc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>`,
-	docx: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>`,
-	txt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>`,
-	md: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M7 13l2 2 2-2M7 17l2 2 2-2M13 13h4M13 17h4"/></svg>`,
-	
-	// Media
-	mp3: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
-	wav: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
-	mp4: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3V9z"/></svg>`,
-	avi: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3V9z"/></svg>`,
-	
-	// Images (fallback for non-preview)
-	png: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
-	jpg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
-	jpeg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
-	gif: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/><text x="12" y="14" font-size="5" fill="currentColor" stroke="none">GIF</text></svg>`,
-	svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
-	webp: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
-	
-	// Default
-	default: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
-};
-
-// Filetype display names
-const FILETYPE_NAMES = {
-	zip: "ZIP Archive",
-	tar: "TAR Archive",
-	gz: "GZip Archive",
-	rar: "RAR Archive",
-	js: "JavaScript",
-	ts: "TypeScript",
-	py: "Python",
-	java: "Java",
-	jar: "Java Archive",
-	json: "JSON",
-	html: "HTML",
-	css: "CSS",
-	pdf: "PDF Document",
-	doc: "Word Document",
-	docx: "Word Document",
-	txt: "Text File",
-	md: "Markdown",
-	mp3: "MP3 Audio",
-	wav: "WAV Audio",
-	mp4: "MP4 Video",
-	avi: "AVI Video",
-	png: "PNG Image",
-	jpg: "JPEG Image",
-	jpeg: "JPEG Image",
-	gif: "GIF Image",
-	svg: "SVG Image",
-	webp: "WebP Image",
-};
-
-/**
- * Get file extension from filename
- */
-function getFileExtension(filename) {
-	const match = filename.match(/\.([^.]+)$/);
-	return match ? match[1].toLowerCase() : "";
-}
-
-/**
- * Check if file is an image
- */
-export function isImageFile(file) {
-	const type = String(file?.type || "");
-	if (type.startsWith("image/")) return true;
-	const ext = getFileExtension(file?.name || "");
-	return ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext);
-}
-
-/**
- * Get filetype icon SVG
- */
-function getFiletypeIcon(filename) {
-	const ext = getFileExtension(filename);
-	return FILETYPE_ICONS[ext] || FILETYPE_ICONS.default;
-}
-
-/**
- * Get filetype display name
- */
-function getFiletypeName(filename) {
-	const ext = getFileExtension(filename);
-	return FILETYPE_NAMES[ext] || ext.toUpperCase() + " File";
-}
-
-/**
- * Create X icon for remove button
- */
-function createXIcon() {
-	return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>`;
-}
-
-/**
- * Normalize the DOM by merging adjacent text nodes and removing empty ones
- * This is crucial for consistent cursor behavior
- */
-function normalizeContentEditable(el) {
-	// First, merge adjacent text nodes
-	el.normalize();
-	
-	// Then clean up any problematic text nodes
-	const childNodes = Array.from(el.childNodes);
-	for (const node of childNodes) {
-		if (node.nodeType === Node.TEXT_NODE) {
-			// Remove empty text nodes (but keep one if it's the only content)
-			// Also preserve text nodes that are just whitespace if they're between elements
-			if (!node.textContent) {
-				if (el.childNodes.length > 1) {
-					node.remove();
-				}
-			}
-		}
-	}
-	
-	// Remove consecutive BR elements (keep only one)
-	const nodes = Array.from(el.childNodes);
-	let lastWasBR = false;
-	for (const node of nodes) {
-		if (node.tagName === "BR") {
-			if (lastWasBR) {
-				node.remove();
-			} else {
-				lastWasBR = true;
-			}
-		} else if (node.nodeType !== Node.TEXT_NODE || node.textContent.trim()) {
-			lastWasBR = false;
-		}
-	}
-}
-
-/**
- * Get the current cursor position in a robust way
- */
-function getCursorPosition(el) {
-	const selection = window.getSelection();
-	if (!selection || selection.rangeCount === 0) return null;
-	
-	const range = selection.getRangeAt(0);
-	if (!el.contains(range.commonAncestorContainer)) return null;
-	
-	return { selection, range };
-}
-
-/**
- * Set cursor position after an element
- */
-function setCursorAfter(element) {
-	const selection = window.getSelection();
-	if (!selection) return;
-	
-	const range = document.createRange();
-	range.setStartAfter(element);
-	range.collapse(true);
-	selection.removeAllRanges();
-	selection.addRange(range);
-}
-
-/**
- * Set cursor position before an element
- */
-function setCursorBefore(element) {
-	const selection = window.getSelection();
-	if (!selection) return;
-	
-	const range = document.createRange();
-	range.setStartBefore(element);
-	range.collapse(true);
-	selection.removeAllRanges();
-	selection.addRange(range);
-}
-
-/**
- * InlineAttachmentManager class
- */
-export class InlineAttachmentManager {
-	constructor(contentEditableEl, options = {}) {
-		this.el = contentEditableEl;
-		this.options = {
-			maxImagePreviewWidth: 400,
-			maxImagePreviewHeight: 300,
-			onAttachmentAdded: null,
-			onAttachmentRemoved: null,
-			...options,
-		};
-		this.attachments = new Map(); // id -> attachment data
-		this.isProcessing = false; // Flag to prevent recursive handling
-		this.setupEventListeners();
-	}
-
-	/**
-	 * Setup event listeners for contenteditable
-	 */
-	setupEventListeners() {
-		// Handle backspace/delete for attachment removal
-		this.el.addEventListener("keydown", (e) => this.handleKeyDown(e));
-		
-		// Handle click on remove buttons
-		this.el.addEventListener("click", (e) => this.handleClick(e));
-		
-		// Handle paste
-		this.el.addEventListener("paste", (e) => this.handlePaste(e));
-		
-		// Handle input events to normalize DOM
-		this.el.addEventListener("input", () => {
-			// Debounce normalization
-			if (this._normalizeTimeout) {
-				clearTimeout(this._normalizeTimeout);
-			}
-			this._normalizeTimeout = setTimeout(() => {
-				// Only normalize if we're not in the middle of an operation
-				if (!this.isProcessing) {
-					this.normalizeDOM();
-				}
-			}, 50);
-		});
-		
-		// Clean up on blur
-		this.el.addEventListener("blur", () => {
-			this.normalizeDOM();
-		});
-		
-		// Handle focus - ensure cursor is in a valid position
-		this.el.addEventListener("focus", () => {
-			// Ensure there's at least a text node to type in
-			if (!this.el.firstChild) {
-				const textNode = document.createTextNode("");
-				this.el.appendChild(textNode);
-			}
-		});
-	}
-
-	/**
-	 * Normalize the DOM structure
-	 */
-	normalizeDOM() {
-		normalizeContentEditable(this.el);
-	}
-
-	/**
-	 * Handle keydown events
-	 */
-	handleKeyDown(e) {
-		// Prevent recursive handling
-		if (this.isProcessing) return;
-		
-		// Alt+Up/Down for moving content
-		if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-			e.preventDefault();
-			this.moveContent(e.key === "ArrowUp" ? -1 : 1);
-			return;
-		}
-		
-		// Backspace/Delete handling for attachments
-		if (e.key === "Backspace" || e.key === "Delete") {
-			const cursorPos = getCursorPosition(this.el);
-			if (!cursorPos) return;
-			
-			const { selection, range } = cursorPos;
-			
-			// Check if there's a selection range (not collapsed)
-			if (!range.collapsed) {
-				// Check if the selection contains any chips
-				const chipsInRange = this.getChipsInRange(range);
-				if (chipsInRange.length > 0) {
-					e.preventDefault();
-					this.isProcessing = true;
-					try {
-						// Remove all chips in the selection
-						for (const chip of chipsInRange) {
-							this.removeAttachmentChip(chip);
-						}
-						// Let the browser handle the remaining text deletion
-						range.deleteContents();
-						this.normalizeDOM();
-					} finally {
-						this.isProcessing = false;
-					}
-					return;
-				}
-				// Let the browser handle normal selection deletion
-				return;
-			}
-			
-			// Collapsed range - check if we're adjacent to a chip
-			const chip = this.getAdjacentChip(range, e.key === "Backspace" ? "before" : "after");
-			
-			if (chip) {
-				e.preventDefault();
-				this.isProcessing = true;
-				try {
-					// Remove the chip
-					this.removeAttachmentChip(chip);
-					this.normalizeDOM();
-				} finally {
-					this.isProcessing = false;
-				}
-				return;
-			}
-			
-			// Deselect any selected chips if we're typing elsewhere
-			this.el.querySelectorAll(".inline-attachment.selected").forEach((c) => {
-				c.classList.remove("selected");
-			});
-		}
-		
-		// Arrow key handling for chip selection
-		if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-			const cursorPos = getCursorPosition(this.el);
-			if (!cursorPos) return;
-			
-			const { range } = cursorPos;
-			if (!range.collapsed) return;
-			
-			// Check if we're about to navigate into a chip
-			const chip = this.getAdjacentChip(range, e.key === "ArrowLeft" ? "before" : "after");
-			if (chip) {
-				// Deselect any previously selected chips
-				this.el.querySelectorAll(".inline-attachment.selected").forEach((c) => {
-					c.classList.remove("selected");
-				});
-				
-				// If navigating to an image chip and there's no text node after, create one
-				if (e.key === "ArrowRight" && chip.classList.contains("inline-attachment-image")) {
-					const nextSibling = chip.nextSibling;
-					if (!nextSibling || (nextSibling.nodeType === Node.TEXT_NODE && !nextSibling.textContent.trim()) || nextSibling.tagName === 'BR') {
-						const textNode = document.createTextNode(" ");
-						this.el.insertBefore(textNode, nextSibling || null);
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * Get all chips within a range
-	 */
-	getChipsInRange(range) {
-		const chips =[];
-		const walker = document.createTreeWalker(
-			range.commonAncestorContainer,
-			NodeFilter.SHOW_ELEMENT,
-			null
-		);
-		
-		let node = walker.currentNode;
-		while (node) {
-			if (node.nodeType === Node.ELEMENT_NODE && 
-				node.classList?.contains("inline-attachment") &&
-				range.intersectsNode(node)) {
-				chips.push(node);
-			}
-			node = walker.nextNode();
-		}
-		
-		return chips;
-	}
-
-	/**
-	 * Get adjacent attachment chip - improved version
-	 */
-	getAdjacentChip(range, direction) {
-		if (!range.collapsed) return null;
-		
-		const container = range.startContainer;
-		const offset = range.startOffset;
-		
-		// Helper to check if a node is a chip
-		const isChip = (node) => 
-			node?.nodeType === Node.ELEMENT_NODE && 
-			node.classList?.contains("inline-attachment");
-		
-		// Helper to check if a node is just a BR element
-		const isBR = (node) => node?.nodeType === Node.ELEMENT_NODE && node.tagName === "BR";
-		
-		// Helper to check if a text node is empty or just whitespace
-		const isEmptyText = (node) => 
-			node?.nodeType === Node.TEXT_NODE && !node.textContent.trim();
-		
-		if (direction === "before") {
-			// We're looking for a chip that's IMMEDIATELY before the cursor
-			// The cursor must be at the START of a text node (position 0)
-			// and the previous sibling must be a chip (possibly with BR in between)
-			
-			if (container.nodeType === Node.TEXT_NODE) {
-				// Only consider if cursor is at position 0
-				if (offset !== 0) return null;
-				
-				// Check previous sibling
-				let prev = container.previousSibling;
-				
-				// Skip BR elements and empty text nodes
-				while (prev && (isBR(prev) || isEmptyText(prev))) {
-					prev = prev.previousSibling;
-				}
-				
-				// If previous sibling is a chip, return it
-				if (isChip(prev)) return prev;
-				
-				// If we're in a nested structure, check parent's previous sibling
-				if (container.parentElement !== this.el) {
-					let parentPrev = container.parentElement.previousSibling;
-					while (parentPrev && (isBR(parentPrev) || isEmptyText(parentPrev))) {
-						parentPrev = parentPrev.previousSibling;
-					}
-					if (isChip(parentPrev)) return parentPrev;
-				}
-			} else if (container === this.el) {
-				// Cursor is directly in the contenteditable
-				// Check the element at offset-1
-				const children = Array.from(this.el.childNodes);
-				if (offset > 0) {
-					let prev = children[offset - 1];
-					// Skip BR and empty text
-					while (prev && (isBR(prev) || isEmptyText(prev))) {
-						const prevIndex = children.indexOf(prev) - 1;
-						prev = prevIndex >= 0 ? children[prevIndex] : null;
-					}
-					if (isChip(prev)) return prev;
-				}
-			}
-		} else {
-			// Direction: after
-			// We're looking for a chip that's IMMEDIATELY after the cursor
-			// The cursor must be at the END of a text node
-			// and the next sibling must be a chip (possibly with BR in between)
-			
-			if (container.nodeType === Node.TEXT_NODE) {
-				// Only consider if cursor is at the end
-				if (offset !== container.textContent.length) return null;
-				
-				// Check next sibling
-				let next = container.nextSibling;
-				
-				// Skip BR elements and empty text nodes
-				while (next && (isBR(next) || isEmptyText(next))) {
-					next = next.nextSibling;
-				}
-				
-				// If next sibling is a chip, return it
-				if (isChip(next)) return next;
-				
-				// If we're in a nested structure, check parent's next sibling
-				if (container.parentElement !== this.el) {
-					let parentNext = container.parentElement.nextSibling;
-					while (parentNext && (isBR(parentNext) || isEmptyText(parentNext))) {
-						parentNext = parentNext.nextSibling;
-					}
-					if (isChip(parentNext)) return parentNext;
-				}
-			} else if (container === this.el) {
-				// Cursor is directly in the contenteditable
-				// Check the element at offset
-				const children = Array.from(this.el.childNodes);
-				if (offset < children.length) {
-					let next = children[offset];
-					// Skip BR and empty text
-					while (next && (isBR(next) || isEmptyText(next))) {
-						const nextIndex = children.indexOf(next) + 1;
-						next = nextIndex < children.length ? children[nextIndex] : null;
-					}
-					if (isChip(next)) return next;
-				}
-			}
-		}
-		
-		return null;
-	}
-
-	/**
-	 * Handle click events
-	 */
-	handleClick(e) {
-		const removeBtn = e.target.closest(".inline-attachment-remove");
-		if (removeBtn) {
-			e.preventDefault();
-			e.stopPropagation();
-			const chip = removeBtn.closest(".inline-attachment");
-			if (chip) {
-				this.isProcessing = true;
-				try {
-					this.removeAttachmentChip(chip);
-				} finally {
-					this.isProcessing = false;
-				}
-			}
-			return;
-		}
-		
-		// Deselect chips when clicking elsewhere
-		if (!e.target.closest(".inline-attachment")) {
-			this.el.querySelectorAll(".inline-attachment.selected").forEach((c) => {
-				c.classList.remove("selected");
-			});
-		}
-	}
-
-	/**
-	 * Handle paste events
-	 */
-	handlePaste(e) {
-		const items = e.clipboardData?.items;
-		if (!items) return;
-		
-		for (const item of items) {
-			if (item.kind === "file") {
-				e.preventDefault();
-				const file = item.getAsFile();
-				if (file) this.addFile(file);
-				return; // Only handle the first file
-			}
-		}
-	}
-
-	/**
-	 * Move selected content up or down
-	 */
-	moveContent(direction) {
-		const selection = window.getSelection();
-		if (!selection.rangeCount) return;
-		
-		const range = selection.getRangeAt(0);
-		
-		// Get the element or text node to move
-		let nodeToMove = null;
-		let isChip = false;
-		
-		if (range.startContainer === range.endContainer && range.startOffset !== range.endOffset) {
-			// There's a selection
-			if (range.startContainer.nodeType === Node.TEXT_NODE) {
-				nodeToMove = range.extractContents();
-			}
-		} else {
-			// Check if a chip is selected
-			const selectedChip = this.el.querySelector(".inline-attachment.selected");
-			if (selectedChip) {
-				nodeToMove = selectedChip;
-				isChip = true;
-			}
-		}
-		
-		if (!nodeToMove) return;
-		
-		// Find the adjacent node
-		const allNodes = Array.from(this.el.childNodes);
-		const currentIndex = isChip ? allNodes.indexOf(nodeToMove) : -1;
-		
-		if (currentIndex === -1) return;
-		
-		const targetIndex = currentIndex + direction;
-		if (targetIndex < 0 || targetIndex >= allNodes.length) return;
-		
-		// Move the node
-		const targetNode = allNodes[targetIndex];
-		if (direction < 0) {
-			this.el.insertBefore(nodeToMove, targetNode);
-		} else {
-			this.el.insertBefore(nodeToMove, targetNode.nextSibling);
-		}
-		
-		// Restore selection
-		if (!isChip) {
-			const newRange = document.createRange();
-			newRange.selectNodeContents(nodeToMove);
-			selection.removeAllRanges();
-			selection.addRange(newRange);
-		}
-	}
-
-	/**
-	 * Add a file as an inline attachment at cursor position
-	 */
-	async addFile(file) {
-		const id = generateId();
-		const isImage = isImageFile(file);
-		
-		const attachment = {
-			id,
-			name: file.name,
-			size: file.size,
-			type: file.type || "application/octet-stream",
-			isImage,
-			data: null,
-		};
-		
-		// Read file as data URL
-		attachment.data = await new Promise((resolve, reject) => {
-			const reader = new FileReader();
-			reader.onload = () => resolve(reader.result);
-			reader.onerror = reject;
-			reader.readAsDataURL(file);
-		});
-		
-		// Store attachment data
-		this.attachments.set(id, attachment);
-		
-		// Create and insert chip element
-		const chip = this.createChipElement(attachment);
-		this.insertAtCursor(chip);
-		
-		// Update empty state
-		this.updateEmptyState();
-		
-		// Trigger input event to notify parent components (like auto-resize)
-		this.el.dispatchEvent(new Event("input", { bubbles: true }));
-		
-		// Callback
-		this.options.onAttachmentAdded?.(attachment);
-		
-		return attachment;
-	}
-
-	/**
-	 * Create chip element for attachment
-	 */
-	createChipElement(attachment) {
-		const chip = document.createElement("span");
-		chip.className = "inline-attachment";
-		chip.setAttribute("contenteditable", "false");
-		chip.dataset.attachmentId = attachment.id;
-		
-		if (attachment.isImage) {
-			chip.classList.add("inline-attachment-image");
-			chip.innerHTML = `
-				<span class="inline-attachment-preview">
-					<img src="${attachment.data}" alt="${attachment.name}" />
-				</span>
-				<span class="inline-attachment-info">
-					<span class="inline-attachment-name">${attachment.name}</span>
-					<span class="inline-attachment-size">${formatBytes(attachment.size)}</span>
-					<button type="button" class="inline-attachment-remove" aria-label="Remove attachment">
-						${createXIcon()}
-					</button>
-				</span>
-			`;
-			
-			// Trigger resize when image loads
-			const img = chip.querySelector("img");
-			if (img) {
-				img.addEventListener("load", () => {
-					this.el.dispatchEvent(new Event("input", { bubbles: true }));
-				});
-			}
-		} else {
-			chip.classList.add("inline-attachment-file");
-			const ext = getFileExtension(attachment.name);
-			chip.innerHTML = `
-				<span class="inline-attachment-icon">
-					${getFiletypeIcon(attachment.name)}
-					<span class="inline-attachment-type">${ext.toUpperCase()}</span>
-				</span>
-				<span class="inline-attachment-info">
-					<span class="inline-attachment-name">${attachment.name}</span>
-					<span class="inline-attachment-type-name">${getFiletypeName(attachment.name)}</span>
-					<span class="inline-attachment-size">${formatBytes(attachment.size)}</span>
-					<button type="button" class="inline-attachment-remove" aria-label="Remove attachment">
-						${createXIcon()}
-					</button>
-				</span>
-			`;
-		}
-		
-		return chip;
-	}
-
-	/**
-	 * Insert element at cursor position - improved version
-	 */
-	insertAtCursor(element) {
-		this.isProcessing = true;
-		
-		try {
-			const selection = window.getSelection();
-			
-			// Helper to check if there's text content before cursor
-			const hasTextBefore = (range) => {
-				const container = range.startContainer;
-				if (container.nodeType === Node.TEXT_NODE) {
-					const textBefore = container.textContent.slice(0, range.startOffset).trim();
-					if (textBefore) return true;
-				}
-				// Check previous siblings
-				let sibling = container.previousSibling;
-				while (sibling) {
-					if (sibling.nodeType === Node.TEXT_NODE && sibling.textContent.trim()) return true;
-					if (sibling.nodeType === Node.ELEMENT_NODE) {
-						if (sibling.classList?.contains("inline-attachment")) return true;
-						if (sibling.textContent?.trim()) return true;
-					}
-					sibling = sibling.previousSibling;
-				}
-				return false;
-			};
-			
-			// Helper to check if there's text content after cursor
-			const hasTextAfter = (range) => {
-				const container = range.startContainer;
-				if (container.nodeType === Node.TEXT_NODE) {
-					const textAfter = container.textContent.slice(range.startOffset).trim();
-					if (textAfter) return true;
-				}
-				// Check next siblings
-				let sibling = container.nextSibling;
-				while (sibling) {
-					if (sibling.nodeType === Node.TEXT_NODE && sibling.textContent.trim()) return true;
-					if (sibling.nodeType === Node.ELEMENT_NODE) {
-						if (sibling.classList?.contains("inline-attachment")) return true;
-						if (sibling.textContent?.trim()) return true;
-					}
-					sibling = sibling.nextSibling;
-				}
-				return false;
-			};
-			
-			if (!selection || !selection.rangeCount) {
-				// No selection, append to end with line break if needed
-				if (this.el.firstChild && this.el.textContent?.trim()) {
-					this.el.appendChild(document.createElement("br"));
-				}
-				this.el.appendChild(element);
-				this.ensureTrailingSpace();
-				return;
-			}
-			
-			const range = selection.getRangeAt(0);
-			
-			// Check if range is within our contenteditable
-			if (!this.el.contains(range.commonAncestorContainer)) {
-				if (this.el.firstChild && this.el.textContent?.trim()) {
-					this.el.appendChild(document.createElement("br"));
-				}
-				this.el.appendChild(element);
-				this.ensureTrailingSpace();
-				return;
-			}
-			
-			// Delete any selected content
-			range.deleteContents();
-			
-			// Check if we need a line break before the attachment
-			if (hasTextBefore(range)) {
-				const br = document.createElement("br");
-				range.insertNode(br);
-				range.setStartAfter(br);
-				range.collapse(true);
-			}
-			
-			// Insert the element
-			range.insertNode(element);
-			range.setStartAfter(element);
-			range.collapse(true);
-			
-			// Check if we need a line break after the attachment
-			if (hasTextAfter({ startContainer: range.startContainer, startOffset: range.startOffset })) {
-				const br = document.createElement("br");
-				range.insertNode(br);
-				range.setStartAfter(br);
-				range.collapse(true);
-			}
-			
-			// Position cursor after the element
-			setCursorAfter(element);
-			
-			// Ensure there's a space for typing
-			this.ensureTrailingSpace();
-		} finally {
-			this.isProcessing = false;
-		}
-	}
-
-	/**
-	 * Ensure there's a trailing space after the cursor for easier typing
-	 */
-	ensureTrailingSpace() {
-		const selection = window.getSelection();
-		if (!selection || !selection.rangeCount) return;
-		
-		const range = selection.getRangeAt(0);
-		const container = range.startContainer;
-		
-		// Check if we need to add a space
-		if (container.nodeType === Node.TEXT_NODE) {
-			// We're in a text node, check if there's content after cursor
-			const textAfterCursor = container.textContent.slice(range.startOffset);
-			if (textAfterCursor.length === 0) {
-				// We're at the end of the text node, check if there's a next sibling
-				if (!container.nextSibling || container.nextSibling.tagName !== 'BR') {
-					// Add a space at the end for typing
-					container.textContent += " ";
-					// Position cursor before the space
-					range.setStart(container, range.startOffset);
-					range.collapse(true);
-					selection.removeAllRanges();
-					selection.addRange(range);
-				}
-			}
-		} else {
-			// We're in an element, check if we need a text node
-			const nextSibling = range.startContainer.childNodes[range.startOffset];
-			if (!nextSibling || (nextSibling.nodeType !== Node.TEXT_NODE && nextSibling.tagName !== 'BR')) {
-				// Add a text node with a space
-				const textNode = document.createTextNode(" ");
-				range.insertNode(textNode);
-				range.setStart(textNode, 0);
-				range.collapse(true);
-				selection.removeAllRanges();
-				selection.addRange(range);
-			}
-		}
-	}
-
-	/**
-	 * Remove an attachment chip - improved version
-	 */
-	removeAttachmentChip(chip) {
-		const id = chip.dataset.attachmentId;
-		const attachment = this.attachments.get(id);
-		
-		// Save cursor position relative to chip
-		const selection = window.getSelection();
-		let restoreCursor = false;
-		let cursorBefore = false;
-		
-		if (selection && selection.rangeCount) {
-			const range = selection.getRangeAt(0);
-			if (this.el.contains(range.commonAncestorContainer)) {
-				// Check if cursor is before or after the chip
-				const chipRect = chip.getBoundingClientRect();
-				const rangeRect = range.getBoundingClientRect();
-				if (rangeRect.width === 0 && rangeRect.height === 0) {
-					// Collapsed range, use position comparison
-					const rangePos = range.startContainer.compareDocumentPosition(chip);
-					cursorBefore = (rangePos & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-					restoreCursor = true;
-				}
-			}
-		}
-		
-		// Find adjacent nodes before removal
-		const prevSibling = chip.previousSibling;
-		const nextSibling = chip.nextSibling;
-		
-		// Remove from DOM
-		chip.remove();
-		
-		// Remove from tracking
-		this.attachments.delete(id);
-		
-		// Clean up empty text nodes and normalize
-		this.normalizeDOM();
-		
-		// Update empty state
-		this.updateEmptyState();
-		
-		// Restore cursor position
-		if (restoreCursor) {
-			try {
-				// Try to position cursor where the chip was
-				if (prevSibling && prevSibling.nodeType === Node.TEXT_NODE) {
-					setCursorAfter(prevSibling);
-				} else if (nextSibling && nextSibling.nodeType === Node.TEXT_NODE) {
-					setCursorBefore(nextSibling);
-				} else {
-					// Just focus the element
-					this.el.focus();
-				}
-			} catch (e) {
-				// If cursor restoration fails, just focus
-				this.el.focus();
-			}
-		}
-		
-		// Trigger input event to notify parent components (like auto-resize)
-		this.el.dispatchEvent(new Event("input", { bubbles: true }));
-		
-		// Callback
-		this.options.onAttachmentRemoved?.(attachment);
-	}
-
-	/**
-	 * Extract content as parts array
-	 */
-	extractParts() {
-		// Don't normalize here - it could interfere with cursor position
-		// Just read the DOM recursively
-		
-		const parts =[];
-		
-		const appendText = (text) => {
-			if (!text) return;
-			const lastPart = parts[parts.length - 1];
-			if (lastPart?.type === "text") {
-				lastPart.content += text;
-			} else {
-				parts.push({ type: "text", content: text });
-			}
-		};
-		
-		const processNode = (node) => {
-			if (node.nodeType === Node.TEXT_NODE) {
-				// Replace non-breaking spaces with regular spaces
-				const text = node.textContent.replace(/\u00A0/g, " ");
-				appendText(text);
-			} else if (node.nodeType === Node.ELEMENT_NODE) {
-				if (node.tagName === "BR") {
-					appendText("\n");
-				} else if (node.classList?.contains("inline-attachment")) {
-					const id = node.dataset.attachmentId;
-					const attachment = this.attachments.get(id);
-					if (attachment) {
-						parts.push({
-							type: "attachment",
-							id: attachment.id,
-							name: attachment.name,
-							size: attachment.size,
-							mimeType: attachment.type,
-							isImage: attachment.isImage,
-							data: attachment.data,
-						});
-					}
-				} else {
-					// Block elements frequently created by browsers on Enter
-					const isBlock =["DIV", "P", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "SECTION", "TR"].includes(node.tagName);
-					
-					// If starting a new block, ensure we are on a new line
-					if (isBlock && parts.length > 0) {
-						const lastPart = parts[parts.length - 1];
-						if (lastPart.type === "text" && !lastPart.content.endsWith("\n")) {
-							appendText("\n");
-						} else if (lastPart.type === "attachment") {
-							appendText("\n");
-						}
-					}
-
-					// Process all children recursively
-					for (const child of node.childNodes) {
-						processNode(child);
-					}
-					
-					// Finishing a block should ideally ensure the next thing starts on a new line
-					if (isBlock) {
-						const lastChild = node.lastChild;
-						// If the last child was a BR, it already added a newline.
-						if (lastChild && lastChild.tagName === "BR") {
-							// skip
-						} else {
-							// Add a newline if we don't already end with one
-							const lp = parts[parts.length - 1];
-							if (lp && lp.type === "text" && !lp.content.endsWith("\n")) {
-								appendText("\n");
-							}
-						}
-					}
-				}
-			}
-		};
-
-		// Parse the root level
-		for (const child of this.el.childNodes) {
-			processNode(child);
-		}
-		
-		// Trim trailing whitespace and extraneous newlines from the final output
-		const lastPart = parts[parts.length - 1];
-		if (lastPart?.type === "text") {
-			lastPart.content = lastPart.content.trimEnd();
-			if (!lastPart.content) {
-				parts.pop();
-			}
-		}
-		
-		return parts;
-	}
-
-	/**
-	 * Clear all content
-	 */
-	clear() {
-		this.attachments.clear();
-		this.el.innerHTML = "";
-		// Update placeholder state
-		this.el.dataset.empty = "true";
-	}
-
-	/**
-	 * Check if there's any content
-	 */
-	hasContent() {
-		// Check for attachments
-		if (this.attachments.size > 0) return true;
-		
-		// Check for text content (excluding whitespace)
-		const text = this.el.textContent || "";
-		return text.trim().length > 0;
-	}
-
-	/**
-	 * Update the empty state indicator
-	 */
-	updateEmptyState() {
-		const hasContent = this.hasContent();
-		this.el.dataset.empty = hasContent ? "false" : "true";
-	}
-
-	/**
-	 * Focus the input
-	 */
-	focus() {
-		this.el.focus();
-		
-		// Ensure there's a text node to type in
-		if (!this.el.firstChild) {
-			const textNode = document.createTextNode("");
-			this.el.appendChild(textNode);
-		}
-		
-		// Move cursor to end
-		const selection = window.getSelection();
-		if (!selection) return;
-		
-		const range = document.createRange();
-		
-		// Move to end of content
-		if (this.el.lastChild && this.el.lastChild.nodeType === Node.TEXT_NODE) {
-			range.setStart(this.el.lastChild, this.el.lastChild.textContent.length);
-			range.collapse(true);
-		} else {
-			range.selectNodeContents(this.el);
-			range.collapse(false);
-		}
-		
-		selection.removeAllRanges();
-		selection.addRange(range);
-	}
-
-	/**
-	 * Get all attachments
-	 */
-	getAttachments() {
-		return Array.from(this.attachments.values());
-	}
-}
-
-export default InlineAttachmentManager;
-```
-
-### ./ctrlpanel/js/chat/sidebar.js:
-```js
-import { deleteChat, getChats, getCurrentChatId, isChatPinned, renameChat, togglePinChat } from "./store.js";
-
-const pinIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.579 14.579L11.6316 17.5264L10.7683 16.6631C10.3775 16.2723 10.1579 15.7422 10.1579 15.1894V13.1053L7.21052 10.158L5 9.42111L9.42111 5L10.158 7.21052L13.1053 10.1579L15.1894 10.1579C15.7422 10.1579 16.2722 10.3775 16.6631 10.7683L17.5264 11.6316L14.579 14.579ZM14.579 14.579L19 19"/></svg>`;
-
-const unpinIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.579 14.579L11.6316 17.5264L11.0526 16.9474M14.579 14.579L17.5264 11.6316L16.9474 11.0526M14.579 14.579L19 19M5 19L10.1579 13.8421M19 5L13.8421 10.1579M13.8421 10.1579L13.1053 10.1579L10.158 7.21052L9.42111 5L5 9.42111L7.21052 10.158L10.1579 13.1053V13.8421M13.8421 10.1579L10.1579 13.8421"/></svg>`;
-
-const deleteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6H20L18.4199 20.2209C18.3074 21.2337 17.4512 22 16.4321 22H7.56786C6.54876 22 5.69264 21.2337 5.5801 20.2209L4 6Z"/><path d="M7.34491 3.14716C7.67506 2.44685 8.37973 2 9.15396 2H14.846C15.6203 2 16.3249 2.44685 16.6551 3.14716L18 6H6L7.34491 3.14716Z"/><path d="M2 6H22"/><path d="M10 11V16"/><path d="M14 11V16"/></svg>`;
-const editIconSvg = `<svg viewBox="0 -0.5 21 21" version="1.1" xmlns="http://www.w3.org/2000/svg"><g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g fill="currentColor"><path d="M3.15,14 C2.5704,14 2.1,13.552 2.1,13 L2.1,7 C2.1,6.448 2.5704,6 3.15,6 C3.7296,6 4.2,5.552 4.2,5 C4.2,4.448 3.7296,4 3.15,4 L2.1,4 C0.93975,4 0,4.895 0,6 L0,14 C0,15.105 0.93975,16 2.1,16 L3.15,16 C3.7296,16 4.2,15.552 4.2,15 C4.2,14.448 3.7296,14 3.15,14 M18.9,4 L11.55,4 C10.9704,4 10.5,4.448 10.5,5 C10.5,5.552 10.9704,6 11.55,6 L17.85,6 C18.4296,6 18.9,6.448 18.9,7 L18.9,13 C18.9,13.552 18.4296,14 17.85,14 L11.55,14 C10.9704,14 10.5,14.448 10.5,15 C10.5,15.552 10.9704,16 11.55,16 L18.9,16 C20.06025,16 21,15.105 21,14 L21,6 C21,4.895 20.06025,4 18.9,4 M10.5,19 C10.5,19.552 10.0296,20 9.45,20 L5.25,20 C4.6704,20 4.2,19.552 4.2,19 C4.2,18.448 4.6704,18 5.25,18 L6.3,18 L6.3,2 L5.25,2 C4.6704,2 4.2,1.552 4.2,1 C4.2,0.448 4.6704,0 5.25,0 L9.45,0 C10.0296,0 10.5,0.448 10.5,1 C10.5,1.552 10.0296,2 9.45,2 L8.4,2 L8.4,18 L9.45,18 C10.0296,18 10.5,18.448 10.5,19"/></g></g></svg>`;
-
-export function renderChatList(onDelete) {
-	const list = document.getElementById("savedChatsList");
-	if (!list) return;
-	list.innerHTML = "";
-
-	const chats = getChats();
-	const currentChatId = getCurrentChatId();
-	const pinnedChats = chats.filter((c) => isChatPinned(c.id));
-	const regularChats = chats.filter((c) => !isChatPinned(c.id));
-
-	const renderSection = (title, sectionChats) => {
-		if (!sectionChats.length) return;
-		const h = document.createElement("div");
-		h.className = "nav-chat-section-title";
-		h.textContent = title;
-		list.appendChild(h);
-
-		const section = document.createElement("div");
-		section.className = "nav-chat-list";
-		list.appendChild(section);
-
-		sectionChats.forEach((chat) => {
-			const item = document.createElement("a");
-			item.href = `#pages/ai-chat.html?chat=${chat.id}`;
-			item.className = "nav-subitem nav-chat-item";
-			item.dataset.route = "";
-			item.dataset.chatId = chat.id;
-			if (chat.id === currentChatId) item.classList.add("active");
-
-			const label = document.createElement("span");
-			label.className = "nav-label";
-			label.textContent = chat.title;
-
-			const renameBtn = document.createElement("button");
-			renameBtn.className = "nav-chat-rename";
-			renameBtn.type = "button";
-			renameBtn.setAttribute("aria-label", "Rename chat");
-			renameBtn.title = "Rename";
-			renameBtn.innerHTML = editIconSvg;
-			renameBtn.addEventListener("click", (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-
-				// Mark the item as being edited and temporarily disable anchor behavior
-				item.classList.add("editing");
-				const originalHref = item.getAttribute("href");
-				item.removeAttribute("href");
-
-				// Hide the label (actions are hidden via CSS when editing)
-				label.style.display = "none";
-
-				// Create inline input - insert inside the anchor after the icon
-				const input = document.createElement("input");
-				input.type = "text";
-				input.className = "nav-chat-rename-input";
-				input.value = chat.title;
-				input.setAttribute("aria-label", "Edit chat title");
-
-				// Click-outside handler - strictly checks if click is outside input
-				const handleClickOutside = (event) => {
-					if (!input.contains(event.target) && !renameBtn.contains(event.target)) {
-						commitEdit();
-					}
-				};
-
-				// Handle commit on Enter or click-outside
-				const commitEdit = () => {
-					document.removeEventListener("click", handleClickOutside);
-					const newTitle = input.value.trim();
-					if (newTitle) {
-						renameChat(chat.id, newTitle);
-						label.textContent = newTitle;
-					}
-					input.remove();
-					label.style.display = "";
-					item.classList.remove("editing");
-					if (originalHref) item.setAttribute("href", originalHref);
-				};
-
-				// Handle cancel on Escape
-				const cancelEdit = () => {
-					document.removeEventListener("click", handleClickOutside);
-					input.remove();
-					label.style.display = "";
-					item.classList.remove("editing");
-					if (originalHref) item.setAttribute("href", originalHref);
-				};
-
-				input.addEventListener("keydown", (ke) => {
-					if (ke.key === "Enter") {
-						ke.preventDefault();
-						commitEdit();
-					} else if (ke.key === "Escape") {
-						ke.preventDefault();
-						cancelEdit();
-					}
-				});
-
-				// Insert input at the beginning of the anchor
-				item.prepend(input);
-				input.focus();
-				input.select();
-
-				// Add click-outside listener with delay to prevent immediate trigger
-				setTimeout(() => {
-					document.addEventListener("click", handleClickOutside);
-				}, 0);
-			});
-
-			const pinBtn = document.createElement("button");
-			pinBtn.className = "nav-chat-pin";
-			pinBtn.type = "button";
-			const pinned = isChatPinned(chat.id);
-			if (pinned) pinBtn.classList.add("pinned");
-			pinBtn.setAttribute("aria-label", pinned ? "Unpin chat" : "Pin chat");
-			pinBtn.title = pinned ? "Unpin" : "Pin";
-			// Use unpin icon when pinned, pin icon when not pinned
-			pinBtn.innerHTML = pinned ? unpinIconSvg : pinIconSvg;
-			pinBtn.addEventListener("click", (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				togglePinChat(chat.id);
-				renderChatList(onDelete);
-			});
-
-			const deleteBtn = document.createElement("button");
-			deleteBtn.className = "nav-chat-delete";
-			deleteBtn.type = "button";
-			deleteBtn.setAttribute("aria-label", "Delete chat");
-			deleteBtn.title = "Delete";
-			deleteBtn.innerHTML = deleteIconSvg;
-			deleteBtn.addEventListener("click", (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				deleteChat(chat.id);
-				renderChatList(onDelete);
-				if (onDelete) onDelete();
-			});
-
-			const actionsContainer = document.createElement("span");
-			actionsContainer.className = "nav-chat-actions";
-			actionsContainer.append(renameBtn, pinBtn, deleteBtn);
-
-			item.append(label, actionsContainer);
-			section.appendChild(item);
-		});
-	};
-
-	renderSection("Pinned", pinnedChats);
-	renderSection("Chats", regularChats);
-}
-
-```
-
-### ./ctrlpanel/js/chat/latex.js:
-```js
-/**
- * Comprehensive LaTeX math & structural renderer
- * - Uses KaTeX if available for equation rendering.
- * - Extracts and hides code blocks to avoid math parsing bugs.
- * - Preprocesses raw LaTeX (like \begin{theorem}, \begin{tikzpicture}, and \begin{tabular}) into clean HTML/Markdown.
- */
-
-// Dynamically inject KaTeX (redundant safety if index.html doesn't have it)
-(function initKaTeX() {
-	if (typeof window !== 'undefined' && !window.katex && !document.getElementById('katex-script')) {
-		const css = document.createElement('link');
-		css.rel = 'stylesheet';
-		css.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
-		document.head.appendChild(css);
-
-		const script = document.createElement('script');
-		script.id = 'katex-script';
-		script.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js';
-		script.defer = true;
-		document.head.appendChild(script);
-	}
-})();
-
-// Shared Regexes
-const CODE_BLOCK_REGEX = /(```[\s\S]*?```|`[^`\n]+`)/g;
-// Uses backreference \1 to ensure \begin{env} strictly matches its corresponding \end{env}, safely ignoring nested environments like pmatrix
-const MATH_REGEX = /\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$(?!\s)(?:\\.|[^\n$])+?(?<!\s)\$|\\begin\{((?:equation|align|gather|eqnarray|multline|matrix|bmatrix|pmatrix|vmatrix|Vmatrix|cases)\*?)\}[\s\S]*?\\end\{\1\}/g;
-
-/**
- * Helper to process algorithmic blocks into readable pseudocode
- */
-function formatAlgorithmic(content) {
-	const lines = content.split('\n');
-	let html = '<div class="latex-algorithm">';
-	let indentLevel = 0;
-	
-	lines.forEach(line => {
-		let trim = line.trim();
-		if (!trim) return;
-		
-		// Handle Indentation adjustments before rendering
-		if (trim.match(/^\\(End|Until|Else)/i)) indentLevel = Math.max(0, indentLevel - 1);
-		
-		const padding = indentLevel * 20; // 20px indent per level
-		
-		// Formatting keywords
-		trim = trim.replace(/\\State\s*/g, '<span class="alg-keyword"></span>');
-		trim = trim.replace(/\\Require\s*/g, '<span class="alg-keyword">Require:</span> ');
-		trim = trim.replace(/\\Ensure\s*/g, '<span class="alg-keyword">Ensure:</span> ');
-		trim = trim.replace(/\\Return\s*/g, '<span class="alg-keyword">return</span> ');
-		trim = trim.replace(/\\If\s*\{([^}]+)\}/g, '<span class="alg-keyword">if</span> $1 <span class="alg-keyword">then</span>');
-		trim = trim.replace(/\\Else/g, '<span class="alg-keyword">else</span>');
-		trim = trim.replace(/\\EndIf/g, '<span class="alg-keyword">end if</span>');
-		trim = trim.replace(/\\For\s*\{([^}]+)\}/g, '<span class="alg-keyword">for</span> $1 <span class="alg-keyword">do</span>');
-		trim = trim.replace(/\\EndFor/g, '<span class="alg-keyword">end for</span>');
-		trim = trim.replace(/\\While\s*\{([^}]+)\}/g, '<span class="alg-keyword">while</span> $1 <span class="alg-keyword">do</span>');
-		trim = trim.replace(/\\EndWhile/g, '<span class="alg-keyword">end while</span>');
-		trim = trim.replace(/\\Function\s*\{([^}]+)\}\s*\{([^}]+)\}/g, '<span class="alg-keyword">function</span> $1($2)');
-		trim = trim.replace(/\\EndFunction/g, '<span class="alg-keyword">end function</span>');
-		trim = trim.replace(/\\Comment\s*\{([^}]+)\}/g, '<span class="alg-comment">▷ $1</span>');
-		
-		html += `<div class="alg-line" style="padding-left:${padding}px">${trim}</div>`;
-		
-		// Handle Indentation adjustments after rendering
-		if (trim.match(/class="alg-keyword">(if|else|for|while|function|procedure)/i)) indentLevel++;
-	});
-	
-	html += '</div>';
-	return html;
-}
-
-/**
- * Helper to process tabular environments into HTML Tables
- * HTML tables support colspan/rowspan which Markdown tables do not.
- */
-function formatTabular(body) {
-	// Remove structural commands that don't map to HTML structure directly
-	let cleanBody = body
-		.replace(/\\hline/g, '')
-		.replace(/\\toprule/g, '')
-		.replace(/\\midrule/g, '')
-		.replace(/\\bottomrule/g, '')
-		.replace(/\\cline\{.*?\}/g, '');
-
-	const rows = cleanBody.split('\\\\').filter(r => r.trim());
-	let html = '<div class="latex-table-wrapper"><table class="latex-table"><tbody>';
-	
-	rows.forEach(row => {
-		html += '<tr>';
-		// Split by & but respect escaping
-		const cells = row.split(/(?<!\\)&/); 
-		
-		cells.forEach(cell => {
-			let content = cell.trim();
-			let colspan = 1;
-			let rowspan = 1;
-			
-			// Handle \multicolumn{cols}{align}{text}
-			const multiColMatch = content.match(/^\\multicolumn\{(\d+)\}\{(.*?)\}\{(.*?)\}$/);
-			if (multiColMatch) {
-				colspan = parseInt(multiColMatch[1]);
-				// alignment is in group 2 (e.g. 'c', '|c|'), ignored for now
-				content = multiColMatch[3];
-			}
-			
-			// Handle \multirow{rows}{width}{text}
-			const multiRowMatch = content.match(/^\\multirow\{(\d+)\}\{(.*?)\}\{(.*?)\}$/);
-			if (multiRowMatch) {
-				rowspan = parseInt(multiRowMatch[1]);
-				content = multiRowMatch[3];
-			}
-			
-			// Handle \multirow{2}{*}{Text} where * is width
-			const multiRowStar = content.match(/^\\multirow\{(\d+)\}\{\*\}\{(.*?)\}$/);
-			if (multiRowStar) {
-				rowspan = parseInt(multiRowStar[1]);
-				content = multiRowStar[2];
-			}
-
-			// Bold headers if simple text
-			content = content.replace(/\\textbf\{([^}]+)\}/g, '<b>$1</b>');
-			
-			// Wildcard replacement to clean up lingering braces from simple wrappers
-			if (content === '{}') content = '';
-
-			let attrs = '';
-			if (colspan > 1) attrs += ` colspan="${colspan}"`;
-			if (rowspan > 1) attrs += ` rowspan="${rowspan}"`;
-			
-			html += `<td${attrs}>${content}</td>`;
-		});
-		html += '</tr>';
-	});
-	html += '</tbody></table></div>';
-	return html;
-}
-
-/**
- * Parses raw text-mode LaTeX (like lists, theorems, algorithms, and tables) into clean markdown
- * so the UI renders beautiful boxes instead of raw or broken text.
- */
-export function preprocessLatexText(text) {
-	if (!text) return '';
-
-	// Step 1: Protect code blocks from any replacements
-	const codeBlocks =[];
-	let codeIndex = 0;
-	let safeText = text.replace(CODE_BLOCK_REGEX, (match) => {
-		const placeholder = `⚿CODEBLOCK${codeIndex}⚿`;
-		codeBlocks.push({ placeholder, content: match });
-		codeIndex++;
-		return placeholder;
-	});
-
-	// Step 2: Protect math blocks so we don't accidentally modify equations.
-	const mathBlocks = [];
-	let mathIndex = 0;
-	safeText = safeText.replace(MATH_REGEX, (match) => {
-		const placeholder = `⚿MATHBLOCK${mathIndex}⚿`;
-		mathBlocks.push({ placeholder, content: match });
-		mathIndex++;
-		return placeholder;
-	});
-
-	// Step 3: Perform text-mode LaTeX structural conversions
-	let p = safeText;
-
-	// === Preamble / Metadata Hiding ===
-	// Collect all preamble stuff into one block
-	const preambleRegex = /^\\(?:documentclass|usepackage|newcommand|renewcommand|bibliographystyle|bibliography|author|title|date|DeclareMathOperator).*$/gm;
-	let preambleContent = '';
-	p = p.replace(preambleRegex, (match) => {
-		preambleContent += match + '\n';
-		return ''; // Remove from main flow
-	});
-	
-	if (preambleContent.trim()) {
-		// Prepend a collapsed details block with the preamble
-		p = `<details class="latex-preamble"><summary>Document Configuration</summary>\n\`\`\`latex\n${preambleContent.trim()}\n\`\`\`\n</details>\n\n` + p;
-	}
-
-	// === Callouts (Theorems, Proofs, etc.) ===
-	const makeCallout = (type, icon, title) => `\n\n<div class="md-callout md-callout-${type}"><div class="md-callout-header"><span class="md-callout-icon">${icon}</span><span class="md-callout-title">${title}</span></div><div class="md-callout-content">\n\n`;
-	const endCallout = '\n\n</div></div>\n\n';
-
-	p = p.replace(/\\begin\{theorem\}/g, makeCallout('info', '🏛️', 'Theorem'));
-	p = p.replace(/\\end\{theorem\}/g, endCallout);
-
-	p = p.replace(/\\begin\{proof\}/g, makeCallout('note', '📝', 'Proof'));
-	p = p.replace(/\\end\{proof\}/g, endCallout);
-
-	p = p.replace(/\\begin\{lemma\}/g, makeCallout('tip', '💡', 'Lemma'));
-	p = p.replace(/\\end\{lemma\}/g, endCallout);
-
-	p = p.replace(/\\begin\{definition\}/g, makeCallout('example', '📖', 'Definition'));
-	p = p.replace(/\\end\{definition\}/g, endCallout);
-
-	// === Algorithms ===
-	p = p.replace(/\\begin\{algorithm\}(?:\[.*?\])?/g, makeCallout('example', '⚙️', 'Algorithm'));
-	p = p.replace(/\\end\{algorithm\}/g, endCallout);
-	// Use custom algorithmic formatter
-	p = p.replace(/\\begin\{algorithmic\}(?:\[.*?\])?([\s\S]*?)\\end\{algorithmic\}/g, (match, content) => {
-		return formatAlgorithmic(content);
-	});
-
-	// === Beamer Frames ===
-	p = p.replace(/\\begin\{frame\}(?:\[.*?\])?(?:\{([^}]*)\})?/g, (match, title) => {
-		return makeCallout('note', '📽️', title || 'Slide');
-	});
-	p = p.replace(/\\frametitle\{([^}]+)\}/g, '**$1**\n');
-	p = p.replace(/\\end\{frame\}/g, endCallout);
-
-	// === TikZ & Graphics ===
-	p = p.replace(/\\begin\{tikzpicture\}([\s\S]*?)\\end\{tikzpicture\}/g, (match, code) => {
-		return `\n<div class="latex-figure-container"><div class="latex-figure-placeholder">TikZ Graphics (Code Source)</div>\n\`\`\`latex\n\\begin{tikzpicture}${code}\\end{tikzpicture}\n\`\`\`\n</div>\n`;
-	});
-
-	p = p.replace(/\\includegraphics(?:\[.*?\])?\{([^}]+)\}/g, (match, filename) => {
-		return `\n<div class="latex-figure-card"><div class="latex-figure-icon">🖼️</div><div class="latex-figure-details"><div class="latex-figure-name">Figure: ${filename}</div><div class="latex-figure-note">Image rendering requires compiling</div></div></div>\n`;
-	});
-
-	// === Tables (HTML Conversion) ===
-	p = p.replace(/\\begin\{tabular\}\s*(?:\{[^\n]*?\})?([\s\S]*?)\\end\{tabular\}/g, (match, body) => {
-		return formatTabular(body);
-	});
-
-	// === Headers ===
-	p = p.replace(/\\section\*?\{([^}]+)\}/g, '\n# $1\n');
-	p = p.replace(/\\subsection\*?\{([^}]+)\}/g, '\n## $1\n');
-	p = p.replace(/\\subsubsection\*?\{([^}]+)\}/g, '\n### $1\n');
-
-	// === Inline Formatting ===
-	p = p.replace(/\\textbf\{([^}]+)\}/g, '**$1**');
-	p = p.replace(/\\textit\{([^}]+)\}/g, '*$1*');
-	p = p.replace(/\\emph\{([^}]+)\}/g, '*$1*');
-	p = p.replace(/\\underline\{([^}]+)\}/g, '<u>$1</u>');
-	p = p.replace(/\\textcolor\{([^}]+)\}\{([^}]+)\}/g, '<span style="color: $1;">$2</span>');
-	p = p.replace(/\\mycommand\{([^}]+)\}/g, '`$1`'); // Handle example custom command gracefully
-
-	// === Refs & Citations ===
-	p = p.replace(/~(\\ref|\\pageref|\\cite)/g, ' $1'); 
-	p = p.replace(/\\cite(?:\[.*?\])?\{([^}]+)\}/g, '<span class="latex-citation">[$1]</span>');
-	p = p.replace(/\\ref\{([^}]+)\}/g, '<span class="latex-ref">ref: $1</span>');
-	p = p.replace(/\\pageref\{([^}]+)\}/g, '<span class="latex-ref">page: $1</span>');
-	p = p.replace(/\\label\{([^}]+)\}/g, ''); 
-
-	// === Lists ===
-	// Simple replacements often break nesting, but for display this usually suffices
-	p = p.replace(/\\begin\{itemize\}/g, '\n');
-	p = p.replace(/\\end\{itemize\}/g, '\n');
-	p = p.replace(/\\begin\{enumerate\}/g, '\n');
-	p = p.replace(/\\end\{enumerate\}/g, '\n');
-	p = p.replace(/\\begin\{description\}/g, '\n');
-	p = p.replace(/\\end\{description\}/g, '\n');
-	p = p.replace(/\\item\s*\[(.*?)\]/g, '\n- **$1:** ');
-	p = p.replace(/\\item/g, '\n- ');
-
-	// === Wrappers ===
-	p = p.replace(/\\begin\{table\}(\[.*?\])?/g, '\n');
-	p = p.replace(/\\end\{table\}/g, '\n');
-	p = p.replace(/\\begin\{figure\}(\[.*?\])?/g, '\n');
-	p = p.replace(/\\end\{figure\}/g, '\n');
-	p = p.replace(/\\centering/g, '');
-	p = p.replace(/\\caption\{([^}]+)\}/g, '\n<div class="latex-caption">$1</div>\n');
-
-	// General Document Wrappers
-	p = p.replace(/\\begin\{document\}/g, '');
-	p = p.replace(/\\end\{document\}/g, '');
-
-	// Cleanup
-	p = p.replace(/\n{3,}/g, '\n\n');
-
-	// Step 4: Restore math and code placeholders
-	for (const block of mathBlocks) {
-		p = p.replace(block.placeholder, block.content);
-	}
-	for (const block of codeBlocks) {
-		p = p.replace(block.placeholder, block.content);
-	}
-
-	return p;
-}
-
-/**
- * Extracts math into safe blocks so the Markdown parser ignores it.
- * Code blocks are also temporarily shielded from the math parser.
- */
-export function extractMath(text) {
-	if (!text) return { text: '', mathBlocks:[] };
-	
-	const codeBlocks =[];
-	let codeIndex = 0;
-	let textWithoutCode = text.replace(CODE_BLOCK_REGEX, (match) => {
-		const placeholder = `⚿CODEBLOCK${codeIndex}⚿`;
-		codeBlocks.push({ placeholder, content: match });
-		codeIndex++;
-		return placeholder;
-	});
-
-	const mathBlocks =[];
-	let mathIndex = 0;
-	
-	let textWithMathExtracted = textWithoutCode.replace(MATH_REGEX, (match) => {
-		const placeholder = `⚿MATHBLOCK${mathIndex}⚿`;
-		let isBlock = false;
-		let content = match;
-		
-		if (match.startsWith('$$')) {
-			isBlock = true;
-			content = match.substring(2, match.length - 2);
-		} else if (match.startsWith('\\[')) {
-			isBlock = true;
-			content = match.substring(2, match.length - 2);
-		} else if (match.startsWith('\\(')) {
-			isBlock = false;
-			content = match.substring(2, match.length - 2);
-		} else if (match.startsWith('$')) {
-			isBlock = false;
-			content = match.substring(1, match.length - 1);
-		} else if (match.startsWith('\\begin{')) {
-			isBlock = true;
-			content = match;
-		}
-		
-		mathBlocks.push({ placeholder, content, isBlock });
-		mathIndex++;
-		return placeholder;
-	});
-	
-	let finalText = textWithMathExtracted;
-	for (const block of codeBlocks) {
-		finalText = finalText.replace(block.placeholder, block.content);
-	}
-	
-	return { text: finalText, mathBlocks };
-}
-
-function escapeHtml(text) {
-	if (!text) return '';
-	return text
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#39;');
-}
-
-export function injectMath(html, mathBlocks) {
-	let finalHtml = html;
-	
-	for (const block of mathBlocks) {
-		let rendered = '';
-		try {
-			if (window.katex) {
-				rendered = window.katex.renderToString(block.content, {
-					displayMode: block.isBlock,
-					throwOnError: false,
-					trust: true,
-					strict: false
-				});
-			} else {
-				const className = block.isBlock ? 'latex-block' : 'latex-inline';
-				rendered = `<span class="${className}">${escapeHtml(block.content)}</span>`;
-			}
-		} catch (e) {
-			const className = block.isBlock ? 'latex-block error' : 'latex-inline error';
-			rendered = `<span class="${className}" title="${escapeHtml(e.message)}">${escapeHtml(block.content)}</span>`;
-		}
-		
-		finalHtml = finalHtml.replace(block.placeholder, rendered);
-	}
-	
-	return finalHtml;
-}
-
-export function parseLatex(text) {
-	const preprocessed = preprocessLatexText(text);
-	const { text: extracted, mathBlocks } = extractMath(preprocessed);
-	return injectMath(extracted, mathBlocks);
-}
-
-export function hasLatex(text) {
-	return /\$[^$]+\$|\$\$[^$]+\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\\[a-zA-Z]+/.test(text);
-}
-
-export default parseLatex;
-
-```
-
-### ./ctrlpanel/js/chat/graph.js:
-```js
-import { generateId } from "./util.js";
-
-export function createEmptyGraph() {
-	const rootId = "root";
-	return {
-		version: 1,
-		rootId,
-		nodes: {
-			[rootId]: {
-				id: rootId,
-				role: "system",
-				content: "",
-				timestamp: 0,
-				parentId: null,
-				children:[],
-			},
-		},
-		selections: {},
-		leafId: null,
-	};
-}
-
-export function isGraphLike(graph) {
-	return graph && typeof graph === "object" && typeof graph.rootId === "string" &&
-		graph.nodes && typeof graph.nodes === "object" &&
-		graph.selections && typeof graph.selections === "object";
-}
-
-export function ensureGraph(chat) {
-	if (!chat) return null;
-	if (isGraphLike(chat.graph)) {
-		if (!chat.graph.nodes[chat.graph.rootId]) {
-			chat.graph.nodes[chat.graph.rootId] = {
-				id: chat.graph.rootId, role: "system", content: "", timestamp: 0,
-				parentId: null, children:[],
-			};
-		}
-		// Recompute leafId to ensure it's always valid after loading from storage
-		recomputeLeafId(chat.graph);
-		return chat.graph;
-	}
-	const graph = createEmptyGraph();
-	const legacy = Array.isArray(chat.messages) ? chat.messages :[];
-	let parentId = graph.rootId;
-	legacy.forEach((m) => {
-		const nodeId = generateId();
-		const node = {
-			id: nodeId,
-			role: m?.role === "assistant" ? "assistant" : "user",
-			content: String(m?.content || ""),
-			timestamp: Number(m?.timestamp) || Date.now(),
-			parentId,
-			children:[],
-		};
-	       if (m.parts) node.parts = JSON.parse(JSON.stringify(m.parts));
-	       if (m.attachments) node.attachments = JSON.parse(JSON.stringify(m.attachments));
-	       if (m.reasoning) node.reasoning = m.reasoning;
-	       
-		graph.nodes[nodeId] = node;
-		graph.nodes[parentId].children.push(nodeId);
-		graph.selections[parentId] = nodeId;
-		parentId = nodeId;
-	});
-	graph.leafId = parentId === graph.rootId ? null : parentId;
-	chat.graph = graph;
-	try { delete chat.messages; } catch {}
-	return graph;
-}
-
-export function getNode(graph, nodeId) {
-	return graph?.nodes?.[nodeId] || null;
-}
-
-export function getSelectedChildId(graph, parentId) {
-	const parent = getNode(graph, parentId);
-	if (!parent?.children?.length) return null;
-	return parent.children.includes(graph.selections?.[parentId])
-		? graph.selections[parentId]
-		: parent.children[0];
-}
-
-export function setSelectedChildId(graph, parentId, childId) {
-	const parent = getNode(graph, parentId);
-	if (!parent?.children?.includes(childId)) return false;
-	graph.selections[parentId] = childId;
-	return true;
-}
-
-export function computeThreadNodeIds(graph) {
-	const ids =[];
-	if (!graph) return ids;
-	let currentId = graph.rootId;
-	const seen = new Set([currentId]);
-	while (true) {
-		const nextId = getSelectedChildId(graph, currentId);
-		if (!nextId || seen.has(nextId)) break;
-		ids.push(nextId);
-		seen.add(nextId);
-		currentId = nextId;
-	}
-	return ids;
-}
-
-export function recomputeLeafId(graph) {
-	const path = computeThreadNodeIds(graph);
-	graph.leafId = path.length ? path[path.length - 1] : null;
-}
-
-export function appendNode(graph, { parentId, role, content, timestamp, attachments, parts }) {
-	const parent = getNode(graph, parentId);
-	if (!parent) throw new Error("appendNode: parent not found");
-	const id = generateId();
-	const node = {
-		id, role,
-		timestamp: Number(timestamp) || Date.now(),
-		parentId, children:[],
-	};
-	
-	// Support both old format (content + attachments) and new format (parts)
-	if (parts && Array.isArray(parts) && parts.length > 0) {
-		node.parts = parts;
-	} else {
-		node.content = String(content ?? "");
-		if (attachments && attachments.length > 0) {
-			node.attachments = attachments;
-		}
-	}
-	
-	graph.nodes[id] = node;
-	parent.children.push(id);
-	setSelectedChildId(graph, parentId, id);
-	graph.leafId = id;
-	return node;
-}
-
-export function createSiblingCopy(graph, nodeId, { content, timestamp, parts, attachments, reasoning } = {}) {
-	const node = getNode(graph, nodeId);
-	if (!node?.parentId) return null;
-	const parent = getNode(graph, node.parentId);
-	if (!parent?.children) return null;
-	const siblingId = generateId();
-	const sibling = {
-		id: siblingId,
-		role: node.role,
-		content: content !== undefined ? String(content) : String(node.content ?? ""),
-		timestamp: Number(timestamp) || Date.now(),
-		parentId: node.parentId,
-		children:[],
-		editedFrom: node.id,
-	};
-    
-    // Default to copying existing parts/attachments if not explicitly provided
-    if (parts !== undefined) {
-        if (parts) sibling.parts = JSON.parse(JSON.stringify(parts));
-    } else if (node.parts) {
-        sibling.parts = JSON.parse(JSON.stringify(node.parts));
-    }
-
-    if (attachments !== undefined) {
-        if (attachments) sibling.attachments = JSON.parse(JSON.stringify(attachments));
-    } else if (node.attachments) {
-        sibling.attachments = JSON.parse(JSON.stringify(node.attachments));
-    }
-
-    // Copy reasoning if present (use explicit value if provided, otherwise copy from node)
-    if (reasoning !== undefined) {
-        if (reasoning) sibling.reasoning = reasoning;
-    } else if (node.reasoning) {
-        sibling.reasoning = node.reasoning;
-    }
-
-	graph.nodes[siblingId] = sibling;
-	parent.children.push(siblingId);
-	setSelectedChildId(graph, node.parentId, siblingId);
-	recomputeLeafId(graph);
-	return sibling;
-}
-
-export function nodeHasGeneratedResponse(graph, nodeId) {
-	const node = getNode(graph, nodeId);
-	if (!node?.children?.length) return false;
-	return node.children.some((childId) => getNode(graph, childId)?.role === "assistant");
-}
-
-export function branchFromNode(graph, nodeId, { preserveSelectedTail = false } = {}) {
-	const node = getNode(graph, nodeId);
-	if (!node?.parentId) return null;
-	const parent = getNode(graph, node.parentId);
-	if (!parent?.children) return null;
-	const siblingId = generateId();
-	const sibling = {
-		id: siblingId, role: node.role,
-		content: String(node.content ?? ""),
-		timestamp: Date.now(),
-		parentId: node.parentId,
-		children:[],
-		branchedFrom: node.id,
-	};
-    
-    if (node.parts) sibling.parts = JSON.parse(JSON.stringify(node.parts));
-    if (node.attachments) sibling.attachments = JSON.parse(JSON.stringify(node.attachments));
-    if (node.reasoning) sibling.reasoning = node.reasoning;
-
-	graph.nodes[siblingId] = sibling;
-	parent.children.push(siblingId);
-	setSelectedChildId(graph, node.parentId, siblingId);
-	if (!preserveSelectedTail) {
-		recomputeLeafId(graph);
-		return sibling;
-	}
-	let prevNewId = siblingId;
-	let currentOldId = nodeId;
-	while (true) {
-		const nextOldId = getSelectedChildId(graph, currentOldId);
-		if (!nextOldId) break;
-		const oldNext = getNode(graph, nextOldId);
-		if (!oldNext) break;
-		const newId = generateId();
-		const cloned = {
-			id: newId, role: oldNext.role,
-			content: String(oldNext.content ?? ""),
-			timestamp: oldNext.timestamp,
-			parentId: prevNewId,
-			children:[],
-			clonedFrom: oldNext.id,
-		};
-        
-        if (oldNext.parts) cloned.parts = JSON.parse(JSON.stringify(oldNext.parts));
-        if (oldNext.attachments) cloned.attachments = JSON.parse(JSON.stringify(oldNext.attachments));
-        if (oldNext.reasoning) cloned.reasoning = oldNext.reasoning;
-
-		graph.nodes[newId] = cloned;
-		graph.nodes[prevNewId].children.push(newId);
-		graph.selections[prevNewId] = newId;
-		prevNewId = newId;
-		currentOldId = nextOldId;
-	}
-	recomputeLeafId(graph);
-	return sibling;
-}
-
-export function deleteSubtree(graph, nodeId) {
-	const node = getNode(graph, nodeId);
-	if (!node) return;
-	[...node.children].forEach((childId) => deleteSubtree(graph, childId));
-	if (node.parentId) {
-		const parent = getNode(graph, node.parentId);
-		if (parent?.children) {
-			parent.children = parent.children.filter((id) => id !== nodeId);
-			if (graph.selections?.[parent.id] === nodeId) {
-				const next = parent.children[0] || null;
-				next ? (graph.selections[parent.id] = next) : delete graph.selections[parent.id];
-			}
-		}
-	}
-	delete graph.nodes[nodeId];
-}
-
-export function spliceDeleteNode(graph, nodeId) {
-	const node = getNode(graph, nodeId);
-	if (!node?.parentId) return false;
-	const parent = getNode(graph, node.parentId);
-	if (!parent?.children) return false;
-	const idx = parent.children.indexOf(nodeId);
-	if (idx === -1) return false;
-	const children = node.children ? [...node.children] :[];
-	children.forEach((childId) => {
-		const child = getNode(graph, childId);
-		if (child) child.parentId = parent.id;
-	});
-	parent.children.splice(idx, 1, ...children);
-	if (graph.selections?.[parent.id] === nodeId) {
-		const selectedChild = getSelectedChildId(graph, nodeId);
-		if (selectedChild && children.includes(selectedChild)) {
-			graph.selections[parent.id] = selectedChild;
-		} else if (children[0]) {
-			graph.selections[parent.id] = children[0];
-		} else {
-			delete graph.selections[parent.id];
-		}
-	}
-	delete graph.nodes[nodeId];
-	delete graph.selections[nodeId];
-	recomputeLeafId(graph);
-	return true;
-}
-
-```
-
-### ./ctrlpanel/js/chat/context.js:
-```js
-import { computeThreadNodeIds, ensureGraph, getNode } from "./graph.js";
-
-// Store for model metadata fetched from API
-// Maps model ID -> model object with context_length, max_tokens, etc.
-let modelMetadata = new Map();
-
-/**
- * Store model metadata from API response
- * @param {Array} models - Array of model objects from API
- */
-export function setModelMetadata(models) {
-	modelMetadata.clear();
-	if (Array.isArray(models)) {
-		for (const model of models) {
-			if (model.id) {
-				modelMetadata.set(model.id, model);
-			}
-		}
-	}
-}
-
-/**
- * Get a specific model's metadata by ID
- * @param {string} modelId - Model ID
- * @returns {Object|null} Model metadata or null
- */
-export function getModelMetadata(modelId) {
-	return modelMetadata.get(modelId) || null;
-}
-
-/**
- * Get all cached models
- * @returns {Array} Array of model objects
- */
-export function getAllModels() {
-	return Array.from(modelMetadata.values());
-}
-
-/**
- * Get the currently selected model ID from the UI
- * @param {HTMLElement} root - Root element
- * @returns {string|null} Selected model ID or null
- */
-export function getSelectedModelId(root) {
-	const selected = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
-	return selected?.dataset?.value || null;
-}
-
-export function estimateTokensForText(text) {
-	const s = String(text || "");
-	if (!s) return 0;
-	return Math.max(1, Math.ceil(s.length / 4));
-}
-
-export function getModelContextLimitFromUI(root) {
-	const selected = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
-	if (!selected) return 8192; // Default fallback if nothing selected
-	
-	// First try to get context_length from stored model metadata
-	const modelId = selected.dataset.value;
-	if (modelId && modelMetadata.has(modelId)) {
-		const model = modelMetadata.get(modelId);
-		const contextLength = parseInt(model.context_length, 10);
-		if (!isNaN(contextLength) && contextLength > 0) {
-			return contextLength;
-		}
-	}
-	
-	// Fallback to data attribute from HTML (hardcoded values)
-	const contextLength = parseInt(selected.dataset.contextLength, 10);
-	if (!isNaN(contextLength) && contextLength > 0) {
-		return contextLength;
-	}
-	
-	// Final default fallback
-	return 8192;
-}
-
-/**
- * Get max_tokens for a model from stored metadata
- * @param {string} modelId - Model ID
- * @returns {number} max_tokens value or default (8192)
- */
-export function getModelMaxTokens(modelId) {
-	if (!modelId) return 8192;
-
-	const model = modelMetadata.get(modelId);
-	if (model) {
-		const maxTokens = parseInt(model.max_tokens, 10);
-		if (!isNaN(maxTokens) && maxTokens > 0) {
-			return maxTokens;
-		}
-	}
-
-	return 8192; // Default fallback 
-}
-
-export function computeThreadTokenUsage(graph) {
-	return computeThreadNodeIds(graph).reduce((total, id) => {
-		const node = getNode(graph, id);
-		let text = "";
-		if (node?.parts && Array.isArray(node.parts)) {
-			text = node.parts.filter(p => p.type === "text").map(p => p.content).join("");
-		} else if (node?.content) {
-			text = node.content;
-		}
-		return total + estimateTokensForText(text);
-	}, 0);
-}
-
-export function updateContextUI(root, chat) {
-	const el = root?.querySelector?.("#chatContext");
-	if (!el) return;
-	
-	// Always get the model context limit from the selected dropdown item
-	const max = getModelContextLimitFromUI(root);
-	
-	// Calculate used tokens only if there's a chat
-	let used = 0;
-	if (chat) {
-		const graph = ensureGraph(chat);
-		used = computeThreadTokenUsage(graph);
-	}
-	
-	el.textContent = `${used}/${max}`;
-	el.title = max > 0
-		? `Context Window: ${used} tokens used / ${max} total`
-		: "Context Window";
-}
-```
-
-### ./ctrlpanel/js/chat/thread-ui.js:
-```js
-import { computeThreadNodeIds, ensureGraph, getNode } from "./graph.js";
-import { formatBytes } from "./util.js";
-import { parseMarkdown } from "./markdown.js";
-import { preprocessLatexText, extractMath, injectMath } from "./latex.js";
-
-/**
- * Escape HTML special characters to prevent XSS
- * @param {string} text
- * @returns {string}
- */
-function escapeHtml(text) {
-	if (!text) return "";
-	const div = document.createElement("div");
-	div.textContent = text;
-	return div.innerHTML;
-}
-
-// Filetype icons for message display
-const FILETYPE_ICONS = {
-	zip: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/></svg>`,
-	js: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>`,
-	py: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C6.5 2 6 4 6 6v3h6v1H4c-2 0-4 1.5-4 5s2 5 4 5h2v-3c0-2 1.5-4 4-4h6c2 0 4-2 4-4V6c0-2-2-4-8-4z"/></svg>`,
-	java: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 20c-2 0-3-1-3-3 2-2 6-2 8-5 1 2 1 4-1 6-2 2-4 2-4 2z"/></svg>`,
-	jar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="6" y="3" width="12" height="18" rx="1"/><path d="M6 7h12M6 11h12M6 15h12"/></svg>`,
-	json: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2h-2"/></svg>`,
-	pdf: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
-	doc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>`,
-	txt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
-	md: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
-	mp3: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
-	mp4: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3V9z"/></svg>`,
-	png: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
-	default: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
-};
-
-const FILETYPE_NAMES = {
-	zip: "ZIP Archive", js: "JavaScript", ts: "TypeScript", py: "Python",
-	java: "Java", jar: "Java Archive", json: "JSON", pdf: "PDF Document",
-	doc: "Word Document", txt: "Text File", md: "Markdown",
-	mp3: "MP3 Audio", mp4: "MP4 Video", png: "PNG Image", jpg: "JPEG Image",
-};
-
-function getFileExtension(filename) {
-	const match = filename.match(/\.([^.]+)$/);
-	return match ? match[1].toLowerCase() : "";
-}
-
-function getFiletypeIcon(filename) {
-	const ext = getFileExtension(filename);
-	return FILETYPE_ICONS[ext] || FILETYPE_ICONS.default;
-}
-
-function getFiletypeName(filename) {
-	const ext = getFileExtension(filename);
-	return FILETYPE_NAMES[ext] || ext.toUpperCase() + " File";
-}
-
-const icons = {
-	edit: (s) => `<svg viewBox="0 -0.5 21 21" version="1.1" xmlns="http://www.w3.org/2000/svg" ${s}><g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g fill="currentColor"><path d="M3.15,14 C2.5704,14 2.1,13.552 2.1,13 L2.1,7 C2.1,6.448 2.5704,6 3.15,6 C3.7296,6 4.2,5.552 4.2,5 C4.2,4.448 3.7296,4 3.15,4 L2.1,4 C0.93975,4 0,4.895 0,6 L0,14 C0,15.105 0.93975,16 2.1,16 L3.15,16 C3.7296,16 4.2,15.552 4.2,15 C4.2,14.448 3.7296,14 3.15,14 M18.9,4 L11.55,4 C10.9704,4 10.5,4.448 10.5,5 C10.5,5.552 10.9704,6 11.55,6 L17.85,6 C18.4296,6 18.9,6.448 18.9,7 L18.9,13 C18.9,13.552 18.4296,14 17.85,14 L11.55,14 C10.9704,14 10.5,14.448 10.5,15 C10.5,15.552 10.9704,16 11.55,16 L18.9,16 C20.06025,16 21,15.105 21,14 L21,6 C21,4.895 20.06025,4 18.9,4 M10.5,19 C10.5,19.552 10.0296,20 9.45,20 L5.25,20 C4.6704,20 4.2,19.552 4.2,19 C4.2,18.448 4.6704,18 5.25,18 L6.3,18 L6.3,2 L5.25,2 C4.6704,2 4.2,1.552 4.2,1 C4.2,0.448 4.6704,0 5.25,0 L9.45,0 C10.0296,0 10.5,0.448 10.5,1 C10.5,1.552 10.0296,2 9.45,2 L8.4,2 L8.4,18 L9.45,18 C10.0296,18 10.5,18.448 10.5,19"/></g></g></svg>`,
-	refresh: (s) => `<svg viewBox="0 0 24 24" fill="none" ${s}><path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0115-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 01-15 6.7L3 16" /></svg>`,
-	"chev-left": (s) => `<svg viewBox="0 0 24 24" fill="none" ${s}><path d="M15 18l-6-6 6-6"/></svg>`,
-	"chev-right": (s) => `<svg viewBox="0 0 24 24" fill="none" ${s}><path d="M9 18l6-6-6-6"/></svg>`,
-	check: (s) => `<svg viewBox="0 0 24 24" fill="none" ${s}><path d="M20 6L9 17l-5-5"/></svg>`,
-	x: (s) => `<svg viewBox="0 0 24 24" fill="none" ${s}><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>`,
-	branch: (s) => `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M13 22H29C33.4183 22 37 25.5817 37 30V44" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="8.94365" r="5" transform="rotate(-90 13 8.94365)" stroke="currentColor" stroke-width="4"/><path d="M13 14V43" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 39L13 44L8 39" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M42 39L37 44L32 39" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
-	trash: (s) => `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M4 6H20L18.4199 20.2209C18.3074 21.2337 17.4512 22 16.4321 22H7.56786C6.54876 22 5.69264 21.2337 5.5801 20.2209L4 6Z"/><path d="M7.34491 3.14716C7.67506 2.44685 8.37973 2 9.15396 2H14.846C15.6203 2 16.3249 2.44685 16.6551 3.14716L18 6H6L7.34491 3.14716Z"/><path d="M2 6H22"/><path d="M10 11V16"/><path d="M14 11V16"/></svg>`,
-};
-
-const stroke = 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
-
-function createActionButton({ action, label, title, iconName, disabled = false }) {
-	const btn = document.createElement("button");
-	btn.type = "button";
-	btn.className = "chat-action-btn";
-	btn.dataset.action = action;
-	btn.setAttribute("aria-label", label);
-	btn.title = title || label;
-	btn.disabled = Boolean(disabled);
-	btn.innerHTML = icons[iconName]?.(stroke) || "";
-	return btn;
-}
-
-function getSiblingNavState(graph, nodeId) {
-	const node = getNode(graph, nodeId);
-	if (!node?.parentId) {
-		return { parentId: null, siblings:[], index: -1, canBack: false, canForward: false };
-	}
-	const parent = getNode(graph, node.parentId);
-	const siblings = parent?.children ||[];
-	const index = siblings.indexOf(nodeId);
-	return {
-		parentId: node.parentId,
-		siblings,
-		index,
-		canBack: index > 0,
-		canForward: index >= 0 && index < siblings.length - 1,
-	};
-}
-
-/**
- * Build inline attachment element for message display
- */
-function buildInlineAttachment(attachment) {
-	const wrap = document.createElement("span");
-	wrap.className = "chat-message-inline-attachment";
-
-	if (attachment.isImage && attachment.data) {
-		wrap.classList.add("chat-message-inline-attachment-image");
-		wrap.innerHTML = `
-			<span class="chat-message-inline-preview">
-				<img src="${attachment.data}" alt="${attachment.name}" />
-			</span>
-			<span class="chat-message-inline-info">
-				<span class="chat-message-inline-name">${attachment.name}</span>
-				<span class="chat-message-inline-size">${formatBytes(attachment.size)}</span>
-			</span>
-		`;
-	} else {
-		wrap.classList.add("chat-message-inline-attachment-file");
-		const ext = getFileExtension(attachment.name);
-		wrap.innerHTML = `
-			<span class="chat-message-inline-icon">
-				${getFiletypeIcon(attachment.name)}
-				<span class="chat-message-inline-type">${ext.toUpperCase()}</span>
-			</span>
-			<span class="chat-message-inline-info">
-				<span class="chat-message-inline-name">${attachment.name}</span>
-				<span class="chat-message-inline-type-name">${getFiletypeName(attachment.name)}</span>
-				<span class="chat-message-inline-size">${formatBytes(attachment.size)}</span>
-			</span>
-		`;
-	}
-
-	return wrap;
-}
-
-/**
- * Build reasoning element for assistant messages
- */
-function buildReasoningElement(reasoning) {
-	if (!reasoning) return null;
-	
-	const details = document.createElement("details");
-	details.className = "message-reasoning";
-	
-	const summary = document.createElement("summary");
-	summary.textContent = "Thinking...";
-	
-	const content = document.createElement("div");
-	content.className = "reasoning-content";
-	content.textContent = reasoning;
-	
-	details.appendChild(summary);
-	details.appendChild(content);
-	return details;
-}
-
-/**
- * Build content container with parts rendered in order
- */
-function buildContentContainer(node, isEditing, editingDraft) {
-	const container = document.createElement("div");
-	container.className = "chat-message-content";
-
-	// Add reasoning section for assistant messages (when not editing)
-	if (!isEditing && node.role === "assistant" && node.reasoning) {
-		const reasoningEl = buildReasoningElement(node.reasoning);
-		if (reasoningEl) {
-			container.appendChild(reasoningEl);
-		}
-	}
-
-	if (isEditing) {
-		const textarea = document.createElement("textarea");
-		textarea.className = "chat-edit-input";
-		// For editing, combine text parts
-		const textContent = node.parts 
-			? node.parts.filter(p => p.type === "text").map(p => p.content).join("")
-			: String(node.content || "");
-		textarea.value = editingDraft ?? textContent;
-		textarea.setAttribute("aria-label", "Edit message");
-		container.appendChild(textarea);
-	} else if (node.parts && Array.isArray(node.parts)) {
-		// Render parts in order
-		node.parts.forEach((part) => {
-			if (part.type === "text" && part.content) {
-				// Prevent math parsing errors with code shielding and preprocess raw UI tags
-				const preprocessed = preprocessLatexText(part.content);
-				const { text, mathBlocks } = extractMath(preprocessed);
-				const mdHtml = parseMarkdown(text);
-				const finalHtml = injectMath(mdHtml, mathBlocks);
-
-				const wrapper = document.createElement("div");
-				wrapper.className = "chat-message-text";
-				wrapper.innerHTML = finalHtml;
-				container.appendChild(wrapper);
-			} else if (part.type === "attachment") {
-				container.appendChild(buildInlineAttachment(part));
-			}
-		});
-	} else {
-		// Legacy format: just content string
-		const preprocessed = preprocessLatexText(String(node.content || ""));
-		const { text, mathBlocks } = extractMath(preprocessed);
-		const mdHtml = parseMarkdown(text);
-		const finalHtml = injectMath(mdHtml, mathBlocks);
-
-		const wrapper = document.createElement("div");
-		wrapper.className = "chat-message-text";
-		wrapper.innerHTML = finalHtml;
-		container.appendChild(wrapper);
-		
-		// Legacy attachments (rendered after content)
-		if (node.attachments && node.attachments.length > 0) {
-			node.attachments.forEach((attachment) => {
-				container.appendChild(buildInlineAttachment(attachment));
-			});
-		}
-	}
-
-	return container;
-}
-
-function buildMessageElement({ node, isEditing, editingDraft, canBranchBack, canBranchForward, canResend }) {
-	const div = document.createElement("div");
-	div.className = `chat-message ${node.role}`;
-	div.setAttribute("role", "article");
-	div.setAttribute("aria-label", node.role === "user" ? "You" : "Assistant");
-	div.dataset.nodeId = node.id;
-
-	const contentContainer = buildContentContainer(node, isEditing, editingDraft);
-	div.appendChild(contentContainer);
-
-	const menu = document.createElement("div");
-	menu.className = "chat-message-menu";
-	menu.setAttribute("role", "toolbar");
-	menu.setAttribute("aria-label", "Message actions");
-
-	if (isEditing) {
-		menu.append(
-			createActionButton({ action: "save", label: "Save edit", title: "Save", iconName: "check" }),
-			createActionButton({ action: "cancel", label: "Cancel edit", title: "Cancel", iconName: "x" })
-		);
-	} else {
-		menu.append(
-			createActionButton({ action: "branch-back", label: "Previous thread", title: "Previous thread", iconName: "chev-left", disabled: !canBranchBack }),
-			createActionButton({ action: "branch-forward", label: "Next thread", title: "Next thread", iconName: "chev-right", disabled: !canBranchForward }),
-			createActionButton({ action: "thread", label: "Create new thread from this message", title: "New thread", iconName: "branch" }),
-			createActionButton({ action: "edit", label: "Edit message", title: "Edit", iconName: "edit" }),
-			createActionButton({ action: "resend", label: "Regenerate from here", title: "Regenerate", iconName: "refresh", disabled: !canResend }),
-			createActionButton({ action: "delete", label: "Delete message", title: "Delete (shift+click to delete only this message)", iconName: "trash" })
-		);
-	}
-
-	div.appendChild(menu);
-	return div;
-}
-
-export function showTyping(container) {
-	const div = document.createElement("div");
-	div.className = "chat-typing";
-	div.setAttribute("aria-label", "Assistant is typing");
-	div.innerHTML = "<span></span><span></span><span></span>";
-	container.appendChild(div);
-	container.scrollTop = container.scrollHeight;
-	return div;
-}
-
-export function renderThread(messagesEl, chat, uiState) {
-	if (!messagesEl || !chat) return;
-	const graph = ensureGraph(chat);
-	messagesEl.querySelectorAll(".chat-message, .chat-typing").forEach((el) => el.remove());
-
-	const ids = computeThreadNodeIds(graph);
-	ids.forEach((id) => {
-		const node = getNode(graph, id);
-		if (!node) return;
-		const nav = getSiblingNavState(graph, id);
-		const el = buildMessageElement({
-			node,
-			isEditing: uiState?.editingNodeId === node.id,
-			editingDraft: uiState?.editingDraft,
-			canBranchBack: nav.canBack,
-			canBranchForward: nav.canForward,
-			canResend: Boolean(node.parentId) && node.role !== "system",
-		});
-		messagesEl.appendChild(el);
-	});
-
-	messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-```
-
-### ./ctrlpanel/js/chat/chat-page.js:
-```js
-import {
-	branchFromNode,
-	computeThreadNodeIds,
-	createSiblingCopy,
-	deleteSubtree,
-	ensureGraph,
-	getNode,
-	nodeHasGeneratedResponse,
-	recomputeLeafId,
-	setSelectedChildId,
-	spliceDeleteNode,
-} from "./graph.js";
-import {
-	addChildMessageToChat,
-	addMessageToChat,
-	createNewChat,
-	getChatById,
-	getCurrentChatId,
-	saveChats,
-	setCurrentChatId,
-} from "./store.js";
-import { renderChatList } from "./sidebar.js";
-import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI, getAllModels } from "./context.js";
-import { getModels } from "../api.js";
-import { formatBytes } from "./util.js";
-import { renderThread, showTyping } from "./thread-ui.js";
-import { InlineAttachmentManager } from "./inline-attachment.js";
-import { parseMarkdown } from "./markdown.js";
-import { preprocessLatexText, extractMath, injectMath } from "./latex.js";
-import { streamChatMessage } from "../api.js";
-const TOOLS_KEY = "ctrlpanel:toolsEnabled";
-
-/**
- * Escape HTML special characters to prevent XSS
- * @param {string} text
- * @returns {string}
- */
-function escapeHtml(text) {
-	if (!text) return "";
-	const div = document.createElement("div");
-	div.textContent = text;
-	return div.innerHTML;
-}
-
-function selectModelInDropdown(root, modelId) {
-	if (!root) return false;
-	const modelDropdown = root.querySelector('[data-dropdown="model"]');
-	if (!modelDropdown) return false;
-	
-	const items = modelDropdown.querySelectorAll('.chat-dropdown-item');
-	const label = modelDropdown.querySelector('.chat-dropdown-label');
-	
-	let found = false;
-	if (modelId) {
-		items.forEach((item) => {
-			if (item.dataset.value === modelId) {
-				item.classList.add("selected");
-				item.setAttribute("aria-selected", "true");
-				if (label) label.textContent = item.textContent;
-				found = true;
-			} else {
-				item.classList.remove("selected");
-				item.setAttribute("aria-selected", "false");
-			}
-		});
-	}
-	
-	// Fallback to first if not found
-	if (!found && items.length > 0) {
-		items.forEach(i => {
-			i.classList.remove("selected");
-			i.setAttribute("aria-selected", "false");
-		});
-		items[0].classList.add("selected");
-		items[0].setAttribute("aria-selected", "true");
-		if (label) label.textContent = items[0].textContent;
-		return true;
-	}
-	
-	return found;
-}
-
-function populateModelsSync(root) {
-	const models = getAllModels();
-	if (!models || models.length === 0) return false;
-	
-	const modelDropdown = root.querySelector('[data-dropdown="model"]');
-	const menu = modelDropdown?.querySelector('.chat-dropdown-menu');
-	if (!menu) return false;
-	
-	menu.innerHTML = '';
-	models.forEach((model) => {
-		const btn = document.createElement("button");
-		btn.type = "button";
-		btn.className = "chat-dropdown-item";
-		btn.setAttribute("role", "option");
-		btn.dataset.value = model.id;
-		if (model.context_length) {
-			btn.dataset.contextLength = model.context_length;
-		}
-		btn.textContent = model.name;
-		menu.appendChild(btn);
-	});
-	return true;
-}
-
-let chatPageAbort = null;
-
-function initDropdowns(root, signal) {
-	root.querySelectorAll(".chat-dropdown").forEach((dropdown) => {
-		const toggle = dropdown.querySelector(".chat-dropdown-toggle");
-		const menu = dropdown.querySelector(".chat-dropdown-menu");
-		const isMulti = dropdown.hasAttribute("data-multi");
-
-		toggle?.addEventListener("click", (e) => {
-			e.preventDefault();
-			const isOpen = dropdown.classList.contains("open");
-			root.querySelectorAll(".chat-dropdown.open").forEach((d) => {
-				if (d !== dropdown) {
-					d.classList.remove("open");
-					d.querySelector(".chat-dropdown-toggle")?.setAttribute("aria-expanded", "false");
-				}
-			});
-			dropdown.classList.toggle("open", !isOpen);
-			toggle.setAttribute("aria-expanded", String(!isOpen));
-		}, { signal });
-
-		if (!isMulti) {
-			const items = dropdown.querySelectorAll(".chat-dropdown-item");
-			const label = dropdown.querySelector(".chat-dropdown-label");
-			items.forEach((item) => {
-				item.addEventListener("click", () => {
-					items.forEach((i) => {
-						i.classList.remove("selected");
-						i.setAttribute("aria-selected", "false");
-					});
-					item.classList.add("selected");
-					item.setAttribute("aria-selected", "true");
-					if (label) label.textContent = item.textContent;
-					dropdown.classList.remove("open");
-					toggle?.setAttribute("aria-expanded", "false");
-					
-					if (dropdown.dataset.dropdown === "model") {
-						const modelId = item.dataset.value;
-						localStorage.setItem("ctrlpanel:lastSelectedModel", modelId);
-						const currentChatId = getCurrentChatId();
-						if (currentChatId) {
-							const chat = getChatById(currentChatId);
-							if (chat) {
-								chat.modelId = modelId;
-								saveChats();
-							}
-						}
-						updateContextUI(root, currentChatId ? getChatById(currentChatId) : null);
-					}
-				}, { signal });
-			});
-		} else {
-			menu?.addEventListener("click", (e) => e.stopPropagation(), { signal });
-		}
-	});
-
-	document.addEventListener("click", (e) => {
-		if (!e.target.closest(".chat-dropdown")) {
-			root.querySelectorAll(".chat-dropdown.open").forEach((d) => {
-				d.classList.remove("open");
-				d.querySelector(".chat-dropdown-toggle")?.setAttribute("aria-expanded", "false");
-			});
-		}
-	}, { signal });
-}
-
-function initTools(root, signal) {
-	const toolsDropdown = root.querySelector('[data-dropdown="tools"]');
-	if (!toolsDropdown) return;
-	const checkboxes = [...toolsDropdown.querySelectorAll('input[type="checkbox"][name="tool"]')];
-	const enabled = new Set(JSON.parse(localStorage.getItem(TOOLS_KEY) || "[]"));
-	checkboxes.forEach((cb) => cb.checked = enabled.has(cb.value));
-
-	const update = () => {
-		const enabledValues = checkboxes.filter((cb) => cb.checked).map((cb) => cb.value);
-		toolsDropdown.classList.toggle("has-enabled-tools", enabledValues.length > 0);
-		localStorage.setItem(TOOLS_KEY, JSON.stringify(enabledValues));
-	};
-	checkboxes.forEach((cb) => cb.addEventListener("change", update, { signal }));
-	update();
-}
-
-function isImageFile(file) {
-	const type = String(file?.type || "");
-	if (type.startsWith("image/")) return true;
-	return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(String(file?.name || ""));
-}
-
-function makeXIcon() {
-	return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>`;
-}
-
-function renderAttachments(root, pending) {
-	const wrap = root.querySelector("#chatAttachments");
-	if (!wrap) return;
-	if (!pending.length) {
-		wrap.hidden = true;
-		wrap.innerHTML = "";
-		return;
-	}
-	wrap.hidden = false;
-	const list = document.createElement("div");
-	list.className = "chat-attachments-list";
-
-	pending.forEach((item) => {
-		const row = document.createElement("div");
-		row.className = "chat-attachment";
-		row.dataset.attachmentId = item.id;
-
-		const thumb = document.createElement("div");
-		thumb.className = "chat-attachment-thumb";
-		thumb.setAttribute("aria-hidden", "true");
-		if (item.isImage && item.previewUrl) {
-			const img = document.createElement("img");
-			img.src = item.previewUrl;
-			img.alt = "";
-			thumb.appendChild(img);
-		} else {
-			thumb.textContent = "FILE";
-		}
-
-		const meta = document.createElement("div");
-		meta.className = "chat-attachment-meta";
-		const name = document.createElement("div");
-		name.className = "chat-attachment-name";
-		name.textContent = item.file.name;
-		const size = document.createElement("div");
-		size.className = "chat-attachment-size";
-		size.textContent = formatBytes(item.file.size);
-		meta.append(name, size);
-
-		const remove = document.createElement("button");
-		remove.type = "button";
-		remove.className = "chat-attachment-remove";
-		remove.setAttribute("aria-label", `Remove ${item.file.name}`);
-		remove.title = "Remove";
-		remove.dataset.action = "remove-attachment";
-		remove.dataset.attachmentId = item.id;
-		remove.innerHTML = makeXIcon();
-
-		row.append(thumb, meta, remove);
-		list.appendChild(row);
-	});
-
-	wrap.innerHTML = "";
-	wrap.appendChild(list);
-}
-
-function initUpload(root, inputEl, attachmentManager, signal) {
-	const uploadBtn = root.querySelector("#chatUploadBtn");
-	const uploadInput = root.querySelector("#chatUploadInput");
-	const uploadLabel = root.querySelector("#chatUploadLabel");
-	if (!uploadBtn || !uploadInput) return;
-
-	const updateCount = () => {
-		const count = attachmentManager.getAttachments().length;
-		if (count > 0) uploadBtn.dataset.count = String(count);
-		else delete uploadBtn.dataset.count;
-		uploadLabel && (uploadLabel.textContent = "Upload");
-	};
-
-	uploadBtn.addEventListener("click", () => uploadInput.click(), { signal });
-	
-	uploadInput.addEventListener("change", async () => {
-		const selected = Array.from(uploadInput.files ||[]);
-		uploadInput.value = "";
-		
-		for (const file of selected) {
-			await attachmentManager.addFile(file);
-		}
-		
-		updateCount();
-	}, { signal });
-
-	attachmentManager.options.onAttachmentAdded = updateCount;
-	attachmentManager.options.onAttachmentRemoved = updateCount;
-
-	updateCount();
-}
-
-function initAutoResize(element, signal) {
-	const resize = () => {
-		element.style.height = "auto";
-		const newHeight = Math.min(element.scrollHeight, 300);
-		element.style.height = newHeight + "px";
-	};
-	
-	const updatePlaceholder = () => {
-		const text = element.textContent || "";
-		const hasAttachments = element.querySelector(".inline-attachment");
-		const isEmpty = text.trim().length === 0 && !hasAttachments;
-		element.dataset.empty = isEmpty ? "true" : "false";
-	};
-	
-	const handleInput = () => {
-		resize();
-		updatePlaceholder();
-	};
-	
-	element.addEventListener("input", handleInput, { signal });
-	
-	element.addEventListener("paste", () => {
-		setTimeout(handleInput, 0);
-	}, { signal });
-	
-	requestAnimationFrame(() => {
-		resize();
-		updatePlaceholder();
-	});
-	
-	window.addEventListener("resize", resize, { signal });
-	
-	return () => {
-		resize();
-		updatePlaceholder();
-	};
-}
-
-async function loadAndPopulateModels(root, signal) {
-	try {
-		const response = await getModels();
-		const models = response?.data ||[];
-		
-		setModelMetadata(models);
-		
-		const modelDropdown = root.querySelector('[data-dropdown="model"]');
-		const menu = modelDropdown?.querySelector('.chat-dropdown-menu');
-		if (!menu) return;
-		
-		menu.innerHTML = '';
-		models.forEach((model) => {
-			const btn = document.createElement("button");
-			btn.type = "button";
-			btn.className = "chat-dropdown-item";
-			btn.setAttribute("role", "option");
-			btn.dataset.value = model.id;
-			if (model.context_length) {
-				btn.dataset.contextLength = model.context_length;
-			}
-			btn.textContent = model.name;
-			menu.appendChild(btn);
-		});
-		
-	} catch (err) {
-		console.error('Failed to load models:', err);
-	}
-}
-
-function ensureChatExists(setActiveCallback) {
-	if (!getCurrentChatId() || !getChatById(getCurrentChatId())) {
-		createNewChat();
-		renderChatList();
-		setActiveCallback && setActiveCallback();
-	}
-}
-
-export function loadCurrentChat(setActiveCallback) {
-	const messages = document.getElementById("chatMessages");
-	const empty = document.getElementById("chatEmpty");
-	const root = document.querySelector('[data-fragment="main"]');
-	if (!messages) return;
-
-	const currentChatId = getCurrentChatId();
-	const chat = currentChatId ? getChatById(currentChatId) : null;
-	const graph = chat ? ensureGraph(chat) : null;
-	const hasMessages = Boolean(graph && computeThreadNodeIds(graph).length > 0);
-
-	if (empty) empty.hidden = Boolean(currentChatId) || hasMessages;
-	if (chat) renderThread(messages, chat, { editingNodeId: null, editingDraft: "" });
-	else messages.querySelectorAll(".chat-message, .chat-typing").forEach((el) => el.remove());
-
-	if (root) {
-		let modelToSelect = null;
-		if (chat && chat.modelId) {
-			modelToSelect = chat.modelId;
-		} else {
-			modelToSelect = localStorage.getItem("ctrlpanel:lastSelectedModel");
-		}
-		
-		if (modelToSelect) {
-			selectModelInDropdown(root, modelToSelect);
-		}
-		
-		updateContextUI(root, chat);
-	}
-
-	renderChatList();
-	setActiveCallback && setActiveCallback();
-}
-
-export async function initChatPage(root, currentRouteGetter, setActiveCallback) {
-	if (!root) return;
-	chatPageAbort?.abort();
-	const controller = new AbortController();
-	chatPageAbort = controller;
-	const { signal } = controller;
-
-	const form = root.querySelector("#chatForm");
-	const input = root.querySelector("#chatInput");
-	const messages = root.querySelector("#chatMessages");
-	const empty = root.querySelector("#chatEmpty");
-	if (!form || !input || !messages) return;
-
-	const attachmentManager = new InlineAttachmentManager(input);
-
-	// Process URL params and ensure the chat context is correct synchronously
-	const urlParams = new URLSearchParams(location.hash.split("?")[1] || "");
-	const chatIdFromUrl = urlParams.get("chat");
-	if (chatIdFromUrl && getChatById(chatIdFromUrl)) {
-		setCurrentChatId(chatIdFromUrl);
-		saveChats();
-	}
-
-	// Inject the real model UI items synchronously using cached data to avoid visual jumps
-	populateModelsSync(root);
-
-	// Start background fetch for latest models without blocking execution
-	loadAndPopulateModels(root, signal).then(() => {
-		const cid = getCurrentChatId();
-		const chat = cid ? getChatById(cid) : null;
-		let targetModel = chat?.modelId || localStorage.getItem("ctrlpanel:lastSelectedModel");
-		
-		if (targetModel) {
-			selectModelInDropdown(root, targetModel);
-			updateContextUI(root, chat);
-		} else {
-			import("../api.js").then(m => m.getSettings()).then(settings => {
-				if (settings && settings.defaultModel) {
-					localStorage.setItem("ctrlpanel:lastSelectedModel", settings.defaultModel);
-					selectModelInDropdown(root, settings.defaultModel);
-					updateContextUI(root, chat);
-				}
-			}).catch(()=>{});
-		}
-	});
-
-	initDropdowns(root, signal);
-	initTools(root, signal);
-	initUpload(root, input, attachmentManager, signal);
-	const resizeInput = initAutoResize(input, signal);
-
-	const uiState = {
-		editingNodeId: null,
-		editingDraft: "",
-		typingEl: null,
-		typingTimeout: null,
-		editingSaveMode: null,
-		streamAbort: null,
-		flushResponse: null,
-		isGenerating: false,
-	};
-
-	const setGeneratingState = (isGenerating) => {
-		uiState.isGenerating = isGenerating;
-		const sendBtn = form.querySelector('.chat-send-btn');
-		if (sendBtn) {
-			sendBtn.disabled = isGenerating;
-			if (isGenerating) {
-				sendBtn.style.opacity = "0.45";
-				sendBtn.style.cursor = "not-allowed";
-			} else {
-				sendBtn.style.opacity = "";
-				sendBtn.style.cursor = "";
-			}
-		}
-	};
-
-	const stopTyping = () => {
-		if (uiState.flushResponse) {
-			uiState.flushResponse();
-			uiState.flushResponse = null;
-		}
-		if (uiState.streamAbort) {
-			uiState.streamAbort.abort();
-			uiState.streamAbort = null;
-		}
-		if (uiState.typingTimeout) {
-			clearTimeout(uiState.typingTimeout);
-			uiState.typingTimeout = null;
-		}
-		if (uiState.typingEl) {
-			uiState.typingEl.remove();
-			uiState.typingEl = null;
-		}
-		setGeneratingState(false);
-	};
-
-	signal.addEventListener("abort", () => {
-		if (uiState.flushResponse) {
-			uiState.flushResponse();
-			uiState.flushResponse = null;
-		}
-		if (uiState.streamAbort) {
-			uiState.streamAbort.abort();
-		}
-	});
-
-	const startReply = async (parentUserNodeId) => {
-		stopTyping();
-		uiState.typingEl = showTyping(messages);
-		setGeneratingState(true);
-		
-		const activeChatId = getCurrentChatId();
-		
-		uiState.streamAbort = new AbortController();
-		const currentSignal = uiState.streamAbort.signal;
-		
-		const modelSelect = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
-		const model = modelSelect?.dataset?.value || "arcee-ai/trinity-large-preview:free";
-		
-		let maxTokens = getModelMaxTokens(model);
-		const contextLimit = getModelContextLimitFromUI(root);
-		
-		const chat = getChatById(activeChatId);
-		if (!chat) {
-			stopTyping();
-			return;
-		}
-		
-		const graph = ensureGraph(chat);
-		const threadIds = computeThreadNodeIds(graph);
-		
-		let conversationHistory = "";
-		for (const nodeId of threadIds) {
-			const node = getNode(graph, nodeId);
-			if (node) {
-				let nodeContent = "";
-				
-				if (node.parts && Array.isArray(node.parts)) {
-					const textParts = [];
-					const attachmentInfos =[];
-					
-					for (const part of node.parts) {
-						if (part.type === "text" && part.content) {
-							textParts.push(part.content);
-						} else if (part.type === "attachment") {
-							const isImage = part.isImage ? " (image)" : "";
-							let attachmentInfo = `[Attachment: ${part.name} (${part.size} bytes)${isImage}]`;
-							
-							if (part.data && !part.isImage) {
-								try {
-									const base64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
-									if (base64Match) {
-										const binaryString = atob(base64Match[1]);
-										const bytes = new Uint8Array(binaryString.length);
-										for (let i = 0; i < binaryString.length; i++) {
-											bytes[i] = binaryString.charCodeAt(i);
-										}
-										const decoder = new TextDecoder('utf-8');
-										const textContent = decoder.decode(bytes).slice(0, 10000);
-										attachmentInfo += `\n[File Content:]\n${textContent}`;
-									}
-								} catch (e) {
-									console.warn('Could not read file content:', e);
-								}
-							}
-							attachmentInfos.push(attachmentInfo);
-						}
-					}
-					
-					nodeContent = textParts.join("");
-					if (attachmentInfos.length > 0) {
-						nodeContent += "\n" + attachmentInfos.join("\n");
-					}
-				} else if (node.content) {
-					nodeContent = node.content;
-				}
-				
-				if (nodeContent) {
-					const role = node.role === "user" ? "User" : "Assistant";
-					conversationHistory += `${role}: ${nodeContent}\n\n`;
-				}
-			}
-		}
-		
-		if (!conversationHistory.trim() && parentUserNodeId) {
-			const parentNode = getNode(graph, parentUserNodeId);
-			if (parentNode) {
-				let parentContent = "";
-				
-				if (parentNode.parts && Array.isArray(parentNode.parts)) {
-					const textParts =[];
-					const attachmentInfos =[];
-					
-					for (const part of parentNode.parts) {
-						if (part.type === "text" && part.content) {
-							textParts.push(part.content);
-						} else if (part.type === "attachment") {
-							const isImage = part.isImage ? " (image)" : "";
-							let attachmentInfo = `[Attachment: ${part.name} (${part.size} bytes)${isImage}]`;
-							
-							if (part.data && !part.isImage) {
-								try {
-									const base64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
-									if (base64Match) {
-										const binaryString = atob(base64Match[1]);
-										const bytes = new Uint8Array(binaryString.length);
-										for (let i = 0; i < binaryString.length; i++) {
-											bytes[i] = binaryString.charCodeAt(i);
-										}
-										const decoder = new TextDecoder('utf-8');
-										const textContent = decoder.decode(bytes).slice(0, 10000);
-										attachmentInfo += `\n[File Content:]\n${textContent}`;
-									}
-								} catch (e) {
-									console.warn('Could not read file content:', e);
-								}
-							}
-							attachmentInfos.push(attachmentInfo);
-						}
-					}
-					
-					parentContent = textParts.join("");
-					if (attachmentInfos.length > 0) {
-						parentContent += "\n" + attachmentInfos.join("\n");
-					}
-				} else if (parentNode.content) {
-					parentContent = parentNode.content;
-				}
-				
-				if (parentContent) {
-					conversationHistory = parentContent;
-				}
-			}
-		}
-		
-		if (!conversationHistory.trim()) {
-			conversationHistory = "Hello";
-		}
-
-		// Calculate safe token bounds to completely prevent ContextLengthExceeded errors
-		const estimatedPromptTokens = Math.ceil(conversationHistory.length / 3) + 200;
-
-		// Shrink the requested max tokens if it mathematically pushes us out of the context window
-		if (estimatedPromptTokens + maxTokens > contextLimit) {
-			maxTokens = Math.max(256, contextLimit - estimatedPromptTokens);
-		}
-		
-		let responseText = "";
-		let reasoningText = "";
-		let errorFromStream = null;
-		let isSaved = false;
-
-		uiState.flushResponse = () => {
-			if (isSaved) return;
-			isSaved = true;
-			
-			let finalContent = responseText;
-			if (errorFromStream) {
-				finalContent += finalContent ? `\n\n**Error:** ${errorFromStream}` : `**Error:** ${errorFromStream}`;
-			}
-
-			if (finalContent || reasoningText) {
-				const node = addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", finalContent);
-				if (node && reasoningText) {
-					node.reasoning = reasoningText;
-					saveChats();
-				}
-			} else if (errorFromStream) {
-				addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", `**Error:** ${errorFromStream}`);
-			}
-		};
-		
-		try {
-			await streamChatMessage(
-				model,
-				conversationHistory,
-				maxTokens,
-				(chunk) => {
-					if (currentSignal.aborted) return;
-
-					if (chunk.error) {
-						const errorMsg = typeof chunk.error === 'object'
-							? (chunk.error.message || JSON.stringify(chunk.error))
-							: String(chunk.error);
-						console.debug("[ChatPage] Error in stream chunk:", errorMsg);
-						errorFromStream = errorMsg;
-						return;
-					}
-
-					if (chunk.choices && chunk.choices[0] && chunk.choices[0].delta) {
-						const delta = chunk.choices[0].delta;
-						
-						if (delta.reasoning) {
-							reasoningText += delta.reasoning;
-						}
-						if (delta.content) {
-							responseText += delta.content;
-						}
-						
-						if (uiState.typingEl) {
-							if (!uiState.typingEl.querySelector(".chat-message-content")) {
-								uiState.typingEl.innerHTML = '';
-								uiState.typingEl.className = "chat-message assistant";
-							}
-							
-							let html = '';
-							if (reasoningText) {
-								const openAttr = responseText ? '' : 'open';
-								html += `<details class="message-reasoning" ${openAttr}><summary>Thinking...</summary><div class="reasoning-content">${escapeHtml(reasoningText)}</div></details>`;
-							}
-							if (responseText) {
-								const preprocessed = preprocessLatexText(responseText);
-								const { text, mathBlocks } = extractMath(preprocessed);
-								html += injectMath(parseMarkdown(text), mathBlocks);
-							}
-							
-							let msgContent = uiState.typingEl.querySelector(".chat-message-content");
-							if (!msgContent) {
-								msgContent = document.createElement("div");
-								msgContent.className = "chat-message-content";
-								uiState.typingEl.appendChild(msgContent);
-							}
-							msgContent.innerHTML = html;
-							
-							if (messages) messages.scrollTop = messages.scrollHeight;
-						}
-					}
-				},
-				currentSignal
-			);
-			
-			if (errorFromStream) {
-				throw new Error(errorFromStream);
-			}
-
-			if (!responseText && !reasoningText) {
-				throw new Error("Empty response from AI");
-			}
-			
-			stopTyping();
-			rerender();
-			setActiveCallback && setActiveCallback();
-			
-		} catch (err) {
-			if (currentSignal.aborted || err.name === 'AbortError') {
-				if (uiState.flushResponse) {
-					uiState.flushResponse();
-					uiState.flushResponse = null;
-				}
-				return;
-			}
-			
-			console.error("[ChatPage] AI request failed:", err);
-			errorFromStream = err.message || String(err) || "Unknown error";
-			stopTyping();
-			rerender();
-			setActiveCallback && setActiveCallback();
-		}
-	};
-
-	const rerender = () => {
-		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
-		if (!chat) return;
-		renderThread(messages, chat, uiState);
-		updateContextUI(root, chat);
-		if (uiState.editingNodeId) {
-			requestAnimationFrame(() => {
-				const el = messages.querySelector(`.chat-message[data-node-id="${uiState.editingNodeId}"] .chat-edit-input`);
-				if (el) {
-					el.style.height = "auto";
-					el.style.height = (el.scrollHeight + 2) + "px";
-					el.focus();
-				}
-			});
-		}
-	};
-
-	// Sync execution finishes with loadCurrentChat (which also calls selectModelInDropdown ensuring correctness)
-	loadCurrentChat(() => setActiveCallback && setActiveCallback());
-	
-	// Fallback to fetch model default from settings strictly if missing completely
-	if (!localStorage.getItem("ctrlpanel:lastSelectedModel") && (!getCurrentChatId() || !getChatById(getCurrentChatId())?.modelId)) {
-		import("../api.js").then(m => m.getSettings()).then(settings => {
-			if (settings && settings.defaultModel) {
-				localStorage.setItem("ctrlpanel:lastSelectedModel", settings.defaultModel);
-				selectModelInDropdown(root, settings.defaultModel);
-				const c = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
-				updateContextUI(root, c);
-			}
-		}).catch(()=>{});
-	}
-
-	input.addEventListener("keydown", (e) => {
-		if (e.isComposing) return;
-		if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-			e.preventDefault();
-			if (uiState.isGenerating) return;
-			form.dataset.sendNoReply = e.shiftKey ? "1" : "";
-			form.requestSubmit();
-		}
-	}, { signal });
-
-	messages.addEventListener("click", (e) => {
-		const btn = e.target.closest("button[data-action]");
-		if (!btn) return;
-		const action = btn.dataset.action;
-		const msgEl = btn.closest(".chat-message");
-		const nodeId = msgEl?.dataset.nodeId;
-		if (!action || !nodeId) return;
-
-		const chatId = getCurrentChatId();
-		const chat = chatId ? getChatById(chatId) : null;
-		if (!chat) return;
-		const graph = ensureGraph(chat);
-		const node = getNode(graph, nodeId);
-		if (!node) return;
-
-		const handlers = {
-			thread: () => {
-				stopTyping();
-				branchFromNode(graph, nodeId, { preserveSelectedTail: false });
-				chat.updatedAt = Date.now();
-				saveChats();
-				uiState.editingNodeId = null;
-				uiState.editingDraft = "";
-				uiState.editingSaveMode = null;
-				rerender();
-				renderChatList();
-				setActiveCallback && setActiveCallback();
-			},
-			delete: () => {
-				stopTyping();
-				if (e.shiftKey) {
-					spliceDeleteNode(graph, nodeId);
-				} else {
-					deleteSubtree(graph, nodeId);
-					recomputeLeafId(graph);
-				}
-				chat.updatedAt = Date.now();
-				saveChats();
-				uiState.editingNodeId = null;
-				uiState.editingDraft = "";
-				uiState.editingSaveMode = null;
-				rerender();
-				renderChatList();
-				setActiveCallback && setActiveCallback();
-			},
-			edit: () => {
-				stopTyping();
-				uiState.editingNodeId = nodeId;
-				uiState.editingDraft = node.parts 
-					? node.parts.filter(p => p.type === "text").map(p => p.content).join("")
-					: String(node.content || "");
-				uiState.editingSaveMode = null;
-				rerender();
-			},
-			cancel: () => {
-				uiState.editingNodeId = null;
-				uiState.editingDraft = "";
-				uiState.editingSaveMode = null;
-				rerender();
-			},
-			save: () => {
-				const textarea = msgEl.querySelector(".chat-edit-input");
-				const next = textarea ? textarea.value.trimEnd() : uiState.editingDraft;
-				
-				const oldText = node.parts 
-					? node.parts.filter(p => p.type === "text").map(p => p.content).join("")
-					: String(node.content || "");
-				
-				if (String(next) === oldText) {
-					uiState.editingNodeId = null;
-					uiState.editingDraft = "";
-					uiState.editingSaveMode = null;
-					rerender();
-					return;
-				}
-				stopTyping();
-				let effectiveNode = node;
-
-				const getUpdatedParts = () => {
-					if (node.parts) {
-						const newParts =[];
-						let textAdded = false;
-						for (const part of node.parts) {
-							if (part.type === "text") {
-								if (!textAdded) {
-									newParts.push({ type: "text", content: next });
-									textAdded = true;
-								}
-							} else {
-								newParts.push(JSON.parse(JSON.stringify(part)));
-							}
-						}
-						if (!textAdded) {
-							newParts.unshift({ type: "text", content: next });
-						}
-						return newParts;
-					}
-					return null;
-				};
-
-				if (node.role === "assistant") {
-					const preserve = uiState.editingSaveMode === "preserve";
-					const branched = branchFromNode(graph, nodeId, { preserveSelectedTail: preserve });
-					if (branched) {
-						branched.content = String(next);
-						const updatedParts = getUpdatedParts();
-						if (updatedParts) branched.parts = updatedParts;
-						branched.editedAt = Date.now();
-						effectiveNode = branched;
-						if (!preserve) {
-							effectiveNode.children =[];
-							delete graph.selections[effectiveNode.id];
-							recomputeLeafId(graph);
-						} else {
-							recomputeLeafId(graph);
-						}
-					}
-				} else {
-					const hadResponse = nodeHasGeneratedResponse(graph, nodeId);
-					if (hadResponse) {
-						const updatedParts = getUpdatedParts();
-						const sibling = createSiblingCopy(graph, nodeId, { 
-							content: next, 
-							timestamp: Date.now(),
-							parts: updatedParts
-						});
-						if (sibling) effectiveNode = sibling;
-					} else {
-						node.content = String(next);
-						const updatedParts = getUpdatedParts();
-						if (updatedParts) node.parts = updatedParts;
-						node.editedAt = Date.now();
-						recomputeLeafId(graph);
-					}
-				}
-
-				chat.updatedAt = Date.now();
-				saveChats();
-				uiState.editingNodeId = null;
-				uiState.editingDraft = "";
-				uiState.editingSaveMode = null;
-				rerender();
-				renderChatList();
-				setActiveCallback && setActiveCallback();
-
-				if (effectiveNode.role === "user") {
-					if (empty) empty.hidden = true;
-					startReply(effectiveNode.id);
-				}
-			},
-			"branch-back": () => {
-				const nodeNow = getNode(graph, nodeId);
-				if (!nodeNow?.parentId) return;
-				const parent = getNode(graph, nodeNow.parentId);
-				const siblings = parent?.children ||[];
-				const idx = siblings.indexOf(nodeId);
-				if (idx <= 0) return;
-				stopTyping();
-				setSelectedChildId(graph, nodeNow.parentId, siblings[idx - 1]);
-				recomputeLeafId(graph);
-				chat.updatedAt = Date.now();
-				saveChats();
-				uiState.editingNodeId = null;
-				uiState.editingDraft = "";
-				uiState.editingSaveMode = null;
-				rerender();
-				setActiveCallback && setActiveCallback();
-			},
-			"branch-forward": () => {
-				const nodeNow = getNode(graph, nodeId);
-				if (!nodeNow?.parentId) return;
-				const parent = getNode(graph, nodeNow.parentId);
-				const siblings = parent?.children ||[];
-				const idx = siblings.indexOf(nodeId);
-				if (idx === -1 || idx >= siblings.length - 1) return;
-				stopTyping();
-				setSelectedChildId(graph, nodeNow.parentId, siblings[idx + 1]);
-				recomputeLeafId(graph);
-				chat.updatedAt = Date.now();
-				saveChats();
-				uiState.editingNodeId = null;
-				uiState.editingDraft = "";
-				uiState.editingSaveMode = null;
-				rerender();
-				setActiveCallback && setActiveCallback();
-			},
-			resend: () => {
-				if (!node.parentId) return;
-				stopTyping();
-				
-				let userNodeId = node.role === "user" ? node.id : node.parentId;
-				let userNode = getNode(graph, userNodeId);
-				if (!userNode) return;
-
-				setSelectedChildId(graph, userNode.parentId, userNode.id);
-				delete graph.selections[userNode.id];
-				recomputeLeafId(graph);
-				
-				chat.updatedAt = Date.now();
-				saveChats();
-				uiState.editingNodeId = null;
-				uiState.editingDraft = "";
-				uiState.editingSaveMode = null;
-				
-				rerender();
-				setActiveCallback && setActiveCallback();
-				
-				if (empty) empty.hidden = true;
-				startReply(userNode.id);
-			},
-		};
-
-		handlers[action]?.();
-	}, { signal });
-
-	messages.addEventListener("keydown", (e) => {
-		const textarea = e.target.closest(".chat-edit-input");
-		if (!textarea) return;
-		const msgEl = textarea.closest(".chat-message");
-		const nodeId = msgEl?.dataset.nodeId;
-		if (!nodeId) return;
-
-		if (e.key === "Escape") {
-			e.preventDefault();
-			uiState.editingNodeId = null;
-			uiState.editingDraft = "";
-			uiState.editingSaveMode = null;
-			rerender();
-		} else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-			e.preventDefault();
-			uiState.editingSaveMode = e.shiftKey ? "preserve" : "reset";
-			msgEl.querySelector('button[data-action="save"]')?.click();
-		}
-	}, { signal });
-
-	messages.addEventListener("input", (e) => {
-		const textarea = e.target.closest(".chat-edit-input");
-		if (!textarea) return;
-		const msgEl = textarea.closest(".chat-message");
-		const nodeId = msgEl?.dataset.nodeId;
-		if (nodeId && uiState.editingNodeId === nodeId) {
-			uiState.editingDraft = textarea.value;
-			textarea.style.height = "auto";
-			textarea.style.height = (textarea.scrollHeight + 2) + "px";
-		}
-	}, { signal });
-
-	form.addEventListener("submit", (e) => {
-		e.preventDefault();
-		if (uiState.isGenerating) return;
-		
-		const parts = attachmentManager.extractParts();
-		if (!parts || parts.length === 0) return;
-
-		ensureChatExists(setActiveCallback);
-		const chatId = getCurrentChatId();
-		
-		// Save the model used to the chat
-		const chat = getChatById(chatId);
-		if (chat) {
-			const modelSelect = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
-			if (modelSelect && modelSelect.dataset.value) {
-				chat.modelId = modelSelect.dataset.value;
-			}
-		}
-
-		if (empty) empty.hidden = true;
-
-		stopTyping();
-		uiState.editingNodeId = null;
-		uiState.editingDraft = "";
-		uiState.editingSaveMode = null;
-
-		const userNode = addMessageToChat(chatId, "user", "", null, parts);
-		
-		attachmentManager.clear();
-		const uploadBtn = root.querySelector("#chatUploadBtn");
-		if (uploadBtn) delete uploadBtn.dataset.count;
-		if (resizeInput) resizeInput();
-		
-		rerender();
-		renderChatList();
-		setActiveCallback && setActiveCallback();
-
-		const sendNoReply = form.dataset.sendNoReply === "1";
-		delete form.dataset.sendNoReply;
-		if (!sendNoReply && userNode?.id) {
-			startReply(userNode.id);
-		}
-	}, { signal });
-
-	root.addEventListener("click", (e) => {
-		const item = e.target.closest('[data-dropdown="model"] .chat-dropdown-item');
-		if (!item) return;
-		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
-		updateContextUI(root, chat);
-	}, { signal });
-
-	input.focus();
-}
 ```
 
 ### ./ctrlpanel/js/chat/markdown.js:
@@ -13563,11 +9948,3475 @@ export default parseMarkdown;
 
 ```
 
+### ./ctrlpanel/js/chat/latex.js:
+```js
+/**
+ * Comprehensive LaTeX math & structural renderer
+ * - Uses KaTeX if available for equation rendering.
+ * - Extracts and hides code blocks to avoid math parsing bugs.
+ * - Preprocesses raw LaTeX (like \begin{theorem}, \begin{tikzpicture}, and \begin{tabular}) into clean HTML/Markdown.
+ */
+
+// Dynamically inject KaTeX (redundant safety if index.html doesn't have it)
+(function initKaTeX() {
+	if (typeof window !== 'undefined' && !window.katex && !document.getElementById('katex-script')) {
+		const css = document.createElement('link');
+		css.rel = 'stylesheet';
+		css.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
+		document.head.appendChild(css);
+
+		const script = document.createElement('script');
+		script.id = 'katex-script';
+		script.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js';
+		script.defer = true;
+		document.head.appendChild(script);
+	}
+})();
+
+// Shared Regexes
+const CODE_BLOCK_REGEX = /(```[\s\S]*?```|`[^`\n]+`)/g;
+// Uses backreference \1 to ensure \begin{env} strictly matches its corresponding \end{env}, safely ignoring nested environments like pmatrix
+const MATH_REGEX = /\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$(?!\s)(?:\\.|[^\n$])+?(?<!\s)\$|\\begin\{((?:equation|align|gather|eqnarray|multline|matrix|bmatrix|pmatrix|vmatrix|Vmatrix|cases)\*?)\}[\s\S]*?\\end\{\1\}/g;
+
+/**
+ * Helper to process algorithmic blocks into readable pseudocode
+ */
+function formatAlgorithmic(content) {
+	const lines = content.split('\n');
+	let html = '<div class="latex-algorithm">';
+	let indentLevel = 0;
+	
+	lines.forEach(line => {
+		let trim = line.trim();
+		if (!trim) return;
+		
+		// Handle Indentation adjustments before rendering
+		if (trim.match(/^\\(End|Until|Else)/i)) indentLevel = Math.max(0, indentLevel - 1);
+		
+		const padding = indentLevel * 20; // 20px indent per level
+		
+		// Formatting keywords
+		trim = trim.replace(/\\State\s*/g, '<span class="alg-keyword"></span>');
+		trim = trim.replace(/\\Require\s*/g, '<span class="alg-keyword">Require:</span> ');
+		trim = trim.replace(/\\Ensure\s*/g, '<span class="alg-keyword">Ensure:</span> ');
+		trim = trim.replace(/\\Return\s*/g, '<span class="alg-keyword">return</span> ');
+		trim = trim.replace(/\\If\s*\{([^}]+)\}/g, '<span class="alg-keyword">if</span> $1 <span class="alg-keyword">then</span>');
+		trim = trim.replace(/\\Else/g, '<span class="alg-keyword">else</span>');
+		trim = trim.replace(/\\EndIf/g, '<span class="alg-keyword">end if</span>');
+		trim = trim.replace(/\\For\s*\{([^}]+)\}/g, '<span class="alg-keyword">for</span> $1 <span class="alg-keyword">do</span>');
+		trim = trim.replace(/\\EndFor/g, '<span class="alg-keyword">end for</span>');
+		trim = trim.replace(/\\While\s*\{([^}]+)\}/g, '<span class="alg-keyword">while</span> $1 <span class="alg-keyword">do</span>');
+		trim = trim.replace(/\\EndWhile/g, '<span class="alg-keyword">end while</span>');
+		trim = trim.replace(/\\Function\s*\{([^}]+)\}\s*\{([^}]+)\}/g, '<span class="alg-keyword">function</span> $1($2)');
+		trim = trim.replace(/\\EndFunction/g, '<span class="alg-keyword">end function</span>');
+		trim = trim.replace(/\\Comment\s*\{([^}]+)\}/g, '<span class="alg-comment">▷ $1</span>');
+		
+		html += `<div class="alg-line" style="padding-left:${padding}px">${trim}</div>`;
+		
+		// Handle Indentation adjustments after rendering
+		if (trim.match(/class="alg-keyword">(if|else|for|while|function|procedure)/i)) indentLevel++;
+	});
+	
+	html += '</div>';
+	return html;
+}
+
+/**
+ * Helper to process tabular environments into HTML Tables
+ * HTML tables support colspan/rowspan which Markdown tables do not.
+ */
+function formatTabular(body) {
+	// Remove structural commands that don't map to HTML structure directly
+	let cleanBody = body
+		.replace(/\\hline/g, '')
+		.replace(/\\toprule/g, '')
+		.replace(/\\midrule/g, '')
+		.replace(/\\bottomrule/g, '')
+		.replace(/\\cline\{.*?\}/g, '');
+
+	const rows = cleanBody.split('\\\\').filter(r => r.trim());
+	let html = '<div class="latex-table-wrapper"><table class="latex-table"><tbody>';
+	
+	rows.forEach(row => {
+		html += '<tr>';
+		// Split by & but respect escaping
+		const cells = row.split(/(?<!\\)&/); 
+		
+		cells.forEach(cell => {
+			let content = cell.trim();
+			let colspan = 1;
+			let rowspan = 1;
+			
+			// Handle \multicolumn{cols}{align}{text}
+			const multiColMatch = content.match(/^\\multicolumn\{(\d+)\}\{(.*?)\}\{(.*?)\}$/);
+			if (multiColMatch) {
+				colspan = parseInt(multiColMatch[1]);
+				// alignment is in group 2 (e.g. 'c', '|c|'), ignored for now
+				content = multiColMatch[3];
+			}
+			
+			// Handle \multirow{rows}{width}{text}
+			const multiRowMatch = content.match(/^\\multirow\{(\d+)\}\{(.*?)\}\{(.*?)\}$/);
+			if (multiRowMatch) {
+				rowspan = parseInt(multiRowMatch[1]);
+				content = multiRowMatch[3];
+			}
+			
+			// Handle \multirow{2}{*}{Text} where * is width
+			const multiRowStar = content.match(/^\\multirow\{(\d+)\}\{\*\}\{(.*?)\}$/);
+			if (multiRowStar) {
+				rowspan = parseInt(multiRowStar[1]);
+				content = multiRowStar[2];
+			}
+
+			// Bold headers if simple text
+			content = content.replace(/\\textbf\{([^}]+)\}/g, '<b>$1</b>');
+			
+			// Wildcard replacement to clean up lingering braces from simple wrappers
+			if (content === '{}') content = '';
+
+			let attrs = '';
+			if (colspan > 1) attrs += ` colspan="${colspan}"`;
+			if (rowspan > 1) attrs += ` rowspan="${rowspan}"`;
+			
+			html += `<td${attrs}>${content}</td>`;
+		});
+		html += '</tr>';
+	});
+	html += '</tbody></table></div>';
+	return html;
+}
+
+/**
+ * Parses raw text-mode LaTeX (like lists, theorems, algorithms, and tables) into clean markdown
+ * so the UI renders beautiful boxes instead of raw or broken text.
+ */
+export function preprocessLatexText(text) {
+	if (!text) return '';
+
+	// Step 1: Protect code blocks from any replacements
+	const codeBlocks =[];
+	let codeIndex = 0;
+	let safeText = text.replace(CODE_BLOCK_REGEX, (match) => {
+		const placeholder = `⚿CODEBLOCK${codeIndex}⚿`;
+		codeBlocks.push({ placeholder, content: match });
+		codeIndex++;
+		return placeholder;
+	});
+
+	// Step 2: Protect math blocks so we don't accidentally modify equations.
+	const mathBlocks = [];
+	let mathIndex = 0;
+	safeText = safeText.replace(MATH_REGEX, (match) => {
+		const placeholder = `⚿MATHBLOCK${mathIndex}⚿`;
+		mathBlocks.push({ placeholder, content: match });
+		mathIndex++;
+		return placeholder;
+	});
+
+	// Step 3: Perform text-mode LaTeX structural conversions
+	let p = safeText;
+
+	// === Preamble / Metadata Hiding ===
+	// Collect all preamble stuff into one block
+	const preambleRegex = /^\\(?:documentclass|usepackage|newcommand|renewcommand|bibliographystyle|bibliography|author|title|date|DeclareMathOperator).*$/gm;
+	let preambleContent = '';
+	p = p.replace(preambleRegex, (match) => {
+		preambleContent += match + '\n';
+		return ''; // Remove from main flow
+	});
+	
+	if (preambleContent.trim()) {
+		// Prepend a collapsed details block with the preamble
+		p = `<details class="latex-preamble"><summary>Document Configuration</summary>\n\`\`\`latex\n${preambleContent.trim()}\n\`\`\`\n</details>\n\n` + p;
+	}
+
+	// === Callouts (Theorems, Proofs, etc.) ===
+	const makeCallout = (type, icon, title) => `\n\n<div class="md-callout md-callout-${type}"><div class="md-callout-header"><span class="md-callout-icon">${icon}</span><span class="md-callout-title">${title}</span></div><div class="md-callout-content">\n\n`;
+	const endCallout = '\n\n</div></div>\n\n';
+
+	p = p.replace(/\\begin\{theorem\}/g, makeCallout('info', '🏛️', 'Theorem'));
+	p = p.replace(/\\end\{theorem\}/g, endCallout);
+
+	p = p.replace(/\\begin\{proof\}/g, makeCallout('note', '📝', 'Proof'));
+	p = p.replace(/\\end\{proof\}/g, endCallout);
+
+	p = p.replace(/\\begin\{lemma\}/g, makeCallout('tip', '💡', 'Lemma'));
+	p = p.replace(/\\end\{lemma\}/g, endCallout);
+
+	p = p.replace(/\\begin\{definition\}/g, makeCallout('example', '📖', 'Definition'));
+	p = p.replace(/\\end\{definition\}/g, endCallout);
+
+	// === Algorithms ===
+	p = p.replace(/\\begin\{algorithm\}(?:\[.*?\])?/g, makeCallout('example', '⚙️', 'Algorithm'));
+	p = p.replace(/\\end\{algorithm\}/g, endCallout);
+	// Use custom algorithmic formatter
+	p = p.replace(/\\begin\{algorithmic\}(?:\[.*?\])?([\s\S]*?)\\end\{algorithmic\}/g, (match, content) => {
+		return formatAlgorithmic(content);
+	});
+
+	// === Beamer Frames ===
+	p = p.replace(/\\begin\{frame\}(?:\[.*?\])?(?:\{([^}]*)\})?/g, (match, title) => {
+		return makeCallout('note', '📽️', title || 'Slide');
+	});
+	p = p.replace(/\\frametitle\{([^}]+)\}/g, '**$1**\n');
+	p = p.replace(/\\end\{frame\}/g, endCallout);
+
+	// === TikZ & Graphics ===
+	p = p.replace(/\\begin\{tikzpicture\}([\s\S]*?)\\end\{tikzpicture\}/g, (match, code) => {
+		return `\n<div class="latex-figure-container"><div class="latex-figure-placeholder">TikZ Graphics (Code Source)</div>\n\`\`\`latex\n\\begin{tikzpicture}${code}\\end{tikzpicture}\n\`\`\`\n</div>\n`;
+	});
+
+	p = p.replace(/\\includegraphics(?:\[.*?\])?\{([^}]+)\}/g, (match, filename) => {
+		return `\n<div class="latex-figure-card"><div class="latex-figure-icon">🖼️</div><div class="latex-figure-details"><div class="latex-figure-name">Figure: ${filename}</div><div class="latex-figure-note">Image rendering requires compiling</div></div></div>\n`;
+	});
+
+	// === Tables (HTML Conversion) ===
+	p = p.replace(/\\begin\{tabular\}\s*(?:\{[^\n]*?\})?([\s\S]*?)\\end\{tabular\}/g, (match, body) => {
+		return formatTabular(body);
+	});
+
+	// === Headers ===
+	p = p.replace(/\\section\*?\{([^}]+)\}/g, '\n# $1\n');
+	p = p.replace(/\\subsection\*?\{([^}]+)\}/g, '\n## $1\n');
+	p = p.replace(/\\subsubsection\*?\{([^}]+)\}/g, '\n### $1\n');
+
+	// === Inline Formatting ===
+	p = p.replace(/\\textbf\{([^}]+)\}/g, '**$1**');
+	p = p.replace(/\\textit\{([^}]+)\}/g, '*$1*');
+	p = p.replace(/\\emph\{([^}]+)\}/g, '*$1*');
+	p = p.replace(/\\underline\{([^}]+)\}/g, '<u>$1</u>');
+	p = p.replace(/\\textcolor\{([^}]+)\}\{([^}]+)\}/g, '<span style="color: $1;">$2</span>');
+	p = p.replace(/\\mycommand\{([^}]+)\}/g, '`$1`'); // Handle example custom command gracefully
+
+	// === Refs & Citations ===
+	p = p.replace(/~(\\ref|\\pageref|\\cite)/g, ' $1'); 
+	p = p.replace(/\\cite(?:\[.*?\])?\{([^}]+)\}/g, '<span class="latex-citation">[$1]</span>');
+	p = p.replace(/\\ref\{([^}]+)\}/g, '<span class="latex-ref">ref: $1</span>');
+	p = p.replace(/\\pageref\{([^}]+)\}/g, '<span class="latex-ref">page: $1</span>');
+	p = p.replace(/\\label\{([^}]+)\}/g, ''); 
+
+	// === Lists ===
+	// Simple replacements often break nesting, but for display this usually suffices
+	p = p.replace(/\\begin\{itemize\}/g, '\n');
+	p = p.replace(/\\end\{itemize\}/g, '\n');
+	p = p.replace(/\\begin\{enumerate\}/g, '\n');
+	p = p.replace(/\\end\{enumerate\}/g, '\n');
+	p = p.replace(/\\begin\{description\}/g, '\n');
+	p = p.replace(/\\end\{description\}/g, '\n');
+	p = p.replace(/\\item\s*\[(.*?)\]/g, '\n- **$1:** ');
+	p = p.replace(/\\item/g, '\n- ');
+
+	// === Wrappers ===
+	p = p.replace(/\\begin\{table\}(\[.*?\])?/g, '\n');
+	p = p.replace(/\\end\{table\}/g, '\n');
+	p = p.replace(/\\begin\{figure\}(\[.*?\])?/g, '\n');
+	p = p.replace(/\\end\{figure\}/g, '\n');
+	p = p.replace(/\\centering/g, '');
+	p = p.replace(/\\caption\{([^}]+)\}/g, '\n<div class="latex-caption">$1</div>\n');
+
+	// General Document Wrappers
+	p = p.replace(/\\begin\{document\}/g, '');
+	p = p.replace(/\\end\{document\}/g, '');
+
+	// Cleanup
+	p = p.replace(/\n{3,}/g, '\n\n');
+
+	// Step 4: Restore math and code placeholders
+	for (const block of mathBlocks) {
+		p = p.replace(block.placeholder, block.content);
+	}
+	for (const block of codeBlocks) {
+		p = p.replace(block.placeholder, block.content);
+	}
+
+	return p;
+}
+
+/**
+ * Extracts math into safe blocks so the Markdown parser ignores it.
+ * Code blocks are also temporarily shielded from the math parser.
+ */
+export function extractMath(text) {
+	if (!text) return { text: '', mathBlocks:[] };
+	
+	const codeBlocks =[];
+	let codeIndex = 0;
+	let textWithoutCode = text.replace(CODE_BLOCK_REGEX, (match) => {
+		const placeholder = `⚿CODEBLOCK${codeIndex}⚿`;
+		codeBlocks.push({ placeholder, content: match });
+		codeIndex++;
+		return placeholder;
+	});
+
+	const mathBlocks =[];
+	let mathIndex = 0;
+	
+	let textWithMathExtracted = textWithoutCode.replace(MATH_REGEX, (match) => {
+		const placeholder = `⚿MATHBLOCK${mathIndex}⚿`;
+		let isBlock = false;
+		let content = match;
+		
+		if (match.startsWith('$$')) {
+			isBlock = true;
+			content = match.substring(2, match.length - 2);
+		} else if (match.startsWith('\\[')) {
+			isBlock = true;
+			content = match.substring(2, match.length - 2);
+		} else if (match.startsWith('\\(')) {
+			isBlock = false;
+			content = match.substring(2, match.length - 2);
+		} else if (match.startsWith('$')) {
+			isBlock = false;
+			content = match.substring(1, match.length - 1);
+		} else if (match.startsWith('\\begin{')) {
+			isBlock = true;
+			content = match;
+		}
+		
+		mathBlocks.push({ placeholder, content, isBlock });
+		mathIndex++;
+		return placeholder;
+	});
+	
+	let finalText = textWithMathExtracted;
+	for (const block of codeBlocks) {
+		finalText = finalText.replace(block.placeholder, block.content);
+	}
+	
+	return { text: finalText, mathBlocks };
+}
+
+function escapeHtml(text) {
+	if (!text) return '';
+	return text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;');
+}
+
+export function injectMath(html, mathBlocks) {
+	let finalHtml = html;
+	
+	for (const block of mathBlocks) {
+		let rendered = '';
+		try {
+			if (window.katex) {
+				rendered = window.katex.renderToString(block.content, {
+					displayMode: block.isBlock,
+					throwOnError: false,
+					trust: true,
+					strict: false
+				});
+			} else {
+				const className = block.isBlock ? 'latex-block' : 'latex-inline';
+				rendered = `<span class="${className}">${escapeHtml(block.content)}</span>`;
+			}
+		} catch (e) {
+			const className = block.isBlock ? 'latex-block error' : 'latex-inline error';
+			rendered = `<span class="${className}" title="${escapeHtml(e.message)}">${escapeHtml(block.content)}</span>`;
+		}
+		
+		finalHtml = finalHtml.replace(block.placeholder, rendered);
+	}
+	
+	return finalHtml;
+}
+
+export function parseLatex(text) {
+	const preprocessed = preprocessLatexText(text);
+	const { text: extracted, mathBlocks } = extractMath(preprocessed);
+	return injectMath(extracted, mathBlocks);
+}
+
+export function hasLatex(text) {
+	return /\$[^$]+\$|\$\$[^$]+\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\\[a-zA-Z]+/.test(text);
+}
+
+export default parseLatex;
+
+```
+
+### ./ctrlpanel/js/chat/thread-ui.js:
+```js
+import { computeThreadNodeIds, ensureGraph, getNode } from "./graph.js";
+import { formatBytes } from "./util.js";
+import { parseMarkdown } from "./markdown.js";
+import { preprocessLatexText, extractMath, injectMath } from "./latex.js";
+
+/**
+ * Escape HTML special characters to prevent XSS
+ * @param {string} text
+ * @returns {string}
+ */
+function escapeHtml(text) {
+	if (!text) return "";
+	const div = document.createElement("div");
+	div.textContent = text;
+	return div.innerHTML;
+}
+
+// Filetype icons for message display
+const FILETYPE_ICONS = {
+	zip: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/></svg>`,
+	js: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>`,
+	py: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C6.5 2 6 4 6 6v3h6v1H4c-2 0-4 1.5-4 5s2 5 4 5h2v-3c0-2 1.5-4 4-4h6c2 0 4-2 4-4V6c0-2-2-4-8-4z"/></svg>`,
+	java: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 20c-2 0-3-1-3-3 2-2 6-2 8-5 1 2 1 4-1 6-2 2-4 2-4 2z"/></svg>`,
+	jar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="6" y="3" width="12" height="18" rx="1"/><path d="M6 7h12M6 11h12M6 15h12"/></svg>`,
+	json: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2h-2"/></svg>`,
+	pdf: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
+	doc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>`,
+	txt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
+	md: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
+	mp3: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+	mp4: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3V9z"/></svg>`,
+	png: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
+	default: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
+};
+
+const FILETYPE_NAMES = {
+	zip: "ZIP Archive", js: "JavaScript", ts: "TypeScript", py: "Python",
+	java: "Java", jar: "Java Archive", json: "JSON", pdf: "PDF Document",
+	doc: "Word Document", txt: "Text File", md: "Markdown",
+	mp3: "MP3 Audio", mp4: "MP4 Video", png: "PNG Image", jpg: "JPEG Image",
+};
+
+function getFileExtension(filename) {
+	const match = filename.match(/\.([^.]+)$/);
+	return match ? match[1].toLowerCase() : "";
+}
+
+function getFiletypeIcon(filename) {
+	const ext = getFileExtension(filename);
+	return FILETYPE_ICONS[ext] || FILETYPE_ICONS.default;
+}
+
+function getFiletypeName(filename) {
+	const ext = getFileExtension(filename);
+	return FILETYPE_NAMES[ext] || ext.toUpperCase() + " File";
+}
+
+const icons = {
+	edit: (s) => `<svg viewBox="0 -0.5 21 21" version="1.1" xmlns="http://www.w3.org/2000/svg" ${s}><g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g fill="currentColor"><path d="M3.15,14 C2.5704,14 2.1,13.552 2.1,13 L2.1,7 C2.1,6.448 2.5704,6 3.15,6 C3.7296,6 4.2,5.552 4.2,5 C4.2,4.448 3.7296,4 3.15,4 L2.1,4 C0.93975,4 0,4.895 0,6 L0,14 C0,15.105 0.93975,16 2.1,16 L3.15,16 C3.7296,16 4.2,15.552 4.2,15 C4.2,14.448 3.7296,14 3.15,14 M18.9,4 L11.55,4 C10.9704,4 10.5,4.448 10.5,5 C10.5,5.552 10.9704,6 11.55,6 L17.85,6 C18.4296,6 18.9,6.448 18.9,7 L18.9,13 C18.9,13.552 18.4296,14 17.85,14 L11.55,14 C10.9704,14 10.5,14.448 10.5,15 C10.5,15.552 10.9704,16 11.55,16 L18.9,16 C20.06025,16 21,15.105 21,14 L21,6 C21,4.895 20.06025,4 18.9,4 M10.5,19 C10.5,19.552 10.0296,20 9.45,20 L5.25,20 C4.6704,20 4.2,19.552 4.2,19 C4.2,18.448 4.6704,18 5.25,18 L6.3,18 L6.3,2 L5.25,2 C4.6704,2 4.2,1.552 4.2,1 C4.2,0.448 4.6704,0 5.25,0 L9.45,0 C10.0296,0 10.5,0.448 10.5,1 C10.5,1.552 10.0296,2 9.45,2 L8.4,2 L8.4,18 L9.45,18 C10.0296,18 10.5,18.448 10.5,19"/></g></g></svg>`,
+	refresh: (s) => `<svg viewBox="0 0 24 24" fill="none" ${s}><path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0115-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 01-15 6.7L3 16" /></svg>`,
+	"chev-left": (s) => `<svg viewBox="0 0 24 24" fill="none" ${s}><path d="M15 18l-6-6 6-6"/></svg>`,
+	"chev-right": (s) => `<svg viewBox="0 0 24 24" fill="none" ${s}><path d="M9 18l6-6-6-6"/></svg>`,
+	check: (s) => `<svg viewBox="0 0 24 24" fill="none" ${s}><path d="M20 6L9 17l-5-5"/></svg>`,
+	x: (s) => `<svg viewBox="0 0 24 24" fill="none" ${s}><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>`,
+	branch: (s) => `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M13 22H29C33.4183 22 37 25.5817 37 30V44" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="8.94365" r="5" transform="rotate(-90 13 8.94365)" stroke="currentColor" stroke-width="4"/><path d="M13 14V43" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 39L13 44L8 39" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M42 39L37 44L32 39" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+	trash: (s) => `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M4 6H20L18.4199 20.2209C18.3074 21.2337 17.4512 22 16.4321 22H7.56786C6.54876 22 5.69264 21.2337 5.5801 20.2209L4 6Z"/><path d="M7.34491 3.14716C7.67506 2.44685 8.37973 2 9.15396 2H14.846C15.6203 2 16.3249 2.44685 16.6551 3.14716L18 6H6L7.34491 3.14716Z"/><path d="M2 6H22"/><path d="M10 11V16"/><path d="M14 11V16"/></svg>`,
+};
+
+const stroke = 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+
+function createActionButton({ action, label, title, iconName, disabled = false }) {
+	const btn = document.createElement("button");
+	btn.type = "button";
+	btn.className = "chat-action-btn";
+	btn.dataset.action = action;
+	btn.setAttribute("aria-label", label);
+	btn.title = title || label;
+	btn.disabled = Boolean(disabled);
+	btn.innerHTML = icons[iconName]?.(stroke) || "";
+	return btn;
+}
+
+function getSiblingNavState(graph, nodeId) {
+	const node = getNode(graph, nodeId);
+	if (!node?.parentId) {
+		return { parentId: null, siblings:[], index: -1, canBack: false, canForward: false };
+	}
+	const parent = getNode(graph, node.parentId);
+	const siblings = parent?.children ||[];
+	const index = siblings.indexOf(nodeId);
+	return {
+		parentId: node.parentId,
+		siblings,
+		index,
+		canBack: index > 0,
+		canForward: index >= 0 && index < siblings.length - 1,
+	};
+}
+
+/**
+ * Build inline attachment element for message display
+ */
+function buildInlineAttachment(attachment) {
+	const wrap = document.createElement("span");
+	wrap.className = "chat-message-inline-attachment";
+
+	if (attachment.isImage && attachment.data) {
+		wrap.classList.add("chat-message-inline-attachment-image");
+		wrap.innerHTML = `
+			<span class="chat-message-inline-preview">
+				<img src="${attachment.data}" alt="${attachment.name}" />
+			</span>
+			<span class="chat-message-inline-info">
+				<span class="chat-message-inline-name">${attachment.name}</span>
+				<span class="chat-message-inline-size">${formatBytes(attachment.size)}</span>
+			</span>
+		`;
+	} else {
+		wrap.classList.add("chat-message-inline-attachment-file");
+		const ext = getFileExtension(attachment.name);
+		wrap.innerHTML = `
+			<span class="chat-message-inline-icon">
+				${getFiletypeIcon(attachment.name)}
+				<span class="chat-message-inline-type">${ext.toUpperCase()}</span>
+			</span>
+			<span class="chat-message-inline-info">
+				<span class="chat-message-inline-name">${attachment.name}</span>
+				<span class="chat-message-inline-type-name">${getFiletypeName(attachment.name)}</span>
+				<span class="chat-message-inline-size">${formatBytes(attachment.size)}</span>
+			</span>
+		`;
+	}
+
+	return wrap;
+}
+
+/**
+ * Build reasoning element for assistant messages
+ */
+function buildReasoningElement(reasoning) {
+	if (!reasoning) return null;
+	
+	const details = document.createElement("details");
+	details.className = "message-reasoning";
+	
+	const summary = document.createElement("summary");
+	summary.textContent = "Thinking...";
+	
+	const content = document.createElement("div");
+	content.className = "reasoning-content";
+	content.textContent = reasoning;
+	
+	details.appendChild(summary);
+	details.appendChild(content);
+	return details;
+}
+
+/**
+ * Build content container with parts rendered in order
+ */
+function buildContentContainer(node, isEditing, editingDraft) {
+	const container = document.createElement("div");
+	container.className = "chat-message-content";
+
+	// Add reasoning section for assistant messages (when not editing)
+	if (!isEditing && node.role === "assistant" && node.reasoning) {
+		const reasoningEl = buildReasoningElement(node.reasoning);
+		if (reasoningEl) {
+			container.appendChild(reasoningEl);
+		}
+	}
+
+	if (isEditing) {
+		const textarea = document.createElement("textarea");
+		textarea.className = "chat-edit-input";
+		// For editing, combine text parts
+		const textContent = node.parts 
+			? node.parts.filter(p => p.type === "text").map(p => p.content).join("")
+			: String(node.content || "");
+		textarea.value = editingDraft ?? textContent;
+		textarea.setAttribute("aria-label", "Edit message");
+		container.appendChild(textarea);
+	} else if (node.parts && Array.isArray(node.parts)) {
+		// Render parts in order
+		node.parts.forEach((part) => {
+			if (part.type === "text" && part.content) {
+				// Prevent math parsing errors with code shielding and preprocess raw UI tags
+				const preprocessed = preprocessLatexText(part.content);
+				const { text, mathBlocks } = extractMath(preprocessed);
+				const mdHtml = parseMarkdown(text);
+				const finalHtml = injectMath(mdHtml, mathBlocks);
+
+				const wrapper = document.createElement("div");
+				wrapper.className = "chat-message-text";
+				wrapper.innerHTML = finalHtml;
+				container.appendChild(wrapper);
+			} else if (part.type === "attachment") {
+				container.appendChild(buildInlineAttachment(part));
+			}
+		});
+	} else {
+		// Legacy format: just content string
+		const preprocessed = preprocessLatexText(String(node.content || ""));
+		const { text, mathBlocks } = extractMath(preprocessed);
+		const mdHtml = parseMarkdown(text);
+		const finalHtml = injectMath(mdHtml, mathBlocks);
+
+		const wrapper = document.createElement("div");
+		wrapper.className = "chat-message-text";
+		wrapper.innerHTML = finalHtml;
+		container.appendChild(wrapper);
+		
+		// Legacy attachments (rendered after content)
+		if (node.attachments && node.attachments.length > 0) {
+			node.attachments.forEach((attachment) => {
+				container.appendChild(buildInlineAttachment(attachment));
+			});
+		}
+	}
+
+	return container;
+}
+
+function buildMessageElement({ node, isEditing, editingDraft, canBranchBack, canBranchForward, canResend }) {
+	const div = document.createElement("div");
+	div.className = `chat-message ${node.role}`;
+	div.setAttribute("role", "article");
+	div.setAttribute("aria-label", node.role === "user" ? "You" : "Assistant");
+	div.dataset.nodeId = node.id;
+
+	const contentContainer = buildContentContainer(node, isEditing, editingDraft);
+	div.appendChild(contentContainer);
+
+	const menu = document.createElement("div");
+	menu.className = "chat-message-menu";
+	menu.setAttribute("role", "toolbar");
+	menu.setAttribute("aria-label", "Message actions");
+
+	if (isEditing) {
+		menu.append(
+			createActionButton({ action: "save", label: "Save edit", title: "Save", iconName: "check" }),
+			createActionButton({ action: "cancel", label: "Cancel edit", title: "Cancel", iconName: "x" })
+		);
+	} else {
+		menu.append(
+			createActionButton({ action: "branch-back", label: "Previous thread", title: "Previous thread", iconName: "chev-left", disabled: !canBranchBack }),
+			createActionButton({ action: "branch-forward", label: "Next thread", title: "Next thread", iconName: "chev-right", disabled: !canBranchForward }),
+			createActionButton({ action: "thread", label: "Create new thread from this message", title: "New thread", iconName: "branch" }),
+			createActionButton({ action: "edit", label: "Edit message", title: "Edit", iconName: "edit" }),
+			createActionButton({ action: "resend", label: "Regenerate from here", title: "Regenerate", iconName: "refresh", disabled: !canResend }),
+			createActionButton({ action: "delete", label: "Delete message", title: "Delete (shift+click to delete only this message)", iconName: "trash" })
+		);
+	}
+
+	div.appendChild(menu);
+	return div;
+}
+
+export function showTyping(container) {
+	const div = document.createElement("div");
+	div.className = "chat-typing";
+	div.setAttribute("aria-label", "Assistant is typing");
+	div.innerHTML = "<span></span><span></span><span></span>";
+	container.appendChild(div);
+	container.scrollTop = container.scrollHeight;
+	return div;
+}
+
+export function renderThread(messagesEl, chat, uiState) {
+	if (!messagesEl || !chat) return;
+	const graph = ensureGraph(chat);
+	messagesEl.querySelectorAll(".chat-message, .chat-typing").forEach((el) => el.remove());
+
+	const ids = computeThreadNodeIds(graph);
+	ids.forEach((id) => {
+		const node = getNode(graph, id);
+		if (!node) return;
+		const nav = getSiblingNavState(graph, id);
+		const el = buildMessageElement({
+			node,
+			isEditing: uiState?.editingNodeId === node.id,
+			editingDraft: uiState?.editingDraft,
+			canBranchBack: nav.canBack,
+			canBranchForward: nav.canForward,
+			canResend: Boolean(node.parentId) && node.role !== "system",
+		});
+		messagesEl.appendChild(el);
+	});
+
+	messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+```
+
+### ./ctrlpanel/js/chat/inline-attachment.js:
+```js
+/**
+ * InlineAttachmentManager - Handles inline file attachments in contenteditable
+ * 
+ * Features:
+ * - Insert attachment chips at cursor position
+ * - Track attachment data associated with each chip
+ * - Handle backspace/delete to remove chips
+ * - Alt+Up/Down to move content
+ * - Extract content as parts array
+ */
+
+import { generateId } from "./util.js";
+import { formatBytes } from "./util.js";
+
+// Filetype icons as SVG strings
+const FILETYPE_ICONS = {
+	// Archives
+	zip: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/><path d="M12 11v6M9 14h6"/></svg>`,
+	tar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 7h8M8 12h8M8 17h4"/></svg>`,
+	gz: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/><path d="M12 11v6M9 14h6"/></svg>`,
+	rar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2v11z"/><path d="M9 9h6M9 13h6"/></svg>`,
+	
+	// Code
+	js: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>`,
+	ts: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/><text x="12" y="14" font-size="6" fill="currentColor" stroke="none">TS</text></svg>`,
+	py: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C6.5 2 6 4 6 6v3h6v1H4c-2 0-4 1.5-4 5s2 5 4 5h2v-3c0-2 1.5-4 4-4h6c2 0 4-2 4-4V6c0-2-2-4-8-4zm-2 2.5a1 1 0 110 2 1 1 0 010-2z"/><path d="M12 22c5.5 0 6-2 6-4v-3h-6v-1h8c2 0 4-1.5 4-5s-2-5-4-5h-2v3c0 2-1.5 4-4 4H8c-2 0-4 2-4 4v3c0 2 2 4 8 4zm2-2.5a1 1 0 110-2 1 1 0 010 2z"/></svg>`,
+	java: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 20c-2 0-3-1-3-3 2-2 6-2 8-5 1 2 1 4-1 6-2 2-4 2-4 2z"/><path d="M16 4c0 2-2 4-6 6-2 1-3 3-3 5 0 0 1-2 4-3 4-1 6-4 5-8z"/><path d="M18 12c0 1-1 2-3 3-1 1-2 2-2 3"/></svg>`,
+	jar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="6" y="3" width="12" height="18" rx="1"/><path d="M6 7h12M6 11h12M6 15h12"/><circle cx="12" cy="19" r="1"/></svg>`,
+	json: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2h-2"/><path d="M7 8h2M7 12h4M7 16h2"/></svg>`,
+	html: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l2 16 6 2 6-2 2-16H4z"/><path d="M8 8h8l-1 8-3 1-3-1-.5-4h3"/></svg>`,
+	css: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4l2 16 6 2 6-2 2-16H4z"/><path d="M8 8h8M8 12h7M9 16l3 1 3-1"/></svg>`,
+	
+	// Documents
+	pdf: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>`,
+	doc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>`,
+	docx: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>`,
+	txt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>`,
+	md: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M7 13l2 2 2-2M7 17l2 2 2-2M13 13h4M13 17h4"/></svg>`,
+	
+	// Media
+	mp3: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+	wav: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+	mp4: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3V9z"/></svg>`,
+	avi: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M10 9l5 3-5 3V9z"/></svg>`,
+	
+	// Images (fallback for non-preview)
+	png: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
+	jpg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
+	jpeg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
+	gif: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/><text x="12" y="14" font-size="5" fill="currentColor" stroke="none">GIF</text></svg>`,
+	svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
+	webp: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`,
+	
+	// Default
+	default: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>`,
+};
+
+// Filetype display names
+const FILETYPE_NAMES = {
+	zip: "ZIP Archive",
+	tar: "TAR Archive",
+	gz: "GZip Archive",
+	rar: "RAR Archive",
+	js: "JavaScript",
+	ts: "TypeScript",
+	py: "Python",
+	java: "Java",
+	jar: "Java Archive",
+	json: "JSON",
+	html: "HTML",
+	css: "CSS",
+	pdf: "PDF Document",
+	doc: "Word Document",
+	docx: "Word Document",
+	txt: "Text File",
+	md: "Markdown",
+	mp3: "MP3 Audio",
+	wav: "WAV Audio",
+	mp4: "MP4 Video",
+	avi: "AVI Video",
+	png: "PNG Image",
+	jpg: "JPEG Image",
+	jpeg: "JPEG Image",
+	gif: "GIF Image",
+	svg: "SVG Image",
+	webp: "WebP Image",
+};
+
+/**
+ * Get file extension from filename
+ */
+function getFileExtension(filename) {
+	const match = filename.match(/\.([^.]+)$/);
+	return match ? match[1].toLowerCase() : "";
+}
+
+/**
+ * Check if file is an image
+ */
+export function isImageFile(file) {
+	const type = String(file?.type || "");
+	if (type.startsWith("image/")) return true;
+	const ext = getFileExtension(file?.name || "");
+	return ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext);
+}
+
+/**
+ * Get filetype icon SVG
+ */
+function getFiletypeIcon(filename) {
+	const ext = getFileExtension(filename);
+	return FILETYPE_ICONS[ext] || FILETYPE_ICONS.default;
+}
+
+/**
+ * Get filetype display name
+ */
+function getFiletypeName(filename) {
+	const ext = getFileExtension(filename);
+	return FILETYPE_NAMES[ext] || ext.toUpperCase() + " File";
+}
+
+/**
+ * Create X icon for remove button
+ */
+function createXIcon() {
+	return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>`;
+}
+
+/**
+ * Normalize the DOM by merging adjacent text nodes and removing empty ones
+ * This is crucial for consistent cursor behavior
+ */
+function normalizeContentEditable(el) {
+	// First, merge adjacent text nodes
+	el.normalize();
+	
+	// Then clean up any problematic text nodes
+	const childNodes = Array.from(el.childNodes);
+	for (const node of childNodes) {
+		if (node.nodeType === Node.TEXT_NODE) {
+			// Remove empty text nodes (but keep one if it's the only content)
+			// Also preserve text nodes that are just whitespace if they're between elements
+			if (!node.textContent) {
+				if (el.childNodes.length > 1) {
+					node.remove();
+				}
+			}
+		}
+	}
+	
+	// Remove consecutive BR elements (keep only one)
+	const nodes = Array.from(el.childNodes);
+	let lastWasBR = false;
+	for (const node of nodes) {
+		if (node.tagName === "BR") {
+			if (lastWasBR) {
+				node.remove();
+			} else {
+				lastWasBR = true;
+			}
+		} else if (node.nodeType !== Node.TEXT_NODE || node.textContent.trim()) {
+			lastWasBR = false;
+		}
+	}
+}
+
+/**
+ * Get the current cursor position in a robust way
+ */
+function getCursorPosition(el) {
+	const selection = window.getSelection();
+	if (!selection || selection.rangeCount === 0) return null;
+	
+	const range = selection.getRangeAt(0);
+	if (!el.contains(range.commonAncestorContainer)) return null;
+	
+	return { selection, range };
+}
+
+/**
+ * Set cursor position after an element
+ */
+function setCursorAfter(element) {
+	const selection = window.getSelection();
+	if (!selection) return;
+	
+	const range = document.createRange();
+	range.setStartAfter(element);
+	range.collapse(true);
+	selection.removeAllRanges();
+	selection.addRange(range);
+}
+
+/**
+ * Set cursor position before an element
+ */
+function setCursorBefore(element) {
+	const selection = window.getSelection();
+	if (!selection) return;
+	
+	const range = document.createRange();
+	range.setStartBefore(element);
+	range.collapse(true);
+	selection.removeAllRanges();
+	selection.addRange(range);
+}
+
+/**
+ * InlineAttachmentManager class
+ */
+export class InlineAttachmentManager {
+	constructor(contentEditableEl, options = {}) {
+		this.el = contentEditableEl;
+		this.options = {
+			maxImagePreviewWidth: 400,
+			maxImagePreviewHeight: 300,
+			onAttachmentAdded: null,
+			onAttachmentRemoved: null,
+			...options,
+		};
+		this.attachments = new Map(); // id -> attachment data
+		this.isProcessing = false; // Flag to prevent recursive handling
+		this.setupEventListeners();
+	}
+
+	/**
+	 * Setup event listeners for contenteditable
+	 */
+	setupEventListeners() {
+		// Handle backspace/delete for attachment removal
+		this.el.addEventListener("keydown", (e) => this.handleKeyDown(e));
+		
+		// Handle click on remove buttons
+		this.el.addEventListener("click", (e) => this.handleClick(e));
+		
+		// Handle paste
+		this.el.addEventListener("paste", (e) => this.handlePaste(e));
+		
+		// Handle input events to normalize DOM
+		this.el.addEventListener("input", () => {
+			// Debounce normalization
+			if (this._normalizeTimeout) {
+				clearTimeout(this._normalizeTimeout);
+			}
+			this._normalizeTimeout = setTimeout(() => {
+				// Only normalize if we're not in the middle of an operation
+				if (!this.isProcessing) {
+					this.normalizeDOM();
+				}
+			}, 50);
+		});
+		
+		// Clean up on blur
+		this.el.addEventListener("blur", () => {
+			this.normalizeDOM();
+		});
+		
+		// Handle focus - ensure cursor is in a valid position
+		this.el.addEventListener("focus", () => {
+			// Ensure there's at least a text node to type in
+			if (!this.el.firstChild) {
+				const textNode = document.createTextNode("");
+				this.el.appendChild(textNode);
+			}
+		});
+	}
+
+	/**
+	 * Normalize the DOM structure
+	 */
+	normalizeDOM() {
+		normalizeContentEditable(this.el);
+	}
+
+	/**
+	 * Handle keydown events
+	 */
+	handleKeyDown(e) {
+		// Prevent recursive handling
+		if (this.isProcessing) return;
+		
+		// Alt+Up/Down for moving content
+		if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+			e.preventDefault();
+			this.moveContent(e.key === "ArrowUp" ? -1 : 1);
+			return;
+		}
+		
+		// Backspace/Delete handling for attachments
+		if (e.key === "Backspace" || e.key === "Delete") {
+			const cursorPos = getCursorPosition(this.el);
+			if (!cursorPos) return;
+			
+			const { selection, range } = cursorPos;
+			
+			// Check if there's a selection range (not collapsed)
+			if (!range.collapsed) {
+				// Check if the selection contains any chips
+				const chipsInRange = this.getChipsInRange(range);
+				if (chipsInRange.length > 0) {
+					e.preventDefault();
+					this.isProcessing = true;
+					try {
+						// Remove all chips in the selection
+						for (const chip of chipsInRange) {
+							this.removeAttachmentChip(chip);
+						}
+						// Let the browser handle the remaining text deletion
+						range.deleteContents();
+						this.normalizeDOM();
+					} finally {
+						this.isProcessing = false;
+					}
+					return;
+				}
+				// Let the browser handle normal selection deletion
+				return;
+			}
+			
+			// Collapsed range - check if we're adjacent to a chip
+			const chip = this.getAdjacentChip(range, e.key === "Backspace" ? "before" : "after");
+			
+			if (chip) {
+				e.preventDefault();
+				this.isProcessing = true;
+				try {
+					// Remove the chip
+					this.removeAttachmentChip(chip);
+					this.normalizeDOM();
+				} finally {
+					this.isProcessing = false;
+				}
+				return;
+			}
+			
+			// Deselect any selected chips if we're typing elsewhere
+			this.el.querySelectorAll(".inline-attachment.selected").forEach((c) => {
+				c.classList.remove("selected");
+			});
+		}
+		
+		// Arrow key handling for chip selection
+		if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+			const cursorPos = getCursorPosition(this.el);
+			if (!cursorPos) return;
+			
+			const { range } = cursorPos;
+			if (!range.collapsed) return;
+			
+			// Check if we're about to navigate into a chip
+			const chip = this.getAdjacentChip(range, e.key === "ArrowLeft" ? "before" : "after");
+			if (chip) {
+				// Deselect any previously selected chips
+				this.el.querySelectorAll(".inline-attachment.selected").forEach((c) => {
+					c.classList.remove("selected");
+				});
+				
+				// If navigating to an image chip and there's no text node after, create one
+				if (e.key === "ArrowRight" && chip.classList.contains("inline-attachment-image")) {
+					const nextSibling = chip.nextSibling;
+					if (!nextSibling || (nextSibling.nodeType === Node.TEXT_NODE && !nextSibling.textContent.trim()) || nextSibling.tagName === 'BR') {
+						const textNode = document.createTextNode(" ");
+						this.el.insertBefore(textNode, nextSibling || null);
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Get all chips within a range
+	 */
+	getChipsInRange(range) {
+		const chips = [];
+		const walker = document.createTreeWalker(
+			range.commonAncestorContainer,
+			NodeFilter.SHOW_ELEMENT,
+			null
+		);
+		
+		let node = walker.currentNode;
+		while (node) {
+			if (node.nodeType === Node.ELEMENT_NODE && 
+				node.classList?.contains("inline-attachment") &&
+				range.intersectsNode(node)) {
+				chips.push(node);
+			}
+			node = walker.nextNode();
+		}
+		
+		return chips;
+	}
+
+	/**
+	 * Get adjacent attachment chip - improved version
+	 */
+	getAdjacentChip(range, direction) {
+		if (!range.collapsed) return null;
+		
+		const container = range.startContainer;
+		const offset = range.startOffset;
+		
+		// Helper to check if a node is a chip
+		const isChip = (node) => 
+			node?.nodeType === Node.ELEMENT_NODE && 
+			node.classList?.contains("inline-attachment");
+		
+		// Helper to check if a node is just a BR element
+		const isBR = (node) => node?.nodeType === Node.ELEMENT_NODE && node.tagName === "BR";
+		
+		// Helper to check if a text node is empty or just whitespace
+		const isEmptyText = (node) => 
+			node?.nodeType === Node.TEXT_NODE && !node.textContent.trim();
+		
+		if (direction === "before") {
+			// We're looking for a chip that's IMMEDIATELY before the cursor
+			// The cursor must be at the START of a text node (position 0)
+			// and the previous sibling must be a chip (possibly with BR in between)
+			
+			if (container.nodeType === Node.TEXT_NODE) {
+				// Only consider if cursor is at position 0
+				if (offset !== 0) return null;
+				
+				// Check previous sibling
+				let prev = container.previousSibling;
+				
+				// Skip BR elements and empty text nodes
+				while (prev && (isBR(prev) || isEmptyText(prev))) {
+					prev = prev.previousSibling;
+				}
+				
+				// If previous sibling is a chip, return it
+				if (isChip(prev)) return prev;
+				
+				// If we're in a nested structure, check parent's previous sibling
+				if (container.parentElement !== this.el) {
+					let parentPrev = container.parentElement.previousSibling;
+					while (parentPrev && (isBR(parentPrev) || isEmptyText(parentPrev))) {
+						parentPrev = parentPrev.previousSibling;
+					}
+					if (isChip(parentPrev)) return parentPrev;
+				}
+			} else if (container === this.el) {
+				// Cursor is directly in the contenteditable
+				// Check the element at offset-1
+				const children = Array.from(this.el.childNodes);
+				if (offset > 0) {
+					let prev = children[offset - 1];
+					// Skip BR and empty text
+					while (prev && (isBR(prev) || isEmptyText(prev))) {
+						const prevIndex = children.indexOf(prev) - 1;
+						prev = prevIndex >= 0 ? children[prevIndex] : null;
+					}
+					if (isChip(prev)) return prev;
+				}
+			}
+		} else {
+			// Direction: after
+			// We're looking for a chip that's IMMEDIATELY after the cursor
+			// The cursor must be at the END of a text node
+			// and the next sibling must be a chip (possibly with BR in between)
+			
+			if (container.nodeType === Node.TEXT_NODE) {
+				// Only consider if cursor is at the end
+				if (offset !== container.textContent.length) return null;
+				
+				// Check next sibling
+				let next = container.nextSibling;
+				
+				// Skip BR elements and empty text nodes
+				while (next && (isBR(next) || isEmptyText(next))) {
+					next = next.nextSibling;
+				}
+				
+				// If next sibling is a chip, return it
+				if (isChip(next)) return next;
+				
+				// If we're in a nested structure, check parent's next sibling
+				if (container.parentElement !== this.el) {
+					let parentNext = container.parentElement.nextSibling;
+					while (parentNext && (isBR(parentNext) || isEmptyText(parentNext))) {
+						parentNext = parentNext.nextSibling;
+					}
+					if (isChip(parentNext)) return parentNext;
+				}
+			} else if (container === this.el) {
+				// Cursor is directly in the contenteditable
+				// Check the element at offset
+				const children = Array.from(this.el.childNodes);
+				if (offset < children.length) {
+					let next = children[offset];
+					// Skip BR and empty text
+					while (next && (isBR(next) || isEmptyText(next))) {
+						const nextIndex = children.indexOf(next) + 1;
+						next = nextIndex < children.length ? children[nextIndex] : null;
+					}
+					if (isChip(next)) return next;
+				}
+			}
+		}
+		
+		return null;
+	}
+
+	/**
+	 * Handle click events
+	 */
+	handleClick(e) {
+		const removeBtn = e.target.closest(".inline-attachment-remove");
+		if (removeBtn) {
+			e.preventDefault();
+			e.stopPropagation();
+			const chip = removeBtn.closest(".inline-attachment");
+			if (chip) {
+				this.isProcessing = true;
+				try {
+					this.removeAttachmentChip(chip);
+				} finally {
+					this.isProcessing = false;
+				}
+			}
+			return;
+		}
+		
+		// Deselect chips when clicking elsewhere
+		if (!e.target.closest(".inline-attachment")) {
+			this.el.querySelectorAll(".inline-attachment.selected").forEach((c) => {
+				c.classList.remove("selected");
+			});
+		}
+	}
+
+	/**
+	 * Handle paste events
+	 */
+	handlePaste(e) {
+		const items = e.clipboardData?.items;
+		if (!items) return;
+		
+		for (const item of items) {
+			if (item.kind === "file") {
+				e.preventDefault();
+				const file = item.getAsFile();
+				if (file) this.addFile(file);
+				return; // Only handle the first file
+			}
+		}
+	}
+
+	/**
+	 * Move selected content up or down
+	 */
+	moveContent(direction) {
+		const selection = window.getSelection();
+		if (!selection.rangeCount) return;
+		
+		const range = selection.getRangeAt(0);
+		
+		// Get the element or text node to move
+		let nodeToMove = null;
+		let isChip = false;
+		
+		if (range.startContainer === range.endContainer && range.startOffset !== range.endOffset) {
+			// There's a selection
+			if (range.startContainer.nodeType === Node.TEXT_NODE) {
+				nodeToMove = range.extractContents();
+			}
+		} else {
+			// Check if a chip is selected
+			const selectedChip = this.el.querySelector(".inline-attachment.selected");
+			if (selectedChip) {
+				nodeToMove = selectedChip;
+				isChip = true;
+			}
+		}
+		
+		if (!nodeToMove) return;
+		
+		// Find the adjacent node
+		const allNodes = Array.from(this.el.childNodes);
+		const currentIndex = isChip ? allNodes.indexOf(nodeToMove) : -1;
+		
+		if (currentIndex === -1) return;
+		
+		const targetIndex = currentIndex + direction;
+		if (targetIndex < 0 || targetIndex >= allNodes.length) return;
+		
+		// Move the node
+		const targetNode = allNodes[targetIndex];
+		if (direction < 0) {
+			this.el.insertBefore(nodeToMove, targetNode);
+		} else {
+			this.el.insertBefore(nodeToMove, targetNode.nextSibling);
+		}
+		
+		// Restore selection
+		if (!isChip) {
+			const newRange = document.createRange();
+			newRange.selectNodeContents(nodeToMove);
+			selection.removeAllRanges();
+			selection.addRange(newRange);
+		}
+	}
+
+	/**
+	 * Add a file as an inline attachment at cursor position
+	 */
+	async addFile(file) {
+		const id = generateId();
+		const isImage = isImageFile(file);
+		
+		const attachment = {
+			id,
+			name: file.name,
+			size: file.size,
+			type: file.type || "application/octet-stream",
+			isImage,
+			data: null,
+		};
+		
+		// Read file as data URL
+		attachment.data = await new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(reader.result);
+			reader.onerror = reject;
+			reader.readAsDataURL(file);
+		});
+		
+		// Store attachment data
+		this.attachments.set(id, attachment);
+		
+		// Create and insert chip element
+		const chip = this.createChipElement(attachment);
+		this.insertAtCursor(chip);
+		
+		// Update empty state
+		this.updateEmptyState();
+		
+		// Trigger input event to notify parent components (like auto-resize)
+		this.el.dispatchEvent(new Event("input", { bubbles: true }));
+		
+		// Callback
+		this.options.onAttachmentAdded?.(attachment);
+		
+		return attachment;
+	}
+
+	/**
+	 * Create chip element for attachment
+	 */
+	createChipElement(attachment) {
+		const chip = document.createElement("span");
+		chip.className = "inline-attachment";
+		chip.setAttribute("contenteditable", "false");
+		chip.dataset.attachmentId = attachment.id;
+		
+		if (attachment.isImage) {
+			chip.classList.add("inline-attachment-image");
+			chip.innerHTML = `
+				<span class="inline-attachment-preview">
+					<img src="${attachment.data}" alt="${attachment.name}" />
+				</span>
+				<span class="inline-attachment-info">
+					<span class="inline-attachment-name">${attachment.name}</span>
+					<span class="inline-attachment-size">${formatBytes(attachment.size)}</span>
+					<button type="button" class="inline-attachment-remove" aria-label="Remove attachment">
+						${createXIcon()}
+					</button>
+				</span>
+			`;
+			
+			// Trigger resize when image loads
+			const img = chip.querySelector("img");
+			if (img) {
+				img.addEventListener("load", () => {
+					this.el.dispatchEvent(new Event("input", { bubbles: true }));
+				});
+			}
+		} else {
+			chip.classList.add("inline-attachment-file");
+			const ext = getFileExtension(attachment.name);
+			chip.innerHTML = `
+				<span class="inline-attachment-icon">
+					${getFiletypeIcon(attachment.name)}
+					<span class="inline-attachment-type">${ext.toUpperCase()}</span>
+				</span>
+				<span class="inline-attachment-info">
+					<span class="inline-attachment-name">${attachment.name}</span>
+					<span class="inline-attachment-type-name">${getFiletypeName(attachment.name)}</span>
+					<span class="inline-attachment-size">${formatBytes(attachment.size)}</span>
+					<button type="button" class="inline-attachment-remove" aria-label="Remove attachment">
+						${createXIcon()}
+					</button>
+				</span>
+			`;
+		}
+		
+		return chip;
+	}
+
+	/**
+	 * Insert element at cursor position - improved version
+	 */
+	insertAtCursor(element) {
+		this.isProcessing = true;
+		
+		try {
+			const selection = window.getSelection();
+			
+			// Helper to check if there's text content before cursor
+			const hasTextBefore = (range) => {
+				const container = range.startContainer;
+				if (container.nodeType === Node.TEXT_NODE) {
+					const textBefore = container.textContent.slice(0, range.startOffset).trim();
+					if (textBefore) return true;
+				}
+				// Check previous siblings
+				let sibling = container.previousSibling;
+				while (sibling) {
+					if (sibling.nodeType === Node.TEXT_NODE && sibling.textContent.trim()) return true;
+					if (sibling.nodeType === Node.ELEMENT_NODE) {
+						if (sibling.classList?.contains("inline-attachment")) return true;
+						if (sibling.textContent?.trim()) return true;
+					}
+					sibling = sibling.previousSibling;
+				}
+				return false;
+			};
+			
+			// Helper to check if there's text content after cursor
+			const hasTextAfter = (range) => {
+				const container = range.startContainer;
+				if (container.nodeType === Node.TEXT_NODE) {
+					const textAfter = container.textContent.slice(range.startOffset).trim();
+					if (textAfter) return true;
+				}
+				// Check next siblings
+				let sibling = container.nextSibling;
+				while (sibling) {
+					if (sibling.nodeType === Node.TEXT_NODE && sibling.textContent.trim()) return true;
+					if (sibling.nodeType === Node.ELEMENT_NODE) {
+						if (sibling.classList?.contains("inline-attachment")) return true;
+						if (sibling.textContent?.trim()) return true;
+					}
+					sibling = sibling.nextSibling;
+				}
+				return false;
+			};
+			
+			if (!selection || !selection.rangeCount) {
+				// No selection, append to end with line break if needed
+				if (this.el.firstChild && this.el.textContent?.trim()) {
+					this.el.appendChild(document.createElement("br"));
+				}
+				this.el.appendChild(element);
+				this.ensureTrailingSpace();
+				return;
+			}
+			
+			const range = selection.getRangeAt(0);
+			
+			// Check if range is within our contenteditable
+			if (!this.el.contains(range.commonAncestorContainer)) {
+				if (this.el.firstChild && this.el.textContent?.trim()) {
+					this.el.appendChild(document.createElement("br"));
+				}
+				this.el.appendChild(element);
+				this.ensureTrailingSpace();
+				return;
+			}
+			
+			// Delete any selected content
+			range.deleteContents();
+			
+			// Check if we need a line break before the attachment
+			if (hasTextBefore(range)) {
+				const br = document.createElement("br");
+				range.insertNode(br);
+				range.setStartAfter(br);
+				range.collapse(true);
+			}
+			
+			// Insert the element
+			range.insertNode(element);
+			range.setStartAfter(element);
+			range.collapse(true);
+			
+			// Check if we need a line break after the attachment
+			if (hasTextAfter({ startContainer: range.startContainer, startOffset: range.startOffset })) {
+				const br = document.createElement("br");
+				range.insertNode(br);
+				range.setStartAfter(br);
+				range.collapse(true);
+			}
+			
+			// Position cursor after the element
+			setCursorAfter(element);
+			
+			// Ensure there's a space for typing
+			this.ensureTrailingSpace();
+		} finally {
+			this.isProcessing = false;
+		}
+	}
+
+	/**
+	 * Ensure there's a trailing space after the cursor for easier typing
+	 */
+	ensureTrailingSpace() {
+		const selection = window.getSelection();
+		if (!selection || !selection.rangeCount) return;
+		
+		const range = selection.getRangeAt(0);
+		const container = range.startContainer;
+		
+		// Check if we need to add a space
+		if (container.nodeType === Node.TEXT_NODE) {
+			// We're in a text node, check if there's content after cursor
+			const textAfterCursor = container.textContent.slice(range.startOffset);
+			if (textAfterCursor.length === 0) {
+				// We're at the end of the text node, check if there's a next sibling
+				if (!container.nextSibling || container.nextSibling.tagName !== 'BR') {
+					// Add a space at the end for typing
+					container.textContent += " ";
+					// Position cursor before the space
+					range.setStart(container, range.startOffset);
+					range.collapse(true);
+					selection.removeAllRanges();
+					selection.addRange(range);
+				}
+			}
+		} else {
+			// We're in an element, check if we need a text node
+			const nextSibling = range.startContainer.childNodes[range.startOffset];
+			if (!nextSibling || (nextSibling.nodeType !== Node.TEXT_NODE && nextSibling.tagName !== 'BR')) {
+				// Add a text node with a space
+				const textNode = document.createTextNode(" ");
+				range.insertNode(textNode);
+				range.setStart(textNode, 0);
+				range.collapse(true);
+				selection.removeAllRanges();
+				selection.addRange(range);
+			}
+		}
+	}
+
+	/**
+	 * Remove an attachment chip - improved version
+	 */
+	removeAttachmentChip(chip) {
+		const id = chip.dataset.attachmentId;
+		const attachment = this.attachments.get(id);
+		
+		// Save cursor position relative to chip
+		const selection = window.getSelection();
+		let restoreCursor = false;
+		let cursorBefore = false;
+		
+		if (selection && selection.rangeCount) {
+			const range = selection.getRangeAt(0);
+			if (this.el.contains(range.commonAncestorContainer)) {
+				// Check if cursor is before or after the chip
+				const chipRect = chip.getBoundingClientRect();
+				const rangeRect = range.getBoundingClientRect();
+				if (rangeRect.width === 0 && rangeRect.height === 0) {
+					// Collapsed range, use position comparison
+					const rangePos = range.startContainer.compareDocumentPosition(chip);
+					cursorBefore = (rangePos & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+					restoreCursor = true;
+				}
+			}
+		}
+		
+		// Find adjacent nodes before removal
+		const prevSibling = chip.previousSibling;
+		const nextSibling = chip.nextSibling;
+		
+		// Remove from DOM
+		chip.remove();
+		
+		// Remove from tracking
+		this.attachments.delete(id);
+		
+		// Clean up empty text nodes and normalize
+		this.normalizeDOM();
+		
+		// Update empty state
+		this.updateEmptyState();
+		
+		// Restore cursor position
+		if (restoreCursor) {
+			try {
+				// Try to position cursor where the chip was
+				if (prevSibling && prevSibling.nodeType === Node.TEXT_NODE) {
+					setCursorAfter(prevSibling);
+				} else if (nextSibling && nextSibling.nodeType === Node.TEXT_NODE) {
+					setCursorBefore(nextSibling);
+				} else {
+					// Just focus the element
+					this.el.focus();
+				}
+			} catch (e) {
+				// If cursor restoration fails, just focus
+				this.el.focus();
+			}
+		}
+		
+		// Trigger input event to notify parent components (like auto-resize)
+		this.el.dispatchEvent(new Event("input", { bubbles: true }));
+		
+		// Callback
+		this.options.onAttachmentRemoved?.(attachment);
+	}
+
+	/**
+	 * Extract content as parts array
+	 */
+	extractParts() {
+		// Don't normalize here - it could interfere with cursor position
+		// Just read the DOM as-is
+		
+		const parts = [];
+		
+		for (const child of this.el.childNodes) {
+			if (child.nodeType === Node.TEXT_NODE) {
+				// Get text content
+				const text = child.textContent;
+				if (text) {
+					// Merge with previous text part if exists
+					const lastPart = parts[parts.length - 1];
+					if (lastPart?.type === "text") {
+						lastPart.content += text;
+					} else {
+						parts.push({ type: "text", content: text });
+					}
+				}
+			} else if (child.tagName === "BR") {
+				// Handle line breaks - add newline to previous text part or create new one
+				const lastPart = parts[parts.length - 1];
+				if (lastPart?.type === "text") {
+					lastPart.content += "\n";
+				} else {
+					parts.push({ type: "text", content: "\n" });
+				}
+			} else if (child.nodeType === Node.ELEMENT_NODE && child.classList?.contains("inline-attachment")) {
+				const id = child.dataset.attachmentId;
+				const attachment = this.attachments.get(id);
+				if (attachment) {
+					parts.push({
+						type: "attachment",
+						id: attachment.id,
+						name: attachment.name,
+						size: attachment.size,
+						mimeType: attachment.type,
+						isImage: attachment.isImage,
+						data: attachment.data,
+					});
+				}
+			}
+		}
+		
+		// Trim trailing whitespace from the last text part
+		const lastPart = parts[parts.length - 1];
+		if (lastPart?.type === "text") {
+			lastPart.content = lastPart.content.trimEnd();
+			if (!lastPart.content) {
+				parts.pop();
+			}
+		}
+		
+		return parts;
+	}
+
+	/**
+	 * Clear all content
+	 */
+	clear() {
+		this.attachments.clear();
+		this.el.innerHTML = "";
+		// Update placeholder state
+		this.el.dataset.empty = "true";
+	}
+
+	/**
+	 * Check if there's any content
+	 */
+	hasContent() {
+		// Check for attachments
+		if (this.attachments.size > 0) return true;
+		
+		// Check for text content (excluding whitespace)
+		const text = this.el.textContent || "";
+		return text.trim().length > 0;
+	}
+
+	/**
+	 * Update the empty state indicator
+	 */
+	updateEmptyState() {
+		const hasContent = this.hasContent();
+		this.el.dataset.empty = hasContent ? "false" : "true";
+	}
+
+	/**
+	 * Focus the input
+	 */
+	focus() {
+		this.el.focus();
+		
+		// Ensure there's a text node to type in
+		if (!this.el.firstChild) {
+			const textNode = document.createTextNode("");
+			this.el.appendChild(textNode);
+		}
+		
+		// Move cursor to end
+		const selection = window.getSelection();
+		if (!selection) return;
+		
+		const range = document.createRange();
+		
+		// Move to end of content
+		if (this.el.lastChild && this.el.lastChild.nodeType === Node.TEXT_NODE) {
+			range.setStart(this.el.lastChild, this.el.lastChild.textContent.length);
+			range.collapse(true);
+		} else {
+			range.selectNodeContents(this.el);
+			range.collapse(false);
+		}
+		
+		selection.removeAllRanges();
+		selection.addRange(range);
+	}
+
+	/**
+	 * Get all attachments
+	 */
+	getAttachments() {
+		return Array.from(this.attachments.values());
+	}
+}
+
+export default InlineAttachmentManager;
+
+```
+
 ### ./ctrlpanel/js/chat/index.js:
 ```js
 export * from "./store.js";
 export { renderChatList } from "./sidebar.js";
 export { initChatPage, loadCurrentChat } from "./chat-page.js";
+
+```
+
+### ./ctrlpanel/js/chat/sidebar.js:
+```js
+import { deleteChat, getChats, getCurrentChatId, isChatPinned, renameChat, togglePinChat } from "./store.js";
+
+const pinIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.579 14.579L11.6316 17.5264L10.7683 16.6631C10.3775 16.2723 10.1579 15.7422 10.1579 15.1894V13.1053L7.21052 10.158L5 9.42111L9.42111 5L10.158 7.21052L13.1053 10.1579L15.1894 10.1579C15.7422 10.1579 16.2722 10.3775 16.6631 10.7683L17.5264 11.6316L14.579 14.579ZM14.579 14.579L19 19"/></svg>`;
+
+const unpinIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.579 14.579L11.6316 17.5264L11.0526 16.9474M14.579 14.579L17.5264 11.6316L16.9474 11.0526M14.579 14.579L19 19M5 19L10.1579 13.8421M19 5L13.8421 10.1579M13.8421 10.1579L13.1053 10.1579L10.158 7.21052L9.42111 5L5 9.42111L7.21052 10.158L10.1579 13.1053V13.8421M13.8421 10.1579L10.1579 13.8421"/></svg>`;
+
+const deleteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6H20L18.4199 20.2209C18.3074 21.2337 17.4512 22 16.4321 22H7.56786C6.54876 22 5.69264 21.2337 5.5801 20.2209L4 6Z"/><path d="M7.34491 3.14716C7.67506 2.44685 8.37973 2 9.15396 2H14.846C15.6203 2 16.3249 2.44685 16.6551 3.14716L18 6H6L7.34491 3.14716Z"/><path d="M2 6H22"/><path d="M10 11V16"/><path d="M14 11V16"/></svg>`;
+const editIconSvg = `<svg viewBox="0 -0.5 21 21" version="1.1" xmlns="http://www.w3.org/2000/svg"><g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g fill="currentColor"><path d="M3.15,14 C2.5704,14 2.1,13.552 2.1,13 L2.1,7 C2.1,6.448 2.5704,6 3.15,6 C3.7296,6 4.2,5.552 4.2,5 C4.2,4.448 3.7296,4 3.15,4 L2.1,4 C0.93975,4 0,4.895 0,6 L0,14 C0,15.105 0.93975,16 2.1,16 L3.15,16 C3.7296,16 4.2,15.552 4.2,15 C4.2,14.448 3.7296,14 3.15,14 M18.9,4 L11.55,4 C10.9704,4 10.5,4.448 10.5,5 C10.5,5.552 10.9704,6 11.55,6 L17.85,6 C18.4296,6 18.9,6.448 18.9,7 L18.9,13 C18.9,13.552 18.4296,14 17.85,14 L11.55,14 C10.9704,14 10.5,14.448 10.5,15 C10.5,15.552 10.9704,16 11.55,16 L18.9,16 C20.06025,16 21,15.105 21,14 L21,6 C21,4.895 20.06025,4 18.9,4 M10.5,19 C10.5,19.552 10.0296,20 9.45,20 L5.25,20 C4.6704,20 4.2,19.552 4.2,19 C4.2,18.448 4.6704,18 5.25,18 L6.3,18 L6.3,2 L5.25,2 C4.6704,2 4.2,1.552 4.2,1 C4.2,0.448 4.6704,0 5.25,0 L9.45,0 C10.0296,0 10.5,0.448 10.5,1 C10.5,1.552 10.0296,2 9.45,2 L8.4,2 L8.4,18 L9.45,18 C10.0296,18 10.5,18.448 10.5,19"/></g></g></svg>`;
+
+export function renderChatList(onDelete) {
+	const list = document.getElementById("savedChatsList");
+	if (!list) return;
+	list.innerHTML = "";
+
+	const chats = getChats();
+	const currentChatId = getCurrentChatId();
+	const pinnedChats = chats.filter((c) => isChatPinned(c.id));
+	const regularChats = chats.filter((c) => !isChatPinned(c.id));
+
+	const renderSection = (title, sectionChats) => {
+		if (!sectionChats.length) return;
+		const h = document.createElement("div");
+		h.className = "nav-chat-section-title";
+		h.textContent = title;
+		list.appendChild(h);
+
+		const section = document.createElement("div");
+		section.className = "nav-chat-list";
+		list.appendChild(section);
+
+		sectionChats.forEach((chat) => {
+			const item = document.createElement("a");
+			item.href = `#pages/ai-chat.html?chat=${chat.id}`;
+			item.className = "nav-subitem nav-chat-item";
+			item.dataset.route = "";
+			item.dataset.chatId = chat.id;
+			if (chat.id === currentChatId) item.classList.add("active");
+
+			const label = document.createElement("span");
+			label.className = "nav-label";
+			label.textContent = chat.title;
+
+			const renameBtn = document.createElement("button");
+			renameBtn.className = "nav-chat-rename";
+			renameBtn.type = "button";
+			renameBtn.setAttribute("aria-label", "Rename chat");
+			renameBtn.title = "Rename";
+			renameBtn.innerHTML = editIconSvg;
+			renameBtn.addEventListener("click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+
+				// Mark the item as being edited and temporarily disable anchor behavior
+				item.classList.add("editing");
+				const originalHref = item.getAttribute("href");
+				item.removeAttribute("href");
+
+				// Hide the label (actions are hidden via CSS when editing)
+				label.style.display = "none";
+
+				// Create inline input - insert inside the anchor after the icon
+				const input = document.createElement("input");
+				input.type = "text";
+				input.className = "nav-chat-rename-input";
+				input.value = chat.title;
+				input.setAttribute("aria-label", "Edit chat title");
+
+				// Click-outside handler - strictly checks if click is outside input
+				const handleClickOutside = (event) => {
+					if (!input.contains(event.target) && !renameBtn.contains(event.target)) {
+						commitEdit();
+					}
+				};
+
+				// Handle commit on Enter or click-outside
+				const commitEdit = () => {
+					document.removeEventListener("click", handleClickOutside);
+					const newTitle = input.value.trim();
+					if (newTitle) {
+						renameChat(chat.id, newTitle);
+						label.textContent = newTitle;
+					}
+					input.remove();
+					label.style.display = "";
+					item.classList.remove("editing");
+					if (originalHref) item.setAttribute("href", originalHref);
+				};
+
+				// Handle cancel on Escape
+				const cancelEdit = () => {
+					document.removeEventListener("click", handleClickOutside);
+					input.remove();
+					label.style.display = "";
+					item.classList.remove("editing");
+					if (originalHref) item.setAttribute("href", originalHref);
+				};
+
+				input.addEventListener("keydown", (ke) => {
+					if (ke.key === "Enter") {
+						ke.preventDefault();
+						commitEdit();
+					} else if (ke.key === "Escape") {
+						ke.preventDefault();
+						cancelEdit();
+					}
+				});
+
+				// Insert input at the beginning of the anchor
+				item.prepend(input);
+				input.focus();
+				input.select();
+
+				// Add click-outside listener with delay to prevent immediate trigger
+				setTimeout(() => {
+					document.addEventListener("click", handleClickOutside);
+				}, 0);
+			});
+
+			const pinBtn = document.createElement("button");
+			pinBtn.className = "nav-chat-pin";
+			pinBtn.type = "button";
+			const pinned = isChatPinned(chat.id);
+			if (pinned) pinBtn.classList.add("pinned");
+			pinBtn.setAttribute("aria-label", pinned ? "Unpin chat" : "Pin chat");
+			pinBtn.title = pinned ? "Unpin" : "Pin";
+			// Use unpin icon when pinned, pin icon when not pinned
+			pinBtn.innerHTML = pinned ? unpinIconSvg : pinIconSvg;
+			pinBtn.addEventListener("click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				togglePinChat(chat.id);
+				renderChatList(onDelete);
+			});
+
+			const deleteBtn = document.createElement("button");
+			deleteBtn.className = "nav-chat-delete";
+			deleteBtn.type = "button";
+			deleteBtn.setAttribute("aria-label", "Delete chat");
+			deleteBtn.title = "Delete";
+			deleteBtn.innerHTML = deleteIconSvg;
+			deleteBtn.addEventListener("click", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				deleteChat(chat.id);
+				renderChatList(onDelete);
+				if (onDelete) onDelete();
+			});
+
+			const actionsContainer = document.createElement("span");
+			actionsContainer.className = "nav-chat-actions";
+			actionsContainer.append(renameBtn, pinBtn, deleteBtn);
+
+			item.append(label, actionsContainer);
+			section.appendChild(item);
+		});
+	};
+
+	renderSection("Pinned", pinnedChats);
+	renderSection("Chats", regularChats);
+}
+
+```
+
+### ./ctrlpanel/js/chat/graph.js:
+```js
+import { generateId } from "./util.js";
+
+export function createEmptyGraph() {
+	const rootId = "root";
+	return {
+		version: 1,
+		rootId,
+		nodes: {
+			[rootId]: {
+				id: rootId,
+				role: "system",
+				content: "",
+				timestamp: 0,
+				parentId: null,
+				children:[],
+			},
+		},
+		selections: {},
+		leafId: null,
+	};
+}
+
+export function isGraphLike(graph) {
+	return graph && typeof graph === "object" && typeof graph.rootId === "string" &&
+		graph.nodes && typeof graph.nodes === "object" &&
+		graph.selections && typeof graph.selections === "object";
+}
+
+export function ensureGraph(chat) {
+	if (!chat) return null;
+	if (isGraphLike(chat.graph)) {
+		if (!chat.graph.nodes[chat.graph.rootId]) {
+			chat.graph.nodes[chat.graph.rootId] = {
+				id: chat.graph.rootId, role: "system", content: "", timestamp: 0,
+				parentId: null, children:[],
+			};
+		}
+		// Recompute leafId to ensure it's always valid after loading from storage
+		recomputeLeafId(chat.graph);
+		return chat.graph;
+	}
+	const graph = createEmptyGraph();
+	const legacy = Array.isArray(chat.messages) ? chat.messages :[];
+	let parentId = graph.rootId;
+	legacy.forEach((m) => {
+		const nodeId = generateId();
+		const node = {
+			id: nodeId,
+			role: m?.role === "assistant" ? "assistant" : "user",
+			content: String(m?.content || ""),
+			timestamp: Number(m?.timestamp) || Date.now(),
+			parentId,
+			children:[],
+		};
+	       if (m.parts) node.parts = JSON.parse(JSON.stringify(m.parts));
+	       if (m.attachments) node.attachments = JSON.parse(JSON.stringify(m.attachments));
+	       if (m.reasoning) node.reasoning = m.reasoning;
+	       
+		graph.nodes[nodeId] = node;
+		graph.nodes[parentId].children.push(nodeId);
+		graph.selections[parentId] = nodeId;
+		parentId = nodeId;
+	});
+	graph.leafId = parentId === graph.rootId ? null : parentId;
+	chat.graph = graph;
+	try { delete chat.messages; } catch {}
+	return graph;
+}
+
+export function getNode(graph, nodeId) {
+	return graph?.nodes?.[nodeId] || null;
+}
+
+export function getSelectedChildId(graph, parentId) {
+	const parent = getNode(graph, parentId);
+	if (!parent?.children?.length) return null;
+	return parent.children.includes(graph.selections?.[parentId])
+		? graph.selections[parentId]
+		: parent.children[0];
+}
+
+export function setSelectedChildId(graph, parentId, childId) {
+	const parent = getNode(graph, parentId);
+	if (!parent?.children?.includes(childId)) return false;
+	graph.selections[parentId] = childId;
+	return true;
+}
+
+export function computeThreadNodeIds(graph) {
+	const ids =[];
+	if (!graph) return ids;
+	let currentId = graph.rootId;
+	const seen = new Set([currentId]);
+	while (true) {
+		const nextId = getSelectedChildId(graph, currentId);
+		if (!nextId || seen.has(nextId)) break;
+		ids.push(nextId);
+		seen.add(nextId);
+		currentId = nextId;
+	}
+	return ids;
+}
+
+export function recomputeLeafId(graph) {
+	const path = computeThreadNodeIds(graph);
+	graph.leafId = path.length ? path[path.length - 1] : null;
+}
+
+export function appendNode(graph, { parentId, role, content, timestamp, attachments, parts }) {
+	const parent = getNode(graph, parentId);
+	if (!parent) throw new Error("appendNode: parent not found");
+	const id = generateId();
+	const node = {
+		id, role,
+		timestamp: Number(timestamp) || Date.now(),
+		parentId, children:[],
+	};
+	
+	// Support both old format (content + attachments) and new format (parts)
+	if (parts && Array.isArray(parts) && parts.length > 0) {
+		node.parts = parts;
+	} else {
+		node.content = String(content ?? "");
+		if (attachments && attachments.length > 0) {
+			node.attachments = attachments;
+		}
+	}
+	
+	graph.nodes[id] = node;
+	parent.children.push(id);
+	setSelectedChildId(graph, parentId, id);
+	graph.leafId = id;
+	return node;
+}
+
+export function createSiblingCopy(graph, nodeId, { content, timestamp, parts, attachments, reasoning } = {}) {
+	const node = getNode(graph, nodeId);
+	if (!node?.parentId) return null;
+	const parent = getNode(graph, node.parentId);
+	if (!parent?.children) return null;
+	const siblingId = generateId();
+	const sibling = {
+		id: siblingId,
+		role: node.role,
+		content: content !== undefined ? String(content) : String(node.content ?? ""),
+		timestamp: Number(timestamp) || Date.now(),
+		parentId: node.parentId,
+		children:[],
+		editedFrom: node.id,
+	};
+    
+    // Default to copying existing parts/attachments if not explicitly provided
+    if (parts !== undefined) {
+        if (parts) sibling.parts = JSON.parse(JSON.stringify(parts));
+    } else if (node.parts) {
+        sibling.parts = JSON.parse(JSON.stringify(node.parts));
+    }
+
+    if (attachments !== undefined) {
+        if (attachments) sibling.attachments = JSON.parse(JSON.stringify(attachments));
+    } else if (node.attachments) {
+        sibling.attachments = JSON.parse(JSON.stringify(node.attachments));
+    }
+
+    // Copy reasoning if present (use explicit value if provided, otherwise copy from node)
+    if (reasoning !== undefined) {
+        if (reasoning) sibling.reasoning = reasoning;
+    } else if (node.reasoning) {
+        sibling.reasoning = node.reasoning;
+    }
+
+	graph.nodes[siblingId] = sibling;
+	parent.children.push(siblingId);
+	setSelectedChildId(graph, node.parentId, siblingId);
+	recomputeLeafId(graph);
+	return sibling;
+}
+
+export function nodeHasGeneratedResponse(graph, nodeId) {
+	const node = getNode(graph, nodeId);
+	if (!node?.children?.length) return false;
+	return node.children.some((childId) => getNode(graph, childId)?.role === "assistant");
+}
+
+export function branchFromNode(graph, nodeId, { preserveSelectedTail = false } = {}) {
+	const node = getNode(graph, nodeId);
+	if (!node?.parentId) return null;
+	const parent = getNode(graph, node.parentId);
+	if (!parent?.children) return null;
+	const siblingId = generateId();
+	const sibling = {
+		id: siblingId, role: node.role,
+		content: String(node.content ?? ""),
+		timestamp: Date.now(),
+		parentId: node.parentId,
+		children:[],
+		branchedFrom: node.id,
+	};
+    
+    if (node.parts) sibling.parts = JSON.parse(JSON.stringify(node.parts));
+    if (node.attachments) sibling.attachments = JSON.parse(JSON.stringify(node.attachments));
+    if (node.reasoning) sibling.reasoning = node.reasoning;
+
+	graph.nodes[siblingId] = sibling;
+	parent.children.push(siblingId);
+	setSelectedChildId(graph, node.parentId, siblingId);
+	if (!preserveSelectedTail) {
+		recomputeLeafId(graph);
+		return sibling;
+	}
+	let prevNewId = siblingId;
+	let currentOldId = nodeId;
+	while (true) {
+		const nextOldId = getSelectedChildId(graph, currentOldId);
+		if (!nextOldId) break;
+		const oldNext = getNode(graph, nextOldId);
+		if (!oldNext) break;
+		const newId = generateId();
+		const cloned = {
+			id: newId, role: oldNext.role,
+			content: String(oldNext.content ?? ""),
+			timestamp: oldNext.timestamp,
+			parentId: prevNewId,
+			children:[],
+			clonedFrom: oldNext.id,
+		};
+        
+        if (oldNext.parts) cloned.parts = JSON.parse(JSON.stringify(oldNext.parts));
+        if (oldNext.attachments) cloned.attachments = JSON.parse(JSON.stringify(oldNext.attachments));
+        if (oldNext.reasoning) cloned.reasoning = oldNext.reasoning;
+
+		graph.nodes[newId] = cloned;
+		graph.nodes[prevNewId].children.push(newId);
+		graph.selections[prevNewId] = newId;
+		prevNewId = newId;
+		currentOldId = nextOldId;
+	}
+	recomputeLeafId(graph);
+	return sibling;
+}
+
+export function deleteSubtree(graph, nodeId) {
+	const node = getNode(graph, nodeId);
+	if (!node) return;
+	[...node.children].forEach((childId) => deleteSubtree(graph, childId));
+	if (node.parentId) {
+		const parent = getNode(graph, node.parentId);
+		if (parent?.children) {
+			parent.children = parent.children.filter((id) => id !== nodeId);
+			if (graph.selections?.[parent.id] === nodeId) {
+				const next = parent.children[0] || null;
+				next ? (graph.selections[parent.id] = next) : delete graph.selections[parent.id];
+			}
+		}
+	}
+	delete graph.nodes[nodeId];
+}
+
+export function spliceDeleteNode(graph, nodeId) {
+	const node = getNode(graph, nodeId);
+	if (!node?.parentId) return false;
+	const parent = getNode(graph, node.parentId);
+	if (!parent?.children) return false;
+	const idx = parent.children.indexOf(nodeId);
+	if (idx === -1) return false;
+	const children = node.children ? [...node.children] :[];
+	children.forEach((childId) => {
+		const child = getNode(graph, childId);
+		if (child) child.parentId = parent.id;
+	});
+	parent.children.splice(idx, 1, ...children);
+	if (graph.selections?.[parent.id] === nodeId) {
+		const selectedChild = getSelectedChildId(graph, nodeId);
+		if (selectedChild && children.includes(selectedChild)) {
+			graph.selections[parent.id] = selectedChild;
+		} else if (children[0]) {
+			graph.selections[parent.id] = children[0];
+		} else {
+			delete graph.selections[parent.id];
+		}
+	}
+	delete graph.nodes[nodeId];
+	delete graph.selections[nodeId];
+	recomputeLeafId(graph);
+	return true;
+}
+
+```
+
+### ./ctrlpanel/js/chat/util.js:
+```js
+export function generateId() {
+	return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+export function formatBytes(bytes) {
+	const n = Number(bytes) || 0;
+	if (n < 1024) return `${n} B`;
+	const units = ["KiB", "MiB", "GiB", "TiB"];
+	let v = n / 1024;
+	let i = 0;
+	while (v >= 1024 && i < units.length - 1) {
+		v /= 1024;
+		i++;
+	}
+	return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
+}
+
+```
+
+### ./ctrlpanel/js/chat/context.js:
+```js
+import { computeThreadNodeIds, ensureGraph, getNode } from "./graph.js";
+
+// Store for model metadata fetched from API
+// Maps model ID -> model object with context_length, max_tokens, etc.
+let modelMetadata = new Map();
+
+/**
+ * Store model metadata from API response
+ * @param {Array} models - Array of model objects from API
+ */
+export function setModelMetadata(models) {
+	modelMetadata.clear();
+	if (Array.isArray(models)) {
+		for (const model of models) {
+			if (model.id) {
+				modelMetadata.set(model.id, model);
+			}
+		}
+	}
+}
+
+/**
+ * Get a specific model's metadata by ID
+ * @param {string} modelId - Model ID
+ * @returns {Object|null} Model metadata or null
+ */
+export function getModelMetadata(modelId) {
+	return modelMetadata.get(modelId) || null;
+}
+
+/**
+ * Get the currently selected model ID from the UI
+ * @param {HTMLElement} root - Root element
+ * @returns {string|null} Selected model ID or null
+ */
+export function getSelectedModelId(root) {
+	const selected = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
+	return selected?.dataset?.value || null;
+}
+
+export function estimateTokensForText(text) {
+	const s = String(text || "");
+	if (!s) return 0;
+	return Math.max(1, Math.ceil(s.length / 4));
+}
+
+export function getModelContextLimitFromUI(root) {
+	const selected = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
+	if (!selected) return 8192; // Default fallback if nothing selected
+	
+	// First try to get context_length from stored model metadata
+	const modelId = selected.dataset.value;
+	if (modelId && modelMetadata.has(modelId)) {
+		const model = modelMetadata.get(modelId);
+		const contextLength = parseInt(model.context_length, 10);
+		if (!isNaN(contextLength) && contextLength > 0) {
+			return contextLength;
+		}
+	}
+	
+	// Fallback to data attribute from HTML (hardcoded values)
+	const contextLength = parseInt(selected.dataset.contextLength, 10);
+	if (!isNaN(contextLength) && contextLength > 0) {
+		return contextLength;
+	}
+	
+	// Final default fallback
+	return 8192;
+}
+
+/**
+ * Get max_tokens for a model from stored metadata
+ * @param {string} modelId - Model ID
+ * @returns {number} max_tokens value or default (8192)
+ */
+export function getModelMaxTokens(modelId) {
+	if (!modelId) return 8192;
+
+	const model = modelMetadata.get(modelId);
+	if (model) {
+		const maxTokens = parseInt(model.max_tokens, 10);
+		if (!isNaN(maxTokens) && maxTokens > 0) {
+			return maxTokens;
+		}
+	}
+
+	return 8192; // Default fallback 
+}
+
+export function computeThreadTokenUsage(graph) {
+	return computeThreadNodeIds(graph).reduce((total, id) => {
+		const node = getNode(graph, id);
+		let text = "";
+		if (node?.parts && Array.isArray(node.parts)) {
+			text = node.parts.filter(p => p.type === "text").map(p => p.content).join("");
+		} else if (node?.content) {
+			text = node.content;
+		}
+		return total + estimateTokensForText(text);
+	}, 0);
+}
+
+export function updateContextUI(root, chat) {
+	const el = root?.querySelector?.("#chatContext");
+	if (!el) return;
+	
+	// Always get the model context limit from the selected dropdown item
+	const max = getModelContextLimitFromUI(root);
+	
+	// Calculate used tokens only if there's a chat
+	let used = 0;
+	if (chat) {
+		const graph = ensureGraph(chat);
+		used = computeThreadTokenUsage(graph);
+	}
+	
+	el.textContent = `${used}/${max}`;
+	el.title = max > 0
+		? `Context Window: ${used} tokens used / ${max} total`
+		: "Context Window";
+}
+
+```
+
+### ./ctrlpanel/js/chat/store.js:
+```js
+import { createEmptyGraph, ensureGraph } from "./graph.js";
+import { generateId } from "./util.js";
+
+const CHATS_KEY = "ctrlpanel:chats";
+const CURRENT_CHAT_KEY = "ctrlpanel:currentChat";
+const PINS_KEY = "ctrlpanel:pins";
+
+let chats = [];
+let currentChatId = null;
+
+export function loadChats() {
+	try {
+		const stored = localStorage.getItem(CHATS_KEY);
+		chats = stored ? JSON.parse(stored) : [];
+		if (!Array.isArray(chats)) chats = [];
+	} catch {
+		chats = [];
+	}
+	chats.forEach((c) => ensureGraph(c));
+	try {
+		currentChatId = localStorage.getItem(CURRENT_CHAT_KEY) || null;
+	} catch {
+		currentChatId = null;
+	}
+}
+
+export function saveChats() {
+	try {
+		localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+		if (currentChatId) localStorage.setItem(CURRENT_CHAT_KEY, currentChatId);
+		else localStorage.removeItem(CURRENT_CHAT_KEY);
+	} catch {}
+}
+
+export function getChats() { return chats; }
+export function getChatById(id) { return chats.find((c) => c.id === id); }
+export function getCurrentChatId() { return currentChatId; }
+export function setCurrentChatId(id) { currentChatId = id; }
+
+export function clearCurrentChatId() {
+	currentChatId = null;
+	try { localStorage.removeItem(CURRENT_CHAT_KEY); } catch {}
+}
+
+export function createNewChat() {
+	const chat = {
+		id: generateId(),
+		title: "New Chat",
+		createdAt: Date.now(),
+		updatedAt: Date.now(),
+		graph: createEmptyGraph(),
+	};
+	chats.unshift(chat);
+	currentChatId = chat.id;
+	saveChats();
+	return chat;
+}
+
+export function updateChatTitle(chatId, firstMessage) {
+	const chat = getChatById(chatId);
+	if (chat && chat.title === "New Chat" && firstMessage) {
+		chat.title = firstMessage.slice(0, 30) + (firstMessage.length > 30 ? "..." : "");
+		chat.updatedAt = Date.now();
+		saveChats();
+	}
+}
+
+export function renameChat(chatId, newTitle) {
+	const chat = getChatById(chatId);
+	if (chat && typeof newTitle === "string" && newTitle.trim()) {
+		chat.title = newTitle.trim();
+		chat.updatedAt = Date.now();
+		saveChats();
+		return true;
+	}
+	return false;
+}
+
+function loadPinnedChatIds() {
+	try {
+		const raw = localStorage.getItem(PINS_KEY);
+		const parsed = raw ? JSON.parse(raw) : [];
+		return Array.isArray(parsed) ? parsed.map(String) : [];
+	} catch {
+		return [];
+	}
+}
+
+function savePinnedChatIds(ids) {
+	try { localStorage.setItem(PINS_KEY, JSON.stringify(ids)); } catch {}
+}
+
+export function isChatPinned(chatId) {
+	return new Set(loadPinnedChatIds()).has(String(chatId));
+}
+
+export function togglePinChat(chatId) {
+	const id = String(chatId || "");
+	if (!id) return;
+	const pinned = new Set(loadPinnedChatIds());
+	if (pinned.has(id)) pinned.delete(id);
+	else pinned.add(id);
+	savePinnedChatIds([...pinned]);
+}
+
+export function deleteChat(chatId) {
+	const id = String(chatId || "");
+	if (!id) return;
+	chats = chats.filter((c) => c.id !== id);
+	if (currentChatId === id) currentChatId = chats.length ? chats[0].id : null;
+	const pinned = new Set(loadPinnedChatIds());
+	if (pinned.has(id)) {
+		pinned.delete(id);
+		savePinnedChatIds([...pinned]);
+	}
+	saveChats();
+}
+
+export function addMessageToChat(chatId, role, content, attachments = null, parts = null) {
+	const chat = getChatById(chatId);
+	if (!chat) return null;
+	const graph = ensureGraph(chat);
+	
+	// Just get the current end of the thread
+	const parentId = graph.leafId || graph.rootId;
+	
+	// Append directly as a child of the current leaf
+	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts });
+	
+	chat.updatedAt = Date.now();
+	if (computeThreadNodeIds(graph).length === 1 && role === "user") {
+		// For title, use text content from parts or content string
+		const titleText = parts
+			? parts.filter(p => p.type === "text").map(p => p.content).join(" ")
+			: String(content || "");
+		updateChatTitle(chatId, titleText);
+	}
+	saveChats();
+	return node;
+}
+
+export function addChildMessageToChat(chatId, parentId, role, content, attachments = null, parts = null) {
+	const chat = getChatById(chatId);
+	if (!chat) return null;
+	const graph = ensureGraph(chat);
+	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts });
+	chat.updatedAt = Date.now();
+	saveChats();
+	return node;
+}
+
+// Re-imported here to avoid circular dependency issues at module load time
+import { appendNode, computeThreadNodeIds } from "./graph.js";
+
+```
+
+### ./ctrlpanel/js/chat/chat-page.js:
+```js
+import {
+	branchFromNode,
+	computeThreadNodeIds,
+	createSiblingCopy,
+	deleteSubtree,
+	ensureGraph,
+	getNode,
+	nodeHasGeneratedResponse,
+	recomputeLeafId,
+	setSelectedChildId,
+	spliceDeleteNode,
+} from "./graph.js";
+import {
+	addChildMessageToChat,
+	addMessageToChat,
+	createNewChat,
+	getChatById,
+	getCurrentChatId,
+	saveChats,
+	setCurrentChatId,
+} from "./store.js";
+import { renderChatList } from "./sidebar.js";
+import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI } from "./context.js";
+import { getModels } from "../api.js";
+import { formatBytes } from "./util.js";
+import { renderThread, showTyping } from "./thread-ui.js";
+import { InlineAttachmentManager } from "./inline-attachment.js";
+import { parseMarkdown } from "./markdown.js";
+import { preprocessLatexText, extractMath, injectMath } from "./latex.js";
+import { streamChatMessage } from "../api.js";
+const TOOLS_KEY = "ctrlpanel:toolsEnabled";
+
+/**
+ * Escape HTML special characters to prevent XSS
+ * @param {string} text
+ * @returns {string}
+ */
+function escapeHtml(text) {
+	if (!text) return "";
+	const div = document.createElement("div");
+	div.textContent = text;
+	return div.innerHTML;
+}
+let chatPageAbort = null;
+
+function initDropdowns(root, signal) {
+	root.querySelectorAll(".chat-dropdown").forEach((dropdown) => {
+		const toggle = dropdown.querySelector(".chat-dropdown-toggle");
+		const menu = dropdown.querySelector(".chat-dropdown-menu");
+		const isMulti = dropdown.hasAttribute("data-multi");
+
+		toggle?.addEventListener("click", (e) => {
+			e.preventDefault();
+			const isOpen = dropdown.classList.contains("open");
+			root.querySelectorAll(".chat-dropdown.open").forEach((d) => {
+				if (d !== dropdown) {
+					d.classList.remove("open");
+					d.querySelector(".chat-dropdown-toggle")?.setAttribute("aria-expanded", "false");
+				}
+			});
+			dropdown.classList.toggle("open", !isOpen);
+			toggle.setAttribute("aria-expanded", String(!isOpen));
+		}, { signal });
+
+		if (!isMulti) {
+			const items = dropdown.querySelectorAll(".chat-dropdown-item");
+			const label = dropdown.querySelector(".chat-dropdown-label");
+			items.forEach((item) => {
+				item.addEventListener("click", () => {
+					items.forEach((i) => {
+						i.classList.remove("selected");
+						i.setAttribute("aria-selected", "false");
+					});
+					item.classList.add("selected");
+					item.setAttribute("aria-selected", "true");
+					if (label) label.textContent = item.textContent;
+					dropdown.classList.remove("open");
+					toggle?.setAttribute("aria-expanded", "false");
+				}, { signal });
+			});
+		} else {
+			menu?.addEventListener("click", (e) => e.stopPropagation(), { signal });
+		}
+	});
+
+	document.addEventListener("click", (e) => {
+		if (!e.target.closest(".chat-dropdown")) {
+			root.querySelectorAll(".chat-dropdown.open").forEach((d) => {
+				d.classList.remove("open");
+				d.querySelector(".chat-dropdown-toggle")?.setAttribute("aria-expanded", "false");
+			});
+		}
+	}, { signal });
+}
+
+function initTools(root, signal) {
+	const toolsDropdown = root.querySelector('[data-dropdown="tools"]');
+	if (!toolsDropdown) return;
+	const checkboxes =[...toolsDropdown.querySelectorAll('input[type="checkbox"][name="tool"]')];
+	const enabled = new Set(JSON.parse(localStorage.getItem(TOOLS_KEY) || "[]"));
+	checkboxes.forEach((cb) => cb.checked = enabled.has(cb.value));
+
+	const update = () => {
+		const enabledValues = checkboxes.filter((cb) => cb.checked).map((cb) => cb.value);
+		toolsDropdown.classList.toggle("has-enabled-tools", enabledValues.length > 0);
+		localStorage.setItem(TOOLS_KEY, JSON.stringify(enabledValues));
+	};
+	checkboxes.forEach((cb) => cb.addEventListener("change", update, { signal }));
+	update();
+}
+
+function isImageFile(file) {
+	const type = String(file?.type || "");
+	if (type.startsWith("image/")) return true;
+	return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(String(file?.name || ""));
+}
+
+function makeXIcon() {
+	return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>`;
+}
+
+function renderAttachments(root, pending) {
+	const wrap = root.querySelector("#chatAttachments");
+	if (!wrap) return;
+	if (!pending.length) {
+		wrap.hidden = true;
+		wrap.innerHTML = "";
+		return;
+	}
+	wrap.hidden = false;
+	const list = document.createElement("div");
+	list.className = "chat-attachments-list";
+
+	pending.forEach((item) => {
+		const row = document.createElement("div");
+		row.className = "chat-attachment";
+		row.dataset.attachmentId = item.id;
+
+		const thumb = document.createElement("div");
+		thumb.className = "chat-attachment-thumb";
+		thumb.setAttribute("aria-hidden", "true");
+		if (item.isImage && item.previewUrl) {
+			const img = document.createElement("img");
+			img.src = item.previewUrl;
+			img.alt = "";
+			thumb.appendChild(img);
+		} else {
+			thumb.textContent = "FILE";
+		}
+
+		const meta = document.createElement("div");
+		meta.className = "chat-attachment-meta";
+		const name = document.createElement("div");
+		name.className = "chat-attachment-name";
+		name.textContent = item.file.name;
+		const size = document.createElement("div");
+		size.className = "chat-attachment-size";
+		size.textContent = formatBytes(item.file.size);
+		meta.append(name, size);
+
+		const remove = document.createElement("button");
+		remove.type = "button";
+		remove.className = "chat-attachment-remove";
+		remove.setAttribute("aria-label", `Remove ${item.file.name}`);
+		remove.title = "Remove";
+		remove.dataset.action = "remove-attachment";
+		remove.dataset.attachmentId = item.id;
+		remove.innerHTML = makeXIcon();
+
+		row.append(thumb, meta, remove);
+		list.appendChild(row);
+	});
+
+	wrap.innerHTML = "";
+	wrap.appendChild(list);
+}
+
+function initUpload(root, inputEl, attachmentManager, signal) {
+	const uploadBtn = root.querySelector("#chatUploadBtn");
+	const uploadInput = root.querySelector("#chatUploadInput");
+	const uploadLabel = root.querySelector("#chatUploadLabel");
+	if (!uploadBtn || !uploadInput) return;
+
+	const updateCount = () => {
+		const count = attachmentManager.getAttachments().length;
+		if (count > 0) uploadBtn.dataset.count = String(count);
+		else delete uploadBtn.dataset.count;
+		uploadLabel && (uploadLabel.textContent = "Upload");
+	};
+
+	uploadBtn.addEventListener("click", () => uploadInput.click(), { signal });
+	
+	uploadInput.addEventListener("change", async () => {
+		const selected = Array.from(uploadInput.files ||[]);
+		uploadInput.value = "";
+		
+		for (const file of selected) {
+			await attachmentManager.addFile(file);
+		}
+		
+		updateCount();
+	}, { signal });
+
+	attachmentManager.options.onAttachmentAdded = updateCount;
+	attachmentManager.options.onAttachmentRemoved = updateCount;
+
+	updateCount();
+}
+
+function initAutoResize(element, signal) {
+	const resize = () => {
+		element.style.height = "auto";
+		const newHeight = Math.min(element.scrollHeight, 300);
+		element.style.height = newHeight + "px";
+	};
+	
+	const updatePlaceholder = () => {
+		const text = element.textContent || "";
+		const hasAttachments = element.querySelector(".inline-attachment");
+		const isEmpty = text.trim().length === 0 && !hasAttachments;
+		element.dataset.empty = isEmpty ? "true" : "false";
+	};
+	
+	const handleInput = () => {
+		resize();
+		updatePlaceholder();
+	};
+	
+	element.addEventListener("input", handleInput, { signal });
+	
+	element.addEventListener("paste", () => {
+		setTimeout(handleInput, 0);
+	}, { signal });
+	
+	requestAnimationFrame(() => {
+		resize();
+		updatePlaceholder();
+	});
+	
+	window.addEventListener("resize", resize, { signal });
+	
+	return () => {
+		resize();
+		updatePlaceholder();
+	};
+}
+
+async function loadAndPopulateModels(root, signal) {
+	try {
+		const response = await getModels();
+		const models = response?.data ||[];
+		
+		setModelMetadata(models);
+		
+		const modelDropdown = root.querySelector('[data-dropdown="model"]');
+		const menu = modelDropdown?.querySelector('.chat-dropdown-menu');
+		if (!menu) return;
+		
+		const modelMap = new Map();
+		for (const model of models) {
+			if (model.id) {
+				modelMap.set(model.id, model);
+			}
+		}
+		
+		const existingItems = menu.querySelectorAll('.chat-dropdown-item');
+		for (const item of existingItems) {
+			const modelId = item.dataset.value;
+			if (modelId && modelMap.has(modelId)) {
+				const model = modelMap.get(modelId);
+				if (model.context_length) {
+					item.dataset.contextLength = model.context_length;
+				}
+			}
+		}
+		
+		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+		updateContextUI(root, chat);
+		
+	} catch (err) {
+		console.error('Failed to load models:', err);
+		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+		updateContextUI(root, chat);
+	}
+}
+
+function ensureChatExists(setActiveCallback) {
+	if (!getCurrentChatId() || !getChatById(getCurrentChatId())) {
+		createNewChat();
+		renderChatList();
+		setActiveCallback && setActiveCallback();
+	}
+}
+
+export function loadCurrentChat(setActiveCallback) {
+	const messages = document.getElementById("chatMessages");
+	const empty = document.getElementById("chatEmpty");
+	if (!messages) return;
+
+	const currentChatId = getCurrentChatId();
+	const chat = currentChatId ? getChatById(currentChatId) : null;
+	const graph = chat ? ensureGraph(chat) : null;
+	const hasMessages = Boolean(graph && computeThreadNodeIds(graph).length > 0);
+
+	if (empty) empty.hidden = Boolean(currentChatId) || hasMessages;
+	if (chat) renderThread(messages, chat, { editingNodeId: null, editingDraft: "" });
+	else messages.querySelectorAll(".chat-message, .chat-typing").forEach((el) => el.remove());
+
+	renderChatList();
+	setActiveCallback && setActiveCallback();
+}
+
+export async function initChatPage(root, currentRouteGetter, setActiveCallback) {
+	if (!root) return;
+	chatPageAbort?.abort();
+	const controller = new AbortController();
+	chatPageAbort = controller;
+	const { signal } = controller;
+
+	const form = root.querySelector("#chatForm");
+	const input = root.querySelector("#chatInput");
+	const messages = root.querySelector("#chatMessages");
+	const empty = root.querySelector("#chatEmpty");
+	if (!form || !input || !messages) return;
+
+	const attachmentManager = new InlineAttachmentManager(input);
+
+	await loadAndPopulateModels(root, signal);
+
+	initDropdowns(root, signal);
+	initTools(root, signal);
+	initUpload(root, input, attachmentManager, signal);
+	const resizeInput = initAutoResize(input, signal);
+
+	const urlParams = new URLSearchParams(location.hash.split("?")[1] || "");
+	const chatIdFromUrl = urlParams.get("chat");
+	if (chatIdFromUrl && getChatById(chatIdFromUrl)) {
+		setCurrentChatId(chatIdFromUrl);
+		saveChats();
+	}
+
+	const uiState = {
+		editingNodeId: null,
+		editingDraft: "",
+		typingEl: null,
+		typingTimeout: null,
+		editingSaveMode: null,
+		streamAbort: null,
+		flushResponse: null,
+		isGenerating: false,
+	};
+
+	const setGeneratingState = (isGenerating) => {
+		uiState.isGenerating = isGenerating;
+		const sendBtn = form.querySelector('.chat-send-btn');
+		if (sendBtn) {
+			sendBtn.disabled = isGenerating;
+			if (isGenerating) {
+				sendBtn.style.opacity = "0.45";
+				sendBtn.style.cursor = "not-allowed";
+			} else {
+				sendBtn.style.opacity = "";
+				sendBtn.style.cursor = "";
+			}
+		}
+	};
+
+	const stopTyping = () => {
+		if (uiState.flushResponse) {
+			uiState.flushResponse();
+			uiState.flushResponse = null;
+		}
+		if (uiState.streamAbort) {
+			uiState.streamAbort.abort();
+			uiState.streamAbort = null;
+		}
+		if (uiState.typingTimeout) {
+			clearTimeout(uiState.typingTimeout);
+			uiState.typingTimeout = null;
+		}
+		if (uiState.typingEl) {
+			uiState.typingEl.remove();
+			uiState.typingEl = null;
+		}
+		setGeneratingState(false);
+	};
+
+	signal.addEventListener("abort", () => {
+		if (uiState.flushResponse) {
+			uiState.flushResponse();
+			uiState.flushResponse = null;
+		}
+		if (uiState.streamAbort) {
+			uiState.streamAbort.abort();
+		}
+	});
+
+	const startReply = async (parentUserNodeId) => {
+		stopTyping();
+		uiState.typingEl = showTyping(messages);
+		setGeneratingState(true);
+		
+		const activeChatId = getCurrentChatId();
+		
+		uiState.streamAbort = new AbortController();
+		const currentSignal = uiState.streamAbort.signal;
+		
+		const modelSelect = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
+		const model = modelSelect?.dataset?.value || "arcee-ai/trinity-large-preview:free";
+		
+		let maxTokens = getModelMaxTokens(model);
+		const contextLimit = getModelContextLimitFromUI(root);
+		
+		const chat = getChatById(activeChatId);
+		if (!chat) {
+			stopTyping();
+			return;
+		}
+		
+		const graph = ensureGraph(chat);
+		const threadIds = computeThreadNodeIds(graph);
+		
+		let conversationHistory = "";
+		for (const nodeId of threadIds) {
+			const node = getNode(graph, nodeId);
+			if (node) {
+				let nodeContent = "";
+				
+				if (node.parts && Array.isArray(node.parts)) {
+					const textParts = [];
+					const attachmentInfos =[];
+					
+					for (const part of node.parts) {
+						if (part.type === "text" && part.content) {
+							textParts.push(part.content);
+						} else if (part.type === "attachment") {
+							const isImage = part.isImage ? " (image)" : "";
+							let attachmentInfo = `[Attachment: ${part.name} (${part.size} bytes)${isImage}]`;
+							
+							if (part.data && !part.isImage) {
+								try {
+									const base64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
+									if (base64Match) {
+										const binaryString = atob(base64Match[1]);
+										const bytes = new Uint8Array(binaryString.length);
+										for (let i = 0; i < binaryString.length; i++) {
+											bytes[i] = binaryString.charCodeAt(i);
+										}
+										const decoder = new TextDecoder('utf-8');
+										const textContent = decoder.decode(bytes).slice(0, 10000);
+										attachmentInfo += `\n[File Content:]\n${textContent}`;
+									}
+								} catch (e) {
+									console.warn('Could not read file content:', e);
+								}
+							}
+							attachmentInfos.push(attachmentInfo);
+						}
+					}
+					
+					nodeContent = textParts.join("");
+					if (attachmentInfos.length > 0) {
+						nodeContent += "\n" + attachmentInfos.join("\n");
+					}
+				} else if (node.content) {
+					nodeContent = node.content;
+				}
+				
+				if (nodeContent) {
+					const role = node.role === "user" ? "User" : "Assistant";
+					conversationHistory += `${role}: ${nodeContent}\n\n`;
+				}
+			}
+		}
+		
+		if (!conversationHistory.trim() && parentUserNodeId) {
+			const parentNode = getNode(graph, parentUserNodeId);
+			if (parentNode) {
+				let parentContent = "";
+				
+				if (parentNode.parts && Array.isArray(parentNode.parts)) {
+					const textParts =[];
+					const attachmentInfos =[];
+					
+					for (const part of parentNode.parts) {
+						if (part.type === "text" && part.content) {
+							textParts.push(part.content);
+						} else if (part.type === "attachment") {
+							const isImage = part.isImage ? " (image)" : "";
+							let attachmentInfo = `[Attachment: ${part.name} (${part.size} bytes)${isImage}]`;
+							
+							if (part.data && !part.isImage) {
+								try {
+									const base64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
+									if (base64Match) {
+										const binaryString = atob(base64Match[1]);
+										const bytes = new Uint8Array(binaryString.length);
+										for (let i = 0; i < binaryString.length; i++) {
+											bytes[i] = binaryString.charCodeAt(i);
+										}
+										const decoder = new TextDecoder('utf-8');
+										const textContent = decoder.decode(bytes).slice(0, 10000);
+										attachmentInfo += `\n[File Content:]\n${textContent}`;
+									}
+								} catch (e) {
+									console.warn('Could not read file content:', e);
+								}
+							}
+							attachmentInfos.push(attachmentInfo);
+						}
+					}
+					
+					parentContent = textParts.join("");
+					if (attachmentInfos.length > 0) {
+						parentContent += "\n" + attachmentInfos.join("\n");
+					}
+				} else if (parentNode.content) {
+					parentContent = parentNode.content;
+				}
+				
+				if (parentContent) {
+					conversationHistory = parentContent;
+				}
+			}
+		}
+		
+		if (!conversationHistory.trim()) {
+			conversationHistory = "Hello";
+		}
+
+		// Calculate safe token bounds to completely prevent ContextLengthExceeded errors
+		const estimatedPromptTokens = Math.ceil(conversationHistory.length / 3) + 200;
+
+		// Shrink the requested max tokens if it mathematically pushes us out of the context window
+		if (estimatedPromptTokens + maxTokens > contextLimit) {
+			maxTokens = Math.max(256, contextLimit - estimatedPromptTokens);
+		}
+		
+		let responseText = "";
+		let reasoningText = "";
+		let errorFromStream = null;
+		let isSaved = false;
+
+		uiState.flushResponse = () => {
+			if (isSaved) return;
+			isSaved = true;
+			
+			let finalContent = responseText;
+			if (errorFromStream) {
+				finalContent += finalContent ? `\n\n**Error:** ${errorFromStream}` : `**Error:** ${errorFromStream}`;
+			}
+
+			if (finalContent || reasoningText) {
+				const node = addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", finalContent);
+				if (node && reasoningText) {
+					node.reasoning = reasoningText;
+					saveChats();
+				}
+			} else if (errorFromStream) {
+				addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", `**Error:** ${errorFromStream}`);
+			}
+		};
+		
+		try {
+			await streamChatMessage(
+				model,
+				conversationHistory,
+				maxTokens,
+				(chunk) => {
+					if (currentSignal.aborted) return;
+
+					if (chunk.error) {
+						const errorMsg = typeof chunk.error === 'object'
+							? (chunk.error.message || JSON.stringify(chunk.error))
+							: String(chunk.error);
+						console.debug("[ChatPage] Error in stream chunk:", errorMsg);
+						errorFromStream = errorMsg;
+						return;
+					}
+
+					if (chunk.choices && chunk.choices[0] && chunk.choices[0].delta) {
+						const delta = chunk.choices[0].delta;
+						
+						if (delta.reasoning) {
+							reasoningText += delta.reasoning;
+						}
+						if (delta.content) {
+							responseText += delta.content;
+						}
+						
+						if (uiState.typingEl) {
+							if (!uiState.typingEl.querySelector(".chat-message-content")) {
+								uiState.typingEl.innerHTML = '';
+								uiState.typingEl.className = "chat-message assistant";
+							}
+							
+							let html = '';
+							if (reasoningText) {
+								const openAttr = responseText ? '' : 'open';
+								html += `<details class="message-reasoning" ${openAttr}><summary>Thinking...</summary><div class="reasoning-content">${escapeHtml(reasoningText)}</div></details>`;
+							}
+							if (responseText) {
+								const preprocessed = preprocessLatexText(responseText);
+								const { text, mathBlocks } = extractMath(preprocessed);
+								html += injectMath(parseMarkdown(text), mathBlocks);
+							}
+							
+							let msgContent = uiState.typingEl.querySelector(".chat-message-content");
+							if (!msgContent) {
+								msgContent = document.createElement("div");
+								msgContent.className = "chat-message-content";
+								uiState.typingEl.appendChild(msgContent);
+							}
+							msgContent.innerHTML = html;
+							
+							if (messages) messages.scrollTop = messages.scrollHeight;
+						}
+					}
+				},
+				currentSignal
+			);
+			
+			if (errorFromStream) {
+				throw new Error(errorFromStream);
+			}
+
+			if (!responseText && !reasoningText) {
+				throw new Error("Empty response from AI");
+			}
+			
+			stopTyping();
+			rerender();
+			setActiveCallback && setActiveCallback();
+			
+		} catch (err) {
+			if (currentSignal.aborted || err.name === 'AbortError') {
+				if (uiState.flushResponse) {
+					uiState.flushResponse();
+					uiState.flushResponse = null;
+				}
+				return;
+			}
+			
+			console.error("[ChatPage] AI request failed:", err);
+			errorFromStream = err.message || String(err) || "Unknown error";
+			stopTyping();
+			rerender();
+			setActiveCallback && setActiveCallback();
+		}
+	};
+
+	const rerender = () => {
+		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+		if (!chat) return;
+		renderThread(messages, chat, uiState);
+		updateContextUI(root, chat);
+		if (uiState.editingNodeId) {
+			requestAnimationFrame(() => {
+				const el = messages.querySelector(`.chat-message[data-node-id="${uiState.editingNodeId}"] .chat-edit-input`);
+				el?.focus();
+			});
+		}
+	};
+
+	loadCurrentChat(() => setActiveCallback && setActiveCallback());
+
+	input.addEventListener("keydown", (e) => {
+		if (e.isComposing) return;
+		if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+			e.preventDefault();
+			if (uiState.isGenerating) return;
+			form.dataset.sendNoReply = e.shiftKey ? "1" : "";
+			form.requestSubmit();
+		}
+	}, { signal });
+
+	messages.addEventListener("click", (e) => {
+		const btn = e.target.closest("button[data-action]");
+		if (!btn) return;
+		const action = btn.dataset.action;
+		const msgEl = btn.closest(".chat-message");
+		const nodeId = msgEl?.dataset.nodeId;
+		if (!action || !nodeId) return;
+
+		const chatId = getCurrentChatId();
+		const chat = chatId ? getChatById(chatId) : null;
+		if (!chat) return;
+		const graph = ensureGraph(chat);
+		const node = getNode(graph, nodeId);
+		if (!node) return;
+
+		const handlers = {
+			thread: () => {
+				stopTyping();
+				branchFromNode(graph, nodeId, { preserveSelectedTail: false });
+				chat.updatedAt = Date.now();
+				saveChats();
+				uiState.editingNodeId = null;
+				uiState.editingDraft = "";
+				uiState.editingSaveMode = null;
+				rerender();
+				renderChatList();
+				setActiveCallback && setActiveCallback();
+			},
+			delete: () => {
+				stopTyping();
+				if (e.shiftKey) {
+					spliceDeleteNode(graph, nodeId);
+				} else {
+					deleteSubtree(graph, nodeId);
+					recomputeLeafId(graph);
+				}
+				chat.updatedAt = Date.now();
+				saveChats();
+				uiState.editingNodeId = null;
+				uiState.editingDraft = "";
+				uiState.editingSaveMode = null;
+				rerender();
+				renderChatList();
+				setActiveCallback && setActiveCallback();
+			},
+			edit: () => {
+				stopTyping();
+				uiState.editingNodeId = nodeId;
+				uiState.editingDraft = String(node.content || "");
+				uiState.editingSaveMode = null;
+				rerender();
+			},
+			cancel: () => {
+				uiState.editingNodeId = null;
+				uiState.editingDraft = "";
+				uiState.editingSaveMode = null;
+				rerender();
+			},
+			save: () => {
+				const textarea = msgEl.querySelector(".chat-edit-input");
+				const next = textarea ? textarea.value.trimEnd() : uiState.editingDraft;
+				
+				const oldText = node.parts 
+					? node.parts.filter(p => p.type === "text").map(p => p.content).join("")
+					: String(node.content || "");
+				
+				if (String(next) === oldText) {
+					uiState.editingNodeId = null;
+					uiState.editingDraft = "";
+					uiState.editingSaveMode = null;
+					rerender();
+					return;
+				}
+				stopTyping();
+				let effectiveNode = node;
+
+				const getUpdatedParts = () => {
+					if (node.parts) {
+						const newParts =[];
+						let textAdded = false;
+						for (const part of node.parts) {
+							if (part.type === "text") {
+								if (!textAdded) {
+									newParts.push({ type: "text", content: next });
+									textAdded = true;
+								}
+							} else {
+								newParts.push(JSON.parse(JSON.stringify(part)));
+							}
+						}
+						if (!textAdded) {
+							newParts.unshift({ type: "text", content: next });
+						}
+						return newParts;
+					}
+					return null;
+				};
+
+				if (node.role === "assistant") {
+					const preserve = uiState.editingSaveMode === "preserve";
+					const branched = branchFromNode(graph, nodeId, { preserveSelectedTail: preserve });
+					if (branched) {
+						branched.content = String(next);
+						const updatedParts = getUpdatedParts();
+						if (updatedParts) branched.parts = updatedParts;
+						branched.editedAt = Date.now();
+						effectiveNode = branched;
+						if (!preserve) {
+							effectiveNode.children =[];
+							delete graph.selections[effectiveNode.id];
+							recomputeLeafId(graph);
+						} else {
+							recomputeLeafId(graph);
+						}
+					}
+				} else {
+					const hadResponse = nodeHasGeneratedResponse(graph, nodeId);
+					if (hadResponse) {
+						const updatedParts = getUpdatedParts();
+						const sibling = createSiblingCopy(graph, nodeId, { 
+							content: next, 
+							timestamp: Date.now(),
+							parts: updatedParts
+						});
+						if (sibling) effectiveNode = sibling;
+					} else {
+						node.content = String(next);
+						const updatedParts = getUpdatedParts();
+						if (updatedParts) node.parts = updatedParts;
+						node.editedAt = Date.now();
+						recomputeLeafId(graph);
+					}
+				}
+
+				chat.updatedAt = Date.now();
+				saveChats();
+				uiState.editingNodeId = null;
+				uiState.editingDraft = "";
+				uiState.editingSaveMode = null;
+				rerender();
+				renderChatList();
+				setActiveCallback && setActiveCallback();
+
+				if (effectiveNode.role === "user") {
+					if (empty) empty.hidden = true;
+					startReply(effectiveNode.id);
+				}
+			},
+			"branch-back": () => {
+				const nodeNow = getNode(graph, nodeId);
+				if (!nodeNow?.parentId) return;
+				const parent = getNode(graph, nodeNow.parentId);
+				const siblings = parent?.children ||[];
+				const idx = siblings.indexOf(nodeId);
+				if (idx <= 0) return;
+				stopTyping();
+				setSelectedChildId(graph, nodeNow.parentId, siblings[idx - 1]);
+				recomputeLeafId(graph);
+				chat.updatedAt = Date.now();
+				saveChats();
+				uiState.editingNodeId = null;
+				uiState.editingDraft = "";
+				uiState.editingSaveMode = null;
+				rerender();
+				setActiveCallback && setActiveCallback();
+			},
+			"branch-forward": () => {
+				const nodeNow = getNode(graph, nodeId);
+				if (!nodeNow?.parentId) return;
+				const parent = getNode(graph, nodeNow.parentId);
+				const siblings = parent?.children ||[];
+				const idx = siblings.indexOf(nodeId);
+				if (idx === -1 || idx >= siblings.length - 1) return;
+				stopTyping();
+				setSelectedChildId(graph, nodeNow.parentId, siblings[idx + 1]);
+				recomputeLeafId(graph);
+				chat.updatedAt = Date.now();
+				saveChats();
+				uiState.editingNodeId = null;
+				uiState.editingDraft = "";
+				uiState.editingSaveMode = null;
+				rerender();
+				setActiveCallback && setActiveCallback();
+			},
+			resend: () => {
+				if (!node.parentId) return;
+				stopTyping();
+				
+				let userNodeId = node.role === "user" ? node.id : node.parentId;
+				let userNode = getNode(graph, userNodeId);
+				if (!userNode) return;
+
+				setSelectedChildId(graph, userNode.parentId, userNode.id);
+				delete graph.selections[userNode.id];
+				recomputeLeafId(graph);
+				
+				chat.updatedAt = Date.now();
+				saveChats();
+				uiState.editingNodeId = null;
+				uiState.editingDraft = "";
+				uiState.editingSaveMode = null;
+				
+				rerender();
+				setActiveCallback && setActiveCallback();
+				
+				if (empty) empty.hidden = true;
+				startReply(userNode.id);
+			},
+		};
+
+		handlers[action]?.();
+	}, { signal });
+
+	messages.addEventListener("keydown", (e) => {
+		const textarea = e.target.closest(".chat-edit-input");
+		if (!textarea) return;
+		const msgEl = textarea.closest(".chat-message");
+		const nodeId = msgEl?.dataset.nodeId;
+		if (!nodeId) return;
+
+		if (e.key === "Escape") {
+			e.preventDefault();
+			uiState.editingNodeId = null;
+			uiState.editingDraft = "";
+			uiState.editingSaveMode = null;
+			rerender();
+		} else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+			e.preventDefault();
+			uiState.editingSaveMode = e.shiftKey ? "preserve" : "reset";
+			msgEl.querySelector('button[data-action="save"]')?.click();
+		}
+	}, { signal });
+
+	messages.addEventListener("input", (e) => {
+		const textarea = e.target.closest(".chat-edit-input");
+		if (!textarea) return;
+		const msgEl = textarea.closest(".chat-message");
+		const nodeId = msgEl?.dataset.nodeId;
+		if (nodeId && uiState.editingNodeId === nodeId) {
+			uiState.editingDraft = textarea.value;
+		}
+	}, { signal });
+
+	form.addEventListener("submit", (e) => {
+		e.preventDefault();
+		if (uiState.isGenerating) return;
+		
+		const parts = attachmentManager.extractParts();
+		if (!parts || parts.length === 0) return;
+
+		ensureChatExists(setActiveCallback);
+		if (empty) empty.hidden = true;
+
+		stopTyping();
+		uiState.editingNodeId = null;
+		uiState.editingDraft = "";
+		uiState.editingSaveMode = null;
+
+		const userNode = addMessageToChat(getCurrentChatId(), "user", "", null, parts);
+		
+		attachmentManager.clear();
+		const uploadBtn = root.querySelector("#chatUploadBtn");
+		if (uploadBtn) delete uploadBtn.dataset.count;
+		if (resizeInput) resizeInput();
+		
+		rerender();
+		renderChatList();
+		setActiveCallback && setActiveCallback();
+
+		const sendNoReply = form.dataset.sendNoReply === "1";
+		delete form.dataset.sendNoReply;
+		if (!sendNoReply && userNode?.id) {
+			startReply(userNode.id);
+		}
+	}, { signal });
+
+	root.addEventListener("click", (e) => {
+		const item = e.target.closest('[data-dropdown="model"] .chat-dropdown-item');
+		if (!item) return;
+		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+		updateContextUI(root, chat);
+	}, { signal });
+
+	updateContextUI(root, getCurrentChatId() ? getChatById(getCurrentChatId()) : null);
+	input.focus();
+}
 
 ```
 

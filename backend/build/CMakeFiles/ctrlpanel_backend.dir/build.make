@@ -53,10 +53,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend
+CMAKE_SOURCE_DIR = /home/lumyxen/websites/lumyxen.me/backend
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build
+CMAKE_BINARY_DIR = /home/lumyxen/websites/lumyxen.me/backend/build
 
 # Include any dependencies generated for this target.
 include CMakeFiles/ctrlpanel_backend.dir/depend.make
@@ -73,88 +73,88 @@ CMakeFiles/ctrlpanel_backend.dir/codegen:
 .PHONY : CMakeFiles/ctrlpanel_backend.dir/codegen
 
 CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o: CMakeFiles/ctrlpanel_backend.dir/flags.make
-CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o: /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/main.cpp
+CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o: /home/lumyxen/websites/lumyxen.me/backend/src/main.cpp
 CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o: CMakeFiles/ctrlpanel_backend.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o -MF CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o.d -o CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o -c /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/main.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o -MF CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o.d -o CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o -c /home/lumyxen/websites/lumyxen.me/backend/src/main.cpp
 
 CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/main.cpp > CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/lumyxen/websites/lumyxen.me/backend/src/main.cpp > CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.i
 
 CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/main.cpp -o CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/lumyxen/websites/lumyxen.me/backend/src/main.cpp -o CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.s
 
 CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o: CMakeFiles/ctrlpanel_backend.dir/flags.make
-CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o: /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/utils/encryption.cpp
+CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o: /home/lumyxen/websites/lumyxen.me/backend/src/utils/encryption.cpp
 CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o: CMakeFiles/ctrlpanel_backend.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o -MF CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o.d -o CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o -c /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/utils/encryption.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o -MF CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o.d -o CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.o -c /home/lumyxen/websites/lumyxen.me/backend/src/utils/encryption.cpp
 
 CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/utils/encryption.cpp > CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/lumyxen/websites/lumyxen.me/backend/src/utils/encryption.cpp > CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.i
 
 CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/utils/encryption.cpp -o CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/lumyxen/websites/lumyxen.me/backend/src/utils/encryption.cpp -o CMakeFiles/ctrlpanel_backend.dir/src/utils/encryption.cpp.s
 
 CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o: CMakeFiles/ctrlpanel_backend.dir/flags.make
-CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o: /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/services/openrouter_service.cpp
+CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o: /home/lumyxen/websites/lumyxen.me/backend/src/services/openrouter_service.cpp
 CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o: CMakeFiles/ctrlpanel_backend.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o -MF CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o.d -o CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o -c /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/services/openrouter_service.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o -MF CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o.d -o CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o -c /home/lumyxen/websites/lumyxen.me/backend/src/services/openrouter_service.cpp
 
 CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/services/openrouter_service.cpp > CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/lumyxen/websites/lumyxen.me/backend/src/services/openrouter_service.cpp > CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.i
 
 CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/services/openrouter_service.cpp -o CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/lumyxen/websites/lumyxen.me/backend/src/services/openrouter_service.cpp -o CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.s
 
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.o: CMakeFiles/ctrlpanel_backend.dir/flags.make
-CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.o: /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/auth_controller.cpp
+CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.o: /home/lumyxen/websites/lumyxen.me/backend/src/controllers/auth_controller.cpp
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.o: CMakeFiles/ctrlpanel_backend.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.o -MF CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.o.d -o CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.o -c /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/auth_controller.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.o -MF CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.o.d -o CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.o -c /home/lumyxen/websites/lumyxen.me/backend/src/controllers/auth_controller.cpp
 
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/auth_controller.cpp > CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/lumyxen/websites/lumyxen.me/backend/src/controllers/auth_controller.cpp > CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.i
 
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/auth_controller.cpp -o CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/lumyxen/websites/lumyxen.me/backend/src/controllers/auth_controller.cpp -o CMakeFiles/ctrlpanel_backend.dir/src/controllers/auth_controller.cpp.s
 
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o: CMakeFiles/ctrlpanel_backend.dir/flags.make
-CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o: /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/openrouter_controller.cpp
+CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o: /home/lumyxen/websites/lumyxen.me/backend/src/controllers/openrouter_controller.cpp
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o: CMakeFiles/ctrlpanel_backend.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o -MF CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o.d -o CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o -c /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/openrouter_controller.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o -MF CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o.d -o CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o -c /home/lumyxen/websites/lumyxen.me/backend/src/controllers/openrouter_controller.cpp
 
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/openrouter_controller.cpp > CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/lumyxen/websites/lumyxen.me/backend/src/controllers/openrouter_controller.cpp > CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.i
 
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/openrouter_controller.cpp -o CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/lumyxen/websites/lumyxen.me/backend/src/controllers/openrouter_controller.cpp -o CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.s
 
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o: CMakeFiles/ctrlpanel_backend.dir/flags.make
-CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o: /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/config_controller.cpp
+CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o: /home/lumyxen/websites/lumyxen.me/backend/src/controllers/config_controller.cpp
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o: CMakeFiles/ctrlpanel_backend.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o -MF CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o.d -o CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o -c /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/config_controller.cpp
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o -MF CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o.d -o CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o -c /home/lumyxen/websites/lumyxen.me/backend/src/controllers/config_controller.cpp
 
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/config_controller.cpp > CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.i
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/lumyxen/websites/lumyxen.me/backend/src/controllers/config_controller.cpp > CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.i
 
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/config_controller.cpp -o CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.s
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/lumyxen/websites/lumyxen.me/backend/src/controllers/config_controller.cpp -o CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.s
 
 # Object files for target ctrlpanel_backend
 ctrlpanel_backend_OBJECTS = \
@@ -177,7 +177,7 @@ ctrlpanel_backend: CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_contr
 ctrlpanel_backend: CMakeFiles/ctrlpanel_backend.dir/build.make
 ctrlpanel_backend: CMakeFiles/ctrlpanel_backend.dir/compiler_depend.ts
 ctrlpanel_backend: CMakeFiles/ctrlpanel_backend.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Linking CXX executable ctrlpanel_backend"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Linking CXX executable ctrlpanel_backend"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/ctrlpanel_backend.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
@@ -189,6 +189,6 @@ CMakeFiles/ctrlpanel_backend.dir/clean:
 .PHONY : CMakeFiles/ctrlpanel_backend.dir/clean
 
 CMakeFiles/ctrlpanel_backend.dir/depend:
-	cd /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles/ctrlpanel_backend.dir/DependInfo.cmake "--color=$(COLOR)" ctrlpanel_backend
+	cd /home/lumyxen/websites/lumyxen.me/backend/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/lumyxen/websites/lumyxen.me/backend /home/lumyxen/websites/lumyxen.me/backend /home/lumyxen/websites/lumyxen.me/backend/build /home/lumyxen/websites/lumyxen.me/backend/build /home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles/ctrlpanel_backend.dir/DependInfo.cmake "--color=$(COLOR)" ctrlpanel_backend
 .PHONY : CMakeFiles/ctrlpanel_backend.dir/depend
 

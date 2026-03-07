@@ -1,4 +1,4 @@
-# Install script for directory: /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend
+# Install script for directory: /home/lumyxen/websites/lumyxen.me/backend
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -49,7 +49,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
          FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/ctrlpanel_backend"
          RPATH "")
   endif()
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin" TYPE EXECUTABLE FILES "/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/ctrlpanel_backend")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin" TYPE EXECUTABLE FILES "/home/lumyxen/websites/lumyxen.me/backend/build/ctrlpanel_backend")
   if(EXISTS "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/ctrlpanel_backend" AND
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/ctrlpanel_backend")
     if(CMAKE_INSTALL_DO_STRIP)
@@ -59,13 +59,13 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
-  include("/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles/ctrlpanel_backend.dir/install-cxx-module-bmi-noconfig.cmake" OPTIONAL)
+  include("/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles/ctrlpanel_backend.dir/install-cxx-module-bmi-noconfig.cmake" OPTIONAL)
 endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/install_local_manifest.txt"
+  file(WRITE "/home/lumyxen/websites/lumyxen.me/backend/build/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()
 if(CMAKE_INSTALL_COMPONENT)
@@ -81,6 +81,6 @@ else()
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/${CMAKE_INSTALL_MANIFEST}"
+  file(WRITE "/home/lumyxen/websites/lumyxen.me/backend/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

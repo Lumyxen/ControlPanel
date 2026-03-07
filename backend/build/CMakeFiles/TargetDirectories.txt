@@ -1,7 +1,7 @@
-/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles/ctrlpanel_backend.dir
-/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles/edit_cache.dir
-/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles/rebuild_cache.dir
-/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles/list_install_components.dir
-/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles/install.dir
-/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles/install/local.dir
-/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/build/CMakeFiles/install/strip.dir
+/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles/ctrlpanel_backend.dir
+/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles/edit_cache.dir
+/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles/rebuild_cache.dir
+/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles/list_install_components.dir
+/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles/install.dir
+/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles/install/local.dir
+/home/lumyxen/websites/lumyxen.me/backend/build/CMakeFiles/install/strip.dir

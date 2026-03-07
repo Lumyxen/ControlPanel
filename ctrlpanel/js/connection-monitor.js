@@ -1,6 +1,5 @@
 // Connection monitoring module for backend health checks
-// Dynamically use the current hostname to allow LAN access
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:1024`;
+const API_BASE = "http://127.0.0.1:1024";
 
 // Connection state
 let isConnected = true;

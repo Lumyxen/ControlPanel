@@ -4,7 +4,7 @@
 # compile CXX with /usr/bin/c++
 CXX_DEFINES = 
 
-CXX_INCLUDES = -I/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include -I/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src -I/home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/third_party/httplib
+CXX_INCLUDES = -I/home/lumyxen/websites/lumyxen.me/backend/include -I/home/lumyxen/websites/lumyxen.me/backend/src -I/home/lumyxen/websites/lumyxen.me/backend/third_party/httplib
 
 CXX_FLAGS = -std=gnu++23
 

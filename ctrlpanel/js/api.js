@@ -14,8 +14,7 @@ import {
     mockDeletePromptTemplate,
 } from './demo-mode.js';
 
-// Dynamically use the current hostname to allow LAN access
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:1024/api`;
+const API_BASE = "http://127.0.0.1:1024/api";
 
 let apiKey = localStorage.getItem("ctrlpanel:apiKey") || "";
 
@@ -116,8 +115,7 @@ async function makeMockRequest(endpoint, options = {}) {
 }
 
 export async function verifyApiKey() {
-    // Force POST method since the backend strictly expects POST for this endpoint
-    return makeRequest("/auth/verify", { method: "POST" });
+    return makeRequest("/auth/verify");
 }
 
 export async function getModels() {

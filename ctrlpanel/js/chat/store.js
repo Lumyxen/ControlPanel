@@ -5,16 +5,16 @@ const CHATS_KEY = "ctrlpanel:chats";
 const CURRENT_CHAT_KEY = "ctrlpanel:currentChat";
 const PINS_KEY = "ctrlpanel:pins";
 
-let chats =[];
+let chats = [];
 let currentChatId = null;
 
 export function loadChats() {
 	try {
 		const stored = localStorage.getItem(CHATS_KEY);
 		chats = stored ? JSON.parse(stored) : [];
-		if (!Array.isArray(chats)) chats =[];
+		if (!Array.isArray(chats)) chats = [];
 	} catch {
-		chats =[];
+		chats = [];
 	}
 	chats.forEach((c) => ensureGraph(c));
 	try {
@@ -49,7 +49,6 @@ export function createNewChat() {
 		createdAt: Date.now(),
 		updatedAt: Date.now(),
 		graph: createEmptyGraph(),
-		modelId: localStorage.getItem("ctrlpanel:lastSelectedModel") || null,
 	};
 	chats.unshift(chat);
 	currentChatId = chat.id;
@@ -80,10 +79,10 @@ export function renameChat(chatId, newTitle) {
 function loadPinnedChatIds() {
 	try {
 		const raw = localStorage.getItem(PINS_KEY);
-		const parsed = raw ? JSON.parse(raw) :[];
+		const parsed = raw ? JSON.parse(raw) : [];
 		return Array.isArray(parsed) ? parsed.map(String) : [];
 	} catch {
-		return[];
+		return [];
 	}
 }
 

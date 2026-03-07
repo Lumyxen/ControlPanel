@@ -1,7 +1,7 @@
 export const THEME_KEY = "ctrlpanel:theme";
 export const DEFAULT_THEME = "everforest-harddark-green";
 
-import { verifyApiKey, getSettings, updateSettings, getModels } from "./api.js";
+import { setApiKey, getApiKey, verifyApiKey } from "./api.js";
 
 export const PALETTES = {
 	everforest: {
@@ -14,7 +14,7 @@ export const PALETTES = {
 			light: { label: "Light", dark: false },
 			softlight: { label: "Soft Light", dark: false },
 		},
-		accents:["red", "orange", "yellow", "green", "aqua", "blue", "purple"],
+		accents: ["red", "orange", "yellow", "green", "aqua", "blue", "purple"],
 		defaultFlavour: "harddark",
 		defaultAccent: "green",
 		accentVar: "--ef",
@@ -27,7 +27,7 @@ export const PALETTES = {
 			macchiato: { label: "Macchiato", dark: true },
 			mocha: { label: "Mocha", dark: true },
 		},
-		accents:["rosewater", "flamingo", "pink", "mauve", "red", "maroon", "peach", "yellow", "green", "teal", "sky", "sapphire", "blue", "lavender"],
+		accents: ["rosewater", "flamingo", "pink", "mauve", "red", "maroon", "peach", "yellow", "green", "teal", "sky", "sapphire", "blue", "lavender"],
 		defaultFlavour: "mocha",
 		defaultAccent: "green",
 		accentVar: "--ctp",
@@ -205,7 +205,7 @@ export function initSettingsPage(root) {
 	});
 
 	accentGrid.addEventListener("keydown", (e) => {
-		const navKeys =["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
+		const navKeys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
 		if (!navKeys.includes(e.key) && e.key !== " " && e.key !== "Enter") return;
 		const items = [...accentGrid.querySelectorAll('button[data-accent][role="radio"]')];
 		if (!items.length) return;
@@ -226,11 +226,25 @@ export function initSettingsPage(root) {
 
 	syncSettingsUI(root);
 
-	// API Status configuration
+	// API Key configuration
+	const apiKeyInput = root.querySelector("#api-key-input");
+	const saveApiKeyBtn = root.querySelector("#save-api-key");
 	const apiStatus = root.querySelector("#api-status");
 
-	if (apiStatus) {
+	if (apiKeyInput && saveApiKeyBtn && apiStatus) {
+		// Load saved API key
+		const savedKey = getApiKey();
+		if (savedKey) {
+			apiKeyInput.value = savedKey;
+		}
+
+		// Update status
 		const updateStatus = async () => {
+			if (!getApiKey()) {
+				apiStatus.textContent = "Not configured";
+				apiStatus.className = "badge";
+				return;
+			}
 			try {
 				await verifyApiKey();
 				apiStatus.textContent = "Connected";
@@ -240,53 +254,22 @@ export function initSettingsPage(root) {
 				apiStatus.className = "badge badge-error";
 			}
 		};
-		updateStatus();
-	}
 
-	// Default model setting
-	const defaultModelSelect = root.querySelector("#default-model-select");
-	const saveDefaultModelBtn = root.querySelector("#save-default-model");
-	if (defaultModelSelect && saveDefaultModelBtn) {
-		(async () => {
-			try {
-				const modelsRes = await getModels();
-				const models = modelsRes.data ||[];
-				
-				defaultModelSelect.innerHTML = '';
-				for (const m of models) {
-					const option = document.createElement("option");
-					option.value = m.id;
-					option.textContent = m.name;
-					defaultModelSelect.appendChild(option);
-				}
-				
-				const settings = await getSettings();
-				if (settings.defaultModel) {
-					defaultModelSelect.value = settings.defaultModel;
-				}
-			} catch (err) {
-				console.error("Failed to load models for settings", err);
-				defaultModelSelect.innerHTML = '<option value="">Error loading models</option>';
+		saveApiKeyBtn.addEventListener("click", async () => {
+			const key = apiKeyInput.value.trim();
+			if (!key) {
+				setApiKey("");
+				apiStatus.textContent = "Cleared";
+				apiStatus.className = "badge";
+				return;
 			}
-		})();
-
-		saveDefaultModelBtn.addEventListener("click", async () => {
-			const val = defaultModelSelect.value;
-			if (!val) return;
-			const originalText = saveDefaultModelBtn.textContent;
-			saveDefaultModelBtn.textContent = "Saving...";
-			saveDefaultModelBtn.disabled = true;
-			try {
-				await updateSettings({ defaultModel: val });
-				saveDefaultModelBtn.textContent = "Saved!";
-			} catch (e) {
-				console.error("Failed to update default model", e);
-				saveDefaultModelBtn.textContent = "Error";
-			}
-			setTimeout(() => {
-				saveDefaultModelBtn.textContent = originalText;
-				saveDefaultModelBtn.disabled = false;
-			}, 2000);
+			setApiKey(key);
+			apiStatus.textContent = "Verifying...";
+			apiStatus.className = "badge";
+			await updateStatus();
 		});
+
+		// Check status on load
+		updateStatus();
 	}
 }

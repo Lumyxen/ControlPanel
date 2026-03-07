@@ -31,7 +31,7 @@ namespace {
             settingsFile.close();
         } else {
             settings = Json::Value();
-            settings["defaultModel"] = "stepfun/step-3.5-flash:free";
+            settings["defaultModel"] = "arcee-ai/trinity-large-preview:free";
             settings["maxTokens"] = 2048;
             settings["temperature"] = 0.7;
         }
@@ -39,14 +39,15 @@ namespace {
         config_loaded = true;
     }
 
-    // Call these ONLY when the mutex is already locked by the caller
-    void savePromptTemplates_nolock() {
+    void savePromptTemplates() {
+        std::lock_guard<std::mutex> lock(config_mutex);
         std::ofstream file("data/prompt_templates.json");
         file << promptTemplates.toStyledString();
         file.close();
     }
 
-    void saveSettings_nolock() {
+    void saveSettings() {
+        std::lock_guard<std::mutex> lock(config_mutex);
         std::ofstream file("data/settings.json");
         file << settings.toStyledString();
         file.close();
@@ -91,7 +92,7 @@ void handleCreatePromptTemplate(const httplib::Request& req, httplib::Response& 
 
     std::lock_guard<std::mutex> lock(config_mutex);
     promptTemplates.append(newTemplate);
-    savePromptTemplates_nolock();
+    savePromptTemplates();
 
     res.status = 201;
     res.set_content(newTemplate.toStyledString(), "application/json");
@@ -122,7 +123,7 @@ void handleUpdatePromptTemplate(const httplib::Request& req, httplib::Response& 
             }
             template_obj["updated_at"] = std::to_string(std::time(nullptr));
             found = true;
-            savePromptTemplates_nolock();
+            savePromptTemplates();
             break;
         }
     }
@@ -161,7 +162,7 @@ void handleDeletePromptTemplate(const httplib::Request& req, httplib::Response& 
     }
 
     promptTemplates = newArray;
-    savePromptTemplates_nolock();
+    savePromptTemplates();
 
     res.status = 200;
     res.set_content("{\"status\": \"deleted\"}", "application/json");
@@ -195,7 +196,7 @@ void handleUpdateSettings(const httplib::Request& req, httplib::Response& res) {
         settings["temperature"] = requestBody["temperature"];
     }
     
-    saveSettings_nolock();
+    saveSettings();
 
     res.status = 200;
     res.set_content(settings.toStyledString(), "application/json");
