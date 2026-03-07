@@ -1,7 +1,7 @@
 export const THEME_KEY = "ctrlpanel:theme";
 export const DEFAULT_THEME = "everforest-harddark-green";
 
-import { setApiKey, getApiKey, verifyApiKey } from "./api.js";
+import { getModels } from "./api.js";
 
 export const PALETTES = {
 	everforest: {
@@ -14,7 +14,7 @@ export const PALETTES = {
 			light: { label: "Light", dark: false },
 			softlight: { label: "Soft Light", dark: false },
 		},
-		accents: ["red", "orange", "yellow", "green", "aqua", "blue", "purple"],
+		accents:["red", "orange", "yellow", "green", "aqua", "blue", "purple"],
 		defaultFlavour: "harddark",
 		defaultAccent: "green",
 		accentVar: "--ef",
@@ -27,7 +27,7 @@ export const PALETTES = {
 			macchiato: { label: "Macchiato", dark: true },
 			mocha: { label: "Mocha", dark: true },
 		},
-		accents: ["rosewater", "flamingo", "pink", "mauve", "red", "maroon", "peach", "yellow", "green", "teal", "sky", "sapphire", "blue", "lavender"],
+		accents:["rosewater", "flamingo", "pink", "mauve", "red", "maroon", "peach", "yellow", "green", "teal", "sky", "sapphire", "blue", "lavender"],
 		defaultFlavour: "mocha",
 		defaultAccent: "green",
 		accentVar: "--ctp",
@@ -226,48 +226,32 @@ export function initSettingsPage(root) {
 
 	syncSettingsUI(root);
 
-	// API Key configuration
-	const apiKeyInput = root.querySelector("#api-key-input");
-	const saveApiKeyBtn = root.querySelector("#save-api-key");
+	// API Status configuration
 	const apiStatus = root.querySelector("#api-status");
+	const refreshApiBtn = root.querySelector("#refresh-api-status");
 
-	if (apiKeyInput && saveApiKeyBtn && apiStatus) {
-		// Load saved API key
-		const savedKey = getApiKey();
-		if (savedKey) {
-			apiKeyInput.value = savedKey;
-		}
-
-		// Update status
+	if (apiStatus) {
 		const updateStatus = async () => {
-			if (!getApiKey()) {
-				apiStatus.textContent = "Not configured";
-				apiStatus.className = "badge";
-				return;
-			}
+			apiStatus.textContent = "Checking...";
+			apiStatus.className = "badge";
 			try {
-				await verifyApiKey();
-				apiStatus.textContent = "Connected";
-				apiStatus.className = "badge badge-success";
+				const res = await getModels();
+				if (res && !res.error && res.data && res.data.length > 0) {
+					apiStatus.textContent = "Connected";
+					apiStatus.className = "badge badge-success";
+				} else {
+					apiStatus.textContent = "Error: " + (res?.error || "Unable to fetch models");
+					apiStatus.className = "badge badge-error";
+				}
 			} catch (err) {
 				apiStatus.textContent = "Error: " + err.message;
 				apiStatus.className = "badge badge-error";
 			}
 		};
 
-		saveApiKeyBtn.addEventListener("click", async () => {
-			const key = apiKeyInput.value.trim();
-			if (!key) {
-				setApiKey("");
-				apiStatus.textContent = "Cleared";
-				apiStatus.className = "badge";
-				return;
-			}
-			setApiKey(key);
-			apiStatus.textContent = "Verifying...";
-			apiStatus.className = "badge";
-			await updateStatus();
-		});
+		if (refreshApiBtn) {
+			refreshApiBtn.addEventListener("click", updateStatus);
+		}
 
 		// Check status on load
 		updateStatus();

@@ -4,3 +4,7 @@ backend/build/
 # Project dumps
 dev/project.json
 dev/project.md
+
+# Temp chat files
+chat1.json
+chat2.json

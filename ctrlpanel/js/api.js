@@ -1,7 +1,6 @@
 // API service for backend communication
 import {
     isDemoEnabled,
-    mockVerifyApiKey,
     mockGetModels,
     mockGetPricing,
     mockSendChatMessage,
@@ -16,17 +15,6 @@ import {
 
 const API_BASE = "http://127.0.0.1:1024/api";
 
-let apiKey = localStorage.getItem("ctrlpanel:apiKey") || "";
-
-export function setApiKey(key) {
-    apiKey = key;
-    localStorage.setItem("ctrlpanel:apiKey", key);
-}
-
-export function getApiKey() {
-    return apiKey;
-}
-
 async function makeRequest(endpoint, options = {}) {
     // If in demo mode, return mock responses
     if (isDemoEnabled()) {
@@ -36,7 +24,6 @@ async function makeRequest(endpoint, options = {}) {
     const url = `${API_BASE}${endpoint}`;
     const headers = {
         "Content-Type": "application/json",
-        ...(apiKey ? { "x-api-key": apiKey } : {}),
         ...options.headers,
     };
 
@@ -82,8 +69,6 @@ async function makeMockRequest(endpoint, options = {}) {
     
     // Route to appropriate mock function
     switch (endpoint) {
-        case '/auth/verify':
-            return mockVerifyApiKey();
         case '/models':
             return mockGetModels();
         case '/pricing':
@@ -112,10 +97,6 @@ async function makeMockRequest(endpoint, options = {}) {
             }
             throw new Error(`Unknown endpoint: ${endpoint}`);
     }
-}
-
-export async function verifyApiKey() {
-    return makeRequest("/auth/verify");
 }
 
 export async function getModels() {
@@ -147,7 +128,6 @@ export async function streamChatMessage(model, prompt, maxTokens = 2048, onChunk
 
     const headers = {
         "Content-Type": "application/json",
-        ...(apiKey ? { "x-api-key": apiKey } : {}),
     };
 
     try {

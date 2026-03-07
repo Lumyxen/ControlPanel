@@ -722,7 +722,15 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			edit: () => {
 				stopTyping();
 				uiState.editingNodeId = nodeId;
-				uiState.editingDraft = String(node.content || "");
+				
+				let textToEdit = "";
+				if (node.parts) {
+					textToEdit = node.parts.filter(p => p.type === "text").map(p => p.content).join("");
+				} else {
+					textToEdit = String(node.content || "");
+				}
+				
+				uiState.editingDraft = textToEdit;
 				uiState.editingSaveMode = null;
 				rerender();
 			},
@@ -881,6 +889,22 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				
 				if (empty) empty.hidden = true;
 				startReply(userNode.id);
+			},
+			copy: async () => {
+				let textToCopy = node.parts 
+					? node.parts.filter(p => p.type === "text").map(p => p.content).join("")
+					: String(node.content || "");
+				
+				try {
+					await navigator.clipboard.writeText(textToCopy);
+					const oldHTML = btn.innerHTML;
+					btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
+					setTimeout(() => {
+						if (btn) btn.innerHTML = oldHTML;
+					}, 2000);
+				} catch (err) {
+					console.error("Failed to copy text: ", err);
+				}
 			},
 		};
 
