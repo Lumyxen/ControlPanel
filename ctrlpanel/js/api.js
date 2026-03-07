@@ -107,18 +107,19 @@ export async function getPricing() {
     return makeRequest("/pricing");
 }
 
-export async function sendChatMessage(model, prompt, maxTokens = 2048) {
+export async function sendChatMessage(model, prompt, maxTokens = 2048, systemPrompt = "") {
     return makeRequest("/chat", {
         method: "POST",
         body: JSON.stringify({
             model,
             prompt,
             max_tokens: maxTokens,
+            system_prompt: systemPrompt,
         }),
     });
 }
 
-export async function streamChatMessage(model, prompt, maxTokens = 2048, onChunk, signal = null) {
+export async function streamChatMessage(model, prompt, maxTokens = 2048, onChunk, signal = null, systemPrompt = "") {
     // If in demo mode, use mock streaming
     if (isDemoEnabled()) {
         return mockStreamChatMessage(model, prompt, maxTokens, onChunk);
@@ -138,6 +139,7 @@ export async function streamChatMessage(model, prompt, maxTokens = 2048, onChunk
                 model,
                 prompt,
                 max_tokens: maxTokens,
+                system_prompt: systemPrompt,
             }),
             signal
         });
@@ -172,7 +174,7 @@ export async function streamChatMessage(model, prompt, maxTokens = 2048, onChunk
             const lines = buffer.split("\n");
             buffer = lines.pop() || "";
 
-            let streamFinished = false; // Flag to instantly kill the stream
+            let streamFinished = false;
 
             for (const line of lines) {
                 console.debug("[API] Processing line:", line);
@@ -180,7 +182,6 @@ export async function streamChatMessage(model, prompt, maxTokens = 2048, onChunk
                     const data = line.slice(6);
                     console.debug("[API] SSE data:", data);
                     
-                    // Stop waiting for the server to close the socket
                     if (data === "[DONE]") {
                         streamFinished = true;
                         break; 
@@ -189,7 +190,6 @@ export async function streamChatMessage(model, prompt, maxTokens = 2048, onChunk
                     try {
                         const parsed = JSON.parse(data);
                         console.debug("[API] Parsed JSON:", parsed);
-                        // Check for error in the stream
                         if (parsed.error) {
                             const errorMsg = typeof parsed.error === 'object' && parsed.error !== null
                                 ? (parsed.error.message || JSON.stringify(parsed.error))
@@ -203,15 +203,14 @@ export async function streamChatMessage(model, prompt, maxTokens = 2048, onChunk
                     }
                 }
             }
-            if (streamFinished) break; // Break the while loop
+            if (streamFinished) break;
         }
 
-        // If we encountered an error in the stream, throw it after processing
         if (streamError) {
             throw streamError;
         }
     } catch (err) {
-        if (err.name === 'AbortError') throw err; // Re-throw to be handled gracefully
+        if (err.name === 'AbortError') throw err;
         console.error("Streaming request failed:", err);
         throw err;
     }

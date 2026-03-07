@@ -105,6 +105,25 @@ Json::Value OpenRouterService::parseConversationHistory(const std::string& promp
     return messages;
 }
 
+// Build the full messages array, prepending an optional system message
+Json::Value OpenRouterService::buildMessages(const std::string& prompt, const std::string& systemPrompt) const {
+    Json::Value messages(Json::arrayValue);
+
+    if (!systemPrompt.empty()) {
+        Json::Value sysMsg;
+        sysMsg["role"] = "system";
+        sysMsg["content"] = systemPrompt;
+        messages.append(sysMsg);
+    }
+
+    const Json::Value history = parseConversationHistory(prompt);
+    for (const auto& msg : history) {
+        messages.append(msg);
+    }
+
+    return messages;
+}
+
 // libcurl write callback for streaming responses
 size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, void* userp) {
     StreamContext* ctx = (StreamContext*)userp;
@@ -210,19 +229,19 @@ OpenRouterService::OpenRouterService(const std::string& apiKey, Encryption& encr
     curl_global_init(CURL_GLOBAL_DEFAULT);
 }
 
-Json::Value OpenRouterService::chat(const std::string& model, const std::string& prompt, int maxTokens) const {
+Json::Value OpenRouterService::chat(const std::string& model, const std::string& prompt, int maxTokens, const std::string& systemPrompt) const {
     Json::Value requestBody;
     requestBody["model"] = model;
-    requestBody["messages"] = parseConversationHistory(prompt);
+    requestBody["messages"] = buildMessages(prompt, systemPrompt);
     requestBody["max_tokens"] = maxTokens;
     
     return makeRequest("/chat/completions", requestBody);
 }
 
-Json::Value OpenRouterService::streamingChat(const std::string& model, const std::string& prompt, int maxTokens) const {
+Json::Value OpenRouterService::streamingChat(const std::string& model, const std::string& prompt, int maxTokens, const std::string& systemPrompt) const {
     Json::Value requestBody;
     requestBody["model"] = model;
-    requestBody["messages"] = parseConversationHistory(prompt);
+    requestBody["messages"] = buildMessages(prompt, systemPrompt);
     requestBody["max_tokens"] = maxTokens;
     requestBody["stream"] = true;
     
@@ -235,7 +254,8 @@ void OpenRouterService::streamingChatWithCallback(
     const std::string& prompt,
     int maxTokens,
     std::function<void(const std::string&)> onChunk,
-    std::function<void(const std::string&)> onError
+    std::function<void(const std::string&)> onError,
+    const std::string& systemPrompt
 ) const {
     CURL* curl = curl_easy_init();
     if (!curl) {
@@ -263,7 +283,7 @@ void OpenRouterService::streamingChatWithCallback(
     
     Json::Value requestBody;
     requestBody["model"] = model;
-    requestBody["messages"] = parseConversationHistory(prompt);
+    requestBody["messages"] = buildMessages(prompt, systemPrompt);
     requestBody["max_tokens"] = maxTokens;
     requestBody["stream"] = true;
     
@@ -302,15 +322,12 @@ void OpenRouterService::streamingChatWithCallback(
     }
     
     if (httpCode != 200) {
-        // For non-200 responses, the response was captured in the stream buffer
-        // Try to parse it as an error
         Json::Value errorJson;
         Json::CharReaderBuilder reader;
         std::string errs;
         std::istringstream stream(streamCtx.buffer);
 
         if (Json::parseFromStream(reader, stream, &errorJson, &errs)) {
-            // OpenRouter typically returns errors in error.message or error.code
             if (errorJson.isMember("error")) {
                 const Json::Value& errorObj = errorJson["error"];
                 std::string errorMsg;
@@ -333,10 +350,9 @@ void OpenRouterService::streamingChatWithCallback(
             }
         }
 
-        // Fallback to HTTP error code with partial response if parsing failed
         std::string errorMsg = "HTTP error: " + std::to_string(httpCode);
         if (!streamCtx.buffer.empty()) {
-            errorMsg += " - " + streamCtx.buffer.substr(0, 500); // Limit response length
+            errorMsg += " - " + streamCtx.buffer.substr(0, 500);
         }
         onError(errorMsg);
         return;
@@ -345,7 +361,6 @@ void OpenRouterService::streamingChatWithCallback(
     // Process any remaining data in the buffer (incomplete final line)
     if (!streamCtx.buffer.empty()) {
         std::string line = streamCtx.buffer;
-        // Handle carriage return if it exists (from \r\n)
         if (!line.empty() && line.back() == '\r') {
             line.pop_back();
         }
@@ -353,14 +368,12 @@ void OpenRouterService::streamingChatWithCallback(
         if (line.find("data: ") == 0) {
             std::string data = line.substr(6);
             if (data != "[DONE]") {
-                // Parse the JSON delta
                 Json::Value parsedJson;
                 Json::CharReaderBuilder reader;
                 std::string errs;
                 std::istringstream dataStream(data);
                 
                 if (Json::parseFromStream(reader, dataStream, &parsedJson, &errs)) {
-                    // Extract content and reasoning from choices[0].delta
                     std::string content;
                     std::string reasoning;
                     bool hasContent = false;
@@ -381,15 +394,10 @@ void OpenRouterService::streamingChatWithCallback(
                         }
                     }
                     
-                    // Create new JSON object with only non-empty fields
                     if (hasContent || hasReasoning) {
                         Json::Value newDelta;
-                        if (hasContent) {
-                            newDelta["content"] = content;
-                        }
-                        if (hasReasoning) {
-                            newDelta["reasoning"] = reasoning;
-                        }
+                        if (hasContent) newDelta["content"] = content;
+                        if (hasReasoning) newDelta["reasoning"] = reasoning;
                         
                         Json::Value newChoice;
                         newChoice["delta"] = newDelta;
@@ -397,7 +405,6 @@ void OpenRouterService::streamingChatWithCallback(
                         Json::Value newJson;
                         newJson["choices"].append(newChoice);
                         
-                        // Create reformatted SSE line
                         Json::StreamWriterBuilder writer;
                         writer["indentation"] = "";
                         std::string newData = Json::writeString(writer, newJson);
@@ -407,7 +414,6 @@ void OpenRouterService::streamingChatWithCallback(
                         }
                     }
                 } else {
-                    // If parsing fails, forward the original line
                     if (onChunk) {
                         onChunk(line + "\n\n");
                     }
@@ -455,32 +461,22 @@ Json::Value OpenRouterService::getModels() const {
                     std::istringstream stream(responseStr);
                     if (Json::parseFromStream(reader, stream, &result, &errs)) {
                         if (result.isMember("data") && result["data"].isArray()) {
-                            // Normalize the response to ensure consistent field names
                             Json::Value normalizedResponse;
                             normalizedResponse["data"] = Json::Value(Json::arrayValue);
                             
                             for (const auto& model : result["data"]) {
                                 Json::Value normalizedModel;
 
-                                // Copy basic fields
-                                if (model.isMember("id")) {
-                                    normalizedModel["id"] = model["id"];
-                                }
-                                if (model.isMember("name")) {
-                                    normalizedModel["name"] = model["name"];
-                                }
-                                if (model.isMember("provider")) {
-                                    normalizedModel["provider"] = model["provider"];
-                                }
+                                if (model.isMember("id")) normalizedModel["id"] = model["id"];
+                                if (model.isMember("name")) normalizedModel["name"] = model["name"];
+                                if (model.isMember("provider")) normalizedModel["provider"] = model["provider"];
 
-                                // Extract context_length
                                 int contextLength = 0;
                                 if (model.isMember("context_length")) {
                                     contextLength = model["context_length"].asInt();
                                     normalizedModel["context_length"] = contextLength;
                                 }
 
-                                // Extract strictly the max output tokens from OpenRouter
                                 int maxTokens = 0;
                                 if (model.isMember("top_provider") && model["top_provider"].isObject()) {
                                     const auto& topProvider = model["top_provider"];
@@ -489,13 +485,8 @@ Json::Value OpenRouterService::getModels() const {
                                     }
                                 }
 
-                                // Default to 8192 if the API omits the completion limit entirely
                                 const int DEFAULT_MAX_TOKENS = 8192;
-
-                                if (maxTokens <= 0) {
-                                    maxTokens = DEFAULT_MAX_TOKENS;
-                                }
-
+                                if (maxTokens <= 0) maxTokens = DEFAULT_MAX_TOKENS;
                                 normalizedModel["max_tokens"] = maxTokens;
 
                                 normalizedResponse["data"].append(normalizedModel);
@@ -603,9 +594,6 @@ Json::Value OpenRouterService::makeRequest(const std::string& endpoint, const Js
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "HTTP-Referer: http://localhost");
     headers = curl_slist_append(headers, "X-Title: CtrlPanel");
-    
-    // Disable the "Expect: 100-continue" header that libcurl automatically
-    // adds to payloads > 1024 bytes, as it frequently causes 400 errors.
     headers = curl_slist_append(headers, "Expect:");
     
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());

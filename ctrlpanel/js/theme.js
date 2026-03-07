@@ -1,7 +1,7 @@
 export const THEME_KEY = "ctrlpanel:theme";
 export const DEFAULT_THEME = "everforest-harddark-green";
 
-import { getModels } from "./api.js";
+import { getModels, getSettings, updateSettings } from "./api.js";
 
 export const PALETTES = {
 	everforest: {
@@ -255,5 +255,45 @@ export function initSettingsPage(root) {
 
 		// Check status on load
 		updateStatus();
+	}
+
+	// System Prompt — load from backend and wire up Save button
+	const systemPromptInput = root.querySelector("#system-prompt-input");
+	const saveSystemPromptBtn = root.querySelector("#save-system-prompt");
+	const systemPromptStatus = root.querySelector("#system-prompt-status");
+
+	if (systemPromptInput && saveSystemPromptBtn) {
+		// Populate textarea with current backend value
+		(async () => {
+			try {
+				const settings = await getSettings();
+				systemPromptInput.value = settings?.systemPrompt ?? "";
+			} catch (err) {
+				console.warn("[Settings] Could not load system prompt:", err);
+			}
+		})();
+
+		saveSystemPromptBtn.addEventListener("click", async () => {
+			saveSystemPromptBtn.disabled = true;
+			if (systemPromptStatus) {
+				systemPromptStatus.textContent = "Saving…";
+				systemPromptStatus.style.color = "";
+			}
+			try {
+				await updateSettings({ systemPrompt: systemPromptInput.value });
+				if (systemPromptStatus) {
+					systemPromptStatus.textContent = "Saved.";
+					systemPromptStatus.style.color = "var(--green, green)";
+					setTimeout(() => { systemPromptStatus.textContent = ""; }, 3000);
+				}
+			} catch (err) {
+				if (systemPromptStatus) {
+					systemPromptStatus.textContent = "Error: " + err.message;
+					systemPromptStatus.style.color = "var(--red, red)";
+				}
+			} finally {
+				saveSystemPromptBtn.disabled = false;
+			}
+		});
 	}
 }

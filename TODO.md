@@ -1,6 +1,5 @@
 # AI Chat-box
 ## Features
-- System Prompt
 - Code block copying
 - Context window highlighting (yellow @ 50%, red @ 90%)
 - Reserve max output token length to the context window (don't allow user to add more to the history if max output token length exceeds remaining available context)

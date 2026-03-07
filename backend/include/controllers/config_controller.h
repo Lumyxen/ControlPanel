@@ -2,6 +2,11 @@
 #define CONFIG_CONTROLLER_H
 
 #include "httplib.h"
+#include <string>
+
+// Must be called once at startup before any handler is invoked.
+// Pass the absolute path to the backend data directory (e.g. /path/to/backend/data).
+void initConfigController(const std::string& dataDirectory);
 
 // Prompt template handlers
 void handleGetPromptTemplates(const httplib::Request& req, httplib::Response& res);

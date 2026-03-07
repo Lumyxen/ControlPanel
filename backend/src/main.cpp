@@ -569,6 +569,11 @@ int main() {
     backendError = false;
     frontendError = false;
 
+    // Point the config controller at the absolute data directory so it saves
+    // to the right place regardless of what directory the binary is run from.
+    initConfigController((getBackendDir() / "data").string());
+    std::cout << "[Config] Data directory: " << (getBackendDir() / "data") << std::endl;
+
     // Start HTTP servers in separate threads
     std::thread backendThread(runBackendServer, std::ref(config), std::ref(openrouterService));
     std::thread frontendThread(runFrontendServer, std::ref(config));

@@ -30,8 +30,9 @@ void handleChat(const httplib::Request& req, httplib::Response& res, OpenRouterS
         std::string model = requestBody["model"].asString();
         std::string prompt = requestBody["prompt"].asString();
         int maxTokens = requestBody.isMember("max_tokens") ? requestBody["max_tokens"].asInt() : 2048;
+        std::string systemPrompt = requestBody.isMember("system_prompt") ? requestBody["system_prompt"].asString() : "";
 
-        auto response = service.chat(model, prompt, maxTokens);
+        auto response = service.chat(model, prompt, maxTokens, systemPrompt);
 
         res.status = 200;
         res.set_content(response.toStyledString(), "application/json");
@@ -72,6 +73,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRo
         std::string model = requestBody["model"].asString();
         std::string prompt = requestBody["prompt"].asString();
         int maxTokens = requestBody.isMember("max_tokens") ? requestBody["max_tokens"].asInt() : 2048;
+        std::string systemPrompt = requestBody.isMember("system_prompt") ? requestBody["system_prompt"].asString() : "";
 
         // Set up SSE response headers
         res.set_header("Content-Type", "text/event-stream");
@@ -82,7 +84,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRo
         auto ctx = std::make_shared<StreamingContext>();
         
         // Start streaming in background
-        std::thread([ctx, &service, model, prompt, maxTokens]() {
+        std::thread([ctx, &service, model, prompt, maxTokens, systemPrompt]() {
             service.streamingChatWithCallback(
                 model, 
                 prompt, 
@@ -97,7 +99,8 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRo
                     std::lock_guard<std::mutex> lock(ctx->mutex);
                     ctx->error = error;
                     ctx->done = true;
-                }
+                },
+                systemPrompt
             );
             
             {
@@ -119,7 +122,6 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRo
                     if (!ctx->error.empty()) {
                         Json::Value errObj;
                         errObj["error"] = ctx->error;
-                        // Use compact JSON writer to avoid multi-line SSE issues
                         Json::StreamWriterBuilder writer;
                         writer["indentation"] = "";
                         std::string errJson = Json::writeString(writer, errObj);
@@ -134,7 +136,6 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRo
                             is_done = true;
                         }
                     } else {
-                        // Gather chunks
                         while (!ctx->chunks.empty()) {
                             to_write += ctx->chunks.front();
                             ctx->chunks.pop_front();
@@ -149,11 +150,10 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRo
                 if (is_done) {
                     sink.done();
                 } else if (to_write.empty()) {
-                    // Only sleep if queue was empty to prevent spinlocking CPU
                     std::this_thread::sleep_for(std::chrono::milliseconds(20));
                 }
                 
-                return true; // Return true to keep connection alive until done()
+                return true;
             }
         );
 

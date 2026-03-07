@@ -21,7 +21,7 @@ import {
 } from "./store.js";
 import { renderChatList } from "./sidebar.js";
 import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI } from "./context.js";
-import { getModels } from "../api.js";
+import { getModels, getSettings } from "../api.js";
 import { formatBytes } from "./util.js";
 import { renderThread, showTyping } from "./thread-ui.js";
 import { InlineAttachmentManager } from "./inline-attachment.js";
@@ -541,6 +541,36 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		let errorFromStream = null;
 		let isSaved = false;
 
+		// Fetch the system prompt from backend settings (non-fatal if unavailable)
+		let systemPrompt = "";
+		try {
+			const settings = await getSettings();
+			systemPrompt = settings?.systemPrompt ?? "";
+		} catch (_) {
+			// Proceed without a system prompt if the request fails
+		}
+
+		// Expand placeholders in the system prompt.
+		if (systemPrompt) {
+			// {model} → human-readable model name shown in the dropdown label,
+			// falling back to the raw model ID if the label isn't available.
+			const modelLabel = modelSelect?.querySelector(".chat-dropdown-item-label")?.textContent?.trim()
+				|| modelSelect?.textContent?.trim()
+				|| model;
+			systemPrompt = systemPrompt.replaceAll("{model}", modelLabel);
+
+			// {tools} → comma-separated list of enabled tool names, or "none".
+			const TOOL_LABELS = {
+				"web-search": "Web Search",
+				"code-exec":  "Code Execution",
+				"file-read":  "File Reading",
+			};
+			const enabledToolValues = JSON.parse(localStorage.getItem(TOOLS_KEY) || "[]");
+			const toolNames = enabledToolValues.map(v => TOOL_LABELS[v] ?? v);
+			const toolsString = toolNames.length > 0 ? toolNames.join(", ") : "none";
+			systemPrompt = systemPrompt.replaceAll("{tools}", toolsString);
+		}
+
 		uiState.flushResponse = () => {
 			if (isSaved) return;
 			isSaved = true;
@@ -617,7 +647,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 						}
 					}
 				},
-				currentSignal
+				currentSignal,
+				systemPrompt
 			);
 			
 			if (errorFromStream) {
