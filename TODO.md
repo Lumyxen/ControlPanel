@@ -1,19 +1,26 @@
-# Main Control Panel
-## Features
+**Ultimate goal is to get a model like LFM 2.5 1.2B or Qwen 3.5 2B to outperform Gemini 3.1 Pro in benchmarks**
+
+# TODO
+## Main Control Panel
+### Features
 - Search bar functionality and UI with AI chat-box
 
-## To Fix
-### UX
+### To Fix
+#### UX
 - Put AI chat-box "new chat" button when sidebar is collapsed exclusively on AI chat-box pages
 
-# AI Chat-box
-## Features
+## AI Chat-box
+### Features
+- Optimise the master system prompt for chatibility for the AI when it is not working on projects and is just conversing
+- Optimise the master system prompt for minimal to no yes-manning and minimal bias
+- Optimise the master system prompt to let the AI be able to say "I don't know"
 - ESC to cancel message editing
 - Code block copying
 - Collapsable code blocks
 - Context window highlighting (yellow @ 50%, red @ 90%)
 - Change notice styling that back-end and/or an API connection is offline or lost
 - Add a time-since-last-token timer to let the user know if the AI froze or is working without directly checking output
+- Add a time-since-first-token timer to let the user know how long the AI has been generating (resets when AI stops)
 - Add AI message stats
   - Time from first to last token
   - Reason for stopping (EOS, User, Error)
@@ -21,10 +28,12 @@
     - Click for a graph, y=tps, x=time from first to last token
   - Latency from sending message to first token
   - Total tokens
+- Add current tokens per second display (updated every 0.5s)
 - Setting to change default model
 - Save selected model per chat (switching to a chat changes selected model to saved chat, going to unknown saved chat or new chat switched to last selected model (auto-select from saved chat model doesn't count))
 - Save chats on back-end instead of localStorage
 - Be able to stop AI response
+- Be able to pause/resume AI responses (may not be possible over OpenRouter)
 - Be able to scroll up and stop auto-scroll
 - Button to go all the way to bottom of chat history
 - Reserve max output token length to the context window (don't allow user to add more to the history if max output token length exceeds remaining available context)
@@ -49,9 +58,12 @@
 - Add MCP server support
 - Ensure tool placeholder in global system prompt also returns description of each tool
 - Add web search with SearXNG tool
+##### Start dogfooding for everyday questions
 - Add a sandboxed CLI tool
 - Add file reading tool
-- Add sandboxed (restrained to set workspace directory) file editing tool
+- Add sandboxed file editing tool
+  - Restrained to set workspace directory
+  - Remote editing, so for example, it could work on a project on duyfken despite running on skidbladnir
 - Add file checkpoints before each AI file edit to ensure edits are reversable
 - Add calculator tool (replaces code execution)
 - Add sandboxed quick-code execution
@@ -67,6 +79,7 @@
   - Stage the progression into RAG memory. Summarise a message in context window and put full message into RAG memory, then remove the summary of the message later
 - Context message pinning (permanently remains in context window)
 - Turn the response into a back-and-forth for the AI, allowing it to generate drafts, relook at it, refine it, and edit mistakes before sending the finalised result to what the user sees (do not block the user from seeing what the AI is generating at any point though).
+##### Start dogfooding for everything else with AI
 - Ability to manually send a message into RAG memory storage
 - Add personal per-chat notes tool for the AI to use
 - Add message timestamps to history
@@ -92,8 +105,13 @@
 - Chat encryption (automatic decryption during chat loading)
 - Chat folders
 - Different agents/personalities /w ability to customise things like system prompt
+- Internet testing tool
+  - Returns if WAN is available
+  - If so, the WAN speeds (a speed test), latency, and jitter
+  - Returns local speeds, latency, and jitter (between the localhost ecosystem)
+- Small governing AI to make sure it doesn't get malicious, call out possible hallucinations, call out yes-manning, and call out repetition glitching and auto-stop and regenerate the response (where the AI gets stuck in an infinite loop)
 
-## Possible Features
+### Possible Features
 - Token usage graph like Kilo Code
 - Markdown and LaTeX processing in the input text field
 - Detachment from browser (sepparate app)
@@ -108,18 +126,18 @@
   - LoC counter
     - Breaks down languages, comments, empty spaces, total lines of code
 
-## To Fix
-### UI
+### To Fix
+#### UI
 - Fix awkward sizing of OpenRouter API key status
 - Fix large empty space in chats
 - LaTeX formatting not properly fully functional, but mostly is
 - Fix `"md-keyword">` in code blocks
 
-## UX
+#### UX
 - Fix new thread not being created when deleting a message
 - Message shrinking/expanding unwantedly to strictly 2 lines when editing (make message editing properly size to original message size, expand/shrink with new/deleted lines)
 
-### General Bugs
+#### General Bugs
 - Attachments don't count towards context window usage
 - Messages flicker during longer generations that use auto-scroll
 - Old AI message not removed when clicking regenerate on an AI message
@@ -167,3 +185,4 @@
   - Inline attachments
 - Context used/max info
   - Dynamically updates limits to what OpenRouter reports
+- A master system prompt to optimise AI models for programming, no yes-manning, and tool usage
