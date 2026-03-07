@@ -1,8 +1,8 @@
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/config_controller.cpp.o: \
- /home/lumyxen/websites/lumyxen.me/backend/src/controllers/config_controller.cpp \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/config_controller.cpp \
  /usr/include/stdc-predef.h \
- /home/lumyxen/websites/lumyxen.me/backend/include/controllers/config_controller.h \
- /home/lumyxen/websites/lumyxen.me/backend/third_party/httplib/httplib.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include/controllers/config_controller.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/third_party/httplib/httplib.h \
  /usr/include/arpa/inet.h /usr/include/features.h \
  /usr/include/features-time64.h /usr/include/bits/wordsize.h \
  /usr/include/bits/timesize.h /usr/include/sys/cdefs.h \

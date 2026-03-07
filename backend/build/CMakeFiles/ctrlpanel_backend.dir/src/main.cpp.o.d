@@ -1,5 +1,5 @@
 CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o: \
- /home/lumyxen/websites/lumyxen.me/backend/src/main.cpp \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/main.cpp \
  /usr/include/stdc-predef.h /usr/include/c++/15.2.1/iostream \
  /usr/include/c++/15.2.1/bits/requires_hosted.h \
  /usr/include/c++/15.2.1/x86_64-pc-linux-gnu/bits/c++config.h \
@@ -254,7 +254,7 @@ CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o: \
  /usr/include/curl/urlapi.h /usr/include/curl/options.h \
  /usr/include/curl/header.h /usr/include/curl/websockets.h \
  /usr/include/curl/mprintf.h \
- /home/lumyxen/websites/lumyxen.me/backend/third_party/httplib/httplib.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/third_party/httplib/httplib.h \
  /usr/include/arpa/inet.h /usr/include/netinet/in.h \
  /usr/include/bits/in.h /usr/include/ifaddrs.h /usr/include/net/if.h \
  /usr/include/netdb.h /usr/include/rpc/netdb.h /usr/include/bits/netdb.h \
@@ -347,15 +347,15 @@ CMakeFiles/ctrlpanel_backend.dir/src/main.cpp.o: \
  /usr/include/bits/types/struct_statx.h \
  /usr/include/c++/15.2.1/unordered_set \
  /usr/include/c++/15.2.1/bits/unordered_set.h /usr/include/c++/15.2.1/any \
- /home/lumyxen/websites/lumyxen.me/backend/src/config/config.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/config/config.h \
  /usr/include/json/json.h /usr/include/json/config.h \
  /usr/include/json/allocator.h /usr/include/json/version.h \
  /usr/include/json/json_features.h /usr/include/json/forwards.h \
  /usr/include/json/reader.h /usr/include/json/value.h \
  /usr/include/json/writer.h \
- /home/lumyxen/websites/lumyxen.me/backend/include/services/openrouter_service.h \
- /home/lumyxen/websites/lumyxen.me/backend/include/utils/encryption.h \
- /home/lumyxen/websites/lumyxen.me/backend/include/controllers/openrouter_controller.h \
- /home/lumyxen/websites/lumyxen.me/backend/include/controllers/config_controller.h \
- /home/lumyxen/websites/lumyxen.me/backend/include/controllers/auth_controller.h \
- /home/lumyxen/websites/lumyxen.me/backend/src/config/config.h
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include/services/openrouter_service.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include/utils/encryption.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include/controllers/openrouter_controller.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include/controllers/config_controller.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include/controllers/auth_controller.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/config/config.h

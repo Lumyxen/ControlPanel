@@ -1,8 +1,8 @@
 CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o: \
- /home/lumyxen/websites/lumyxen.me/backend/src/controllers/openrouter_controller.cpp \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/controllers/openrouter_controller.cpp \
  /usr/include/stdc-predef.h \
- /home/lumyxen/websites/lumyxen.me/backend/include/controllers/openrouter_controller.h \
- /home/lumyxen/websites/lumyxen.me/backend/third_party/httplib/httplib.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include/controllers/openrouter_controller.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/third_party/httplib/httplib.h \
  /usr/include/arpa/inet.h /usr/include/features.h \
  /usr/include/features-time64.h /usr/include/bits/wordsize.h \
  /usr/include/bits/timesize.h /usr/include/sys/cdefs.h \
@@ -344,10 +344,10 @@ CMakeFiles/ctrlpanel_backend.dir/src/controllers/openrouter_controller.cpp.o: \
  /usr/include/bits/types/struct_statx.h /usr/include/c++/15.2.1/thread \
  /usr/include/c++/15.2.1/unordered_set \
  /usr/include/c++/15.2.1/bits/unordered_set.h /usr/include/c++/15.2.1/any \
- /home/lumyxen/websites/lumyxen.me/backend/include/services/openrouter_service.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include/services/openrouter_service.h \
  /usr/include/json/json.h /usr/include/json/config.h \
  /usr/include/json/allocator.h /usr/include/json/version.h \
  /usr/include/json/json_features.h /usr/include/json/forwards.h \
  /usr/include/json/reader.h /usr/include/json/value.h \
  /usr/include/json/writer.h \
- /home/lumyxen/websites/lumyxen.me/backend/include/utils/encryption.h
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include/utils/encryption.h

@@ -1,7 +1,7 @@
 CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o: \
- /home/lumyxen/websites/lumyxen.me/backend/src/services/openrouter_service.cpp \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/src/services/openrouter_service.cpp \
  /usr/include/stdc-predef.h \
- /home/lumyxen/websites/lumyxen.me/backend/include/services/openrouter_service.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include/services/openrouter_service.h \
  /usr/include/c++/15.2.1/string \
  /usr/include/c++/15.2.1/bits/requires_hosted.h \
  /usr/include/c++/15.2.1/x86_64-pc-linux-gnu/bits/c++config.h \
@@ -240,7 +240,7 @@ CMakeFiles/ctrlpanel_backend.dir/src/services/openrouter_service.cpp.o: \
  /usr/include/c++/15.2.1/variant \
  /usr/include/c++/15.2.1/bits/parse_numbers.h \
  /usr/include/c++/15.2.1/bits/elements_of.h /usr/include/json/writer.h \
- /home/lumyxen/websites/lumyxen.me/backend/include/utils/encryption.h \
+ /home/lumyxen/my_stuff/projects/websites/lumyxen.me/backend/include/utils/encryption.h \
  /usr/include/curl/curl.h /usr/include/curl/curlver.h \
  /usr/include/curl/system.h /usr/include/sys/socket.h \
  /usr/include/bits/types/struct_iovec.h /usr/include/bits/socket.h \
