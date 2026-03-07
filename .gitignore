@@ -1,1 +1,6 @@
+# Build dir
 backend/build/
+
+# Project dumps
+dev/project.json
+dev/project.md
