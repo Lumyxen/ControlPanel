@@ -12,7 +12,7 @@
 ## AI Chat-box
 ### Features
 - Edit CMake to build .exe files alongside binaries
-- Add a build script
+- Add a build script (shell & batch)
 - Code block copying
 - Collapsable code blocks
 - ESC to cancel message editing
@@ -23,9 +23,7 @@
 - Add web search with SearXNG tool
 - Add calculator tool (replaces code execution)
   - WolframAlpha API option
-- Headless browser tool
-- Shell and batch build script
-- Publish to GitHub (not really a feature)
+- Headless browser tool\
 ### Start giving updates to GamingwithNP
 - Mobile UI support
 - Change notice styling that back-end and/or an API connection is offline or lost
