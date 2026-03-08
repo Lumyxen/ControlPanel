@@ -1216,13 +1216,106 @@
     border: 1px solid var(--border);
 }
 
-.md-code-block {
-    background: var(--ctp-mantle);
-    padding: 12px;
-    border-radius: var(--radius-none, 0);
+/* Updated Code Block Styles */
+.md-code-wrapper {
     border: 1px solid var(--border);
+    border-radius: var(--radius-none, 0);
+    background: var(--ctp-mantle);
+    margin: 0.75em 0;
+    overflow: hidden;
+}
+
+.md-code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 8px;
+    background: color-mix(in srgb, var(--panel) 40%, var(--ctp-mantle));
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.75rem;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.15s ease;
+}
+
+.md-code-header:hover {
+    background: color-mix(in srgb, var(--panel) 30%, var(--ctp-mantle));
+}
+
+.md-code-lang {
+    text-transform: lowercase;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    user-select: none;
+}
+
+.md-code-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.md-code-actions button {
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.md-code-actions button:hover {
+    background: color-mix(in srgb, var(--text) 10%, transparent);
+    color: var(--text);
+}
+
+.md-code-actions button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+/* Icon container for collapse chevron */
+.md-code-collapse-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px; 
+    height: 22px;
+    color: var(--muted);
+}
+
+.md-code-body {
+    transition: max-height 0.25s ease, opacity 0.25s ease;
+    overflow: hidden;
+}
+
+/* Collapsed state */
+.md-code-wrapper.collapsed .md-code-body {
+    display: none;
+}
+
+.collapse-chevron {
+    transition: transform 0.2s ease;
+}
+
+.md-code-wrapper.collapsed .collapse-chevron {
+    transform: rotate(-90deg);
+}
+
+.md-code-block {
+    background: transparent;
+    padding: 12px;
+    border: none;
+    border-radius: 0;
     overflow-x: auto;
-    margin: 0.5em 0;
+    margin: 0;
 }
 
 .md-code-block .md-code {
@@ -1468,10 +1561,13 @@ del { text-decoration: line-through; color: var(--muted); }
     font-weight: 600;
 }
 
-.latex-preamble .md-code-block {
+.latex-preamble .md-code-wrapper {
     margin: 0;
     border: none;
     border-top: 1px solid var(--border);
+}
+
+.latex-preamble .md-code-body {
     max-height: 200px;
     overflow-y: auto;
 }

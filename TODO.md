@@ -11,8 +11,6 @@
 
 ## AI Chat-box
 ### Features
-- Code block copying
-- Collapsable code blocks
 - ESC to cancel message editing
 - Context window highlighting (yellow @ 50%, red @ 90%)
 - Save selected model per chat (switching to a chat changes selected model to saved chat, going to unknown saved chat or new chat switched to last selected model (auto-select from saved chat model doesn't count))
@@ -156,7 +154,6 @@
 - Fix awkward sizing of OpenRouter API key status
 - Fix large empty space in chats
 - LaTeX formatting not properly fully functional, but mostly is
-- Fix `"md-keyword">` in code blocks
 
 #### UX
 - Fix new thread not being created when deleting a message
@@ -208,6 +205,7 @@
 - Text processing
   - Markdown
     - Base Markdown
+      - Code block copying & collapsing/expansion
     - Discord's Markdown features
     - Obsidian.md's Markdown features
   - LaTeX

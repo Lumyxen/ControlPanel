@@ -754,6 +754,41 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	}, { signal });
 
 	messages.addEventListener("click", (e) => {
+		// Code block copy action
+		const codeCopyBtn = e.target.closest('.md-code-copy');
+		if (codeCopyBtn) {
+			e.preventDefault();
+			e.stopPropagation();
+			const wrapper = codeCopyBtn.closest('.md-code-wrapper');
+			const codeEl = wrapper?.querySelector('code');
+			if (codeEl) {
+				navigator.clipboard.writeText(codeEl.textContent).then(() => {
+					const oldHtml = codeCopyBtn.innerHTML;
+					codeCopyBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M20 6L9 17l-5-5"/></svg>`;
+					codeCopyBtn.style.color = "var(--accent)";
+					setTimeout(() => {
+						codeCopyBtn.innerHTML = oldHtml;
+						codeCopyBtn.style.color = "";
+					}, 2000);
+				}).catch(err => {
+					console.error("Failed to copy code", err);
+				});
+			}
+			return;
+		}
+
+		// Code block collapse action (entire header)
+		const codeHeader = e.target.closest('.md-code-header');
+		if (codeHeader) {
+			e.preventDefault();
+			e.stopPropagation();
+			const wrapper = codeHeader.closest('.md-code-wrapper');
+			if (wrapper) {
+				wrapper.classList.toggle('collapsed');
+			}
+			return;
+		}
+
 		const btn = e.target.closest("button[data-action]");
 		if (!btn) return;
 		const action = btn.dataset.action;

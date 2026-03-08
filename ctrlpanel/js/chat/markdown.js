@@ -20,11 +20,11 @@ const markedModule = (function () {
 	function escapeHtml(html) {
 		if (!html) return '';
 		return html
-			.replace(/&/g, '&')
-			.replace(/</g, '<')
-			.replace(/>/g, '>')
-			.replace(/"/g, '"')
-			.replace(/'/g, '&' + '#39;');
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
 	}
 
 	class Renderer {
@@ -34,9 +34,26 @@ const markedModule = (function () {
 
 		code(code, infostring) {
 			const lang = (infostring || '').match(/\S*/)[0];
+			const displayLang = lang || 'text';
 			const className = lang ? ` class="${this.options.langPrefix}${escapeHtml(lang)}"` : '';
 			const highlighted = lang ? highlightCode(code, lang) : escapeHtml(code);
-			return `<pre class="md-code-block"><code${className}>${highlighted}</code></pre>\n`;
+			
+			return `<div class="md-code-wrapper">
+<div class="md-code-header" title="Click to collapse/expand">
+<span class="md-code-lang">${escapeHtml(displayLang)}</span>
+<div class="md-code-actions">
+<button type="button" class="md-code-copy" aria-label="Copy code" title="Copy code">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M8 5.00005C7.01165 5.00082 6.49359 5.01338 6.09202 5.21799C5.71569 5.40973 5.40973 5.71569 5.21799 6.09202C5 6.51984 5 7.07989 5 8.2V17.8C5 18.9201 5 19.4802 5.21799 19.908C5.40973 20.2843 5.71569 20.5903 6.09202 20.782C6.51984 21 7.07989 21 8.2 21H15.8C16.9201 21 17.4802 21 17.908 20.782C18.2843 20.5903 18.5903 20.2843 18.782 19.908C19 19.4802 19 18.9201 19 17.8V8.2C19 7.07989 19 6.51984 18.782 6.09202C18.5903 5.71569 18.2843 5.40973 17.908 5.21799C17.5064 5.01338 16.9884 5.00082 16 5.00005M8 5.00005V7H16V5.00005M8 5.00005V4.70711C8 4.25435 8.17986 3.82014 8.5 3.5C8.82014 3.17986 9.25435 3 9.70711 3H14.2929C14.7456 3 15.1799 3.17986 15.5 3.5C15.8201 3.82014 16 4.25435 16 4.70711V5.00005" /></svg>
+</button>
+<span class="md-code-collapse-icon">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" class="collapse-chevron"><path d="M6 9l6 6 6-6"/></svg>
+</span>
+</div>
+</div>
+<div class="md-code-body">
+<pre class="md-code-block"><code${className}>${highlighted}</code></pre>
+</div>
+</div>\n`;
 		}
 
 		blockquote(quote) {
@@ -461,13 +478,67 @@ const markedModule = (function () {
 
 /**
  * Syntax highlighting for code blocks
+ * Uses a multi-pass placeholder strategy to avoid "md-keyword" artifacts
+ * where strings/comments match keyword regexes or keyword HTML output matches string regexes.
  */
 function highlightCode(code, language) {
 	if (!language) return escapeHtml(code);
 
 	const lang = language.toLowerCase();
-	let result = escapeHtml(code);
+	let src = code;
+	
+	const placeholders = {
+		strings: [],
+		comments: []
+	};
 
+	// 1. Extract Comments (Hide them first so keywords inside comments are ignored)
+	if (['javascript', 'typescript', 'java', 'cpp', 'c', 'go', 'rust', 'css'].includes(lang)) {
+		// Block comments
+		src = src.replace(/(\/\*[\s\S]*?\*\/)/g, (match) => {
+			const id = `__COM${placeholders.comments.length}__`;
+			placeholders.comments.push(match);
+			return id;
+		});
+		// Line comments
+		src = src.replace(/(\/\/.*$)/gm, (match) => {
+			const id = `__COM${placeholders.comments.length}__`;
+			placeholders.comments.push(match);
+			return id;
+		});
+	} else if (['python', 'bash', 'shell'].includes(lang)) {
+		src = src.replace(/(#.*$)/gm, (match) => {
+			const id = `__COM${placeholders.comments.length}__`;
+			placeholders.comments.push(match);
+			return id;
+		});
+	} else if (lang === 'sql') {
+		src = src.replace(/(--.*$)/gm, (match) => {
+			const id = `__COM${placeholders.comments.length}__`;
+			placeholders.comments.push(match);
+			return id;
+		});
+	} else if (lang === 'html') {
+		src = src.replace(/(<!--[\s\S]*?-->)/g, (match) => {
+			const id = `__COM${placeholders.comments.length}__`;
+			placeholders.comments.push(match);
+			return id;
+		});
+	}
+
+	// 2. Extract Strings (Hide them so keywords inside aren't highlighted, and string regex doesn't match keyword HTML tags)
+	// General string regex for "..." and '...' and `...`
+	src = src.replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g, (match) => {
+		const id = `__STR${placeholders.strings.length}__`;
+		placeholders.strings.push(match);
+		return id;
+	});
+
+	// 3. Escape the skeleton (the code without strings/comments)
+	// This prevents HTML tags generated later from being escaped, while escaping code operators like < and >.
+	src = escapeHtml(src);
+
+	// 4. Highlight Keywords
 	const keywords = {
 		javascript: ['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default'],
 		typescript: ['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'implements', 'interface', 'type', 'enum', 'namespace', 'module', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default', 'string', 'number', 'boolean', 'any', 'unknown', 'never', 'void', 'null', 'undefined', 'object', 'symbol', 'bigint', 'as', 'satisfies', 'infer', 'keyof', 'readonly', 'abstract', 'private', 'protected', 'public', 'static', 'get', 'set', 'declare'],
@@ -485,51 +556,46 @@ function highlightCode(code, language) {
 	};
 
 	const langKeywords = keywords[lang] || [];
-
 	if (langKeywords.length > 0) {
 		const keywordRegex = new RegExp('\\b(' + langKeywords.join('|') + ')\\b', 'g');
-		result = result.replace(keywordRegex, '<span class="md-keyword">$1</span>');
+		src = src.replace(keywordRegex, '<span class="md-keyword">$1</span>');
 	}
 
-	// Strings
-	result = result.replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g, '<span class="md-string">$1</span>');
+	// 5. Highlight Numbers
+	src = src.replace(/\b(0[xX][0-9a-fA-F]+|0[oO]?[0-7]+|0[bB][01]+|\d+\.?\d*(?:[eE][+-]?\d+)?)\b/g, '<span class="md-number">$1</span>');
 
-	// Numbers
-	result = result.replace(/\b(0[xX][0-9a-fA-F]+|0[oO]?[0-7]+|0[bB][01]+|\d+\.?\d*(?:[eE][+-]?\d+)?)\b/g, '<span class="md-number">$1</span>');
+	// 6. Restore Strings (escape content + wrap)
+	placeholders.strings.forEach((str, i) => {
+		const id = `__STR${i}__`;
+		const escaped = escapeHtml(str);
+		src = src.replace(id, `<span class="md-string">${escaped}</span>`);
+	});
 
-	// Comments
-	if (['javascript', 'typescript', 'java', 'cpp', 'c', 'go', 'rust'].includes(lang)) {
-		result = result.replace(/(\/\/.*$)/gm, '<span class="md-comment">$1</span>');
-		result = result.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="md-comment">$1</span>');
-	} else if (lang === 'python') {
-		result = result.replace(/(#.*$)/gm, '<span class="md-comment">$1</span>');
-		result = result.replace(/("""[\s\S]*?""")/g, '<span class="md-comment">$1</span>');
-		result = result.replace(/(' + "'" + "'" + "'" + '[\s\S]*?' + "'" + "'" + "'" + ')/g, '<span class="md-comment">$1</span>');
-	} else if (['bash', 'shell'].includes(lang)) {
-		result = result.replace(/(#.*$)/gm, '<span class="md-comment">$1</span>');
-	} else if (lang === 'sql') {
-		result = result.replace(/(--.*$)/gm, '<span class="md-comment">$1</span>');
-		result = result.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="md-comment">$1</span>');
-	} else if (lang === 'css') {
-		result = result.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="md-comment">$1</span>');
-	}
+	// 7. Restore Comments (escape content + wrap)
+	placeholders.comments.forEach((com, i) => {
+		const id = `__COM${i}__`;
+		const escaped = escapeHtml(com);
+		src = src.replace(id, `<span class="md-comment">${escaped}</span>`);
+	});
 
-	// HTML tags
+	// HTML tags (special case: minimal highlighting for tag names if lang is html)
+	// Since we escaped everything in step 3, we look for &lt;tagname
 	if (lang === 'html') {
-		result = result.replace(/(<\/?[a-zA-Z][\w-]*)(?:(?:\s+[\w-]+(?:\s*=\s*(?:"[^"]*"|' + "'" + '[^' + "'" + ']*' + "'" + '|[^>\s]+))?)*)?(>)/g, '<span class="md-keyword">$1</span>$2');
+		// Only highlight the tag name, e.g., &lt;div
+		src = src.replace(/(&lt;\/?)([a-zA-Z][\w-]*)/g, '$1<span class="md-keyword">$2</span>');
 	}
 
-	return result;
+	return src;
 }
 
 function escapeHtml(text) {
 	if (!text) return '';
 	return text
-		.replace(/&/g, '&')
-		.replace(/</g, '<')
-		.replace(/>/g, '>')
-		.replace(/"/g, '"')
-		.replace(/'/g, '&' + '#39;');
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;');
 }
 
 /**
