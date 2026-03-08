@@ -47,14 +47,16 @@ Good luck.
 
 ## Configuration
 
-Edit `config.json` with your settings:
+Edit `data/settings.json` with your settings:
 
 ```json
 {
-    "port": 1024,
-    "frontendPort": 1025,
-    "host": "0.0.0.0",
-    "frontendDir": "../../ctrlpanel"
+    "defaultModel" : "arcee-ai/trinity-large-preview:free",
+    "fallbackMaxOutputTokens" : 8192,
+    "host" : "0.0.0.0",
+    "port" : 1024,
+    "systemPrompt" : "",
+    "temperature" : 0.69999999999999996
 }
 ```
 
