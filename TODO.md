@@ -11,7 +11,6 @@
 
 ## AI Chat-box
 ### Features
-- Edit CMake to build .exe files alongside binaries
 - Add a build script (shell & batch)
 - Code block copying
 - Collapsable code blocks
@@ -187,6 +186,7 @@
 ### General
 - Message sending/generation
 - Generation chunk streaming
+- Linux & Windows support for back-end
 - Chat history
 - Multiple chats
 - OpenRouter API implementation

@@ -45,5 +45,15 @@ target_link_libraries(ctrlpanel_backend
     pthread
 )
 
+# Create a copy of the binary with a .exe extension alongside the original
+if(NOT CMAKE_EXECUTABLE_SUFFIX STREQUAL ".exe")
+    add_custom_command(TARGET ctrlpanel_backend POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:ctrlpanel_backend>
+        $<TARGET_FILE_DIR:ctrlpanel_backend>/ctrlpanel_backend.exe
+        COMMENT "Creating .exe copy of the executable"
+    )
+endif()
+
 # Install target
 install(TARGETS ctrlpanel_backend DESTINATION bin)
