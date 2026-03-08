@@ -11,6 +11,8 @@
 
 ## AI Chat-box
 ### Features
+- Build script
+- Live config change reloading
 - Code block copying
 - Collapsable code blocks
 - ESC to cancel message editing

@@ -1,6 +1,9 @@
 # Build dir
 backend/build/
 
+# Test dir
+testing/
+
 # Project dumps
 dev/project.json
 dev/project.md
