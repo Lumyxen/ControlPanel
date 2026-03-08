@@ -1,6 +1,8 @@
 # Control Panel
+A highly personal web interface to give me the information and tools I need all in 1 place
 
-An optimised and complex AI harness to give it the suite of tools it needs, because nobody else seems to be making good AI harnesses.
+## Features:
+- An optimised and complex AI harness to give it the suite of tools it needs, because nobody else seems to be making good AI harnesses.
 
 ## Installation
 1. Download the source code
@@ -10,7 +12,10 @@ An optimised and complex AI harness to give it the suite of tools it needs, beca
 5. In your browser, visit http://127.0.0.1:1025/
 
 ## About
-I started this project because corporations are greedy, want your data, want you to pay monthly, and make their AI chat-bots and/or harnesses bad to make you think you need the best of the AI models. On-top of this, I'm seeing a concerningly large amount of movement and acceptance towards age verification and digital ID verification, and I personally feel it wouldn't be long until those are applied to even the AI services that you have to use because you are hooked into their AI ecosystem they make just good enough to make you stay.
+I just wanted a local web interface to do things in.
+
+### AI chat-box
+I started this part of the control panel because corporations are greedy, want your data, want you to pay monthly, and make their AI chat-bots and/or harnesses bad to make you think you need the best of the AI models. On-top of this, I'm seeing a concerningly large amount of movement and acceptance towards age verification and digital ID verification, and I personally feel it wouldn't be long until those are applied to even the AI services that you have to use because you are hooked into their AI ecosystem they make just good enough to make you stay.
 
 I just want a place to use AI that is safe, private, and uses the AI to its full potential.
 
