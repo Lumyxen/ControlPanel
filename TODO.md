@@ -120,6 +120,21 @@
   - If so, the WAN speeds (a speed test), latency, and jitter
   - Returns local speeds, latency, and jitter (between the localhost ecosystem)
 - Small governing AI to make sure it doesn't get malicious, call out possible hallucinations, call out yes-manning, and call out repetition glitching and auto-stop and regenerate the response (where the AI gets stuck in an infinite loop)
+- Automatic and local AI model benchmarking
+  - Tool calling benchmark (tests how well it does tool calling when needed)
+  - Factual information accuracy benchmark (tests the accuracy of information it provides)
+  - Yes-man benchmark (tests if the AI will not agree on a wrong thing to please the user)
+  - Bullshit benchmark (tests the willingness of the model to answer nonsensical questions)
+  - Scaling benchmark (tests if the AI model will keep scaling intensity the more is added through multiple prompts versus all at once. e.g., User sends an initial message asking to rate something, goes past 10 messages, ends up with an 11/10 by the AI, whereas if it were all at once in the initial message, the AI would've given an 7/10)
+  - Ego benchmark (tests the ego of the AI model)
+  - IDK benchmark (tests the willingness of the model to say it doesn't know)
+  - Censorship benchmark (tests the censorship and guardrails baked into the AI model)
+  - Bias benchmark (tests the values and views baked into the AI model)
+  - Oblivious benchmark (tests how oblivious AI model are by never trying to connect dots from previous chat history, only treating the chat history like knowledge instead of information)
+  - TPS & TPS stability benchmark
+  - Latency benchmark
+  - Randomise questions via using a different AI model
+    - Warn user if selected AI model is from the same company as the AI model being benchmarked
 
 ### Possible Features
 - Guide to how to setup a local AI model for new users
