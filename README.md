@@ -56,7 +56,6 @@ Edit `config.json` with your settings:
 ```
 
 ## API Endpoints
-
 - `GET /api/auth/verify` - Verify API key
 - `POST /api/openrouter/chat` - Send chat message
 - `GET /api/openrouter/streaming` - Streaming chat
@@ -68,3 +67,10 @@ Edit `config.json` with your settings:
 - `DELETE /api/config/prompt-templates/{id}` - Delete prompt template
 - `GET /api/config/settings` - Get settings
 - `PUT /api/config/settings` - Update settings
+
+## AI Usage
+I do use AI heavily on this project to program.
+
+This does not mean that design choices are dictated by the AI models. This means I'm the one fine tuning and deciding on the UI aspects. If something with the UI is like that, it's either a bug or because I wanted it like that.
+
+I personally care about the result than the code itself. This does not mean I like unoptimised slop. If something doesn't work, that's bad. If something does work, that's good. If a function is optimised to levels that are good, I do not care if it was or wasn't written by AI, I care that it exists. If it works, it works. If it works well, it works well. People may disagree, but you aren't the project owner, so I don't care. This is a personal project. I'm not forcing you to use it.
