@@ -15,6 +15,8 @@
 - Collapsable code blocks
 - ESC to cancel message editing
 - Context window highlighting (yellow @ 50%, red @ 90%)
+- Save selected model per chat (switching to a chat changes selected model to saved chat, going to unknown saved chat or new chat switched to last selected model (auto-select from saved chat model doesn't count))
+- Save chats on back-end instead of localStorage
 - Add MCP server support
 - Add web search with SearXNG tool
 - Add calculator tool (replaces code execution)
@@ -37,8 +39,6 @@
   - Total tokens
 - Add current tokens per second display (updated every 0.5s)
 - Setting to change default model
-- Save selected model per chat (switching to a chat changes selected model to saved chat, going to unknown saved chat or new chat switched to last selected model (auto-select from saved chat model doesn't count))
-- Save chats on back-end instead of localStorage
 - Be able to stop AI response
 - Be able to pause/resume AI responses (may not be possible over OpenRouter)
 - Be able to scroll up and stop auto-scroll
