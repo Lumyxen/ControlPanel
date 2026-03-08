@@ -1,22 +1,7 @@
 // API service for backend communication
-import {
-    isDemoEnabled,
-    mockGetModels,
-    mockGetPricing,
-    mockSendChatMessage,
-    mockStreamChatMessage,
-    mockGetSettings,
-    mockUpdateSettings,
-} from './demo-mode.js';
-
 const API_BASE = "/api";
 
 async function makeRequest(endpoint, options = {}) {
-    // If in demo mode, return mock responses
-    if (isDemoEnabled()) {
-        return makeMockRequest(endpoint, options);
-    }
-    
     const url = `${API_BASE}${endpoint}`;
     const headers = {
         "Content-Type": "application/json",
@@ -41,43 +26,6 @@ async function makeRequest(endpoint, options = {}) {
     } catch (err) {
         console.error("API request failed:", err);
         throw err;
-    }
-}
-
-/**
- * Make mock request for demo mode
- * @param {string} endpoint - API endpoint
- * @param {Object} options - request options
- * @returns {Promise<any>}
- */
-async function makeMockRequest(endpoint, options = {}) {
-    console.log(`[DemoMode] Mock API call: ${endpoint}`);
-    
-    // Parse body if present
-    let body = {};
-    if (options.body) {
-        try {
-            body = JSON.parse(options.body);
-        } catch (e) {
-            // Ignore parse errors
-        }
-    }
-    
-    // Route to appropriate mock function
-    switch (endpoint) {
-        case '/models':
-            return mockGetModels();
-        case '/pricing':
-            return mockGetPricing();
-        case '/chat':
-            return mockSendChatMessage(body.model, body.prompt, body.max_tokens);
-        case '/config/settings':
-            if (options.method === 'PUT') {
-                return mockUpdateSettings(body);
-            }
-            return mockGetSettings();
-        default:
-            throw new Error(`Unknown endpoint: ${endpoint}`);
     }
 }
 
@@ -120,11 +68,6 @@ export async function streamChatMessage(
     systemPrompt = "",
     temperature = null,
 ) {
-    // If in demo mode, use mock streaming
-    if (isDemoEnabled()) {
-        return mockStreamChatMessage(model, prompt, maxTokens, onChunk);
-    }
-    
     const url = new URL(`${window.location.origin}${API_BASE}/chat/stream`);
 
     const headers = {

@@ -21,7 +21,7 @@ import {
 	initSidebarToggle,
 } from "./router.js";
 
-// Initialize connection monitoring and demo mode early
+// Initialize connection monitoring early
 initConnectionUI();
 
 // Bootstrap the settings store: fetch once then poll for external changes

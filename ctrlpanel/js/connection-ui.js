@@ -1,4 +1,4 @@
-// Connection monitoring UI - handles modal popups and demo mode initialization
+// Connection monitoring UI - handles modal popups
 import {
     startMonitoring,
     stopMonitoring,
@@ -9,7 +9,6 @@ import {
     stopAutoRetry,
     isBackendConnected,
 } from './connection-monitor.js';
-import { initDemoMode, isDemoEnabled } from './demo-mode.js';
 
 // Modal state
 let connectionModal = null;
@@ -18,19 +17,10 @@ let isConnectionModalVisible = false;
 let isOpenRouterModalVisible = false;
 
 /**
- * Initialize connection monitoring and demo mode
+ * Initialize connection monitoring
  * Call this early in app initialization
  */
 export function initConnectionUI() {
-    // Initialize demo mode first (checks URL params)
-    initDemoMode();
-    
-    // If in demo mode, skip connection monitoring
-    if (isDemoEnabled()) {
-        console.log('[ConnectionUI] Demo mode active - skipping connection monitoring');
-        return;
-    }
-    
     // Set up connection state change callbacks
     setConnectionChangeCallback(handleConnectionChange);
     setOpenRouterChangeCallback(handleOpenRouterChange);
