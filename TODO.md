@@ -11,8 +11,6 @@
 
 ## AI Chat-box
 ### Features
-- Build script
-- Live config change reloading
 - Code block copying
 - Collapsable code blocks
 - ESC to cancel message editing
@@ -181,6 +179,11 @@
 - AI chat-box
 - Settings page
   - AI chat-box OpenRouter API key status
+  - Configuration for AI generation values such as
+    - Default model
+    - Max output tokens fallback
+    - Temperature
+    - System Prompt
   - Customisable theme between all Everforest Palette choices and Catppuccin Palette choices
 
 ## AI chat-box
@@ -220,3 +223,4 @@
     - Agentic tool usage
     - Agenting programming
     - Prevting hallucinations or guesses
+- Config hot-reloading

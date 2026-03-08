@@ -21,17 +21,32 @@ private:
 public:
     OpenRouterService(const std::string& apiKey, Encryption& encryption);
     
-    Json::Value chat(const std::string& model, const std::string& prompt, int maxTokens = 2048, const std::string& systemPrompt = "") const;
-    Json::Value streamingChat(const std::string& model, const std::string& prompt, int maxTokens = 2048, const std::string& systemPrompt = "") const;
+    Json::Value chat(
+        const std::string& model,
+        const std::string& prompt,
+        int maxTokens = 2048,
+        const std::string& systemPrompt = "",
+        double temperature = -1.0
+    ) const;
+
+    Json::Value streamingChat(
+        const std::string& model,
+        const std::string& prompt,
+        int maxTokens = 2048,
+        const std::string& systemPrompt = "",
+        double temperature = -1.0
+    ) const;
     
     // Streaming with callback for SSE
+    // temperature: pass -1.0 (default) to omit the field and let the model use its own default.
     void streamingChatWithCallback(
         const std::string& model, 
         const std::string& prompt, 
         int maxTokens,
         std::function<void(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
-        const std::string& systemPrompt = ""
+        const std::string& systemPrompt = "",
+        double temperature = -1.0
     ) const;
     
     Json::Value getModels() const;

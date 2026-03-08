@@ -35,6 +35,7 @@ std::chrono::steady_clock::time_point lastOpenRouterCheck;
 std::atomic<bool> serverRunning{false};
 std::atomic<bool> serverError{false};
 std::atomic<bool> shouldStopHealthCheck{false};
+std::atomic<bool> shouldStopConfigWatch{false};
 
 fs::path getExecutableDir() {
     try {
@@ -217,9 +218,55 @@ void runOpenRouterHealthCheck() {
     }
 }
 
+/**
+ * Watch settings.json for external edits and reload Config when the file changes.
+ *
+ * Uses std::filesystem::last_write_time polled every second – no platform-specific
+ * APIs required, works on both Linux and Windows.
+ */
+void runConfigFileWatch(Config& config, const std::string& settingsPath) {
+    std::cout << "[ConfigWatch] Starting config file watcher for: " << settingsPath << "\n";
+
+    fs::file_time_type lastWriteTime{};
+
+    // Capture the initial mtime so we don't reload immediately on startup.
+    try {
+        if (fs::exists(settingsPath)) {
+            lastWriteTime = fs::last_write_time(settingsPath);
+        }
+    } catch (...) {}
+
+    while (!shouldStopConfigWatch.load()) {
+        // Sleep in 1-second increments so the stop flag is checked promptly.
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        if (shouldStopConfigWatch.load()) break;
+
+        try {
+            if (!fs::exists(settingsPath)) continue;
+
+            const auto mtime = fs::last_write_time(settingsPath);
+            if (mtime != lastWriteTime) {
+                lastWriteTime = mtime;
+                // Brief additional delay: give the writing process time to finish
+                // flushing so we don't read a half-written file.
+                std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                config.load();
+                std::cout << "[ConfigWatch] Detected change in settings.json – config reloaded\n";
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[ConfigWatch] Error watching config file: " << e.what() << "\n";
+        } catch (...) {
+            std::cerr << "[ConfigWatch] Unknown error watching config file\n";
+        }
+    }
+
+    std::cout << "[ConfigWatch] Config file watcher stopped\n";
+}
+
 void signalHandler(int signal) {
     std::cout << "\n[Signal] Received signal " << signal << ", initiating graceful shutdown...\n";
     shouldStopHealthCheck.store(true);
+    shouldStopConfigWatch.store(true);
     {
         std::lock_guard<std::mutex> lock(g_serverMutex);
         if (g_server) g_server->stop();
@@ -395,7 +442,8 @@ int main() {
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
     // 2 & 4. Initialize Config pointing to the data folder
-    Config config((dataDir / "settings.json").string());
+    const std::string settingsPath = (dataDir / "settings.json").string();
+    Config config(settingsPath);
     config.load(); // Will auto-create default if it doesn't exist
 
     std::string apiKey;
@@ -424,12 +472,14 @@ int main() {
 
     if (serverError.load()) {
         std::cerr << "\n[FATAL] Server failed to start. Exiting.\n";
+        shouldStopConfigWatch.store(true);
         serverThread.join();
         curl_global_cleanup();
         return 1;
     }
 
     std::thread healthCheckThread(runOpenRouterHealthCheck);
+    std::thread configWatchThread(runConfigFileWatch, std::ref(config), settingsPath);
 
     std::cout << "\n=== Server started successfully ===\n";
     std::cout << "Press Ctrl+C to stop the server\n\n";
@@ -437,10 +487,18 @@ int main() {
     serverThread.join();
     
     shouldStopHealthCheck.store(true);
+    shouldStopConfigWatch.store(true);
+
     if (healthCheckThread.joinable()) {
         std::cout << "[Shutdown] Stopping health check thread...\n";
         healthCheckThread.join();
         std::cout << "[Shutdown] Health check thread stopped\n";
+    }
+
+    if (configWatchThread.joinable()) {
+        std::cout << "[Shutdown] Stopping config watch thread...\n";
+        configWatchThread.join();
+        std::cout << "[Shutdown] Config watch thread stopped\n";
     }
 
     curl_global_cleanup();

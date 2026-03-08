@@ -27,12 +27,14 @@ void handleChat(const httplib::Request& req, httplib::Response& res, OpenRouterS
             return;
         }
 
-        std::string model = requestBody["model"].asString();
-        std::string prompt = requestBody["prompt"].asString();
-        int maxTokens = requestBody.isMember("max_tokens") ? requestBody["max_tokens"].asInt() : 2048;
+        std::string model      = requestBody["model"].asString();
+        std::string prompt     = requestBody["prompt"].asString();
+        int maxTokens          = requestBody.isMember("max_tokens")    ? requestBody["max_tokens"].asInt()       : 2048;
         std::string systemPrompt = requestBody.isMember("system_prompt") ? requestBody["system_prompt"].asString() : "";
+        // -1.0 signals "not provided" – the service will omit the field from the upstream request.
+        double temperature     = requestBody.isMember("temperature")   ? requestBody["temperature"].asDouble()   : -1.0;
 
-        auto response = service.chat(model, prompt, maxTokens, systemPrompt);
+        auto response = service.chat(model, prompt, maxTokens, systemPrompt, temperature);
 
         res.status = 200;
         res.set_content(response.toStyledString(), "application/json");
@@ -70,10 +72,11 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRo
             return;
         }
 
-        std::string model = requestBody["model"].asString();
-        std::string prompt = requestBody["prompt"].asString();
-        int maxTokens = requestBody.isMember("max_tokens") ? requestBody["max_tokens"].asInt() : 2048;
+        std::string model        = requestBody["model"].asString();
+        std::string prompt       = requestBody["prompt"].asString();
+        int maxTokens            = requestBody.isMember("max_tokens")    ? requestBody["max_tokens"].asInt()       : 2048;
         std::string systemPrompt = requestBody.isMember("system_prompt") ? requestBody["system_prompt"].asString() : "";
+        double temperature       = requestBody.isMember("temperature")   ? requestBody["temperature"].asDouble()   : -1.0;
 
         // Set up SSE response headers
         res.set_header("Content-Type", "text/event-stream");
@@ -84,7 +87,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRo
         auto ctx = std::make_shared<StreamingContext>();
         
         // Start streaming in background
-        std::thread([ctx, &service, model, prompt, maxTokens, systemPrompt]() {
+        std::thread([ctx, &service, model, prompt, maxTokens, systemPrompt, temperature]() {
             service.streamingChatWithCallback(
                 model, 
                 prompt, 
@@ -100,7 +103,8 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res, OpenRo
                     ctx->error = error;
                     ctx->done = true;
                 },
-                systemPrompt
+                systemPrompt,
+                temperature
             );
             
             {

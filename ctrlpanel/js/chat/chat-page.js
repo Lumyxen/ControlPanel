@@ -21,13 +21,15 @@ import {
 } from "./store.js";
 import { renderChatList } from "./sidebar.js";
 import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI } from "./context.js";
-import { getModels, getSettings } from "../api.js";
+import { getModels } from "../api.js";
 import { formatBytes } from "./util.js";
 import { renderThread, showTyping } from "./thread-ui.js";
 import { InlineAttachmentManager } from "./inline-attachment.js";
 import { parseMarkdown } from "./markdown.js";
 import { preprocessLatexText, extractMath, injectMath } from "./latex.js";
 import { streamChatMessage } from "../api.js";
+import * as SettingsStore from "../settings-store.js";
+
 const TOOLS_KEY = "ctrlpanel:toolsEnabled";
 
 /**
@@ -284,6 +286,36 @@ async function loadAndPopulateModels(root, signal) {
 	}
 }
 
+/**
+ * Apply the defaultModel from settings to the model dropdown.
+ * Selects the matching item (if it exists) and updates the label.
+ * @param {Element} root
+ * @param {string}  defaultModel  - OpenRouter model ID
+ */
+function applyDefaultModel(root, defaultModel) {
+	if (!defaultModel) return;
+	const modelDropdown = root.querySelector('[data-dropdown="model"]');
+	if (!modelDropdown) return;
+
+	const items = modelDropdown.querySelectorAll('.chat-dropdown-item');
+	const label = modelDropdown.querySelector('.chat-dropdown-label');
+	let matched = false;
+
+	items.forEach((item) => {
+		const isMatch = item.dataset.value === defaultModel;
+		item.classList.toggle("selected", isMatch);
+		item.setAttribute("aria-selected", String(isMatch));
+		if (isMatch) {
+			matched = true;
+			if (label) label.textContent = item.textContent.trim();
+		}
+	});
+
+	if (!matched) {
+		console.debug('[ChatPage] defaultModel not found in dropdown:', defaultModel);
+	}
+}
+
 function ensureChatExists(setActiveCallback) {
 	if (!getCurrentChatId() || !getChatById(getCurrentChatId())) {
 		createNewChat();
@@ -326,6 +358,22 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	const attachmentManager = new InlineAttachmentManager(input);
 
 	await loadAndPopulateModels(root, signal);
+
+	// Apply defaultModel from settings store once models are in the DOM
+	const initialSettings = SettingsStore.get();
+	if (initialSettings?.defaultModel) {
+		applyDefaultModel(root, initialSettings.defaultModel);
+	}
+
+	// Subscribe to settings changes for live defaultModel updates
+	const unsubSettings = SettingsStore.subscribe((settings) => {
+		if (settings?.defaultModel) {
+			applyDefaultModel(root, settings.defaultModel);
+		}
+	});
+
+	// Unsubscribe when this chat page is torn down
+	signal.addEventListener("abort", () => unsubSettings(), { once: true });
 
 	initDropdowns(root, signal);
 	initTools(root, signal);
@@ -541,14 +589,13 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		let errorFromStream = null;
 		let isSaved = false;
 
-		// Fetch the system prompt from backend settings (non-fatal if unavailable)
-		let systemPrompt = "";
-		try {
-			const settings = await getSettings();
-			systemPrompt = settings?.systemPrompt ?? "";
-		} catch (_) {
-			// Proceed without a system prompt if the request fails
-		}
+		// Resolve system prompt and temperature from the settings store (synchronous – no extra
+		// network round-trip; the store keeps itself fresh via background polling).
+		const currentSettings = SettingsStore.get() ?? {};
+		let systemPrompt = currentSettings.systemPrompt ?? "";
+		const temperature = (typeof currentSettings.temperature === "number")
+			? currentSettings.temperature
+			: null;
 
 		// Expand placeholders in the system prompt.
 		if (systemPrompt) {
@@ -648,7 +695,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					}
 				},
 				currentSignal,
-				systemPrompt
+				systemPrompt,
+				temperature,
 			);
 			
 			if (errorFromStream) {

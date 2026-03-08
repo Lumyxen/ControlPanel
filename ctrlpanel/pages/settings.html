@@ -30,6 +30,58 @@
         <p class="card-desc">Configure how the AI responds across all conversations.</p>
 
         <div class="option-row">
+            <label for="default-model-input">Default Model</label>
+            <input
+                id="default-model-input"
+                class="text-input"
+                type="text"
+                placeholder="e.g. arcee-ai/trinity-large-preview:free"
+                autocomplete="off"
+                spellcheck="false"
+            />
+            <p class="option-hint">Model ID pre-selected when opening a new chat. Must match an OpenRouter model ID exactly.</p>
+        </div>
+
+        <div class="option-row">
+            <label for="temperature-input">Temperature</label>
+            <div class="input-group" style="gap: 0.75rem; align-items: center;">
+                <input
+                    id="temperature-slider"
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.01"
+                    value="0.7"
+                    style="flex: 1; min-width: 0;"
+                />
+                <input
+                    id="temperature-input"
+                    type="number"
+                    min="0"
+                    max="2"
+                    step="0.01"
+                    value="0.7"
+                    style="flex: none; width: 5rem;"
+                />
+            </div>
+            <p class="option-hint">Sampling temperature sent with every request (0 = deterministic, 2 = very creative). Default: 0.7.</p>
+        </div>
+
+        <div class="option-row">
+            <label for="max-tokens-input">Max Output Tokens (fallback)</label>
+            <input
+                id="max-tokens-input"
+                type="number"
+                min="256"
+                max="131072"
+                step="256"
+                value="8192"
+                style="width: 8rem;"
+            />
+            <p class="option-hint">Used when a model does not report its own output-token limit via the API.</p>
+        </div>
+
+        <div class="option-row">
             <label for="system-prompt-input">System Prompt</label>
             <textarea
                 id="system-prompt-input"
@@ -38,10 +90,11 @@
                 placeholder="Enter a system prompt to send to every AI model (e.g. &quot;You are a helpful assistant that always responds concisely.&quot;)&#10;&#10;Leave empty for no system prompt."
             ></textarea>
             <p class="option-hint">Sent as the system role before every request. Stored on the backend. Supports placeholders: <code>{model}</code> (currently selected model name) and <code>{tools}</code> (comma-separated list of enabled tools, or "none").</p>
-            <div class="input-group" style="margin-top: 0.5rem;">
-                <button type="button" id="save-system-prompt" class="btn btn-primary">Save</button>
-                <span id="system-prompt-status" class="option-hint" style="margin-left: 0.5rem;"></span>
-            </div>
+        </div>
+
+        <div class="input-group" style="margin-top: 0.75rem;">
+            <button type="button" id="save-ai-settings" class="btn btn-primary">Save</button>
+            <span id="ai-settings-status" class="option-hint" style="margin-left: 0.5rem;"></span>
         </div>
     </section>
 

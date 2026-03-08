@@ -1,5 +1,6 @@
 import { initConnectionUI } from "./connection-ui.js";
 import { initTheme, initSettingsPage } from "./theme.js";
+import * as SettingsStore from "./settings-store.js";
 import {
 	clearCurrentChatId,
 	getChatById,
@@ -22,6 +23,10 @@ import {
 
 // Initialize connection monitoring and demo mode early
 initConnectionUI();
+
+// Bootstrap the settings store: fetch once then poll for external changes
+SettingsStore.init().catch(console.warn);
+SettingsStore.startPolling();
 
 function initPage(url, root) {
 	if (url.includes("pages/settings.html")) {

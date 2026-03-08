@@ -1,7 +1,8 @@
 export const THEME_KEY = "ctrlpanel:theme";
 export const DEFAULT_THEME = "everforest-harddark-green";
 
-import { getModels, getSettings, updateSettings } from "./api.js";
+import { getModels } from "./api.js";
+import * as SettingsStore from "./settings-store.js";
 
 export const PALETTES = {
 	everforest: {
@@ -166,6 +167,38 @@ export function syncSettingsUI(root) {
 	});
 }
 
+/**
+ * Populate the AI settings form fields from a settings object.
+ * @param {Element} root
+ * @param {Object} settings
+ */
+function populateAISettingsFields(root, settings) {
+	if (!settings) return;
+
+	const defaultModelInput = root.querySelector("#default-model-input");
+	if (defaultModelInput && settings.defaultModel != null) {
+		defaultModelInput.value = settings.defaultModel;
+	}
+
+	const temperatureSlider = root.querySelector("#temperature-slider");
+	const temperatureInput = root.querySelector("#temperature-input");
+	if (settings.temperature != null) {
+		const t = parseFloat(settings.temperature) || 0.7;
+		if (temperatureSlider) temperatureSlider.value = t;
+		if (temperatureInput) temperatureInput.value = t;
+	}
+
+	const maxTokensInput = root.querySelector("#max-tokens-input");
+	if (maxTokensInput && settings.fallbackMaxOutputTokens != null) {
+		maxTokensInput.value = settings.fallbackMaxOutputTokens;
+	}
+
+	const systemPromptInput = root.querySelector("#system-prompt-input");
+	if (systemPromptInput && settings.systemPrompt != null) {
+		systemPromptInput.value = settings.systemPrompt;
+	}
+}
+
 export function initSettingsPage(root) {
 	if (!root) return;
 	const paletteList = root.querySelector("[data-palette-list]");
@@ -226,7 +259,7 @@ export function initSettingsPage(root) {
 
 	syncSettingsUI(root);
 
-	// API Status configuration
+	// ─── API Status ───────────────────────────────────────────────────────────
 	const apiStatus = root.querySelector("#api-status");
 	const refreshApiBtn = root.querySelector("#refresh-api-status");
 
@@ -253,47 +286,98 @@ export function initSettingsPage(root) {
 			refreshApiBtn.addEventListener("click", updateStatus);
 		}
 
-		// Check status on load
 		updateStatus();
 	}
 
-	// System Prompt — load from backend and wire up Save button
-	const systemPromptInput = root.querySelector("#system-prompt-input");
-	const saveSystemPromptBtn = root.querySelector("#save-system-prompt");
-	const systemPromptStatus = root.querySelector("#system-prompt-status");
+	// ─── AI Settings (defaultModel, temperature, maxTokens, systemPrompt) ────
 
-	if (systemPromptInput && saveSystemPromptBtn) {
-		// Populate textarea with current backend value
-		(async () => {
-			try {
-				const settings = await getSettings();
-				systemPromptInput.value = settings?.systemPrompt ?? "";
-			} catch (err) {
-				console.warn("[Settings] Could not load system prompt:", err);
-			}
-		})();
+	const temperatureSlider = root.querySelector("#temperature-slider");
+	const temperatureInput  = root.querySelector("#temperature-input");
 
-		saveSystemPromptBtn.addEventListener("click", async () => {
-			saveSystemPromptBtn.disabled = true;
-			if (systemPromptStatus) {
-				systemPromptStatus.textContent = "Saving…";
-				systemPromptStatus.style.color = "";
-			}
+	// Keep slider and number input in sync with each other
+	if (temperatureSlider && temperatureInput) {
+		temperatureSlider.addEventListener("input", () => {
+			temperatureInput.value = temperatureSlider.value;
+		});
+		temperatureInput.addEventListener("input", () => {
+			const v = Math.min(2, Math.max(0, parseFloat(temperatureInput.value) || 0));
+			temperatureSlider.value = v;
+		});
+	}
+
+	// Populate fields from the settings store (may already be cached)
+	const cached = SettingsStore.get();
+	if (cached) {
+		populateAISettingsFields(root, cached);
+	}
+
+	// Subscribe so that externally-triggered reloads (e.g. file edit + poll)
+	// also update the form while it is open.
+	const unsubscribe = SettingsStore.subscribe((settings) => {
+		// Only overwrite fields that the user hasn't started editing
+		// (use document.activeElement check to avoid clobbering focused inputs)
+		const focused = document.activeElement;
+		const aiFields = ["#default-model-input", "#temperature-slider", "#temperature-input",
+		                  "#max-tokens-input", "#system-prompt-input"];
+		const userIsEditing = aiFields.some((sel) => root.querySelector(sel) === focused);
+		if (!userIsEditing) {
+			populateAISettingsFields(root, settings);
+		}
+	});
+
+	// Clean up the subscription when the fragment is replaced (navigation away)
+	// We use a MutationObserver on document.body to detect when root is removed.
+	const observer = new MutationObserver(() => {
+		if (!document.body.contains(root)) {
+			unsubscribe();
+			observer.disconnect();
+		}
+	});
+	observer.observe(document.body, { childList: true, subtree: true });
+
+	// ─── Save button ──────────────────────────────────────────────────────────
+	const saveBtn    = root.querySelector("#save-ai-settings");
+	const statusEl   = root.querySelector("#ai-settings-status");
+
+	if (saveBtn) {
+		saveBtn.addEventListener("click", async () => {
+			saveBtn.disabled = true;
+			if (statusEl) { statusEl.textContent = "Saving…"; statusEl.style.color = ""; }
+
 			try {
-				await updateSettings({ systemPrompt: systemPromptInput.value });
-				if (systemPromptStatus) {
-					systemPromptStatus.textContent = "Saved.";
-					systemPromptStatus.style.color = "var(--green, green)";
-					setTimeout(() => { systemPromptStatus.textContent = ""; }, 3000);
+				const defaultModelInput = root.querySelector("#default-model-input");
+				const maxTokensInput    = root.querySelector("#max-tokens-input");
+				const systemPromptInput = root.querySelector("#system-prompt-input");
+
+				const patch = {
+					systemPrompt:            systemPromptInput?.value ?? "",
+					defaultModel:            defaultModelInput?.value?.trim() ?? "",
+					temperature:             parseFloat(temperatureInput?.value ?? temperatureSlider?.value ?? "0.7") || 0.7,
+					fallbackMaxOutputTokens: parseInt(maxTokensInput?.value ?? "8192", 10) || 8192,
+				};
+
+				await SettingsStore.save(patch);
+
+				if (statusEl) {
+					statusEl.textContent = "Saved.";
+					statusEl.style.color = "var(--green, green)";
+					setTimeout(() => { statusEl.textContent = ""; }, 3000);
 				}
 			} catch (err) {
-				if (systemPromptStatus) {
-					systemPromptStatus.textContent = "Error: " + err.message;
-					systemPromptStatus.style.color = "var(--red, red)";
+				if (statusEl) {
+					statusEl.textContent = "Error: " + err.message;
+					statusEl.style.color = "var(--red, red)";
 				}
 			} finally {
-				saveSystemPromptBtn.disabled = false;
+				saveBtn.disabled = false;
 			}
 		});
+	}
+
+	// Trigger an initial load if the store hasn't been populated yet
+	if (!SettingsStore.get()) {
+		SettingsStore.init().then((settings) => {
+			populateAISettingsFields(root, settings);
+		}).catch(console.warn);
 	}
 }

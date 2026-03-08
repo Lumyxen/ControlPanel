@@ -229,21 +229,39 @@ OpenRouterService::OpenRouterService(const std::string& apiKey, Encryption& encr
     curl_global_init(CURL_GLOBAL_DEFAULT);
 }
 
-Json::Value OpenRouterService::chat(const std::string& model, const std::string& prompt, int maxTokens, const std::string& systemPrompt) const {
+Json::Value OpenRouterService::chat(
+    const std::string& model,
+    const std::string& prompt,
+    int maxTokens,
+    const std::string& systemPrompt,
+    double temperature
+) const {
     Json::Value requestBody;
     requestBody["model"] = model;
     requestBody["messages"] = buildMessages(prompt, systemPrompt);
     requestBody["max_tokens"] = maxTokens;
+    if (temperature >= 0.0) {
+        requestBody["temperature"] = temperature;
+    }
     
     return makeRequest("/chat/completions", requestBody);
 }
 
-Json::Value OpenRouterService::streamingChat(const std::string& model, const std::string& prompt, int maxTokens, const std::string& systemPrompt) const {
+Json::Value OpenRouterService::streamingChat(
+    const std::string& model,
+    const std::string& prompt,
+    int maxTokens,
+    const std::string& systemPrompt,
+    double temperature
+) const {
     Json::Value requestBody;
     requestBody["model"] = model;
     requestBody["messages"] = buildMessages(prompt, systemPrompt);
     requestBody["max_tokens"] = maxTokens;
     requestBody["stream"] = true;
+    if (temperature >= 0.0) {
+        requestBody["temperature"] = temperature;
+    }
     
     return makeRequest("/chat/completions", requestBody);
 }
@@ -255,7 +273,8 @@ void OpenRouterService::streamingChatWithCallback(
     int maxTokens,
     std::function<void(const std::string&)> onChunk,
     std::function<void(const std::string&)> onError,
-    const std::string& systemPrompt
+    const std::string& systemPrompt,
+    double temperature
 ) const {
     CURL* curl = curl_easy_init();
     if (!curl) {
@@ -286,6 +305,11 @@ void OpenRouterService::streamingChatWithCallback(
     requestBody["messages"] = buildMessages(prompt, systemPrompt);
     requestBody["max_tokens"] = maxTokens;
     requestBody["stream"] = true;
+    // Only include temperature if a non-negative value was requested.
+    // Negative (default -1.0) means "let the model / OpenRouter decide".
+    if (temperature >= 0.0) {
+        requestBody["temperature"] = temperature;
+    }
     
     std::string jsonBody = requestBody.toStyledString();
     

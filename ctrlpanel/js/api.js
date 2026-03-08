@@ -118,7 +118,26 @@ export async function sendChatMessage(model, prompt, maxTokens = 2048) {
     });
 }
 
-export async function streamChatMessage(model, prompt, maxTokens = 2048, onChunk, signal = null) {
+/**
+ * Stream a chat message.
+ *
+ * @param {string}   model
+ * @param {string}   prompt           - Full conversation history string
+ * @param {number}   maxTokens
+ * @param {function} onChunk          - Called with each parsed SSE chunk
+ * @param {AbortSignal|null} signal
+ * @param {string}   systemPrompt     - System prompt to prepend (sent to backend)
+ * @param {number|null} temperature   - Sampling temperature (null = use backend default)
+ */
+export async function streamChatMessage(
+    model,
+    prompt,
+    maxTokens = 2048,
+    onChunk,
+    signal = null,
+    systemPrompt = "",
+    temperature = null,
+) {
     // If in demo mode, use mock streaming
     if (isDemoEnabled()) {
         return mockStreamChatMessage(model, prompt, maxTokens, onChunk);
@@ -130,15 +149,24 @@ export async function streamChatMessage(model, prompt, maxTokens = 2048, onChunk
         "Content-Type": "application/json",
     };
 
+    // Build request body – only include optional fields when they carry a value
+    const requestPayload = {
+        model,
+        prompt,
+        max_tokens: maxTokens,
+    };
+    if (systemPrompt) {
+        requestPayload.system_prompt = systemPrompt;
+    }
+    if (temperature !== null && temperature !== undefined) {
+        requestPayload.temperature = temperature;
+    }
+
     try {
         const response = await fetch(url.toString(), {
             method: "POST",
             headers,
-            body: JSON.stringify({
-                model,
-                prompt,
-                max_tokens: maxTokens,
-            }),
+            body: JSON.stringify(requestPayload),
             signal
         });
 
