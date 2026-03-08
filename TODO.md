@@ -11,13 +11,20 @@
 
 ## AI Chat-box
 ### Features
-- Optimise the master system prompt for chatibility for the AI when it is not working on projects and is just conversing
-- Optimise the master system prompt for minimal to no yes-manning and minimal bias
-- Optimise the master system prompt to let the AI be able to say "I don't know"
-- ESC to cancel message editing
 - Code block copying
 - Collapsable code blocks
+- ESC to cancel message editing
 - Context window highlighting (yellow @ 50%, red @ 90%)
+- Add MCP server support
+- Add web search with SearXNG tool
+- Add calculator tool (replaces code execution)
+  - WolframAlpha API option
+- Headless browser tool
+- Edit CMake to build .exe files alongside binaries
+- Shell and batch build script
+- Publish to GitHub (not really a feature)
+### Start giving updates to GamingwithNP
+- Mobile UI support
 - Change notice styling that back-end and/or an API connection is offline or lost
 - Add a time-since-last-token timer to let the user know if the AI froze or is working without directly checking output
 - Add a time-since-first-token timer to let the user know how long the AI has been generating (resets when AI stops)
@@ -55,9 +62,7 @@
 - Migrate development onto skidbladnir to host it (not really a feature)
 - Add llama.cpp server API support for local AI on skidbladnir
 - Add LM Studio server API support for local AI on oseberg
-- Add MCP server support
 - Ensure tool placeholder in global system prompt also returns description of each tool
-- Add web search with SearXNG tool
 ##### Start dogfooding for everyday questions
 - Add a sandboxed CLI tool
 - Add file reading tool
@@ -65,7 +70,9 @@
   - Restrained to set workspace directory
   - Remote editing, so for example, it could work on a project on duyfken despite running on skidbladnir
 - Add file checkpoints before each AI file edit to ensure edits are reversable
-- Add calculator tool (replaces code execution)
+- Add LSP support for generated code files
+- Add logprobs
+  - Highlight uncertain tokens
 - Add sandboxed quick-code execution
 - Add weather tool (returns weather data, user location (not exposed to AI) default, can specify a location)
 - Add tool for information exploration (can search for any device in my localhost ecosystem, currently only oseberge, skidbladnir, and duyfken)
@@ -79,9 +86,13 @@
   - Stage the progression into RAG memory. Summarise a message in context window and put full message into RAG memory, then remove the summary of the message later
 - Context message pinning (permanently remains in context window)
 - Turn the response into a back-and-forth for the AI, allowing it to generate drafts, relook at it, refine it, and edit mistakes before sending the finalised result to what the user sees (do not block the user from seeing what the AI is generating at any point though).
+- Add a tool for the AI to call for another AI that would specialise in fact checking
+- Add a tool for the AI to see the structure of the directory active directory (like tree but only shows current folder and path)
 ##### Start dogfooding for everything else with AI
 - Ability to manually send a message into RAG memory storage
+- Add GitHub repo viewer tool
 - Add personal per-chat notes tool for the AI to use
+  - Capability for easy planning for the AI
 - Add message timestamps to history
 - Change tool list from system prompt into a centralised tool for the AI to search for available tools to use
 - Require user approval for if AI tries touchy commands (like `rm`)
@@ -92,7 +103,7 @@
 - Add chat exporting (T3.chat format, custom format as default)
 - Smooth fade-in text streaming instead of sharp blocky streaming
 - Smooth buttery typing and cursor (like monkeytype)
-- VS Code like qualities in text (alt+up/down arrow to move text up/down text field lines)
+- VS Code like qualities in text (alt+up/down arrow to move line of text up/down text field lines)
 - Step-by-Step thought graph (show different steps and decisions in a visual graph, like why it decided to skip research on a task)
 - Rework settings page to have tabs
 - Agent swarm tool (Democratic (models work together to form 1 final product) and Leadership (1 main orchestrating AI) versions)
@@ -112,12 +123,14 @@
 - Small governing AI to make sure it doesn't get malicious, call out possible hallucinations, call out yes-manning, and call out repetition glitching and auto-stop and regenerate the response (where the AI gets stuck in an infinite loop)
 
 ### Possible Features
+- Guide to how to setup a local AI model for new users
 - Token usage graph like Kilo Code
 - Markdown and LaTeX processing in the input text field
 - Detachment from browser (sepparate app)
 - RAG memory 3d visualiser
 - Negative Prompting (text field for AI to not do; e.g. "Do not apologize")
 - Prompt A/B testing
+- Browser Navigation (would need a small but capable vision model)
 - Togglable full on code mode?
   - Store projects in, AI edits will go into new git branch until you approve it to be working and then merge it into master.
   - Preview mode for websites to start a web-server automatically and open a newtab on the web-server.
@@ -185,4 +198,9 @@
   - Inline attachments
 - Context used/max info
   - Dynamically updates limits to what OpenRouter reports
-- A master system prompt to optimise AI models for programming, no yes-manning, and tool usage
+- A master system prompt
+  - Optimised for:
+    - No yes-manning
+    - Agentic tool usage
+    - Agenting programming
+    - Prevting hallucinations or guesses
