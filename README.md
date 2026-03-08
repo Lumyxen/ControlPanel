@@ -9,7 +9,7 @@ A highly personal web interface to give me the information and tools I need all 
 2. Add a system environment variable named `OPENROUTER_API_KEY` with it set to your OpenRouter API
 3. Build the app (commands down below)
 4. In the source code directory, for Linux, run `./backend/build/ctrlpanel_backend`, for Windows, run `.\backend\build\ctrlpanel_backend.exe`
-5. In your browser, visit http://127.0.0.1:1025/
+5. In your browser, visit http://127.0.0.1:1024/
 
 ## About
 I just wanted a local web interface to do things in.
