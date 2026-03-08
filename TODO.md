@@ -24,7 +24,7 @@
 - Add calculator tool (replaces code execution)
   - WolframAlpha API option
 - Headless browser tool
-### Start giving updates to GamingwithNP
+##### Start giving updates to GamingwithNP
 - Mobile UI support
 - Change notice styling that back-end and/or an API connection is offline or lost
 - Add a time-since-last-token timer to let the user know if the AI froze or is working without directly checking output
