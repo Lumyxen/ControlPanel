@@ -21,7 +21,7 @@
 - Save chats on back-end instead of localStorage
 - Add MCP server support
 - Add web search with SearXNG tool
-- Add calculator tool (replaces code execution)
+- Add calculator tool (replaces code execution reliance for math)
   - WolframAlpha API option
 - Headless browser tool
 ##### Start giving updates to GamingwithNP
