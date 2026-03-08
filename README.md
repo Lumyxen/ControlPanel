@@ -24,7 +24,6 @@ I just want a place to use AI that is safe, private, and uses the AI to its full
 - CMake 3.16+
 - jsoncpp
 - libcurl
-- OpenSSL
 
 ## Building
 ### Linux
