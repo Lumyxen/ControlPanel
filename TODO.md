@@ -11,6 +11,8 @@
 
 ## AI Chat-box
 ### Features
+- Edit CMake to build .exe files alongside binaries
+- Add a build script
 - Code block copying
 - Collapsable code blocks
 - ESC to cancel message editing
@@ -22,7 +24,6 @@
 - Add calculator tool (replaces code execution)
   - WolframAlpha API option
 - Headless browser tool
-- Edit CMake to build .exe files alongside binaries
 - Shell and batch build script
 - Publish to GitHub (not really a feature)
 ### Start giving updates to GamingwithNP
