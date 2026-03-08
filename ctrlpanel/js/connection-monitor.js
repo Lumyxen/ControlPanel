@@ -1,5 +1,5 @@
 // Connection monitoring module for backend health checks
-const API_BASE = "http://127.0.0.1:1024";
+const API_BASE = "";
 
 // Connection state
 let isConnected = true;

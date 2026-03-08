@@ -2,68 +2,38 @@
 #include <json/json.h>
 #include <fstream>
 #include <mutex>
+#include <ctime>
 #include <sstream>
-#include <string>
+#include <iostream>
 
 namespace {
     std::mutex config_mutex;
     Json::Value promptTemplates;
-    Json::Value settings;
-    bool config_loaded = false;
-    std::string data_dir; // Set once by initConfigController; never empty after that.
+    bool templates_loaded = false;
 
-    // Returns the absolute path for a filename inside data_dir.
-    std::string dataPath(const std::string& filename) {
-        return data_dir + "/" + filename;
-    }
-
-    void loadConfig() {
+    void loadPromptTemplates(const std::string& dataDir) {
         std::lock_guard<std::mutex> lock(config_mutex);
-        if (config_loaded) return;
-
-        // Load prompt templates
-        std::ifstream ptFile(dataPath("prompt_templates.json"));
+        if (templates_loaded) return;
+        
+        std::ifstream ptFile(dataDir + "/prompt_templates.json");
         if (ptFile.is_open()) {
             ptFile >> promptTemplates;
             ptFile.close();
         } else {
             promptTemplates = Json::Value(Json::arrayValue);
+            std::ofstream out(dataDir + "/prompt_templates.json");
+            out << promptTemplates.toStyledString();
         }
-
-        // Load settings
-        std::ifstream settingsFile(dataPath("settings.json"));
-        if (settingsFile.is_open()) {
-            settingsFile >> settings;
-            settingsFile.close();
-        } else {
-            settings = Json::Value();
-            settings["defaultModel"] = "arcee-ai/trinity-large-preview:free";
-            settings["maxTokens"] = 2048;
-            settings["temperature"] = 0.7;
-            settings["systemPrompt"] = "";
-        }
-
-        // Backfill systemPrompt for old settings files that predate the field.
-        if (!settings.isMember("systemPrompt")) {
-            settings["systemPrompt"] = "";
-        }
-
-        config_loaded = true;
+        templates_loaded = true;
     }
 
-    // NOTE: must be called with config_mutex already held — do NOT lock inside.
-    void savePromptTemplates() {
-        std::ofstream file(dataPath("prompt_templates.json"));
+    void savePromptTemplates(const std::string& dataDir) {
+        std::lock_guard<std::mutex> lock(config_mutex);
+        std::ofstream file(dataDir + "/prompt_templates.json");
         file << promptTemplates.toStyledString();
         file.close();
     }
-
-    void saveSettings() {
-        std::ofstream file(dataPath("settings.json"));
-        file << settings.toStyledString();
-        file.close();
-    }
-
+    
     bool parseJsonBody(const std::string& body, Json::Value& result) {
         Json::CharReaderBuilder reader;
         std::string errs;
@@ -72,19 +42,16 @@ namespace {
     }
 }
 
-void initConfigController(const std::string& dataDirectory) {
-    data_dir = dataDirectory;
-}
-
-void handleGetPromptTemplates(const httplib::Request& req, httplib::Response& res) {
-    loadConfig();
+void handleGetPromptTemplates(const httplib::Request& req, httplib::Response& res, const std::string& dataDir) {
+    loadPromptTemplates(dataDir);
+    std::lock_guard<std::mutex> lock(config_mutex);
     res.status = 200;
     res.set_content(promptTemplates.toStyledString(), "application/json");
 }
 
-void handleCreatePromptTemplate(const httplib::Request& req, httplib::Response& res) {
-    loadConfig();
-
+void handleCreatePromptTemplate(const httplib::Request& req, httplib::Response& res, const std::string& dataDir) {
+    loadPromptTemplates(dataDir);
+    
     Json::Value requestBody;
     if (!parseJsonBody(req.body, requestBody)) {
         res.status = 400;
@@ -99,25 +66,25 @@ void handleCreatePromptTemplate(const httplib::Request& req, httplib::Response& 
     }
 
     Json::Value newTemplate;
-    newTemplate["id"] = (int)promptTemplates.size() + 1;
+    newTemplate["id"] = std::to_string(std::time(nullptr));
     newTemplate["name"] = requestBody["name"];
     newTemplate["template"] = requestBody["template"];
+    newTemplate["created_at"] = std::to_string(std::time(nullptr));
 
     {
         std::lock_guard<std::mutex> lock(config_mutex);
         promptTemplates.append(newTemplate);
-        savePromptTemplates();
     }
+    savePromptTemplates(dataDir);
 
     res.status = 201;
     res.set_content(newTemplate.toStyledString(), "application/json");
 }
 
-void handleUpdatePromptTemplate(const httplib::Request& req, httplib::Response& res) {
-    loadConfig();
-
-    std::string idStr = req.matches[1];
-    int id = std::stoi(idStr);
+void handleUpdatePromptTemplate(const httplib::Request& req, httplib::Response& res, const std::string& dataDir) {
+    loadPromptTemplates(dataDir);
+    
+    std::string id = req.matches[1];
 
     Json::Value requestBody;
     if (!parseJsonBody(req.body, requestBody)) {
@@ -126,36 +93,21 @@ void handleUpdatePromptTemplate(const httplib::Request& req, httplib::Response& 
         return;
     }
 
-    std::lock_guard<std::mutex> lock(config_mutex);
-    for (Json::Value& tmpl : promptTemplates) {
-        if (tmpl["id"].asInt() == id) {
-            if (requestBody.isMember("name"))     tmpl["name"]     = requestBody["name"];
-            if (requestBody.isMember("template")) tmpl["template"] = requestBody["template"];
-            savePromptTemplates();
-            res.status = 200;
-            res.set_content(tmpl.toStyledString(), "application/json");
-            return;
-        }
-    }
-
-    res.status = 404;
-    res.set_content("{\"error\": \"Template not found\"}", "application/json");
-}
-
-void handleDeletePromptTemplate(const httplib::Request& req, httplib::Response& res) {
-    loadConfig();
-
-    std::string idStr = req.matches[1];
-    int id = std::stoi(idStr);
-
-    std::lock_guard<std::mutex> lock(config_mutex);
-    Json::Value newTemplates(Json::arrayValue);
     bool found = false;
-    for (const Json::Value& tmpl : promptTemplates) {
-        if (tmpl["id"].asInt() == id) {
-            found = true;
-        } else {
-            newTemplates.append(tmpl);
+    {
+        std::lock_guard<std::mutex> lock(config_mutex);
+        for (auto& template_obj : promptTemplates) {
+            if (template_obj["id"].asString() == id) {
+                if (requestBody.isMember("name")) {
+                    template_obj["name"] = requestBody["name"];
+                }
+                if (requestBody.isMember("template")) {
+                    template_obj["template"] = requestBody["template"];
+                }
+                template_obj["updated_at"] = std::to_string(std::time(nullptr));
+                found = true;
+                break;
+            }
         }
     }
 
@@ -165,21 +117,52 @@ void handleDeletePromptTemplate(const httplib::Request& req, httplib::Response& 
         return;
     }
 
-    promptTemplates = newTemplates;
-    savePromptTemplates();
+    savePromptTemplates(dataDir);
     res.status = 200;
-    res.set_content("{\"success\": true}", "application/json");
+    res.set_content("{\"status\": \"updated\"}", "application/json");
 }
 
-void handleGetSettings(const httplib::Request& req, httplib::Response& res) {
-    loadConfig();
+void handleDeletePromptTemplate(const httplib::Request& req, httplib::Response& res, const std::string& dataDir) {
+    loadPromptTemplates(dataDir);
+    
+    std::string id = req.matches[1];
+    
+    bool found = false;
+    {
+        std::lock_guard<std::mutex> lock(config_mutex);
+        Json::Value newArray(Json::arrayValue);
+        
+        for (auto& template_obj : promptTemplates) {
+            if (template_obj["id"].asString() != id) {
+                newArray.append(template_obj);
+            } else {
+                found = true;
+            }
+        }
+
+        if (found) {
+            promptTemplates = newArray;
+        }
+    }
+
+    if (!found) {
+        res.status = 404;
+        res.set_content("{\"error\": \"Template not found\"}", "application/json");
+        return;
+    }
+
+    savePromptTemplates(dataDir);
+
     res.status = 200;
-    res.set_content(settings.toStyledString(), "application/json");
+    res.set_content("{\"status\": \"deleted\"}", "application/json");
 }
 
-void handleUpdateSettings(const httplib::Request& req, httplib::Response& res) {
-    loadConfig();
+void handleGetSettings(const httplib::Request& req, httplib::Response& res, Config& config) {
+    res.status = 200;
+    res.set_content(config.toJson().toStyledString(), "application/json");
+}
 
+void handleUpdateSettings(const httplib::Request& req, httplib::Response& res, Config& config) {
     Json::Value requestBody;
     if (!parseJsonBody(req.body, requestBody)) {
         res.status = 400;
@@ -187,14 +170,8 @@ void handleUpdateSettings(const httplib::Request& req, httplib::Response& res) {
         return;
     }
 
-    std::lock_guard<std::mutex> lock(config_mutex);
-    if (requestBody.isMember("defaultModel"))  settings["defaultModel"]  = requestBody["defaultModel"];
-    if (requestBody.isMember("maxTokens"))     settings["maxTokens"]     = requestBody["maxTokens"];
-    if (requestBody.isMember("temperature"))   settings["temperature"]   = requestBody["temperature"];
-    if (requestBody.isMember("systemPrompt"))  settings["systemPrompt"]  = requestBody["systemPrompt"];
-
-    saveSettings();
+    config.updateFromJson(requestBody);
 
     res.status = 200;
-    res.set_content(settings.toStyledString(), "application/json");
+    res.set_content(config.toJson().toStyledString(), "application/json");
 }

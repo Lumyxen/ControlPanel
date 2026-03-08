@@ -10,6 +10,9 @@ pkg_check_modules(JSONCPP REQUIRED jsoncpp)
 pkg_check_modules(LIBCURL REQUIRED libcurl)
 pkg_check_modules(OPENSSL REQUIRED openssl)
 
+# Find Python for the embedder script
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
 # Include directories
 include_directories(${JSONCPP_INCLUDE_DIRS})
 include_directories(${LIBCURL_INCLUDE_DIRS})
@@ -21,23 +24,36 @@ include_directories(${CMAKE_SOURCE_DIR}/src)
 set(HTTPLIB_DIR "${CMAKE_SOURCE_DIR}/third_party/httplib")
 include_directories(${HTTPLIB_DIR})
 
+# Define output paths for the generated headers and cpp files
+set(EMBED_H "${CMAKE_BINARY_DIR}/embedded_frontend.h")
+set(EMBED_CPP "${CMAKE_BINARY_DIR}/embedded_frontend.cpp")
 
+# Glob the frontend directory so cmake knows to re-run if files are added or changed
+file(GLOB_RECURSE FRONTEND_FILES "${CMAKE_SOURCE_DIR}/../ctrlpanel/*")
+
+# Custom command to run the python embedder at build time
+add_custom_command(
+    OUTPUT ${EMBED_H} ${EMBED_CPP}
+    COMMAND Python3::Interpreter "${CMAKE_SOURCE_DIR}/scripts/embed_frontend.py" "${CMAKE_SOURCE_DIR}/../ctrlpanel" "${EMBED_H}" "${EMBED_CPP}"
+    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/embed_frontend.py" ${FRONTEND_FILES}
+    COMMENT "Embedding frontend files into standalone binary..."
+)
+
+include_directories("${CMAKE_BINARY_DIR}")
 
 # Source files
 set(SOURCES
     src/main.cpp
-    src/config/config.h
     src/utils/encryption.cpp
     src/services/openrouter_service.cpp
     src/controllers/auth_controller.cpp
     src/controllers/openrouter_controller.cpp
     src/controllers/config_controller.cpp
+    ${EMBED_CPP}
 )
 
-# Create executable
+# 1. Standard Linux/Native Binary Target
 add_executable(ctrlpanel_backend ${SOURCES})
-
-# Link libraries
 target_link_libraries(ctrlpanel_backend
     ${JSONCPP_LIBRARIES}
     ${LIBCURL_LIBRARIES}
@@ -45,15 +61,18 @@ target_link_libraries(ctrlpanel_backend
     pthread
 )
 
-# Create a copy of the binary with a .exe extension alongside the original
-if(NOT CMAKE_EXECUTABLE_SUFFIX STREQUAL ".exe")
-    add_custom_command(TARGET ctrlpanel_backend POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:ctrlpanel_backend>
-        $<TARGET_FILE_DIR:ctrlpanel_backend>/ctrlpanel_backend.exe
-        COMMENT "Creating .exe copy of the executable"
-    )
-endif()
+# 2. Windows .exe Target
+add_executable(ctrlpanel_backend_exe ${SOURCES})
+set_target_properties(ctrlpanel_backend_exe PROPERTIES 
+    OUTPUT_NAME "ctrlpanel_backend" 
+    SUFFIX ".exe"
+)
+target_link_libraries(ctrlpanel_backend_exe
+    ${JSONCPP_LIBRARIES}
+    ${LIBCURL_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
+    pthread
+)
 
-# Install target
-install(TARGETS ctrlpanel_backend DESTINATION bin)
+# Install targets
+install(TARGETS ctrlpanel_backend ctrlpanel_backend_exe DESTINATION bin)

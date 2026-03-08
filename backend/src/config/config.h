@@ -5,61 +5,93 @@
 #include <fstream>
 #include <json/json.h>
 #include <stdexcept>
+#include <mutex>
 
 class Config {
 private:
     int port;
-    int frontendPort;
     std::string host;
-    std::string frontendDir;
+    std::string defaultModel;
+    int maxTokens;
+    double temperature;
+    
+    std::string settingsPath;
+    std::mutex mutex;
 
 public:
-    Config() : port(1024), frontendPort(1025), host("0.0.0.0"), frontendDir("../ctrlpanel") {}
+    Config(const std::string& path) 
+        : port(1024), host("0.0.0.0"), defaultModel("stepfun/step-3.5-flash:free"), 
+          maxTokens(2048), temperature(0.7), settingsPath(path) {
+    }
 
-    bool loadFromFile(const std::string& filePath) {
-        try {
-            Json::Value config;
-            std::ifstream file(filePath);
-            if (!file.is_open()) {
-                return false;
-            }
-
-            file >> config;
-            file.close();
-
-            if (config.isMember("port")) {
-                port = config["port"].asInt();
-            }
-            if (config.isMember("frontendPort")) {
-                frontendPort = config["frontendPort"].asInt();
-            }
-            if (config.isMember("host")) {
-                host = config["host"].asString();
-            }
-            if (config.isMember("frontendDir")) {
-                frontendDir = config["frontendDir"].asString();
-            }
-
-            return true;
-        } catch (const std::exception& e) {
-            return false;
+    void load() {
+        std::lock_guard<std::mutex> lock(mutex);
+        std::ifstream file(settingsPath);
+        if (!file.is_open()) {
+            saveUnlocked();
+            return;
         }
+
+        Json::Value config;
+        try {
+            file >> config;
+        } catch (...) {
+            saveUnlocked();
+            return;
+        }
+
+        if (config.isMember("port")) port = config["port"].asInt();
+        if (config.isMember("host")) host = config["host"].asString();
+        if (config.isMember("defaultModel")) defaultModel = config["defaultModel"].asString();
+        if (config.isMember("maxTokens")) maxTokens = config["maxTokens"].asInt();
+        if (config.isMember("temperature")) temperature = config["temperature"].asDouble();
     }
 
-    int getPort() const {
-        return port;
+    void save() {
+        std::lock_guard<std::mutex> lock(mutex);
+        saveUnlocked();
+    }
+    
+    void updateFromJson(const Json::Value& root) {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (root.isMember("port")) port = root["port"].asInt();
+        if (root.isMember("host")) host = root["host"].asString();
+        if (root.isMember("defaultModel")) defaultModel = root["defaultModel"].asString();
+        if (root.isMember("maxTokens")) maxTokens = root["maxTokens"].asInt();
+        if (root.isMember("temperature")) temperature = root["temperature"].asDouble();
+        saveUnlocked();
+    }
+    
+    Json::Value toJson() {
+        std::lock_guard<std::mutex> lock(mutex);
+        Json::Value root;
+        root["port"] = port;
+        root["host"] = host;
+        root["defaultModel"] = defaultModel;
+        root["maxTokens"] = maxTokens;
+        root["temperature"] = temperature;
+        return root;
     }
 
-    int getFrontendPort() const {
-        return frontendPort;
-    }
+    int getPort() { std::lock_guard<std::mutex> lock(mutex); return port; }
+    std::string getHost() { std::lock_guard<std::mutex> lock(mutex); return host; }
 
-    std::string getHost() const {
-        return host;
-    }
+private:
+    void saveUnlocked() {
+        Json::Value root;
+        root["port"] = port;
+        root["host"] = host;
+        root["defaultModel"] = defaultModel;
+        root["maxTokens"] = maxTokens;
+        root["temperature"] = temperature;
 
-    std::string getFrontendDir() const {
-        return frontendDir;
+        std::ofstream file(settingsPath);
+        if(file.is_open()) {
+            Json::StreamWriterBuilder builder;
+            builder["indentation"] = "    ";
+            std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+            writer->write(root, &file);
+        }
     }
 };
 

@@ -11,7 +11,6 @@
 
 ## AI Chat-box
 ### Features
-- Add a build script (shell & batch)
 - Code block copying
 - Collapsable code blocks
 - ESC to cancel message editing
@@ -187,6 +186,7 @@
 - Message sending/generation
 - Generation chunk streaming
 - Linux & Windows support for back-end
+  - Master binary with data being saved in ./
 - Chat history
 - Multiple chats
 - OpenRouter API implementation
