@@ -1,7 +1,7 @@
 # Control Panel
 A highly personal web interface to give me the information and tools I need all in 1 place
 
-## Features:
+## Features
 - An optimised and complex AI chat-box/harness to give it the suite of tools it needs, because nobody else seems to be making good AI harnesses.
 
 ## Installation
