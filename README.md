@@ -8,7 +8,7 @@ A highly personal web interface to give me the information and tools I need all 
 1. Download the source code
 2. Add a system environment variable named `OPENROUTER_API_KEY` with it set to your OpenRouter API
 3. Build the app (commands down below)
-4. In the source code directory, run `./backend/build/ctrlpanel_backend` (Windows support not done yet)
+4. In the source code directory, for Linux, run `./backend/build/ctrlpanel_backend`, for Windows, run `.\backend\build\ctrlpanel_backend.exe`
 5. In your browser, visit http://127.0.0.1:1025/
 
 ## About
@@ -29,7 +29,7 @@ I just want a place to use AI that is safe, private, and uses the AI to its full
 ### Linux
 ```bash
 # Create build directory
-mkdir -p build
+mkdir -p backend/build/
 cd backend/build/
 
 # Configure
@@ -37,10 +37,13 @@ cmake ..
 
 # Build
 make -j$(nproc)
-
-# Run
-./ctrlpanel_backend
 ```
+
+### Windows
+I don't know man, I don't use Windows. Figure it out yourself.
+
+### Mac
+Good luck.
 
 ## Configuration
 
