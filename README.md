@@ -66,10 +66,6 @@ Edit `data/settings.json` with your settings:
 - `GET /api/openrouter/streaming` - Streaming chat
 - `GET /api/openrouter/models` - List available models
 - `GET /api/openrouter/pricing` - Get pricing info
-- `GET /api/config/prompt-templates` - Get prompt templates
-- `POST /api/config/prompt-templates` - Create prompt template
-- `PUT /api/config/prompt-templates/{id}` - Update prompt template
-- `DELETE /api/config/prompt-templates/{id}` - Delete prompt template
 - `GET /api/config/settings` - Get settings
 - `PUT /api/config/settings` - Update settings
 

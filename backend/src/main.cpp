@@ -346,30 +346,6 @@ void runServer(Config& config, OpenRouterService& openrouterService, const std::
         handlePricing(req, res, openrouterService);
     });
 
-    svr.Get("/api/config/prompt-templates", [&](const httplib::Request& req, httplib::Response& res) {
-        addSecurityHeaders(res);
-        addCorsHeaders(res, req);
-        handleGetPromptTemplates(req, res, dataDir);
-    });
-
-    svr.Post("/api/config/prompt-templates", [&](const httplib::Request& req, httplib::Response& res) {
-        addSecurityHeaders(res);
-        addCorsHeaders(res, req);
-        handleCreatePromptTemplate(req, res, dataDir);
-    });
-
-    svr.Put(R"(/api/config/prompt-templates/(\d+))", [&](const httplib::Request& req, httplib::Response& res) {
-        addSecurityHeaders(res);
-        addCorsHeaders(res, req);
-        handleUpdatePromptTemplate(req, res, dataDir);
-    });
-
-    svr.Delete(R"(/api/config/prompt-templates/(\d+))", [&](const httplib::Request& req, httplib::Response& res) {
-        addSecurityHeaders(res);
-        addCorsHeaders(res, req);
-        handleDeletePromptTemplate(req, res, dataDir);
-    });
-
     svr.Get("/api/config/settings", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res);
         addCorsHeaders(res, req);

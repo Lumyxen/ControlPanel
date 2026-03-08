@@ -7,10 +7,6 @@ import {
     mockStreamChatMessage,
     mockGetSettings,
     mockUpdateSettings,
-    mockGetPromptTemplates,
-    mockCreatePromptTemplate,
-    mockUpdatePromptTemplate,
-    mockDeletePromptTemplate,
 } from './demo-mode.js';
 
 const API_BASE = "/api";
@@ -80,21 +76,7 @@ async function makeMockRequest(endpoint, options = {}) {
                 return mockUpdateSettings(body);
             }
             return mockGetSettings();
-        case '/config/prompt-templates':
-            if (options.method === 'POST') {
-                return mockCreatePromptTemplate(body.name, body.template);
-            }
-            return mockGetPromptTemplates();
         default:
-            // Handle paths with IDs
-            if (endpoint.startsWith('/config/prompt-templates/')) {
-                const id = parseInt(endpoint.split('/').pop());
-                if (options.method === 'PUT') {
-                    return mockUpdatePromptTemplate(id, body);
-                } else if (options.method === 'DELETE') {
-                    return mockDeletePromptTemplate(id);
-                }
-            }
             throw new Error(`Unknown endpoint: ${endpoint}`);
     }
 }
@@ -253,29 +235,5 @@ export async function updateSettings(settings) {
     return makeRequest("/config/settings", {
         method: "PUT",
         body: JSON.stringify(settings),
-    });
-}
-
-export async function getPromptTemplates() {
-    return makeRequest("/config/prompt-templates");
-}
-
-export async function createPromptTemplate(name, template) {
-    return makeRequest("/config/prompt-templates", {
-        method: "POST",
-        body: JSON.stringify({ name, template }),
-    });
-}
-
-export async function updatePromptTemplate(id, data) {
-    return makeRequest(`/config/prompt-templates/${id}`, {
-        method: "PUT",
-        body: JSON.stringify(data),
-    });
-}
-
-export async function deletePromptTemplate(id) {
-    return makeRequest(`/config/prompt-templates/${id}`, {
-        method: "DELETE",
     });
 }

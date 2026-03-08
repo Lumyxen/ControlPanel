@@ -64,12 +64,6 @@ const MOCK_SETTINGS = {
     theme: "everforest-harddark-green",
 };
 
-const MOCK_PROMPT_TEMPLATES = [
-    { id: 1, name: "Code Review", template: "Please review this code for best practices and potential issues:\n\n{{code}}" },
-    { id: 2, name: "Explain Code", template: "Explain what this code does in simple terms:\n\n{{code}}" },
-    { id: 3, name: "Refactor", template: "Refactor this code to improve readability and performance:\n\n{{code}}" },
-];
-
 /**
  * Check if demo mode is enabled via URL parameter
  * @returns {boolean}
@@ -256,61 +250,6 @@ export async function mockUpdateSettings(settings) {
     await mockDelay(300, 500);
     Object.assign(MOCK_SETTINGS, settings);
     return { ...MOCK_SETTINGS };
-}
-
-/**
- * Mock get prompt templates
- * @returns {Promise<{templates: Array}>}
- */
-export async function mockGetPromptTemplates() {
-    await mockDelay(200, 400);
-    return { templates: [...MOCK_PROMPT_TEMPLATES] };
-}
-
-/**
- * Mock create prompt template
- * @param {string} name - template name
- * @param {string} template - template content
- * @returns {Promise<Object>}
- */
-export async function mockCreatePromptTemplate(name, template) {
-    await mockDelay(300, 500);
-    const newTemplate = {
-        id: MOCK_PROMPT_TEMPLATES.length + 1,
-        name,
-        template
-    };
-    MOCK_PROMPT_TEMPLATES.push(newTemplate);
-    return newTemplate;
-}
-
-/**
- * Mock update prompt template
- * @param {number} id - template ID
- * @param {Object} data - updated data
- * @returns {Promise<Object>}
- */
-export async function mockUpdatePromptTemplate(id, data) {
-    await mockDelay(300, 500);
-    const index = MOCK_PROMPT_TEMPLATES.findIndex(t => t.id === id);
-    if (index >= 0) {
-        MOCK_PROMPT_TEMPLATES[index] = { ...MOCK_PROMPT_TEMPLATES[index], ...data };
-        return MOCK_PROMPT_TEMPLATES[index];
-    }
-    throw new Error('Template not found');
-}
-
-/**
- * Mock delete prompt template
- * @param {number} id - template ID
- * @returns {Promise<void>}
- */
-export async function mockDeletePromptTemplate(id) {
-    await mockDelay(200, 400);
-    const index = MOCK_PROMPT_TEMPLATES.findIndex(t => t.id === id);
-    if (index >= 0) {
-        MOCK_PROMPT_TEMPLATES.splice(index, 1);
-    }
 }
 
 /**

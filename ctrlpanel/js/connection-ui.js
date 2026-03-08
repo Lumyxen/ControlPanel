@@ -182,7 +182,7 @@ function showOpenRouterModal() {
                 The OpenRouter API is currently unreachable. AI chat features may not work properly.
             </p>
             <div class="connection-modal-note">
-                💡 Note: Local features like settings and prompt templates will continue to work.
+                💡 Note: Local features like settings will continue to work.
             </div>
             <div class="connection-modal-actions">
                 <button class="connection-modal-button secondary" id="or-modal-dismiss">Dismiss</button>
