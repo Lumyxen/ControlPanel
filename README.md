@@ -11,7 +11,7 @@ A highly personal web interface to give me the information and tools I need all 
 4. Navigate to the build folder `backend/build/` and run the build file
 - **Linux**, run `ctrlpanel_backend`
 - **Windows**, run `ctrlpanel_backend.exe`
-5. In your browser, visit http://127.0.0.1:1024/
+5. In your browser, visit http://127.0.0.1:8080/
 
 ## About
 I just wanted a local web interface to do things in.

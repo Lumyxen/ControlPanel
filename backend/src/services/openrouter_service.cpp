@@ -1,691 +1,592 @@
 #include "services/openrouter_service.h"
+#include "services/mcp_registry.h"
 #include <curl/curl.h>
 #include <json/json.h>
 #include <iostream>
 #include <sstream>
 #include <vector>
 
-// libcurl write callback
-size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+// ── libcurl helpers ───────────────────────────────────────────────────────────
+static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
     ((std::string*)userp)->append((char*)contents, size * nmemb);
     return size * nmemb;
 }
 
-// Parse conversation history from "User: content\n\nAssistant: content\n\n..." format
-// into proper OpenAI message format
-Json::Value OpenRouterService::parseConversationHistory(const std::string& prompt) const {
-    Json::Value messages(Json::arrayValue);
-    
-    // Split the prompt by double newlines to separate messages
-    std::vector<std::string> lines;
-    std::string current;
-    std::istringstream stream(prompt);
-    std::string line;
-    
-    while (std::getline(stream, line)) {
-        // Check if this line starts a new message (User: or Assistant:)
-        if ((line.find("User:") == 0 || line.find("Assistant:") == 0) && !current.empty()) {
-            lines.push_back(current);
-            current = line;
-        } else {
-            if (!current.empty()) {
-                current += "\n";
-            }
-            current += line;
-        }
-    }
-    if (!current.empty()) {
-        lines.push_back(current);
-    }
-    
-    // Also try a simpler approach: split by "\n\n" and check each part
-    if (lines.empty()) {
-        std::string delimiter = "\n\n";
-        size_t pos = 0;
-        std::string token;
-        std::string tempPrompt = prompt;
-        while ((pos = tempPrompt.find(delimiter)) != std::string::npos) {
-            token = tempPrompt.substr(0, pos);
-            if (!token.empty()) {
-                lines.push_back(token);
-            }
-            tempPrompt.erase(0, pos + delimiter.length());
-        }
-        if (!tempPrompt.empty()) {
-            lines.push_back(tempPrompt);
-        }
-    }
-    
-    // Parse each line into a message
-    for (const std::string& msgLine : lines) {
-        std::string trimmed = msgLine;
-        // Trim leading whitespace
-        size_t start = trimmed.find_first_not_of(" \t\n\r");
-        if (start != std::string::npos) {
-            trimmed = trimmed.substr(start);
-        }
-        
-        Json::Value message;
-        if (trimmed.find("User:") == 0) {
-            message["role"] = "user";
-            std::string content = trimmed.substr(5); // Remove "User:"
-            // Trim leading whitespace from content
-            size_t contentStart = content.find_first_not_of(" \t");
-            if (contentStart != std::string::npos) {
-                content = content.substr(contentStart);
-            }
-            message["content"] = content;
-            messages.append(message);
-        } else if (trimmed.find("Assistant:") == 0) {
-            message["role"] = "assistant";
-            std::string content = trimmed.substr(10); // Remove "Assistant:"
-            // Trim leading whitespace from content
-            size_t contentStart = content.find_first_not_of(" \t");
-            if (contentStart != std::string::npos) {
-                content = content.substr(contentStart);
-            }
-            message["content"] = content;
-            messages.append(message);
-        } else if (!trimmed.empty()) {
-            // If no prefix found, treat as user message (fallback)
-            message["role"] = "user";
-            message["content"] = trimmed;
-            messages.append(message);
-        }
-    }
-    
-    // If no messages were parsed, treat the entire prompt as a single user message
-    if (messages.empty() && !prompt.empty()) {
-        Json::Value message;
-        message["role"] = "user";
-        message["content"] = prompt;
-        messages.append(message);
-    }
-    
-    return messages;
+static size_t WriteCallbackErrorBuffer(char* contents, size_t size, size_t nmemb, void* userp) {
+    ((std::string*)userp)->append((char*)contents, size * nmemb);
+    return size * nmemb;
 }
 
-// Build the full messages array, prepending an optional system message
-Json::Value OpenRouterService::buildMessages(const std::string& prompt, const std::string& systemPrompt) const {
-    Json::Value messages(Json::arrayValue);
-
-    if (!systemPrompt.empty()) {
-        Json::Value sysMsg;
-        sysMsg["role"] = "system";
-        sysMsg["content"] = systemPrompt;
-        messages.append(sysMsg);
-    }
-
-    const Json::Value history = parseConversationHistory(prompt);
-    for (const auto& msg : history) {
-        messages.append(msg);
-    }
-
-    return messages;
-}
-
-// libcurl write callback for streaming responses
-size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, void* userp) {
-    StreamContext* ctx = (StreamContext*)userp;
+// ── Streaming write callback ──────────────────────────────────────────────────
+// Processes SSE lines.  Forwards content/reasoning chunks via onChunk.
+// Accumulates tool_calls for the caller to inspect after the stream ends.
+static size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, void* userp) {
+    StreamContext* ctx = static_cast<StreamContext*>(userp);
     size_t realsize = size * nmemb;
-    
+
     ctx->buffer.append(contents, realsize);
-    
-    // Process complete lines
+
     size_t pos;
     while ((pos = ctx->buffer.find('\n')) != std::string::npos) {
         std::string line = ctx->buffer.substr(0, pos);
         ctx->buffer.erase(0, pos + 1);
-        
-        // Handle carriage return if it exists (from \r\n)
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
+
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+
+        if (line.find("data: ") != 0) continue;
+
+        std::string data = line.substr(6);
+
+        if (data == "[DONE]") {
+            // Do NOT forward [DONE] to the client yet; it will be sent when all rounds are complete.
+            continue;
         }
-        
-        if (line.find("data: ") == 0) {
-            std::string data = line.substr(6);
-            if (data == "[DONE]") {
-                // Forward the [DONE] marker as-is
-                if (ctx->onChunk) {
-                    ctx->onChunk("data: [DONE]\n\n");
-                }
-                continue;
-            }
-            
-            // Parse the JSON delta
-            Json::Value parsedJson;
-            Json::CharReaderBuilder reader;
-            std::string errs;
-            std::istringstream dataStream(data);
-            
-            if (Json::parseFromStream(reader, dataStream, &parsedJson, &errs)) {
-                // Extract content and reasoning from choices[0].delta
-                std::string content;
-                std::string reasoning;
-                bool hasContent = false;
-                bool hasReasoning = false;
-                
-                if (parsedJson.isMember("choices") && parsedJson["choices"].isArray() &&
-                    !parsedJson["choices"].empty() && parsedJson["choices"][0].isMember("delta")) {
-                    const Json::Value& delta = parsedJson["choices"][0]["delta"];
-                    
-                    if (delta.isMember("content") && !delta["content"].asString().empty()) {
-                        content = delta["content"].asString();
-                        hasContent = true;
-                    }
-                    
-                    if (delta.isMember("reasoning") && !delta["reasoning"].asString().empty()) {
-                        reasoning = delta["reasoning"].asString();
-                        hasReasoning = true;
-                    }
-                }
-                
-                // Create new JSON object with only non-empty fields
-                if (hasContent || hasReasoning) {
-                    Json::Value newDelta;
-                    if (hasContent) {
-                        newDelta["content"] = content;
-                    }
-                    if (hasReasoning) {
-                        newDelta["reasoning"] = reasoning;
-                    }
-                    
-                    Json::Value newChoice;
-                    newChoice["delta"] = newDelta;
-                    
-                    Json::Value newJson;
-                    newJson["choices"].append(newChoice);
-                    
-                    // Create reformatted SSE line
-                    Json::StreamWriterBuilder writer;
-                    writer["indentation"] = "";
-                    std::string newData = Json::writeString(writer, newJson);
-                    
-                    if (ctx->onChunk) {
-                        ctx->onChunk("data: " + newData + "\n\n");
-                    }
-                }
-            } else {
-                // If parsing fails, forward the original line
-                if (ctx->onChunk) {
-                    ctx->onChunk(line + "\n\n");
+
+        Json::Value parsed;
+        Json::CharReaderBuilder reader;
+        std::string errs;
+        std::istringstream ds(data);
+        if (!Json::parseFromStream(reader, ds, &parsed, &errs)) {
+            if (ctx->onChunk) ctx->onChunk(line + "\n\n");
+            continue;
+        }
+
+        // Handle direct SSE stream errors from OpenRouter
+        if (parsed.isMember("error")) {
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            if (ctx->onChunk) ctx->onChunk("data: " + Json::writeString(wb, parsed) + "\n\n");
+            ctx->finishReason = "_api_error_";
+            continue;
+        }
+
+        if (!parsed.isMember("choices") || !parsed["choices"].isArray()
+                || parsed["choices"].empty()) continue;
+
+        const Json::Value& choice = parsed["choices"][0];
+
+        // Capture finish_reason when present
+        if (choice.isMember("finish_reason") && !choice["finish_reason"].isNull()) {
+            ctx->finishReason = choice["finish_reason"].asString();
+        }
+
+        if (!choice.isMember("delta")) continue;
+        const Json::Value& delta = choice["delta"];
+
+        // ── Accumulate tool_calls ─────────────────────────────────────────────
+        if (delta.isMember("tool_calls") && delta["tool_calls"].isArray()) {
+            for (const auto& tc : delta["tool_calls"]) {
+                int idx = tc.get("index", 0).asInt();
+                while ((int)ctx->toolCalls.size() <= idx)
+                    ctx->toolCalls.push_back({});
+
+                if (tc.isMember("id"))
+                    ctx->toolCalls[idx].id = tc["id"].asString();
+
+                if (tc.isMember("function")) {
+                    const auto& fn = tc["function"];
+                    if (fn.isMember("name"))
+                        ctx->toolCalls[idx].name += fn["name"].asString();
+                    if (fn.isMember("arguments"))
+                        ctx->toolCalls[idx].argumentsJson += fn["arguments"].asString();
                 }
             }
+            // Do NOT forward tool_call deltas to the client
+            continue;
+        }
+
+        // ── Forward content / reasoning ───────────────────────────────────────
+        bool hasContent   = delta.isMember("content")   && !delta["content"].asString().empty();
+        bool hasReasoning = delta.isMember("reasoning") && !delta["reasoning"].asString().empty();
+
+        if (hasContent || hasReasoning) {
+            Json::Value newDelta;
+            if (hasContent)   newDelta["content"]   = delta["content"].asString();
+            if (hasReasoning) newDelta["reasoning"]  = delta["reasoning"].asString();
+
+            Json::Value newChoice;
+            newChoice["delta"] = newDelta;
+
+            Json::Value newJson;
+            newJson["choices"].append(newChoice);
+
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            if (ctx->onChunk)
+                ctx->onChunk("data: " + Json::writeString(wb, newJson) + "\n\n");
         }
     }
-    
+
     return realsize;
 }
 
-// Callback to capture HTTP error response body
-size_t WriteCallbackErrorBuffer(char* contents, size_t size, size_t nmemb, void* userp) {
-    ((std::string*)userp)->append((char*)contents, size * nmemb);
-    return size * nmemb;
-}
-
+// ── Constructor ───────────────────────────────────────────────────────────────
 OpenRouterService::OpenRouterService(const std::string& apiKey, Encryption& encryption)
     : apiKey(apiKey), encryption(encryption) {
-    // Don't require API key at startup - allow server to start without it
     curl_global_init(CURL_GLOBAL_DEFAULT);
 }
 
+// ── buildMessages ─────────────────────────────────────────────────────────────
+Json::Value OpenRouterService::buildMessages(const std::string& prompt,
+                                              const std::string& systemPrompt) const {
+    Json::Value messages(Json::arrayValue);
+    if (!systemPrompt.empty()) {
+        Json::Value sys;
+        sys["role"]    = "system";
+        sys["content"] = systemPrompt;
+        messages.append(sys);
+    }
+    for (const auto& m : parseConversationHistory(prompt))
+        messages.append(m);
+    return messages;
+}
+
+// ── Legacy helpers ────────────────────────────────────────────────────────────
+Json::Value OpenRouterService::parseConversationHistory(const std::string& prompt) const {
+    Json::Value messages(Json::arrayValue);
+    std::vector<std::string> lines;
+    std::string current;
+    std::istringstream stream(prompt);
+    std::string line;
+
+    while (std::getline(stream, line)) {
+        if ((line.find("User:") == 0 || line.find("Assistant:") == 0) && !current.empty()) {
+            lines.push_back(current);
+            current = line;
+        } else {
+            if (!current.empty()) current += "\n";
+            current += line;
+        }
+    }
+    if (!current.empty()) lines.push_back(current);
+
+    if (lines.empty()) {
+        std::string delimiter = "\n\n", token, tempPrompt = prompt;
+        size_t p = 0;
+        while ((p = tempPrompt.find(delimiter)) != std::string::npos) {
+            token = tempPrompt.substr(0, p);
+            if (!token.empty()) lines.push_back(token);
+            tempPrompt.erase(0, p + delimiter.length());
+        }
+        if (!tempPrompt.empty()) lines.push_back(tempPrompt);
+    }
+
+    for (const std::string& msgLine : lines) {
+        std::string trimmed = msgLine;
+        size_t start = trimmed.find_first_not_of(" \t\n\r");
+        if (start != std::string::npos) trimmed = trimmed.substr(start);
+
+        Json::Value message;
+        if (trimmed.find("User:") == 0) {
+            message["role"]    = "user";
+            std::string c = trimmed.substr(5);
+            size_t cs = c.find_first_not_of(" \t");
+            if (cs != std::string::npos) c = c.substr(cs);
+            message["content"] = c;
+            messages.append(message);
+        } else if (trimmed.find("Assistant:") == 0) {
+            message["role"]    = "assistant";
+            std::string c = trimmed.substr(10);
+            size_t cs = c.find_first_not_of(" \t");
+            if (cs != std::string::npos) c = c.substr(cs);
+            message["content"] = c;
+            messages.append(message);
+        } else if (!trimmed.empty()) {
+            message["role"]    = "user";
+            message["content"] = trimmed;
+            messages.append(message);
+        }
+    }
+
+    if (messages.empty() && !prompt.empty()) {
+        Json::Value m;
+        m["role"]    = "user";
+        m["content"] = prompt;
+        messages.append(m);
+    }
+    return messages;
+}
+
+// ── chat (non-streaming) ──────────────────────────────────────────────────────
 Json::Value OpenRouterService::chat(
-    const std::string& model,
-    const std::string& prompt,
-    int maxTokens,
-    const std::string& systemPrompt,
-    double temperature
-) const {
-    Json::Value requestBody;
-    requestBody["model"] = model;
-    requestBody["messages"] = buildMessages(prompt, systemPrompt);
-    requestBody["max_tokens"] = maxTokens;
-    if (temperature >= 0.0) {
-        requestBody["temperature"] = temperature;
-    }
-    
-    return makeRequest("/chat/completions", requestBody);
+        const std::string& model, const std::string& prompt,
+        int maxTokens, const std::string& systemPrompt, double temperature) const {
+    Json::Value body;
+    body["model"]      = model;
+    body["messages"]   = buildMessages(prompt, systemPrompt);
+    body["max_tokens"] = maxTokens;
+    if (temperature >= 0.0) body["temperature"] = temperature;
+    return makeRequest("/chat/completions", body);
 }
 
+// ── streamingChat (simple, non-tool) ─────────────────────────────────────────
 Json::Value OpenRouterService::streamingChat(
-    const std::string& model,
-    const std::string& prompt,
-    int maxTokens,
-    const std::string& systemPrompt,
-    double temperature
-) const {
-    Json::Value requestBody;
-    requestBody["model"] = model;
-    requestBody["messages"] = buildMessages(prompt, systemPrompt);
-    requestBody["max_tokens"] = maxTokens;
-    requestBody["stream"] = true;
-    if (temperature >= 0.0) {
-        requestBody["temperature"] = temperature;
-    }
-    
-    return makeRequest("/chat/completions", requestBody);
+        const std::string& model, const std::string& prompt,
+        int maxTokens, const std::string& systemPrompt, double temperature) const {
+    Json::Value body;
+    body["model"]      = model;
+    body["messages"]   = buildMessages(prompt, systemPrompt);
+    body["max_tokens"] = maxTokens;
+    body["stream"]     = true;
+    if (temperature >= 0.0) body["temperature"] = temperature;
+    return makeRequest("/chat/completions", body);
 }
 
-// Streaming callback that sends data directly to the client via callback
-void OpenRouterService::streamingChatWithCallback(
-    const std::string& model,
-    const std::string& prompt,
-    int maxTokens,
-    std::function<void(const std::string&)> onChunk,
-    std::function<void(const std::string&)> onError,
-    const std::string& systemPrompt,
-    double temperature
-) const {
+// ── streamOneRound ────────────────────────────────────────────────────────────
+// Executes one streaming request and returns the finish_reason string.
+// Tool call deltas are accumulated into toolCallsOut; content is forwarded via onChunk.
+std::string OpenRouterService::streamOneRound(
+        const Json::Value& requestBody,
+        std::function<void(const std::string&)> onChunk,
+        std::function<void(const std::string&)> onError,
+        std::vector<StreamContext::ToolCallAccum>& toolCallsOut) const {
+
     CURL* curl = curl_easy_init();
-    if (!curl) {
-        onError("Failed to initialize CURL");
-        return;
-    }
-    
+    if (!curl) { onError("Failed to init CURL"); return "_internal_error_"; }
+
     std::string decryptedKey = decryptApiKey();
-    
     if (decryptedKey.empty()) {
         onError("OpenRouter API key not configured");
         curl_easy_cleanup(curl);
-        return;
+        return "_internal_error_";
     }
-    
-    std::string url = "https://openrouter.ai/api/v1/chat/completions";
-    
-    struct curl_slist* headers = NULL;
+
+    const std::string url = "https://openrouter.ai/api/v1/chat/completions";
+
+    struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, ("Authorization: Bearer " + decryptedKey).c_str());
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "HTTP-Referer: http://localhost");
     headers = curl_slist_append(headers, "X-Title: CtrlPanel");
     headers = curl_slist_append(headers, "Accept: text/event-stream");
     headers = curl_slist_append(headers, "Expect:");
-    
-    Json::Value requestBody;
-    requestBody["model"] = model;
-    requestBody["messages"] = buildMessages(prompt, systemPrompt);
-    requestBody["max_tokens"] = maxTokens;
-    requestBody["stream"] = true;
-    // Only include temperature if a non-negative value was requested.
-    // Negative (default -1.0) means "let the model / OpenRouter decide".
-    if (temperature >= 0.0) {
-        requestBody["temperature"] = temperature;
-    }
-    
-    std::string jsonBody = requestBody.toStyledString();
-    
-    // Set up streaming context with callback
-    StreamContext streamCtx;
-    streamCtx.onChunk = onChunk;
-    
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    std::string jsonBody = Json::writeString(wb, requestBody);
+
+    StreamContext ctx;
+    ctx.onChunk = onChunk;
+
+    curl_easy_setopt(curl, CURLOPT_URL,           url.c_str());
+    curl_easy_setopt(curl, CURLOPT_POST,           1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)jsonBody.length());
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, jsonBody.c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    
-    // Use the streaming write callback for real-time processing
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallbackStream);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &streamCtx);
-    
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,   CURL_HTTP_VERSION_2_0);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,  (long)jsonBody.size());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS,     jsonBody.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER,     headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,  WriteCallbackStream);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &ctx);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L); // Abort if stalled
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 120L); // for 120 seconds
+
     CURLcode res = curl_easy_perform(curl);
-    
     long httpCode = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-    
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
-        std::string errMsg = std::string("Failed to connect to OpenRouter: ") + curl_easy_strerror(res);
-        std::cerr << "[OpenRouterService] CURL error, calling onError with: " << errMsg << std::endl;
-        onError(errMsg);
-        return;
+        onError(std::string("CURL error: ") + curl_easy_strerror(res));
+        return "_internal_error_";
     }
-    
     if (httpCode != 200) {
-        Json::Value errorJson;
-        Json::CharReaderBuilder reader;
-        std::string errs;
-        std::istringstream stream(streamCtx.buffer);
+        onError("HTTP error: " + std::to_string(httpCode)
+                + (ctx.buffer.empty() ? "" : " - " + ctx.buffer.substr(0, 300)));
+        return "_internal_error_";
+    }
 
-        if (Json::parseFromStream(reader, stream, &errorJson, &errs)) {
-            if (errorJson.isMember("error")) {
-                const Json::Value& errorObj = errorJson["error"];
-                std::string errorMsg;
-                if (errorObj.isObject()) {
-                    if (errorObj.isMember("message")) {
-                        errorMsg = errorObj["message"].asString();
-                        onError(errorMsg);
-                        return;
-                    }
-                    if (errorObj.isMember("code")) {
-                        errorMsg = "OpenRouter error: " + errorObj["code"].asString();
-                        onError(errorMsg);
-                        return;
-                    }
-                } else if (errorObj.isString()) {
-                    errorMsg = errorObj.asString();
-                    onError(errorMsg);
-                    return;
-                }
-            }
-        }
-
-        std::string errorMsg = "HTTP error: " + std::to_string(httpCode);
-        if (!streamCtx.buffer.empty()) {
-            errorMsg += " - " + streamCtx.buffer.substr(0, 500);
-        }
-        onError(errorMsg);
-        return;
-    }
-    
-    // Process any remaining data in the buffer (incomplete final line)
-    if (!streamCtx.buffer.empty()) {
-        std::string line = streamCtx.buffer;
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        
-        if (line.find("data: ") == 0) {
-            std::string data = line.substr(6);
-            if (data != "[DONE]") {
-                Json::Value parsedJson;
-                Json::CharReaderBuilder reader;
-                std::string errs;
-                std::istringstream dataStream(data);
-                
-                if (Json::parseFromStream(reader, dataStream, &parsedJson, &errs)) {
-                    std::string content;
-                    std::string reasoning;
-                    bool hasContent = false;
-                    bool hasReasoning = false;
-                    
-                    if (parsedJson.isMember("choices") && parsedJson["choices"].isArray() &&
-                        !parsedJson["choices"].empty() && parsedJson["choices"][0].isMember("delta")) {
-                        const Json::Value& delta = parsedJson["choices"][0]["delta"];
-                        
-                        if (delta.isMember("content") && !delta["content"].asString().empty()) {
-                            content = delta["content"].asString();
-                            hasContent = true;
-                        }
-                        
-                        if (delta.isMember("reasoning") && !delta["reasoning"].asString().empty()) {
-                            reasoning = delta["reasoning"].asString();
-                            hasReasoning = true;
-                        }
-                    }
-                    
-                    if (hasContent || hasReasoning) {
-                        Json::Value newDelta;
-                        if (hasContent) newDelta["content"] = content;
-                        if (hasReasoning) newDelta["reasoning"] = reasoning;
-                        
-                        Json::Value newChoice;
-                        newChoice["delta"] = newDelta;
-                        
-                        Json::Value newJson;
-                        newJson["choices"].append(newChoice);
-                        
-                        Json::StreamWriterBuilder writer;
-                        writer["indentation"] = "";
-                        std::string newData = Json::writeString(writer, newJson);
-                        
-                        if (onChunk) {
-                            onChunk("data: " + newData + "\n\n");
-                        }
-                    }
-                } else {
-                    if (onChunk) {
-                        onChunk(line + "\n\n");
-                    }
-                }
-            }
-        }
-    }
-    
-    // Send final chunk to signal completion
-    if (onChunk) {
-        onChunk("data:[DONE]\n\n");
-    }
+    toolCallsOut = std::move(ctx.toolCalls);
+    return ctx.finishReason;
 }
 
+// ── streamingChatWithCallback (legacy, no tool loop) ─────────────────────────
+void OpenRouterService::streamingChatWithCallback(
+        const std::string& model, const std::string& prompt,
+        int maxTokens,
+        std::function<void(const std::string&)> onChunk,
+        std::function<void(const std::string&)> onError,
+        const std::string& systemPrompt, double temperature) const {
+
+    Json::Value body;
+    body["model"]      = model;
+    body["messages"]   = buildMessages(prompt, systemPrompt);
+    body["max_tokens"] = maxTokens;
+    body["stream"]     = true;
+    if (temperature >= 0.0) body["temperature"] = temperature;
+
+    std::vector<StreamContext::ToolCallAccum> unused;
+    streamOneRound(body, onChunk, onError, unused);
+
+    if (onChunk) onChunk("data: [DONE]\n\n");
+}
+
+// ── streamingChatWithTools (agentic tool loop) ────────────────────────────────
+void OpenRouterService::streamingChatWithTools(
+        const std::string& model,
+        Json::Value messages,
+        const Json::Value& tools,
+        int maxTokens,
+        std::function<void(const std::string&)> onChunk,
+        std::function<void(const std::string&)> onError,
+        McpRegistry* registry,
+        double temperature) const {
+
+    for (;;) {
+        // Build request body
+        Json::Value body;
+        body["model"]      = model;
+        body["messages"]   = messages;
+        body["max_tokens"] = maxTokens;
+        body["stream"]     = true;
+        if (temperature >= 0.0) body["temperature"] = temperature;
+
+        // Attach tools on every round so the model can keep using them
+        if (!tools.isNull() && tools.isArray() && !tools.empty()) {
+            body["tools"]       = tools;
+            body["tool_choice"] = "auto";
+        }
+
+        std::vector<StreamContext::ToolCallAccum> toolCalls;
+        const std::string finishReason = streamOneRound(body, onChunk, onError, toolCalls);
+
+        if (finishReason == "_internal_error_" || finishReason == "_api_error_") {
+            return; // Error already sent up the pipe via WriteCallbackStream or onError
+        }
+
+        // ── No tool calls → we're done ────────────────────────────────────────
+        if (toolCalls.empty()) {
+            break;
+        }
+
+        if (finishReason != "tool_calls") {
+            std::cout << "[OpenRouter] Unexpected finish_reason '" << finishReason
+                      << "' with tool_calls present — continuing\n";
+        }
+
+        // ── Execute tool calls ────────────────────────────────────────────────
+        // 1. Append the assistant's tool-use message
+        Json::Value assistantMsg;
+        assistantMsg["role"]       = "assistant";
+        assistantMsg["content"]    = Json::Value();  // null content during tool use
+        assistantMsg["tool_calls"] = Json::Value(Json::arrayValue);
+
+        for (const auto& tc : toolCalls) {
+            Json::Value tcObj;
+            tcObj["id"]   = tc.id;
+            tcObj["type"] = "function";
+            tcObj["function"]["name"]      = tc.name;
+            tcObj["function"]["arguments"] = tc.argumentsJson;
+            assistantMsg["tool_calls"].append(tcObj);
+        }
+        messages.append(assistantMsg);
+
+        // 2. Execute each tool and append result messages
+        for (const auto& tc : toolCalls) {
+            std::cout << "[OpenRouter] Executing tool: " << tc.name << "\n";
+
+            // Parse arguments first so we can send them to the frontend
+            Json::Value args(Json::objectValue);
+            if (!tc.argumentsJson.empty()) {
+                Json::CharReaderBuilder rb;
+                std::string errs;
+                std::istringstream ss(tc.argumentsJson);
+                Json::parseFromStream(rb, ss, &args, &errs);
+            }
+
+            std::string resultStr;
+
+            if (registry) {
+                Json::Value result = registry->callTool(tc.name, args);
+
+                // Convert MCP content array → plain string for the tool message
+                if (result.isArray()) {
+                    for (const auto& item : result) {
+                        if (item.get("type", "").asString() == "text")
+                            resultStr += item.get("text", "").asString();
+                    }
+                } else {
+                    Json::StreamWriterBuilder wb;
+                    wb["indentation"] = "";
+                    resultStr = Json::writeString(wb, result);
+                }
+            } else {
+                resultStr = "{\"error\": \"No MCP registry available\"}";
+            }
+
+            // Send a structured tool_call event so the frontend can display
+            // the tool name, input arguments, and output result visually.
+            if (onChunk) {
+                Json::Value tcEvent;
+                tcEvent["tool_call"]["name"]   = tc.name;
+                tcEvent["tool_call"]["input"]  = args;
+                tcEvent["tool_call"]["output"] = resultStr;
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
+                onChunk("data: " + Json::writeString(wb, tcEvent) + "\n\n");
+            }
+
+            Json::Value toolResultMsg;
+            toolResultMsg["role"]         = "tool";
+            toolResultMsg["tool_call_id"] = tc.id;
+            toolResultMsg["content"]      = resultStr;
+            messages.append(toolResultMsg);
+        }
+
+        // Loop to next round with updated messages
+    }
+
+    if (onChunk) onChunk("data: [DONE]\n\n");
+}
+
+// ── getModels ─────────────────────────────────────────────────────────────────
 Json::Value OpenRouterService::getModels() const {
-    // Try to fetch models from OpenRouter first
     try {
         std::string decryptedKey = decryptApiKey();
         if (!decryptedKey.empty()) {
             CURL* curl = curl_easy_init();
             if (curl) {
-                std::string responseStr;
                 std::string url = "https://openrouter.ai/api/v1/models";
-                
-                struct curl_slist* headers = NULL;
+                std::string responseStr;
+                struct curl_slist* headers = nullptr;
                 headers = curl_slist_append(headers, ("Authorization: Bearer " + decryptedKey).c_str());
-                
-                curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-                curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-                curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseStr);
+                headers = curl_slist_append(headers, "Content-Type: application/json");
+
+                curl_easy_setopt(curl, CURLOPT_URL,           url.c_str());
+                curl_easy_setopt(curl, CURLOPT_HTTPHEADER,     headers);
+                curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,  WriteCallback);
+                curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &responseStr);
                 curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
                 curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-                
+                curl_easy_setopt(curl, CURLOPT_TIMEOUT,        30L);
+
                 CURLcode res = curl_easy_perform(curl);
                 long httpCode = 0;
                 curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
                 curl_slist_free_all(headers);
                 curl_easy_cleanup(curl);
-                
+
                 if (res == CURLE_OK && httpCode == 200) {
                     Json::Value result;
                     Json::CharReaderBuilder reader;
                     std::string errs;
                     std::istringstream stream(responseStr);
-                    if (Json::parseFromStream(reader, stream, &result, &errs)) {
-                        if (result.isMember("data") && result["data"].isArray()) {
-                            Json::Value normalizedResponse;
-                            normalizedResponse["data"] = Json::Value(Json::arrayValue);
-                            
-                            for (const auto& model : result["data"]) {
-                                Json::Value normalizedModel;
-
-                                if (model.isMember("id")) normalizedModel["id"] = model["id"];
-                                if (model.isMember("name")) normalizedModel["name"] = model["name"];
-                                if (model.isMember("provider")) normalizedModel["provider"] = model["provider"];
-
-                                int contextLength = 0;
-                                if (model.isMember("context_length")) {
-                                    contextLength = model["context_length"].asInt();
-                                    normalizedModel["context_length"] = contextLength;
-                                }
-
-                                int maxTokens = 0;
-                                if (model.isMember("top_provider") && model["top_provider"].isObject()) {
-                                    const auto& topProvider = model["top_provider"];
-                                    if (topProvider.isMember("max_completion_tokens")) {
-                                        maxTokens = topProvider["max_completion_tokens"].asInt();
-                                    }
-                                }
-
-                                const int DEFAULT_MAX_TOKENS = 8192;
-                                if (maxTokens <= 0) maxTokens = DEFAULT_MAX_TOKENS;
-                                normalizedModel["max_tokens"] = maxTokens;
-
-                                normalizedResponse["data"].append(normalizedModel);
-                            }
-                            
-                            return normalizedResponse;
+                    if (Json::parseFromStream(reader, stream, &result, &errs)
+                            && result.isMember("data") && result["data"].isArray()) {
+                        Json::Value normalizedResponse;
+                        normalizedResponse["data"] = Json::Value(Json::arrayValue);
+                        for (const auto& model : result["data"]) {
+                            Json::Value nm;
+                            if (model.isMember("id"))   nm["id"]   = model["id"];
+                            if (model.isMember("name")) nm["name"] = model["name"];
+                            if (model.isMember("provider")) nm["provider"] = model["provider"];
+                            if (model.isMember("context_length")) nm["context_length"] = model["context_length"];
+                            int maxTokens = 0;
+                            if (model.isMember("top_provider") && model["top_provider"].isObject()
+                                    && model["top_provider"].isMember("max_completion_tokens"))
+                                maxTokens = model["top_provider"]["max_completion_tokens"].asInt();
+                            nm["max_tokens"] = maxTokens > 0 ? maxTokens : 8192;
+                            normalizedResponse["data"].append(nm);
                         }
+                        return normalizedResponse;
                     }
                 }
             }
         }
-    } catch (...) {
-        // Fall back to default models if fetch fails
-    }
-    
-    // Default models if API call fails
+    } catch (...) {}
+
+    // Fallback
     Json::Value response;
     response["data"] = Json::Value(Json::arrayValue);
-    
-    Json::Value model1;
-    model1["id"] = "openai/gpt-4o-mini";
-    model1["name"] = "OpenAI GPT-4o Mini";
-    model1["provider"] = "OpenAI";
-    model1["context_length"] = 128000;
-    model1["max_tokens"] = 16384;
-    response["data"].append(model1);
-    
-    Json::Value model2;
-    model2["id"] = "google/gemma-2-9b-it";
-    model2["name"] = "Google Gemma 2 9B";
-    model2["provider"] = "Google";
-    model2["context_length"] = 8192;
-    model2["max_tokens"] = 8192;
-    response["data"].append(model2);
-    
-    Json::Value model3;
-    model3["id"] = "meta-llama/llama-3-8b-instruct";
-    model3["name"] = "Meta Llama 3 8B";
-    model3["provider"] = "Meta";
-    model3["context_length"] = 8192;
-    model3["max_tokens"] = 8192;
-    response["data"].append(model3);
-    
-    Json::Value model4;
-    model4["id"] = "mistralai/mistral-7b-instruct-v0.3";
-    model4["name"] = "Mistral 7B Instruct v0.3";
-    model4["provider"] = "Mistral";
-    model4["context_length"] = 32768;
-    model4["max_tokens"] = 8192;
-    response["data"].append(model4);
-    
+    auto addModel = [&](const char* id, const char* name, const char* prov,
+                        int ctx, int mt) {
+        Json::Value m;
+        m["id"] = id; m["name"] = name; m["provider"] = prov;
+        m["context_length"] = ctx; m["max_tokens"] = mt;
+        response["data"].append(m);
+    };
+    addModel("openai/gpt-4o-mini",                    "OpenAI GPT-4o Mini",        "OpenAI",   128000, 16384);
+    addModel("google/gemma-2-9b-it",                  "Google Gemma 2 9B",         "Google",     8192,  8192);
+    addModel("meta-llama/llama-3-8b-instruct",        "Meta Llama 3 8B",           "Meta",       8192,  8192);
+    addModel("mistralai/mistral-7b-instruct-v0.3",    "Mistral 7B Instruct v0.3",  "Mistral",  32768,  8192);
     return response;
 }
 
+// ── getPricing ────────────────────────────────────────────────────────────────
 Json::Value OpenRouterService::getPricing() const {
     Json::Value response;
     response["data"] = Json::Value(Json::arrayValue);
-    
-    Json::Value model1Pricing;
-    model1Pricing["id"] = "openai/gpt-4o-mini";
-    model1Pricing["price_per_1k_input"] = 0.00000015;
-    model1Pricing["price_per_1k_output"] = 0.0000006;
-    response["data"].append(model1Pricing);
-    
-    Json::Value model2Pricing;
-    model2Pricing["id"] = "google/gemma-2-9b-it";
-    model2Pricing["price_per_1k_input"] = 0.00000003;
-    model2Pricing["price_per_1k_output"] = 0.00000009;
-    response["data"].append(model2Pricing);
-    
-    Json::Value model3Pricing;
-    model3Pricing["id"] = "meta-llama/llama-3-8b-instruct";
-    model3Pricing["price_per_1k_input"] = 0.00000003;
-    model3Pricing["price_per_1k_output"] = 0.00000004;
-    response["data"].append(model3Pricing);
-    
-    Json::Value model4Pricing;
-    model4Pricing["id"] = "mistralai/mistral-7b-instruct-v0.3";
-    model4Pricing["price_per_1k_input"] = 0.0000002;
-    model4Pricing["price_per_1k_output"] = 0.0000002;
-    response["data"].append(model4Pricing);
-    
     return response;
 }
 
-Json::Value OpenRouterService::makeRequest(const std::string& endpoint, const Json::Value& body) const {
+// ── makeRequest ───────────────────────────────────────────────────────────────
+Json::Value OpenRouterService::makeRequest(const std::string& endpoint,
+                                            const Json::Value& body) const {
     CURL* curl = curl_easy_init();
-    if (!curl) {
-        throw std::runtime_error("Failed to initialize CURL");
-    }
-    
-    std::string decryptedKey = decryptApiKey();
-    
+    if (!curl) throw std::runtime_error("Failed to init CURL");
+
+    const std::string decryptedKey = decryptApiKey();
     if (decryptedKey.empty()) {
-        Json::Value error;
-        error["error"] = "OpenRouter API key not configured";
-        return error;
+        Json::Value err;
+        err["error"] = "OpenRouter API key not configured";
+        return err;
     }
-    
+
     std::string url = "https://openrouter.ai/api/v1" + endpoint;
     std::string responseStr;
-    
-    struct curl_slist* headers = NULL;
+
+    struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, ("Authorization: Bearer " + decryptedKey).c_str());
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "HTTP-Referer: http://localhost");
     headers = curl_slist_append(headers, "X-Title: CtrlPanel");
     headers = curl_slist_append(headers, "Expect:");
-    
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+
+    std::string jsonBody = body.toStyledString();
+    curl_easy_setopt(curl, CURLOPT_URL,           url.c_str());
+    curl_easy_setopt(curl, CURLOPT_POST,           1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2_0);
-    
-    std::string jsonBody = body.toStyledString();
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)jsonBody.length());
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, jsonBody.c_str());
-    
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseStr);
-    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 0L);
-    
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,   CURL_HTTP_VERSION_2_0);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,  (long)jsonBody.size());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS,     jsonBody.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER,     headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,  WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &responseStr);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR,    0L);
+
     CURLcode res = curl_easy_perform(curl);
-    
     long httpCode = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-    
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
-    
+
     Json::Value result;
     Json::CharReaderBuilder reader;
     std::string errs;
     std::istringstream stream(responseStr);
-    
+
     if (res != CURLE_OK) {
         result["error"] = "Failed to connect to OpenRouter: " + std::string(curl_easy_strerror(res));
         return result;
     }
-    
     if (httpCode != 200) {
-        if (Json::parseFromStream(reader, stream, &result, &errs)) {
-            if (result.isMember("error")) {
-                return result;
-            }
-        }
+        if (Json::parseFromStream(reader, stream, &result, &errs) && result.isMember("error"))
+            return result;
         result["error"] = "HTTP error: " + std::to_string(httpCode);
-        result["response"] = responseStr;
         return result;
     }
-    
     if (!Json::parseFromStream(reader, stream, &result, &errs)) {
         result["error"] = "Failed to parse response";
-        result["raw"] = responseStr;
-        return result;
+        result["raw"]   = responseStr;
     }
-    
     return result;
 }
 
+// ── decryptApiKey ─────────────────────────────────────────────────────────────
 std::string OpenRouterService::decryptApiKey() const {
-    if (apiKey.empty()) {
-        return "";
-    }
-    
-    // Check if it is a plain text OpenRouter key - if so, don't decrypt
-    if (apiKey.substr(0, 6) == "sk-or-") {
-        return apiKey;
-    }
-    
-    try {
-        return encryption.decrypt(apiKey);
-    } catch (...) {
-        return apiKey;
-    }
+    if (apiKey.empty()) return "";
+    if (apiKey.substr(0, 6) == "sk-or-") return apiKey;
+    try { return encryption.decrypt(apiKey); } catch (...) { return apiKey; }
 }

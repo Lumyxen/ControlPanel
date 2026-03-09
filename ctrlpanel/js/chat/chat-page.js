@@ -636,6 +636,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		let reasoningText = "";
 		let errorFromStream = null;
 		let isSaved = false;
+		let toolCallsList = [];
 
 		// Resolve system prompt and temperature from the settings store (synchronous – no extra
 		// network round-trip; the store keeps itself fresh via background polling).
@@ -675,11 +676,16 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				finalContent += finalContent ? `\n\n**Error:** ${errorFromStream}` : `**Error:** ${errorFromStream}`;
 			}
 
-			if (finalContent || reasoningText) {
-				const node = addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", finalContent);
-				if (node && reasoningText) {
-					node.reasoning = reasoningText;
-					saveChats();
+			const savedToolCalls = toolCallsList.length > 0 ? toolCallsList : null;
+
+			if (finalContent || reasoningText || savedToolCalls) {
+				const node = addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", finalContent, null, null, savedToolCalls);
+				if (node) {
+					if (reasoningText) node.reasoning = reasoningText;
+					// toolCalls is set via appendNode, but also set here directly in case
+					// appendNode's param list changes; matches the pattern used for reasoning.
+					if (savedToolCalls) node.toolCalls = savedToolCalls;
+					if (reasoningText || savedToolCalls) saveChats();
 				}
 			} else if (errorFromStream) {
 				addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", `**Error:** ${errorFromStream}`);
@@ -700,6 +706,43 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 							: String(chunk.error);
 						console.debug("[ChatPage] Error in stream chunk:", errorMsg);
 						errorFromStream = errorMsg;
+						return;
+					}
+
+					// ── Structured tool_call event from the backend ───────────────────
+					if (chunk.tool_call) {
+						toolCallsList.push(chunk.tool_call);
+
+						if (uiState.typingEl) {
+							if (!uiState.typingEl.querySelector(".chat-message-content")) {
+								uiState.typingEl.innerHTML = '';
+								uiState.typingEl.className = "chat-message assistant";
+							}
+							let msgContent = uiState.typingEl.querySelector(".chat-message-content");
+							if (!msgContent) {
+								msgContent = document.createElement("div");
+								msgContent.className = "chat-message-content";
+								uiState.typingEl.appendChild(msgContent);
+							}
+
+							// Rebuild all tool call badges + current text content
+							let html = '';
+							if (reasoningText) {
+								const openAttr = responseText ? '' : 'open';
+								html += `<details class="message-reasoning" ${openAttr}><summary>Thinking...</summary><div class="reasoning-content">${escapeHtml(reasoningText)}</div></details>`;
+							}
+							toolCallsList.forEach((tc) => {
+								const displayName = tc.name.replace(/__/g, ' › ').replace(/_/g, ' ');
+								html += `<details class="message-tool-call"><summary class="tool-call-summary"><span class="tool-call-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span><span class="tool-call-name">${escapeHtml(displayName)}</span></summary><div class="tool-call-body"><div class="tool-call-section-label">Input</div><pre class="tool-call-code">${escapeHtml(typeof tc.input === 'object' ? JSON.stringify(tc.input, null, 2) : String(tc.input ?? ''))}</pre><div class="tool-call-section-label">Output</div><pre class="tool-call-code">${escapeHtml(String(tc.output ?? ''))}</pre></div></details>`;
+							});
+							if (responseText) {
+								const preprocessed = preprocessLatexText(responseText);
+								const { text, mathBlocks } = extractMath(preprocessed);
+								html += injectMath(parseMarkdown(text), mathBlocks);
+							}
+							msgContent.innerHTML = html;
+							if (messages) messages.scrollTop = messages.scrollHeight;
+						}
 						return;
 					}
 
@@ -724,6 +767,10 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 								const openAttr = responseText ? '' : 'open';
 								html += `<details class="message-reasoning" ${openAttr}><summary>Thinking...</summary><div class="reasoning-content">${escapeHtml(reasoningText)}</div></details>`;
 							}
+							toolCallsList.forEach((tc) => {
+								const displayName = tc.name.replace(/__/g, ' › ').replace(/_/g, ' ');
+								html += `<details class="message-tool-call"><summary class="tool-call-summary"><span class="tool-call-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span><span class="tool-call-name">${escapeHtml(displayName)}</span></summary><div class="tool-call-body"><div class="tool-call-section-label">Input</div><pre class="tool-call-code">${escapeHtml(typeof tc.input === 'object' ? JSON.stringify(tc.input, null, 2) : String(tc.input ?? ''))}</pre><div class="tool-call-section-label">Output</div><pre class="tool-call-code">${escapeHtml(String(tc.output ?? ''))}</pre></div></details>`;
+							});
 							if (responseText) {
 								const preprocessed = preprocessLatexText(responseText);
 								const { text, mathBlocks } = extractMath(preprocessed);
@@ -751,10 +798,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				throw new Error(errorFromStream);
 			}
 
-			if (!responseText && !reasoningText) {
-				throw new Error("Empty response from AI");
-			}
-			
 			stopTyping();
 			rerender();
 			setActiveCallback && setActiveCallback();

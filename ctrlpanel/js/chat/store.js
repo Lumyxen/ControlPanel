@@ -186,11 +186,11 @@ export function addMessageToChat(chatId, role, content, attachments = null, part
 	return node;
 }
 
-export function addChildMessageToChat(chatId, parentId, role, content, attachments = null, parts = null) {
+export function addChildMessageToChat(chatId, parentId, role, content, attachments = null, parts = null, toolCalls = null) {
 	const chat = getChatById(chatId);
 	if (!chat) return null;
 	const graph = ensureGraph(chat);
-	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts });
+	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts, toolCalls });
 	chat.updatedAt = Date.now();
 	saveChats();
 	return node;

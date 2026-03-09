@@ -55,6 +55,7 @@ export function ensureGraph(chat) {
 	       if (m.parts) node.parts = JSON.parse(JSON.stringify(m.parts));
 	       if (m.attachments) node.attachments = JSON.parse(JSON.stringify(m.attachments));
 	       if (m.reasoning) node.reasoning = m.reasoning;
+	       if (m.toolCalls) node.toolCalls = JSON.parse(JSON.stringify(m.toolCalls));
 	       
 		graph.nodes[nodeId] = node;
 		graph.nodes[parentId].children.push(nodeId);
@@ -106,7 +107,7 @@ export function recomputeLeafId(graph) {
 	graph.leafId = path.length ? path[path.length - 1] : null;
 }
 
-export function appendNode(graph, { parentId, role, content, timestamp, attachments, parts }) {
+export function appendNode(graph, { parentId, role, content, timestamp, attachments, parts, toolCalls }) {
 	const parent = getNode(graph, parentId);
 	if (!parent) throw new Error("appendNode: parent not found");
 	const id = generateId();
@@ -124,6 +125,10 @@ export function appendNode(graph, { parentId, role, content, timestamp, attachme
 		if (attachments && attachments.length > 0) {
 			node.attachments = attachments;
 		}
+	}
+
+	if (toolCalls && toolCalls.length > 0) {
+		node.toolCalls = toolCalls;
 	}
 	
 	graph.nodes[id] = node;
@@ -169,6 +174,8 @@ export function createSiblingCopy(graph, nodeId, { content, timestamp, parts, at
         sibling.reasoning = node.reasoning;
     }
 
+    if (node.toolCalls) sibling.toolCalls = JSON.parse(JSON.stringify(node.toolCalls));
+
 	graph.nodes[siblingId] = sibling;
 	parent.children.push(siblingId);
 	setSelectedChildId(graph, node.parentId, siblingId);
@@ -200,6 +207,7 @@ export function branchFromNode(graph, nodeId, { preserveSelectedTail = false } =
     if (node.parts) sibling.parts = JSON.parse(JSON.stringify(node.parts));
     if (node.attachments) sibling.attachments = JSON.parse(JSON.stringify(node.attachments));
     if (node.reasoning) sibling.reasoning = node.reasoning;
+    if (node.toolCalls) sibling.toolCalls = JSON.parse(JSON.stringify(node.toolCalls));
 
 	graph.nodes[siblingId] = sibling;
 	parent.children.push(siblingId);
@@ -228,6 +236,7 @@ export function branchFromNode(graph, nodeId, { preserveSelectedTail = false } =
         if (oldNext.parts) cloned.parts = JSON.parse(JSON.stringify(oldNext.parts));
         if (oldNext.attachments) cloned.attachments = JSON.parse(JSON.stringify(oldNext.attachments));
         if (oldNext.reasoning) cloned.reasoning = oldNext.reasoning;
+        if (oldNext.toolCalls) cloned.toolCalls = JSON.parse(JSON.stringify(oldNext.toolCalls));
 
 		graph.nodes[newId] = cloned;
 		graph.nodes[prevNewId].children.push(newId);

@@ -11,9 +11,7 @@
 
 ## AI Chat-box
 ### Features
-- Change default port to 80
-- Add MCP server support
-- Add web search with SearXNG tool
+- Add LM Studio server API support for local AI on oseberg
 - Be able to stop AI response
 - Add calculator tool (replaces code execution reliance for math)
   - WolframAlpha API option
@@ -27,13 +25,13 @@
 - Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
 - Add llama.cpp server API support for local AI on skidbladnir
 - Migrate development onto skidbladnir to host it (not really a feature)
-- Add LM Studio server API support for local AI on oseberg
 - Add chat importing (from T3.chat & Google AI Studio)
 - Add chat exporting (T3.chat format, custom format as default)
 - Add weather tool (returns weather data, user location (not exposed to AI) default, can specify a location)
 - Add logprobs
   - Highlight uncertain tokens
 ##### Start dogfooding for everyday questions
+- Sort chat history by time since last chatted
 - Diff formatting
 - Change notice styling that back-end and/or an API connection is offline or lost
 - Setting to change default model (already exists, but vastly improving on it)
@@ -154,6 +152,7 @@
 - Fix awkward sizing of OpenRouter API key status
 - Fix large empty space in chats
 - LaTeX formatting not properly fully functional, but mostly is
+- Tool call block disappears after generation completion
 
 #### UX
 - Fix new thread not being created when deleting a message
@@ -164,6 +163,7 @@
 - Attachments don't count towards context window usage
 - Messages flicker during longer generations that use auto-scroll
 - Old AI message not removed when clicking regenerate on an AI message
+- Randomly getting completion before any generation, causing no response
 
 
 
@@ -224,3 +224,4 @@
     - Agenting programming
     - Prevting hallucinations or guesses
 - Config hot-reloading
+- MCP support

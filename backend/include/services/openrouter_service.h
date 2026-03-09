@@ -7,56 +7,108 @@
 #include <json/json.h>
 #include "utils/encryption.h"
 
+// Forward-declare so we don't pull in the full registry header here
+class McpRegistry;
+
 // Stream context for handling chunked responses
 struct StreamContext {
     std::function<void(const std::string&)> onChunk;
     std::string buffer;
+
+    // Tool-call accumulation across chunks
+    // Keyed by tool-call index.  Each entry: { id, name, accumulated_args }
+    struct ToolCallAccum {
+        std::string id;
+        std::string name;
+        std::string argumentsJson; // built up from streaming deltas
+    };
+    std::vector<ToolCallAccum> toolCalls;
+    std::string finishReason;
 };
 
 class OpenRouterService {
-private:
-    std::string apiKey;
-    Encryption& encryption;
-
 public:
     OpenRouterService(const std::string& apiKey, Encryption& encryption);
-    
+
+    // ── Legacy / non-tool methods (unchanged API) ─────────────────────────────
     Json::Value chat(
         const std::string& model,
         const std::string& prompt,
-        int maxTokens = 2048,
+        int maxTokens           = 2048,
         const std::string& systemPrompt = "",
-        double temperature = -1.0
+        double temperature      = -1.0
     ) const;
 
     Json::Value streamingChat(
         const std::string& model,
         const std::string& prompt,
-        int maxTokens = 2048,
+        int maxTokens           = 2048,
         const std::string& systemPrompt = "",
-        double temperature = -1.0
+        double temperature      = -1.0
     ) const;
-    
-    // Streaming with callback for SSE
-    // temperature: pass -1.0 (default) to omit the field and let the model use its own default.
+
+    /** Original single-turn streaming (no tool loop). */
     void streamingChatWithCallback(
-        const std::string& model, 
-        const std::string& prompt, 
+        const std::string& model,
+        const std::string& prompt,
         int maxTokens,
         std::function<void(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
         const std::string& systemPrompt = "",
         double temperature = -1.0
     ) const;
-    
-    Json::Value getModels() const;
+
+    // ── Tool-aware streaming (agentic loop) ───────────────────────────────────
+    /**
+     * Stream a chat with optional MCP tool support.
+     *
+     * @param model          OpenRouter model ID
+     * @param messages       Full messages array (role/content objects).
+     *                       Use buildMessages() to build from a prompt string.
+     * @param tools          OpenAI-format tools array (may be empty/null).
+     * @param maxTokens      Max output tokens
+     * @param onChunk        SSE chunk callback (forwarded straight to the client)
+     * @param onError        Error callback
+     * @param registry       MCP registry used to execute tool calls.
+     *                       Pass nullptr to disable tool execution.
+     * @param temperature    -1 = omit field
+     * @param maxToolRounds  Max tool-call iterations before giving up
+     */
+    void streamingChatWithTools(
+        const std::string&  model,
+        Json::Value         messages,          // by value – we append to it
+        const Json::Value&  tools,
+        int                 maxTokens,
+        std::function<void(const std::string&)> onChunk,
+        std::function<void(const std::string&)> onError,
+        McpRegistry*        registry,
+        double              temperature   = -1.0
+    ) const;
+
+    // ── Utilities ─────────────────────────────────────────────────────────────
+    Json::Value getModels()  const;
     Json::Value getPricing() const;
-    
+
+    /** Build a messages array from the legacy string prompt format. */
+    Json::Value buildMessages(const std::string& prompt,
+                              const std::string& systemPrompt) const;
+
 private:
-    Json::Value makeRequest(const std::string& endpoint, const Json::Value& body) const;
+    std::string  apiKey;
+    Encryption&  encryption;
+
+    Json::Value makeRequest(const std::string& endpoint,
+                            const Json::Value& body) const;
     std::string decryptApiKey() const;
     Json::Value parseConversationHistory(const std::string& prompt) const;
-    Json::Value buildMessages(const std::string& prompt, const std::string& systemPrompt) const;
+
+    /** Single-round streaming into a StreamContext; returns finish reason. */
+    std::string streamOneRound(
+        const Json::Value& requestBody,
+        std::function<void(const std::string&)> onChunk,
+        std::function<void(const std::string&)> onError,
+        std::vector<StreamContext::ToolCallAccum>& toolCallsOut
+    ) const;
 };
 
 #endif // OPENROUTER_SERVICE_H

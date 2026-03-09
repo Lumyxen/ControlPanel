@@ -136,6 +136,62 @@ function buildInlineAttachment(attachment) {
 }
 
 /**
+ * Format a tool name for display: "server__tool_name" → "server › tool name"
+ */
+function formatToolName(name) {
+	return name.replace(/__/g, ' › ').replace(/_/g, ' ');
+}
+
+/**
+ * Build a collapsible tool call element showing input and output
+ */
+function buildToolCallElement(tc) {
+	const details = document.createElement("details");
+	details.className = "message-tool-call";
+
+	const summary = document.createElement("summary");
+	summary.className = "tool-call-summary";
+	summary.innerHTML = `<span class="tool-call-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span><span class="tool-call-name">${escapeHtml(formatToolName(tc.name))}</span>`;
+
+	const body = document.createElement("div");
+	body.className = "tool-call-body";
+
+	// Input section
+	const inputLabel = document.createElement("div");
+	inputLabel.className = "tool-call-section-label";
+	inputLabel.textContent = "Input";
+
+	const inputPre = document.createElement("pre");
+	inputPre.className = "tool-call-code";
+	try {
+		const inputStr = typeof tc.input === "object"
+			? JSON.stringify(tc.input, null, 2)
+			: String(tc.input ?? "");
+		inputPre.textContent = inputStr;
+	} catch {
+		inputPre.textContent = String(tc.input ?? "");
+	}
+
+	// Output section
+	const outputLabel = document.createElement("div");
+	outputLabel.className = "tool-call-section-label";
+	outputLabel.textContent = "Output";
+
+	const outputPre = document.createElement("pre");
+	outputPre.className = "tool-call-code";
+	outputPre.textContent = String(tc.output ?? "");
+
+	body.appendChild(inputLabel);
+	body.appendChild(inputPre);
+	body.appendChild(outputLabel);
+	body.appendChild(outputPre);
+
+	details.appendChild(summary);
+	details.appendChild(body);
+	return details;
+}
+
+/**
  * Build reasoning element for assistant messages
  */
 function buildReasoningElement(reasoning) {
@@ -169,6 +225,13 @@ function buildContentContainer(node, isEditing, editingDraft) {
 		if (reasoningEl) {
 			container.appendChild(reasoningEl);
 		}
+	}
+
+	// Add tool calls section for assistant messages (when not editing)
+	if (!isEditing && node.role === "assistant" && Array.isArray(node.toolCalls) && node.toolCalls.length > 0) {
+		node.toolCalls.forEach((tc) => {
+			container.appendChild(buildToolCallElement(tc));
+		});
 	}
 
 	if (isEditing) {
