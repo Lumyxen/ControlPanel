@@ -55,6 +55,7 @@
 - Add LM Studio server API support for local AI on oseberg
 - Ensure tool placeholder in global system prompt also returns description of each tool
 ##### Start dogfooding for everyday questions
+- Be able to attach local directories
 - Add a sandboxed CLI tool
 - Add file reading tool
 - Add sandboxed file editing tool
