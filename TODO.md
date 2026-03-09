@@ -11,6 +11,7 @@
 
 ## AI Chat-box
 ### Features
+- Change default port to 80
 - Add MCP server support
 - Add web search with SearXNG tool
 - Be able to stop AI response
@@ -64,6 +65,7 @@
 - Small governing AI to make sure it doesn't get malicious, call out possible hallucinations, call out yes-manning, and call out repetition glitching and auto-stop and regenerate the response (where the AI gets stuck in an infinite loop)
 - Agent swarm tool (Democratic (models work together to form 1 final product) and Leadership (1 main orchestrating AI) versions)
 - Deep research tool (responding only after finalising research after drafting, searching, calculating, etc)
+- Summarise tool (spawns an AI to read the file and summarise it, returning the summary)
 - Change tool list from system prompt into a centralised tool for the AI to search for available tools to use
 - Internet testing tool
   - Returns if WAN is available
