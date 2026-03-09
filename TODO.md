@@ -11,8 +11,6 @@
 
 ## AI Chat-box
 ### Features
-- Save selected model per chat (switching to a chat changes selected model to saved chat, going to unknown saved chat or new chat switched to last selected model (auto-select from saved chat model doesn't count))
-- Save chats on back-end instead of localStorage
 - Add MCP server support
 - Add web search with SearXNG tool
 - Add calculator tool (replaces code execution reliance for math)
@@ -157,6 +155,7 @@
 #### UX
 - Fix new thread not being created when deleting a message
 - Message shrinking/expanding unwantedly to strictly 2 lines when editing (make message editing properly size to original message size, expand/shrink with new/deleted lines)
+- Fix ESC not canceling message editing and instead defocuses the text field on the first press
 
 #### General Bugs
 - Attachments don't count towards context window usage

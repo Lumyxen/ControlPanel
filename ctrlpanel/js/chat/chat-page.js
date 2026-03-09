@@ -324,9 +324,10 @@ function applyModel(root, modelId) {
 
 /**
  * Choose and apply the right model for the currently active chat:
- *   1. The chat's own saved model (if any)
- *   2. The last model the user explicitly picked (localStorage)
- *   3. The settings default model
+ *   1. The chat's own saved model — if found in the dropdown, use it.
+ *      If saved but unavailable, fall straight to the settings default (skip lastModel).
+ *   2. The last model the user explicitly picked (localStorage) — only when no chat model is set.
+ *   3. The settings default model.
  *
  * Auto-selection via this function does NOT update lastSelectedModel.
  * @param {Element} root
@@ -336,9 +337,16 @@ function selectModelForCurrentChat(root) {
 
 	// 1. Chat-specific model
 	const chatModel = chatId ? getChatModel(chatId) : null;
-	if (chatModel && applyModel(root, chatModel)) return;
+	if (chatModel) {
+		// Found in dropdown → use it
+		if (applyModel(root, chatModel)) return;
+		// Saved but no longer available → fall back to settings default, not lastModel
+		const settings = SettingsStore.get();
+		if (settings?.defaultModel) applyModel(root, settings.defaultModel);
+		return;
+	}
 
-	// 2. Last model the user explicitly chose
+	// 2. Last model the user explicitly chose (no chat-specific preference set)
 	const lastModel = getLastSelectedModel();
 	if (lastModel && applyModel(root, lastModel)) return;
 
@@ -390,18 +398,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 	const attachmentManager = new InlineAttachmentManager(input);
 
-	await loadAndPopulateModels(root, signal);
-
-	// Apply the right model for the current chat context
+	// Apply the right model immediately — loadAndPopulateModels only adds
+	// context-length metadata, it doesn't create or select items, so this
+	// works against the HTML-rendered items with no network round-trip.
 	selectModelForCurrentChat(root);
 
-	// Re-apply when settings change (only fills in if nothing more specific is set)
-	const unsubSettings = SettingsStore.subscribe(() => {
-		selectModelForCurrentChat(root);
-	});
-
-	// Unsubscribe when this chat page is torn down
-	signal.addEventListener("abort", () => unsubSettings(), { once: true });
+	await loadAndPopulateModels(root, signal);
 
 	initDropdowns(root, signal);
 	initTools(root, signal);
@@ -496,7 +498,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		
 		const modelSelect = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
 		const model = modelSelect?.dataset?.value || "arcee-ai/trinity-large-preview:free";
-		
+
+		// Persist the model actually used for this reply — this is the authoritative
+		// save point and handles the case where the user picked a model before the
+		// chat object existed (new chat flow).
+		if (activeChatId && model) setChatModel(activeChatId, model);
+
 		let maxTokens = getModelMaxTokens(model);
 		const contextLimit = getModelContextLimitFromUI(root);
 		
