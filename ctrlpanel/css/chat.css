@@ -424,6 +424,19 @@
     align-items: center;
     white-space: nowrap;
     user-select: none;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.chat-context.warning {
+    color: var(--ef-yellow, var(--ctp-yellow, #dbbc7f));
+    border-color: color-mix(in srgb, var(--ef-yellow, var(--ctp-yellow, #dbbc7f)) 50%, transparent);
+    background: color-mix(in srgb, var(--ef-yellow, var(--ctp-yellow, #dbbc7f)) 10%, transparent);
+}
+
+.chat-context.danger {
+    color: var(--ef-red, var(--ctp-red, #e67e80));
+    border-color: color-mix(in srgb, var(--ef-red, var(--ctp-red, #e67e80)) 50%, transparent);
+    background: color-mix(in srgb, var(--ef-red, var(--ctp-red, #e67e80)) 10%, transparent);
 }
 
 /* Dropdown styles */

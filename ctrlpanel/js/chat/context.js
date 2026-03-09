@@ -118,4 +118,19 @@ export function updateContextUI(root, chat) {
 	el.title = max > 0
 		? `Context Window: ${used} tokens used / ${max} total`
 		: "Context Window";
+		
+	if (max > 0) {
+		const ratio = used / max;
+		if (ratio >= 0.9) {
+			el.classList.add("danger");
+			el.classList.remove("warning");
+		} else if (ratio >= 0.5) {
+			el.classList.add("warning");
+			el.classList.remove("danger");
+		} else {
+			el.classList.remove("warning", "danger");
+		}
+	} else {
+		el.classList.remove("warning", "danger");
+	}
 }

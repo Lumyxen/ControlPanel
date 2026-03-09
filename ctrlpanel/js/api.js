@@ -180,3 +180,24 @@ export async function updateSettings(settings) {
         body: JSON.stringify(settings),
     });
 }
+
+// ── Chat persistence (backend storage) ───────────────────────────────────────
+
+/**
+ * Fetch the full chat state from the backend.
+ * Returns { chats, currentChatId, pins }.
+ */
+export async function getChatsData() {
+    return makeRequest("/chats");
+}
+
+/**
+ * Persist the full chat state to the backend.
+ * @param {{ chats: Array, currentChatId: string, pins: Array }} data
+ */
+export async function saveChatsData(data) {
+    return makeRequest("/chats", {
+        method: "PUT",
+        body: JSON.stringify(data),
+    });
+}

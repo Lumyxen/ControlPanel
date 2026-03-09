@@ -11,8 +11,6 @@
 
 ## AI Chat-box
 ### Features
-- ESC to cancel message editing
-- Context window highlighting (yellow @ 50%, red @ 90%)
 - Save selected model per chat (switching to a chat changes selected model to saved chat, going to unknown saved chat or new chat switched to last selected model (auto-select from saved chat model doesn't count))
 - Save chats on back-end instead of localStorage
 - Add MCP server support
@@ -65,6 +63,7 @@
   - Restrained to set workspace directory
   - Remote editing, so for example, it could work on a project on duyfken despite running on skidbladnir
 - Add file checkpoints before each AI file edit to ensure edits are reversable
+- Allow the AI to attach files, allowing it to provide code updates with temp files without you having to copy an entire codeblock
 - Add LSP support for generated code files
 - Add logprobs
   - Highlight uncertain tokens
@@ -205,7 +204,7 @@
 - Text processing
   - Markdown
     - Base Markdown
-      - Code block copying & collapsing/expansion
+      - Code block title bar /w copying & collapsing/expansion
     - Discord's Markdown features
     - Obsidian.md's Markdown features
   - LaTeX
@@ -215,6 +214,7 @@
   - Inline attachments
 - Context used/max info
   - Dynamically updates limits to what OpenRouter reports
+  - Context window highlighting (yellow @ 50%, red @ 90%)
 - A master system prompt
   - Optimised for:
     - No yes-manning

@@ -1,36 +1,51 @@
 import { createEmptyGraph, ensureGraph } from "./graph.js";
 import { generateId } from "./util.js";
+import { getChatsData, saveChatsData } from "../api.js";
 
-const CHATS_KEY = "ctrlpanel:chats";
-const CURRENT_CHAT_KEY = "ctrlpanel:currentChat";
-const PINS_KEY = "ctrlpanel:pins";
+// localStorage key for the user's last explicitly-chosen model.
+// This is a per-browser preference (not synced to backend).
+const LAST_MODEL_KEY = "ctrlpanel:lastModel";
 
 let chats = [];
 let currentChatId = null;
+let pins = []; // array of chat ID strings
 
-export function loadChats() {
+// ── Load / Save ───────────────────────────────────────────────────────────────
+
+export async function loadChats() {
 	try {
-		const stored = localStorage.getItem(CHATS_KEY);
-		chats = stored ? JSON.parse(stored) : [];
-		if (!Array.isArray(chats)) chats = [];
-	} catch {
+		const data = await getChatsData();
+		chats = Array.isArray(data?.chats) ? data.chats : [];
+		currentChatId = data?.currentChatId || null;
+		pins = Array.isArray(data?.pins) ? data.pins.map(String) : [];
+	} catch (err) {
+		console.warn("[Store] Failed to load chats from backend, starting empty:", err);
 		chats = [];
+		currentChatId = null;
+		pins = [];
 	}
 	chats.forEach((c) => ensureGraph(c));
-	try {
-		currentChatId = localStorage.getItem(CURRENT_CHAT_KEY) || null;
-	} catch {
-		currentChatId = null;
-	}
 }
 
-export function saveChats() {
-	try {
-		localStorage.setItem(CHATS_KEY, JSON.stringify(chats));
-		if (currentChatId) localStorage.setItem(CURRENT_CHAT_KEY, currentChatId);
-		else localStorage.removeItem(CURRENT_CHAT_KEY);
-	} catch {}
+function buildSavePayload() {
+	return {
+		chats,
+		currentChatId: currentChatId || "",
+		pins,
+	};
 }
+
+/**
+ * Fire-and-forget save to backend.
+ * Callers do not need to await this – it mirrors the old synchronous localStorage pattern.
+ */
+export function saveChats() {
+	saveChatsData(buildSavePayload()).catch((err) => {
+		console.error("[Store] Failed to save chats:", err);
+	});
+}
+
+// ── Basic accessors ───────────────────────────────────────────────────────────
 
 export function getChats() { return chats; }
 export function getChatById(id) { return chats.find((c) => c.id === id); }
@@ -39,8 +54,10 @@ export function setCurrentChatId(id) { currentChatId = id; }
 
 export function clearCurrentChatId() {
 	currentChatId = null;
-	try { localStorage.removeItem(CURRENT_CHAT_KEY); } catch {}
+	saveChats();
 }
+
+// ── Chat CRUD ─────────────────────────────────────────────────────────────────
 
 export function createNewChat() {
 	const chat = {
@@ -76,60 +93,90 @@ export function renameChat(chatId, newTitle) {
 	return false;
 }
 
-function loadPinnedChatIds() {
-	try {
-		const raw = localStorage.getItem(PINS_KEY);
-		const parsed = raw ? JSON.parse(raw) : [];
-		return Array.isArray(parsed) ? parsed.map(String) : [];
-	} catch {
-		return [];
-	}
-}
-
-function savePinnedChatIds(ids) {
-	try { localStorage.setItem(PINS_KEY, JSON.stringify(ids)); } catch {}
-}
-
-export function isChatPinned(chatId) {
-	return new Set(loadPinnedChatIds()).has(String(chatId));
-}
-
-export function togglePinChat(chatId) {
-	const id = String(chatId || "");
-	if (!id) return;
-	const pinned = new Set(loadPinnedChatIds());
-	if (pinned.has(id)) pinned.delete(id);
-	else pinned.add(id);
-	savePinnedChatIds([...pinned]);
-}
-
 export function deleteChat(chatId) {
 	const id = String(chatId || "");
 	if (!id) return;
 	chats = chats.filter((c) => c.id !== id);
 	if (currentChatId === id) currentChatId = chats.length ? chats[0].id : null;
-	const pinned = new Set(loadPinnedChatIds());
-	if (pinned.has(id)) {
-		pinned.delete(id);
-		savePinnedChatIds([...pinned]);
-	}
+	// Remove from pins
+	const pinIdx = pins.indexOf(id);
+	if (pinIdx !== -1) pins.splice(pinIdx, 1);
 	saveChats();
 }
+
+// ── Pins ──────────────────────────────────────────────────────────────────────
+
+export function isChatPinned(chatId) {
+	return pins.includes(String(chatId));
+}
+
+export function togglePinChat(chatId) {
+	const id = String(chatId || "");
+	if (!id) return;
+	const idx = pins.indexOf(id);
+	if (idx !== -1) pins.splice(idx, 1);
+	else pins.push(id);
+	saveChats();
+}
+
+// ── Per-chat model ────────────────────────────────────────────────────────────
+
+/**
+ * Return the model saved for a specific chat, or null if none was set.
+ * @param {string} chatId
+ * @returns {string|null}
+ */
+export function getChatModel(chatId) {
+	return getChatById(chatId)?.model || null;
+}
+
+/**
+ * Persist the selected model on a specific chat object.
+ * @param {string} chatId
+ * @param {string|null} model
+ */
+export function setChatModel(chatId, model) {
+	const chat = getChatById(chatId);
+	if (!chat) return;
+	if (model) chat.model = model;
+	else delete chat.model;
+	saveChats();
+}
+
+// ── Last explicitly-selected model (localStorage, browser-local) ──────────────
+
+/**
+ * The last model the user manually chose from the dropdown.
+ * Not tied to any specific chat – used as the default when no chat model is saved.
+ * @returns {string|null}
+ */
+export function getLastSelectedModel() {
+	try { return localStorage.getItem(LAST_MODEL_KEY) || null; } catch { return null; }
+}
+
+/**
+ * Remember the model the user just picked.
+ * @param {string|null} model
+ */
+export function setLastSelectedModel(model) {
+	try {
+		if (model) localStorage.setItem(LAST_MODEL_KEY, model);
+		else localStorage.removeItem(LAST_MODEL_KEY);
+	} catch {}
+}
+
+// ── Messages ──────────────────────────────────────────────────────────────────
 
 export function addMessageToChat(chatId, role, content, attachments = null, parts = null) {
 	const chat = getChatById(chatId);
 	if (!chat) return null;
 	const graph = ensureGraph(chat);
 	
-	// Just get the current end of the thread
 	const parentId = graph.leafId || graph.rootId;
-	
-	// Append directly as a child of the current leaf
 	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts });
 	
 	chat.updatedAt = Date.now();
 	if (computeThreadNodeIds(graph).length === 1 && role === "user") {
-		// For title, use text content from parts or content string
 		const titleText = parts
 			? parts.filter(p => p.type === "text").map(p => p.content).join(" ")
 			: String(content || "");

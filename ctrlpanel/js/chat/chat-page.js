@@ -15,9 +15,13 @@ import {
 	addMessageToChat,
 	createNewChat,
 	getChatById,
+	getChatModel,
 	getCurrentChatId,
+	getLastSelectedModel,
 	saveChats,
+	setChatModel,
 	setCurrentChatId,
+	setLastSelectedModel,
 } from "./store.js";
 import { renderChatList } from "./sidebar.js";
 import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI } from "./context.js";
@@ -287,22 +291,23 @@ async function loadAndPopulateModels(root, signal) {
 }
 
 /**
- * Apply the defaultModel from settings to the model dropdown.
- * Selects the matching item (if it exists) and updates the label.
+ * Apply a specific model ID to the model dropdown.
+ * Returns true if the model was found and selected; false otherwise.
  * @param {Element} root
- * @param {string}  defaultModel  - OpenRouter model ID
+ * @param {string}  modelId
+ * @returns {boolean}
  */
-function applyDefaultModel(root, defaultModel) {
-	if (!defaultModel) return;
+function applyModel(root, modelId) {
+	if (!modelId) return false;
 	const modelDropdown = root.querySelector('[data-dropdown="model"]');
-	if (!modelDropdown) return;
+	if (!modelDropdown) return false;
 
 	const items = modelDropdown.querySelectorAll('.chat-dropdown-item');
 	const label = modelDropdown.querySelector('.chat-dropdown-label');
 	let matched = false;
 
 	items.forEach((item) => {
-		const isMatch = item.dataset.value === defaultModel;
+		const isMatch = item.dataset.value === modelId;
 		item.classList.toggle("selected", isMatch);
 		item.setAttribute("aria-selected", String(isMatch));
 		if (isMatch) {
@@ -312,7 +317,35 @@ function applyDefaultModel(root, defaultModel) {
 	});
 
 	if (!matched) {
-		console.debug('[ChatPage] defaultModel not found in dropdown:', defaultModel);
+		console.debug('[ChatPage] model not found in dropdown:', modelId);
+	}
+	return matched;
+}
+
+/**
+ * Choose and apply the right model for the currently active chat:
+ *   1. The chat's own saved model (if any)
+ *   2. The last model the user explicitly picked (localStorage)
+ *   3. The settings default model
+ *
+ * Auto-selection via this function does NOT update lastSelectedModel.
+ * @param {Element} root
+ */
+function selectModelForCurrentChat(root) {
+	const chatId = getCurrentChatId();
+
+	// 1. Chat-specific model
+	const chatModel = chatId ? getChatModel(chatId) : null;
+	if (chatModel && applyModel(root, chatModel)) return;
+
+	// 2. Last model the user explicitly chose
+	const lastModel = getLastSelectedModel();
+	if (lastModel && applyModel(root, lastModel)) return;
+
+	// 3. Settings default
+	const settings = SettingsStore.get();
+	if (settings?.defaultModel) {
+		applyModel(root, settings.defaultModel);
 	}
 }
 
@@ -359,17 +392,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 	await loadAndPopulateModels(root, signal);
 
-	// Apply defaultModel from settings store once models are in the DOM
-	const initialSettings = SettingsStore.get();
-	if (initialSettings?.defaultModel) {
-		applyDefaultModel(root, initialSettings.defaultModel);
-	}
+	// Apply the right model for the current chat context
+	selectModelForCurrentChat(root);
 
-	// Subscribe to settings changes for live defaultModel updates
-	const unsubSettings = SettingsStore.subscribe((settings) => {
-		if (settings?.defaultModel) {
-			applyDefaultModel(root, settings.defaultModel);
-		}
+	// Re-apply when settings change (only fills in if nothing more specific is set)
+	const unsubSettings = SettingsStore.subscribe(() => {
+		selectModelForCurrentChat(root);
 	});
 
 	// Unsubscribe when this chat page is torn down
@@ -397,6 +425,19 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		flushResponse: null,
 		isGenerating: false,
 	};
+
+	// Capture-phase document listener so ESC cancels editing regardless of
+	// which element currently has focus (e.g. user clicked outside the textarea).
+	document.addEventListener("keydown", (e) => {
+		if ((e.key === "Escape" || e.key === "Esc") && uiState.editingNodeId) {
+			e.preventDefault();
+			e.stopPropagation();
+			uiState.editingNodeId = null;
+			uiState.editingDraft = "";
+			uiState.editingSaveMode = null;
+			rerender();
+		}
+	}, { signal, capture: true });
 
 	const setGeneratingState = (isGenerating) => {
 		uiState.isGenerating = isGenerating;
@@ -1032,13 +1073,10 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const nodeId = msgEl?.dataset.nodeId;
 		if (!nodeId) return;
 
-		if (e.key === "Escape") {
-			e.preventDefault();
-			uiState.editingNodeId = null;
-			uiState.editingDraft = "";
-			uiState.editingSaveMode = null;
-			rerender();
-		} else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+		// ESC is handled by the document-level capture listener above so it
+		// works whether or not the textarea currently has focus.
+
+		if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
 			e.preventDefault();
 			uiState.editingSaveMode = e.shiftKey ? "preserve" : "reset";
 			msgEl.querySelector('button[data-action="save"]')?.click();
@@ -1088,11 +1126,22 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		}
 	}, { signal });
 
+	// When the user explicitly picks a model from the dropdown:
+	// – save it on the current chat so it restores on next visit
+	// – remember it as the last explicitly-chosen model (used for new / unknown chats)
 	root.addEventListener("click", (e) => {
 		const item = e.target.closest('[data-dropdown="model"] .chat-dropdown-item');
 		if (!item) return;
+
 		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
 		updateContextUI(root, chat);
+
+		const selectedModel = item.dataset?.value;
+		if (selectedModel) {
+			setLastSelectedModel(selectedModel);
+			const chatId = getCurrentChatId();
+			if (chatId) setChatModel(chatId, selectedModel);
+		}
 	}, { signal });
 
 	updateContextUI(root, getCurrentChatId() ? getChatById(getCurrentChatId()) : null);

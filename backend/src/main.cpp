@@ -19,6 +19,7 @@
 #include "controllers/config_controller.h"
 #include "controllers/auth_controller.h"
 #include "utils/encryption.h"
+#include "controllers/chat_controller.h"
 #include "embedded_frontend.h"
 
 namespace fs = std::filesystem;
@@ -356,6 +357,20 @@ void runServer(Config& config, OpenRouterService& openrouterService, const std::
         addSecurityHeaders(res);
         addCorsHeaders(res, req);
         handleUpdateSettings(req, res, config);
+    });
+
+    ChatStore chatStore((fs::path(dataDir) / "chats.json").string());
+
+    svr.Get("/api/chats", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res);
+        addCorsHeaders(res, req);
+        handleGetChats(req, res, chatStore);
+    });
+
+    svr.Put("/api/chats", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res);
+        addCorsHeaders(res, req);
+        handleSaveChats(req, res, chatStore);
     });
 
     // Embedded frontend files catch-all

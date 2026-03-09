@@ -49,6 +49,7 @@ set(SOURCES
     src/controllers/auth_controller.cpp
     src/controllers/openrouter_controller.cpp
     src/controllers/config_controller.cpp
+    src/controllers/chat_controller.cpp
     ${EMBED_CPP}
 )
 

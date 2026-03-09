@@ -108,8 +108,6 @@ window.addEventListener("hashchange", () => {
 });
 
 initTheme();
-loadChats();
-renderChatList(() => refreshChatUIIfOpen());
 initNavGroups();
 initSidebarToggle();
 
@@ -121,8 +119,13 @@ if (quickNewChatBtn) {
 	});
 }
 
+// Async startup: load chats from backend before rendering anything
 (async () => {
+	await loadChats();
+
 	const initial = currentRoute();
+
+	// If the URL references a chat that doesn't exist in our loaded data, clear it
 	if (initial.includes("ai-chat.html")) {
 		const urlParams = new URLSearchParams(location.hash.split("?")[1] || "");
 		const chatIdFromUrl = urlParams.get("chat");
@@ -131,7 +134,10 @@ if (quickNewChatBtn) {
 			saveChats();
 		}
 	}
+
+	renderChatList(() => refreshChatUIIfOpen());
 	refreshActiveState();
+
 	try {
 		await reloadRoute(initial);
 	} catch (err) {
