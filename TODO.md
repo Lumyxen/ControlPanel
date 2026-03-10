@@ -29,7 +29,9 @@
 - Add chat exporting (T3.chat format, custom format as default)
 - Add logprobs
   - Highlight uncertain tokens
-- Turn the response into a back-and-forth for the AI, allowing it to generate drafts, relook at it, refine it, and edit mistakes before sending the finalised result to what the user sees (do not block the user from seeing what the AI is generating at any point though).
+- Turn the response into a back-and-forth for the AI.
+  - Allow it to generate drafts, relook through the drafts, refine it, edit mistakes, and push the finalised result to the user
+  - Show the user the live process of editing as the output so the user gets a sense of progression
 - RAG based memory
   - Only load or allow models to use 64k tokens max.
   - Get more aggressive with offputting data into the RAG DB the closer you get to the maximum context window
@@ -37,14 +39,25 @@
   - Strengthen/weight information in the RAG the more it gets used to make it more likely/easy to be recalled in the future
   - Allow the AI to switch to using an identifier that links to RAG memories to remember in the context window to remember to do specific tasks
   - Offput large documents (12k+ tokens) to make the AI read in chunks to prevent context overflow and more effectively handle memory
-- Add weather tool (returns weather data, user location (not exposed to AI) default, can specify a location)
+- Add weather tool
+  - Inputs user location on the current day by default
+  - AI can specify a different location or date
+  - Returns weather data and/or reports for that location and date
 - Sort chat history by time since last chatted
 - Diff formatting
 - Change notice styling that back-end and/or an API connection is offline or lost
 - Setting to change default model (already exists, but vastly improving on it)
-- Edit available model list /w model search from OpenRouter (with model search filters)
+- Edit available model list
+  - Model search
+    - OpenRouter
+    - LM Studio
+    - HuggingFace
+  - Filters
 - Ensure tool placeholder in global system prompt also returns description of each tool
 - Be able to attach local directories
+- Be able to attach ZIP files
+  - Automatically unzip into being the same as if you were to upload a directory
+    - Enabled non-local directory attaching
 - Add sandboxed quick-code execution
 - Add a sandboxed CLI tool
 - Require user approval for if AI tries touchy commands (like `rm`)
@@ -161,7 +174,6 @@
 - Message shrinking/expanding unwantedly to strictly 2 lines when editing (make message editing properly size to original message size, expand/shrink with new/deleted lines)
 - Fix ESC not canceling message editing and instead defocuses the text field on the first press
 - Messages sometimes refusing to send
-- User is not kicked from a chat history upon deletion of that very chat
 
 #### General Bugs
 - Randomly getting completion before any generation, causing no response

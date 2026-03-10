@@ -7,7 +7,16 @@ const unpinIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24
 const deleteIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6H20L18.4199 20.2209C18.3074 21.2337 17.4512 22 16.4321 22H7.56786C6.54876 22 5.69264 21.2337 5.5801 20.2209L4 6Z"/><path d="M7.34491 3.14716C7.67506 2.44685 8.37973 2 9.15396 2H14.846C15.6203 2 16.3249 2.44685 16.6551 3.14716L18 6H6L7.34491 3.14716Z"/><path d="M2 6H22"/><path d="M10 11V16"/><path d="M14 11V16"/></svg>`;
 const editIconSvg = `<svg viewBox="0 -0.5 21 21" version="1.1" xmlns="http://www.w3.org/2000/svg"><g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"><g fill="currentColor"><path d="M3.15,14 C2.5704,14 2.1,13.552 2.1,13 L2.1,7 C2.1,6.448 2.5704,6 3.15,6 C3.7296,6 4.2,5.552 4.2,5 C4.2,4.448 3.7296,4 3.15,4 L2.1,4 C0.93975,4 0,4.895 0,6 L0,14 C0,15.105 0.93975,16 2.1,16 L3.15,16 C3.7296,16 4.2,15.552 4.2,15 C4.2,14.448 3.7296,14 3.15,14 M18.9,4 L11.55,4 C10.9704,4 10.5,4.448 10.5,5 C10.5,5.552 10.9704,6 11.55,6 L17.85,6 C18.4296,6 18.9,6.448 18.9,7 L18.9,13 C18.9,13.552 18.4296,14 17.85,14 L11.55,14 C10.9704,14 10.5,14.448 10.5,15 C10.5,15.552 10.9704,16 11.55,16 L18.9,16 C20.06025,16 21,15.105 21,14 L21,6 C21,4.895 20.06025,4 18.9,4 M10.5,19 C10.5,19.552 10.0296,20 9.45,20 L5.25,20 C4.6704,20 4.2,19.552 4.2,19 C4.2,18.448 4.6704,18 5.25,18 L6.3,18 L6.3,2 L5.25,2 C4.6704,2 4.2,1.552 4.2,1 C4.2,0.448 4.6704,0 5.25,0 L9.45,0 C10.0296,0 10.5,0.448 10.5,1 C10.5,1.552 10.0296,2 9.45,2 L8.4,2 L8.4,18 L9.45,18 C10.0296,18 10.5,18.448 10.5,19"/></g></g></svg>`;
 
+// Persist the last onDelete callback so that re-renders triggered internally
+// (e.g. from loadCurrentChat, which calls renderChatList with no arguments)
+// still fire the correct callback when a chat is deleted.
+let _onDelete = null;
+
 export function renderChatList(onDelete) {
+	// Update the stored callback only when an explicit one is provided.
+	if (onDelete !== undefined) _onDelete = onDelete;
+	const effectiveOnDelete = _onDelete;
+
 	const list = document.getElementById("savedChatsList");
 	if (!list) return;
 	list.innerHTML = "";
@@ -129,7 +138,7 @@ export function renderChatList(onDelete) {
 				e.preventDefault();
 				e.stopPropagation();
 				togglePinChat(chat.id);
-				renderChatList(onDelete);
+				renderChatList();
 			});
 
 			const deleteBtn = document.createElement("button");
@@ -142,8 +151,8 @@ export function renderChatList(onDelete) {
 				e.preventDefault();
 				e.stopPropagation();
 				deleteChat(chat.id);
-				renderChatList(onDelete);
-				if (onDelete) onDelete();
+				renderChatList();
+				if (effectiveOnDelete) effectiveOnDelete();
 			});
 
 			const actionsContainer = document.createElement("span");

@@ -670,6 +670,11 @@ Json::Value OpenRouterService::getLmStudioModels() const {
     // max_context_length, regardless of what context window was used at load time.
     // The OpenAI-compat /v1/models only returns the *loaded* context window (which
     // may be a user-chosen value like 8192), so it is not suitable for this purpose.
+    //
+    // Note: we do NOT filter by state here. The native API may not include a
+    // "state" field at all, or may use values other than "loaded". Which models
+    // are actually running is determined by Step 2 (the OpenAI-compat endpoint);
+    // this map is only used as a context-length lookup keyed by model ID.
     std::map<std::string, int> nativeCtxMap; // modelId -> max_context_length
     {
         long httpCode = 0;
@@ -678,16 +683,13 @@ Json::Value OpenRouterService::getLmStudioModels() const {
             for (const auto& m : nativeResult["data"]) {
                 std::string id = m.get("id", "").asString();
                 if (id.empty()) continue;
-                // Only consider models that are currently loaded
-                std::string state = m.get("state", "").asString();
-                if (state != "loaded") continue;
                 if (m.isMember("max_context_length") && m["max_context_length"].isInt()) {
                     nativeCtxMap[id] = m["max_context_length"].asInt();
                 }
             }
         }
         std::cout << "[LmStudio] Native API returned " << nativeCtxMap.size()
-                  << " loaded model(s) with max_context_length\n";
+                  << " model(s) with max_context_length\n";
     }
 
     // ── Step 2: query the OpenAI-compat /v1/models for the list of loaded models
