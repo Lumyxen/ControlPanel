@@ -1,4 +1,4 @@
-#include "controllers/openrouter_controller.h"
+#include "controllers/lmstudio_controller.h"
 #include "services/mcp_registry.h"
 #include <json/json.h>
 #include <sstream>
@@ -9,7 +9,7 @@
 #include <iostream>
 #include <atomic>
 
-void handleChat(const httplib::Request& req, httplib::Response& res, OpenRouterService& service) {
+void handleChat(const httplib::Request& req, httplib::Response& res, LmStudioService& service) {
     try {
         Json::Value body;
         Json::CharReaderBuilder reader;
@@ -41,7 +41,6 @@ void handleChat(const httplib::Request& req, httplib::Response& res, OpenRouterS
     }
 }
 
-// ── Streaming context ─────────────────────────────────────────────────────────
 struct StreamingCtx {
     std::deque<std::string> chunks;
     std::mutex              mutex;
@@ -51,7 +50,7 @@ struct StreamingCtx {
 };
 
 void handleStreaming(const httplib::Request& req, httplib::Response& res,
-                     OpenRouterService& service, McpRegistry* registry) {
+                     LmStudioService& service, McpRegistry* registry) {
     try {
         Json::Value body;
         Json::CharReaderBuilder reader;
@@ -73,12 +72,8 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
         int maxTokens            = body.isMember("max_tokens")     ? body["max_tokens"].asInt()     : 2048;
         std::string systemPrompt = body.isMember("system_prompt")  ? body["system_prompt"].asString(): "";
         double temperature       = body.isMember("temperature")    ? body["temperature"].asDouble() : -1.0;
-        // context_window is forwarded to LM Studio as num_ctx so it uses the full loaded context
         int contextWindow        = body.isMember("context_window") ? body["context_window"].asInt() : 0;
 
-        // Build tools array:
-        // 1. Any tools explicitly sent by the client
-        // 2. Always append all live MCP tools from the registry
         Json::Value tools = body.isMember("tools")
             ? body["tools"]
             : Json::Value(Json::arrayValue);
@@ -105,7 +100,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                 ctx->chunks.push_back(chunk);
                 return true;
             };
-            auto onError = [ctx](const std::string& err) {
+            auto onError =[ctx](const std::string& err) {
                 if (ctx->cancelled.load()) return;
                 std::lock_guard<std::mutex> lock(ctx->mutex);
                 ctx->error = err;
@@ -188,22 +183,10 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
 }
 
 void handleModels(const httplib::Request& /*req*/, httplib::Response& res,
-                  OpenRouterService& service) {
+                  LmStudioService& service) {
     try {
         res.status = 200;
         res.set_content(service.getModels().toStyledString(), "application/json");
-    } catch (const std::exception& e) {
-        res.status = 500;
-        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
-    }
-}
-
-void handleLmStudioModels(const httplib::Request& /*req*/, httplib::Response& res,
-                           OpenRouterService& service) {
-    try {
-        Json::Value result = service.getLmStudioModels();
-        res.status = 200;
-        res.set_content(result.toStyledString(), "application/json");
     } catch (const std::exception& e) {
         res.status = 500;
         res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");

@@ -3,14 +3,11 @@ const API_BASE = "";
 
 // Connection state
 let isConnected = true;
-let isOpenRouterAvailable = true;
 let healthCheckInterval = null;
-let openRouterCheckInterval = null;
 let retryInterval = null;
 
 // Callbacks for state changes
 let onConnectionChange = null;
-let onOpenRouterChange = null;
 
 // Configuration
 const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
@@ -30,14 +27,6 @@ export function isBackendConnected() {
  */
 export function setConnectionChangeCallback(callback) {
     onConnectionChange = callback;
-}
-
-/**
- * Set callback for OpenRouter state changes
- * @param {function(boolean)} callback - called with new OpenRouter availability
- */
-export function setOpenRouterChangeCallback(callback) {
-    onOpenRouterChange = callback;
 }
 
 /**
@@ -62,33 +51,6 @@ async function checkBackendHealth() {
 }
 
 /**
- * Check OpenRouter availability via backend
- * @returns {Promise<boolean>}
- */
-async function checkOpenRouterHealth() {
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
-        
-        const response = await fetch(`${API_BASE}/api/health/external`, {
-            method: 'GET',
-            signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-            return false;
-        }
-        
-        const data = await response.json();
-        return data.openrouter === true;
-    } catch (err) {
-        return false;
-    }
-}
-
-/**
  * Perform health check and update state
  */
 async function performHealthCheck() {
@@ -106,32 +68,6 @@ async function performHealthCheck() {
 }
 
 /**
- * Perform OpenRouter health check
- */
-async function performOpenRouterCheck() {
-    // Only check OpenRouter if backend is connected
-    if (!isConnected) {
-        if (isOpenRouterAvailable) {
-            isOpenRouterAvailable = false;
-            if (onOpenRouterChange) {
-                onOpenRouterChange(false);
-            }
-        }
-        return;
-    }
-    
-    const wasAvailable = isOpenRouterAvailable;
-    isOpenRouterAvailable = await checkOpenRouterHealth();
-    
-    if (wasAvailable !== isOpenRouterAvailable) {
-        console.log(`[ConnectionMonitor] OpenRouter: ${isOpenRouterAvailable ? 'available' : 'unavailable'}`);
-        if (onOpenRouterChange) {
-            onOpenRouterChange(isOpenRouterAvailable);
-        }
-    }
-}
-
-/**
  * Start the connection monitoring
  */
 export function startMonitoring() {
@@ -144,11 +80,9 @@ export function startMonitoring() {
     
     // Perform initial checks
     performHealthCheck();
-    performOpenRouterCheck();
     
     // Start periodic health checks
     healthCheckInterval = setInterval(performHealthCheck, HEALTH_CHECK_INTERVAL);
-    openRouterCheckInterval = setInterval(performOpenRouterCheck, HEALTH_CHECK_INTERVAL);
 }
 
 /**
@@ -158,10 +92,6 @@ export function stopMonitoring() {
     if (healthCheckInterval) {
         clearInterval(healthCheckInterval);
         healthCheckInterval = null;
-    }
-    if (openRouterCheckInterval) {
-        clearInterval(openRouterCheckInterval);
-        openRouterCheckInterval = null;
     }
     if (retryInterval) {
         clearInterval(retryInterval);

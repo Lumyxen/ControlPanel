@@ -7,12 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONCPP REQUIRED jsoncpp)
 pkg_check_modules(LIBCURL REQUIRED libcurl)
-pkg_check_modules(OPENSSL REQUIRED openssl)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 include_directories(${JSONCPP_INCLUDE_DIRS})
 include_directories(${LIBCURL_INCLUDE_DIRS})
-include_directories(${OPENSSL_INCLUDE_DIRS})
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
@@ -35,18 +33,16 @@ include_directories("${CMAKE_BINARY_DIR}")
 
 set(SOURCES
     src/main.cpp
-    src/utils/encryption.cpp
 
     # Services
-    src/services/openrouter_service.cpp
+    src/services/lmstudio_service.cpp
     src/services/mcp_service.cpp          # MCP server — built-in tools
     src/services/mcp_client.cpp           # HTTP transport client
     src/services/mcp_stdio_client.cpp     # Stdio transport client (subprocess)
     src/services/mcp_registry.cpp         # Multi-server registry, parses mcp.json
 
     # Controllers
-    src/controllers/auth_controller.cpp
-    src/controllers/openrouter_controller.cpp
+    src/controllers/lmstudio_controller.cpp
     src/controllers/config_controller.cpp
     src/controllers/chat_controller.cpp
     src/controllers/mcp_controller.cpp
@@ -57,13 +53,13 @@ set(SOURCES
 # ── Linux binary ──────────────────────────────────────────────────────────────
 add_executable(ctrlpanel_backend ${SOURCES})
 target_link_libraries(ctrlpanel_backend
-    ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} ${OPENSSL_LIBRARIES} pthread)
+    ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread)
 
 # ── Windows .exe binary ───────────────────────────────────────────────────────
 add_executable(ctrlpanel_backend_exe ${SOURCES})
 set_target_properties(ctrlpanel_backend_exe PROPERTIES
     OUTPUT_NAME "ctrlpanel_backend" SUFFIX ".exe")
 target_link_libraries(ctrlpanel_backend_exe
-    ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} ${OPENSSL_LIBRARIES} pthread)
+    ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread)
 
 install(TARGETS ctrlpanel_backend ctrlpanel_backend_exe DESTINATION bin)

@@ -178,7 +178,6 @@
 - Hovering over the last message in a chat makes the chat slightly scrolls up
 
 #### General Bugs
-- Randomly getting completion before any generation, causing no response
 - Not properly getting context window size from LM Studio
 - Images don't get parsed for AI models that have vision capabilities
 - Sometimes pasting in text just seems to be weirdly displayed in the input text field, and is omitted from the sent message

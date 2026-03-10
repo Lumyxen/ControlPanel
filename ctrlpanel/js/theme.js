@@ -35,7 +35,7 @@ export const PALETTES = {
 	},
 };
 
-export const PALETTE_ORDER = ["everforest", "catppuccin"];
+export const PALETTE_ORDER =["everforest", "catppuccin"];
 
 let currentTheme = null;
 
@@ -165,11 +165,6 @@ export function syncSettingsUI(root) {
 	});
 }
 
-/**
- * Populate the AI settings form fields from a settings object.
- * @param {Element} root
- * @param {Object} settings
- */
 function populateAISettingsFields(root, settings) {
 	if (!settings) return;
 
@@ -262,37 +257,6 @@ export function initSettingsPage(root) {
 
 	syncSettingsUI(root);
 
-	// ─── API Status ───────────────────────────────────────────────────────────
-	const apiStatus = root.querySelector("#api-status");
-	const refreshApiBtn = root.querySelector("#refresh-api-status");
-
-	if (apiStatus) {
-		const updateStatus = async () => {
-			apiStatus.textContent = "Checking...";
-			apiStatus.className = "badge";
-			try {
-				const res = await getModels();
-				if (res && !res.error && res.data && res.data.length > 0) {
-					apiStatus.textContent = "Connected";
-					apiStatus.className = "badge badge-success";
-				} else {
-					apiStatus.textContent = "Error: " + (res?.error || "Unable to fetch models");
-					apiStatus.className = "badge badge-error";
-				}
-			} catch (err) {
-				apiStatus.textContent = "Error: " + err.message;
-				apiStatus.className = "badge badge-error";
-			}
-		};
-
-		if (refreshApiBtn) {
-			refreshApiBtn.addEventListener("click", updateStatus);
-		}
-
-		updateStatus();
-	}
-
-	// ─── LM Studio status ─────────────────────────────────────────────────────
 	const lmStudioStatusEl = root.querySelector("#lmstudio-status");
 	const refreshLmStudioBtn = root.querySelector("#refresh-lmstudio-status");
 
@@ -301,8 +265,7 @@ export function initSettingsPage(root) {
 			lmStudioStatusEl.textContent = "Testing…";
 			lmStudioStatusEl.className = "badge";
 			try {
-				const { getLmStudioModels } = await import("./api.js");
-				const res = await getLmStudioModels();
+				const res = await getModels();
 				if (res && !res.error && res.data && res.data.length > 0) {
 					lmStudioStatusEl.textContent = `${res.data.length} model${res.data.length === 1 ? '' : 's'} found`;
 					lmStudioStatusEl.className = "badge badge-success";
@@ -321,12 +284,9 @@ export function initSettingsPage(root) {
 		refreshLmStudioBtn.addEventListener("click", testLmStudio);
 	}
 
-	// ─── AI Settings (defaultModel, temperature, maxTokens, systemPrompt) ────
-
 	const temperatureSlider = root.querySelector("#temperature-slider");
 	const temperatureInput  = root.querySelector("#temperature-input");
 
-	// Keep slider and number input in sync with each other
 	if (temperatureSlider && temperatureInput) {
 		temperatureSlider.addEventListener("input", () => {
 			temperatureInput.value = temperatureSlider.value;
@@ -337,17 +297,12 @@ export function initSettingsPage(root) {
 		});
 	}
 
-	// Populate fields from the settings store (may already be cached)
 	const cached = SettingsStore.get();
 	if (cached) {
 		populateAISettingsFields(root, cached);
 	}
 
-	// Subscribe so that externally-triggered reloads (e.g. file edit + poll)
-	// also update the form while it is open.
 	const unsubscribe = SettingsStore.subscribe((settings) => {
-		// Only overwrite fields that the user hasn't started editing
-		// (use document.activeElement check to avoid clobbering focused inputs)
 		const focused = document.activeElement;
 		const aiFields =["#default-model-input", "#temperature-slider", "#temperature-input",
 		                  "#max-tokens-input", "#system-prompt-input", "#lmstudio-url-input"];
@@ -357,8 +312,6 @@ export function initSettingsPage(root) {
 		}
 	});
 
-	// Clean up the subscription when the fragment is replaced (navigation away)
-	// We use a MutationObserver on document.body to detect when root is removed.
 	const observer = new MutationObserver(() => {
 		if (!document.body.contains(root)) {
 			unsubscribe();
@@ -367,7 +320,6 @@ export function initSettingsPage(root) {
 	});
 	observer.observe(document.body, { childList: true, subtree: true });
 
-	// ─── Save button ──────────────────────────────────────────────────────────
 	const saveBtn    = root.querySelector("#save-ai-settings");
 	const statusEl   = root.querySelector("#ai-settings-status");
 
@@ -408,7 +360,6 @@ export function initSettingsPage(root) {
 		});
 	}
 
-	// Trigger an initial load if the store hasn't been populated yet
 	if (!SettingsStore.get()) {
 		SettingsStore.init().then((settings) => {
 			populateAISettingsFields(root, settings);

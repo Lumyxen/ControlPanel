@@ -25,7 +25,7 @@ import {
 } from "./store.js";
 import { renderChatList } from "./sidebar.js";
 import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI } from "./context.js";
-import { getModels, getLmStudioModels } from "../api.js";
+import { getModels } from "../api.js";
 import { renderThread, showTyping, buildToolCallElement } from "./thread-ui.js";
 import { InlineAttachmentManager } from "./inline-attachment.js";
 import { parseMarkdown } from "./markdown.js";
@@ -195,129 +195,54 @@ async function loadAndPopulateModels(root, signal) {
 		const menu = modelDropdown?.querySelector('.chat-dropdown-menu');
 		if (!menu) return;
 		
-		// Update context lengths on existing (static HTML) items
-		const modelMap = new Map();
+		// Clear existing static items
+		menu.innerHTML = '';
+		
 		for (const model of models) {
-			if (model.id) modelMap.set(model.id, model);
-		}
-		const existingItems = menu.querySelectorAll('.chat-dropdown-item');
-		for (const item of existingItems) {
-			const modelId = item.dataset.value;
-			if (modelId && modelMap.has(modelId)) {
-				const model = modelMap.get(modelId);
-				if (model.context_length) item.dataset.contextLength = model.context_length;
-			}
+			if (!model.id) continue;
+			const btn = document.createElement('button');
+			btn.type = 'button';
+			btn.className = 'chat-dropdown-item';
+			btn.setAttribute('role', 'option');
+			btn.setAttribute('aria-selected', 'false');
+			btn.dataset.value = model.id;
+			if (model.context_length) btn.dataset.contextLength = String(model.context_length);
+
+			const displayName = model.id.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
+			btn.innerHTML = `<span class="chat-dropdown-item-label">${displayName}</span><span class="chat-dropdown-item-badge">Local</span>`;
+
+			btn.addEventListener('click', () => {
+				menu.querySelectorAll('.chat-dropdown-item').forEach(i => {
+					i.classList.remove('selected');
+					i.setAttribute('aria-selected', 'false');
+				});
+				btn.classList.add('selected');
+				btn.setAttribute('aria-selected', 'true');
+				const label = modelDropdown.querySelector('.chat-dropdown-label');
+				if (label) label.textContent = displayName;
+				modelDropdown.classList.remove('open');
+				modelDropdown.querySelector('.chat-dropdown-toggle')?.setAttribute('aria-expanded', 'false');
+
+				const chatId = getCurrentChatId();
+				if (chatId) setChatModel(chatId, model.id);
+				setLastSelectedModel(model.id);
+				const chat = getChatById(chatId);
+				updateContextUI(root, chat);
+			});
+
+			menu.appendChild(btn);
 		}
 		
+		selectModelForCurrentChat(root);
+
 		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
 		updateContextUI(root, chat);
 
-		// ── LM Studio models (fire-and-forget, don't block OR models) ──────────
-		loadLmStudioModels(root, signal).catch(() => {});
-		
 	} catch (err) {
 		console.error('Failed to load models:', err);
 		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
 		updateContextUI(root, chat);
 	}
-}
-
-async function loadLmStudioModels(root, signal) {
-	const modelDropdown = root.querySelector('[data-dropdown="model"]');
-	const menu = modelDropdown?.querySelector('.chat-dropdown-menu');
-	if (!menu) return;
-
-	// Remove any existing LM Studio section
-	menu.querySelectorAll('.chat-dropdown-separator[data-source="lmstudio"], .chat-dropdown-item[data-source="lmstudio"]')
-		.forEach(el => el.remove());
-
-	let lmData;
-	try {
-		const res = await getLmStudioModels();
-		lmData = res?.data;
-	} catch { return; }
-
-	if (!lmData || lmData.length === 0) return;
-
-	// Divider
-	const sep = document.createElement('div');
-	sep.className = 'chat-dropdown-separator';
-	sep.setAttribute('data-source', 'lmstudio');
-	sep.setAttribute('role', 'separator');
-	sep.setAttribute('aria-hidden', 'true');
-	sep.innerHTML = '<span>LM Studio</span>';
-	menu.appendChild(sep);
-
-	for (const model of lmData) {
-		if (!model.id) continue;
-		const btn = document.createElement('button');
-		btn.type = 'button';
-		btn.className = 'chat-dropdown-item';
-		btn.setAttribute('role', 'option');
-		btn.setAttribute('aria-selected', 'false');
-		btn.setAttribute('data-source', 'lmstudio');
-		btn.dataset.value = model.id;
-		if (model.context_length) btn.dataset.contextLength = String(model.context_length);
-
-		const displayName = model.id.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
-		btn.innerHTML = `<span class="chat-dropdown-item-label">${displayName}</span><span class="chat-dropdown-item-badge">Local</span>`;
-
-		btn.addEventListener('click', () => {
-			menu.querySelectorAll('.chat-dropdown-item').forEach(i => {
-				i.classList.remove('selected');
-				i.setAttribute('aria-selected', 'false');
-			});
-			btn.classList.add('selected');
-			btn.setAttribute('aria-selected', 'true');
-			const label = modelDropdown.querySelector('.chat-dropdown-label');
-			if (label) label.textContent = displayName;
-			modelDropdown.classList.remove('open');
-			modelDropdown.querySelector('.chat-dropdown-toggle')?.setAttribute('aria-expanded', 'false');
-
-			const chatId = getCurrentChatId();
-			if (chatId) setChatModel(chatId, model.id);
-			setLastSelectedModel(model.id);
-			const chat = getChatById(chatId);
-			updateContextUI(root, chat);
-		});
-
-		menu.appendChild(btn);
-	}
-
-	// === NEW: add LM Studio models to metadata map (so context window works reliably) ===
-	setModelMetadata(lmData);
-
-	// Determine which model should be active:
-	//   1. The current chat's saved model (if it's an LM Studio model)
-	//   2. The last manually-selected model (if it's LM Studio and no chat model is set)
-	const chatId = getCurrentChatId();
-	const chatModel = chatId ? getChatModel(chatId) : null;
-	const lastModel = getLastSelectedModel();
-	const targetModel = chatModel?.startsWith('lmstudio::')
-		? chatModel
-		: (!chatModel && lastModel?.startsWith('lmstudio::'))
-			? lastModel
-			: null;
-
-	if (targetModel) {
-		const match = menu.querySelector(`.chat-dropdown-item[data-value="${CSS.escape(targetModel)}"]`);
-		if (match) {
-			menu.querySelectorAll('.chat-dropdown-item').forEach(i => {
-				i.classList.remove('selected');
-				i.setAttribute('aria-selected', 'false');
-			});
-			match.classList.add('selected');
-			match.setAttribute('aria-selected', 'true');
-			const label = modelDropdown.querySelector('.chat-dropdown-label');
-			const displayName = targetModel.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
-			if (label) label.textContent = displayName;
-		}
-	}
-
-	// Always refresh the context-window display now that metadata is populated
-	// and the correct model is selected.
-	const chat = chatId ? getChatById(chatId) : null;
-	updateContextUI(root, chat);
 }
 
 /**
@@ -342,7 +267,10 @@ function applyModel(root, modelId) {
 		item.setAttribute("aria-selected", String(isMatch));
 		if (isMatch) {
 			matched = true;
-			if (label) label.textContent = item.textContent.trim();
+			if (label) {
+				const displayName = modelId.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
+				label.textContent = displayName;
+			}
 		}
 	});
 
@@ -352,56 +280,21 @@ function applyModel(root, modelId) {
 	return matched;
 }
 
-/**
- * For LM Studio models that haven't loaded into the DOM yet, immediately
- * stamp the human-readable name onto the dropdown label so the user never
- * sees the stale HTML-default model name while waiting for the async fetch.
- * loadLmStudioModels() will create the real item and mark it selected later.
- */
-function primeDropdownLabelForLmStudio(root, modelId) {
-	const modelDropdown = root.querySelector('[data-dropdown="model"]');
-	if (!modelDropdown) return;
-	const label = modelDropdown.querySelector('.chat-dropdown-label');
-	if (!label) return;
-	// Deselect every existing item so nothing conflicts
-	modelDropdown.querySelectorAll('.chat-dropdown-item').forEach(i => {
-		i.classList.remove('selected');
-		i.setAttribute('aria-selected', 'false');
-	});
-	// Show the model name right away — strip the prefix and path
-	const displayName = modelId.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
-	label.textContent = displayName;
-}
-
 function selectModelForCurrentChat(root) {
 	const chatId = getCurrentChatId();
 
 	// 1. Chat-specific model
 	const chatModel = chatId ? getChatModel(chatId) : null;
 	if (chatModel) {
-		// Found in dropdown → use it
 		if (applyModel(root, chatModel)) return;
-		// LM Studio models load asynchronously — the item isn't in the DOM yet.
-		// Prime the label immediately so the user sees the right name straight
-		// away, then loadLmStudioModels() will do the proper selection.
-		if (chatModel.startsWith('lmstudio::')) {
-			primeDropdownLabelForLmStudio(root, chatModel);
-			return;
-		}
-		// Saved but no longer available → fall back to settings default, not lastModel
 		const settings = SettingsStore.get();
 		if (settings?.defaultModel) applyModel(root, settings.defaultModel);
 		return;
 	}
 
-	// 2. Last model the user explicitly chose (no chat-specific preference set).
+	// 2. Last model the user explicitly chose
 	const lastModel = getLastSelectedModel();
 	if (lastModel) {
-		// LM Studio: prime the label now; loadLmStudioModels() will finish the job.
-		if (lastModel.startsWith('lmstudio::')) {
-			primeDropdownLabelForLmStudio(root, lastModel);
-			return;
-		}
 		if (applyModel(root, lastModel)) return;
 	}
 
@@ -453,11 +346,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 	const attachmentManager = new InlineAttachmentManager(input);
 
-	// Apply the right model immediately — loadAndPopulateModels only adds
-	// context-length metadata, it doesn't create or select items, so this
-	// works against the HTML-rendered items with no network round-trip.
-	selectModelForCurrentChat(root);
-
+	// Load models entirely (since we removed async OR-to-LM split)
 	await loadAndPopulateModels(root, signal);
 
 	initDropdowns(root, signal);
@@ -483,8 +372,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		isGenerating: false,
 	};
 
-	// Capture-phase document listener so ESC cancels editing regardless of
-	// which element currently has focus (e.g. user clicked outside the textarea).
 	document.addEventListener("keydown", (e) => {
 		if ((e.key === "Escape" || e.key === "Esc") && uiState.editingNodeId) {
 			e.preventDefault();
@@ -555,11 +442,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const currentSignal = uiState.streamAbort.signal;
 		
 		const modelSelect = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
-		const model = modelSelect?.dataset?.value || "arcee-ai/trinity-large-preview:free";
+		const model = modelSelect?.dataset?.value || "";
 
-		// Persist the model actually used for this reply — this is the authoritative
-		// save point and handles the case where the user picked a model before the
-		// chat object existed (new chat flow).
 		if (activeChatId && model) setChatModel(activeChatId, model);
 
 		let maxTokens = getModelMaxTokens(model);
@@ -684,12 +568,9 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			conversationHistory = "Hello";
 		}
 
-		// Calculate safe token bounds to completely prevent ContextLengthExceeded errors
 		const estimatedPromptTokens = Math.ceil(conversationHistory.length / 3) + 200;
 
-		// Shrink the requested max tokens if it mathematically pushes us out of the context window
 		if (estimatedPromptTokens + maxTokens > contextLimit) {
-            // Note: Keep maxTokens at least 256 for a reasonably complete block of response
 			maxTokens = Math.max(256, contextLimit - estimatedPromptTokens);
 		}
 		
@@ -699,24 +580,18 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		let errorFromStream = null;
 		let isSaved = false;
 
-		// Resolve system prompt and temperature from the settings store (synchronous – no extra
-		// network round-trip; the store keeps itself fresh via background polling).
 		const currentSettings = SettingsStore.get() ?? {};
 		let systemPrompt = currentSettings.systemPrompt ?? "";
 		const temperature = (typeof currentSettings.temperature === "number")
 			? currentSettings.temperature
 			: null;
 
-		// Expand placeholders in the system prompt.
 		if (systemPrompt) {
-			// {model} → human-readable model name shown in the dropdown label,
-			// falling back to the raw model ID if the label isn't available.
 			const modelLabel = modelSelect?.querySelector(".chat-dropdown-item-label")?.textContent?.trim()
 				|| modelSelect?.textContent?.trim()
 				|| model;
 			systemPrompt = systemPrompt.replaceAll("{model}", modelLabel);
 
-			// {tools} → comma-separated list of enabled tool names, or "none".
 			const TOOL_LABELS = {
 				"web-search": "Web Search",
 				"code-exec":  "Code Execution",
@@ -796,7 +671,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 						return;
 					}
 
-					// Custom event sent by backend when a tool finishes executing
 					if (chunk.type === "tool_execution" && chunk.tool_call) {
 						activeToolCalls.push({
 							id: chunk.tool_call.id,
@@ -926,7 +800,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		renderThread(messages, chat, uiState);
 		updateContextUI(root, chat);
 
-		// Bug 3 fix: keep the empty-state banner in sync after any rerender (e.g. after delete)
 		const g = ensureGraph(chat);
 		const hasMessages = computeThreadNodeIds(g).length > 0;
 		if (empty) empty.hidden = hasMessages;
@@ -936,7 +809,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				const el = messages.querySelector(`.chat-message[data-node-id="${uiState.editingNodeId}"] .chat-edit-input`);
 				if (el) {
 					el.focus();
-					// Bug 2 fix: auto-size the edit textarea to its content on first render
 					el.style.height = "auto";
 					el.style.height = el.scrollHeight + "px";
 				}
@@ -957,7 +829,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	}, { signal });
 
 	messages.addEventListener("click", (e) => {
-		// Code block copy action
 		const codeCopyBtn = e.target.closest('.md-code-copy');
 		if (codeCopyBtn) {
 			e.preventDefault();
@@ -980,7 +851,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			return;
 		}
 
-		// Code block collapse action (entire header)
 		const codeHeader = e.target.closest('.md-code-header');
 		if (codeHeader) {
 			e.preventDefault();
@@ -1032,8 +902,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				uiState.editingNodeId = null;
 				uiState.editingDraft = "";
 				uiState.editingSaveMode = null;
-				// Bug 3 fix: if the deletion left the thread empty, spin up a fresh chat so
-				// the user immediately has a clean thread to work in.
 				if (computeThreadNodeIds(graph).length === 0) {
 					createNewChat();
 				}
@@ -1248,9 +1116,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const nodeId = msgEl?.dataset.nodeId;
 		if (!nodeId) return;
 
-		// ESC is handled by the document-level capture listener above so it
-		// works whether or not the textarea currently has focus.
-
 		if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
 			e.preventDefault();
 			uiState.editingSaveMode = e.shiftKey ? "preserve" : "reset";
@@ -1261,7 +1126,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	messages.addEventListener("input", (e) => {
 		const textarea = e.target.closest(".chat-edit-input");
 		if (!textarea) return;
-		// Bug 2 fix: grow/shrink the textarea as lines are added or removed
 		textarea.style.height = "auto";
 		textarea.style.height = textarea.scrollHeight + "px";
 		const msgEl = textarea.closest(".chat-message");
@@ -1309,9 +1173,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		}
 	}, { signal });
 
-	// When the user explicitly picks a model from the dropdown:
-	// – save it on the current chat so it restores on next visit
-	// – remember it as the last explicitly-chosen model (used for new / unknown chats)
 	root.addEventListener("click", (e) => {
 		const item = e.target.closest('[data-dropdown="model"] .chat-dropdown-item');
 		if (!item) return;

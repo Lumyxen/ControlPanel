@@ -6,7 +6,7 @@ A highly personal web interface to give me the information and tools I need all 
 
 ## Installation
 1. Download the source code
-2. Add a system environment variable named `OPENROUTER_API_KEY` with it set to your OpenRouter API
+2. Ensure you have an LM Studio Server running
 3. Build the app (commands down below)
 4. Navigate to the build folder `backend/build/` and run the build file
 - **Linux**, run `ctrlpanel_backend`

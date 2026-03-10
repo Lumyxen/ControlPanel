@@ -22,7 +22,7 @@ private:
 public:
     Config(const std::string& path)
         : port(8080), host("0.0.0.0"),
-          defaultModel("arcee-ai/trinity-large-preview:free"),
+          defaultModel(""),
           fallbackMaxOutputTokens(8192), temperature(0.7),
           systemPrompt(""), lmStudioUrl("http://localhost:1234"),
           settingsPath(path) {}

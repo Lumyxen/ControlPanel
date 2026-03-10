@@ -33,10 +33,6 @@ export async function getModels() {
     return makeRequest("/models");
 }
 
-export async function getLmStudioModels() {
-    return makeRequest("/models/lmstudio");
-}
-
 /**
  * Stream a chat message.
  *

@@ -14,14 +14,12 @@
 #include <curl/curl.h>
 #include <httplib.h>
 #include "config/config.h"
-#include "services/openrouter_service.h"
+#include "services/lmstudio_service.h"
 #include "services/mcp_service.h"
 #include "services/mcp_registry.h"
-#include "controllers/openrouter_controller.h"
+#include "controllers/lmstudio_controller.h"
 #include "controllers/config_controller.h"
-#include "controllers/auth_controller.h"
 #include "controllers/mcp_controller.h"
-#include "utils/encryption.h"
 #include "controllers/chat_controller.h"
 #include "embedded_frontend.h"
 
@@ -30,13 +28,8 @@ namespace fs = std::filesystem;
 httplib::Server* g_server = nullptr;
 std::mutex g_serverMutex;
 
-std::atomic<bool> openRouterHealthy{false};
-std::mutex openRouterHealthMutex;
-std::chrono::steady_clock::time_point lastOpenRouterCheck;
-
 std::atomic<bool> serverRunning{false};
 std::atomic<bool> serverError{false};
-std::atomic<bool> shouldStopHealthCheck{false};
 std::atomic<bool> shouldStopConfigWatch{false};
 
 fs::path getExecutableDir() {
@@ -98,7 +91,7 @@ void addSecurityHeaders(httplib::Response& res) {
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "img-src 'self' data: blob:; "
         "font-src 'self' https://cdn.jsdelivr.net; "
-        "connect-src 'self' https://api.openrouter.ai http://localhost:* http://127.0.0.1:*; "
+        "connect-src 'self' http://localhost:* http://127.0.0.1:*; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self';");
     res.set_header("X-XSS-Protection", "1; mode=block");
     res.set_header("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -113,7 +106,7 @@ void addCorsHeaders(httplib::Response& res, const httplib::Request& req) {
         res.set_header("Access-Control-Allow-Credentials", "true");
     }
     res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Api-Key");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type");
     res.set_header("Access-Control-Max-Age", "86400");
 }
 
@@ -128,74 +121,9 @@ std::string get_mime_type(const std::string& path) {
     return "application/octet-stream";
 }
 
-// ── OpenRouter health check ───────────────────────────────────────────────────
-size_t HealthCheckWriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
-    ((std::string*)userp)->append((char*)contents, size * nmemb);
-    return size * nmemb;
-}
-
-bool checkOpenRouterHealth() {
-    CURL* curl = curl_easy_init();
-    if (!curl) return false;
-    std::string response;
-    curl_easy_setopt(curl, CURLOPT_URL, "https://openrouter.ai/api/v1/models");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, HealthCheckWriteCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
-    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "ControlPanel-Backend/1.0");
-    CURLcode res = curl_easy_perform(curl);
-    long httpCode = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-    curl_easy_cleanup(curl);
-    if (res != CURLE_OK || httpCode != 200) return false;
-    Json::Value root; Json::CharReaderBuilder builder; std::string errors;
-    std::istringstream ss(response);
-    return Json::parseFromStream(builder, ss, &root, &errors);
-}
-
-void runOpenRouterHealthCheck() {
-    std::cout << "[HealthCheck] Starting OpenRouter health check thread\n";
-    bool firstCheck = true;
-    int consecutiveFailures = 0;
-    const int MAX_FAILURES = 2;
-    while (!shouldStopHealthCheck.load()) {
-        bool healthy = false;
-        try {
-            healthy = checkOpenRouterHealth();
-            bool wasHealthy = openRouterHealthy.load();
-            if (healthy) consecutiveFailures = 0;
-            else {
-                consecutiveFailures++;
-                if (consecutiveFailures < MAX_FAILURES) healthy = true;
-            }
-            openRouterHealthy.store(healthy);
-            { std::lock_guard<std::mutex> lock(openRouterHealthMutex);
-              lastOpenRouterCheck = std::chrono::steady_clock::now(); }
-            if (firstCheck) {
-                std::cout << "[HealthCheck] Initial OpenRouter status: "
-                          << (healthy ? "healthy" : "unhealthy") << "\n";
-                firstCheck = false;
-            } else if (healthy != wasHealthy) {
-                std::cout << "[HealthCheck] OpenRouter status changed: "
-                          << (healthy ? "healthy" : "unhealthy") << "\n";
-            }
-        } catch (...) {
-            consecutiveFailures++;
-            if (consecutiveFailures >= MAX_FAILURES) openRouterHealthy.store(false);
-        }
-        for (int i = 0; i < 60 && !shouldStopHealthCheck.load(); ++i)
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-}
-
 // ── Config + mcp.json file watcher ───────────────────────────────────────────
 void runConfigFileWatch(Config& config, McpRegistry& registry,
-                        OpenRouterService& service,
+                        LmStudioService& service,
                         const std::string& settingsPath,
                         const std::string& mcpJsonPath) {
     std::cout << "[ConfigWatch] Watching: " << settingsPath << "\n";
@@ -245,14 +173,13 @@ void runConfigFileWatch(Config& config, McpRegistry& registry,
 // ── Signal handler ────────────────────────────────────────────────────────────
 void signalHandler(int signal) {
     std::cout << "\n[Signal] Received signal " << signal << ", shutting down...\n";
-    shouldStopHealthCheck.store(true);
     shouldStopConfigWatch.store(true);
     std::lock_guard<std::mutex> lock(g_serverMutex);
     if (g_server) g_server->stop();
 }
 
 // ── Server ────────────────────────────────────────────────────────────────────
-void runServer(Config& config, OpenRouterService& openrouterService,
+void runServer(Config& config, LmStudioService& lmstudioService,
                McpService& mcpService, McpRegistry& registry,
                const std::string& dataDir) {
 
@@ -272,42 +199,19 @@ void runServer(Config& config, OpenRouterService& openrouterService,
         res.set_content("{\"status\": \"ok\"}", "application/json");
     });
 
-    svr.Get("/api/health/external",[](const httplib::Request& req, httplib::Response& res) {
-        addSecurityHeaders(res); addCorsHeaders(res, req);
-        Json::Value response;
-        response["openrouter"] = openRouterHealthy.load();
-        std::chrono::steady_clock::time_point lastCheck;
-        { std::lock_guard<std::mutex> lock(openRouterHealthMutex); lastCheck = lastOpenRouterCheck; }
-        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::steady_clock::now() - lastCheck).count();
-        response["lastCheckSecondsAgo"] = static_cast<Json::Int64>(elapsed);
-        Json::StreamWriterBuilder builder;
-        res.set_content(Json::writeString(builder, response), "application/json");
-    });
-
-    svr.Post("/api/auth/verify", [&](const httplib::Request& req, httplib::Response& res) {
-        addSecurityHeaders(res); addCorsHeaders(res, req);
-        handleAuthVerify(req, res, config);
-    });
-
     svr.Post("/api/chat", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
-        handleChat(req, res, openrouterService);
+        handleChat(req, res, lmstudioService);
     });
 
     svr.Post("/api/chat/stream", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
-        handleStreaming(req, res, openrouterService, &registry);
+        handleStreaming(req, res, lmstudioService, &registry);
     });
 
     svr.Get("/api/models", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
-        handleModels(req, res, openrouterService);
-    });
-
-    svr.Get("/api/models/lmstudio", [&](const httplib::Request& req, httplib::Response& res) {
-        addSecurityHeaders(res); addCorsHeaders(res, req);
-        handleLmStudioModels(req, res, openrouterService);
+        handleModels(req, res, lmstudioService);
     });
 
     svr.Get("/api/config/settings", [&](const httplib::Request& req, httplib::Response& res) {
@@ -416,19 +320,8 @@ int main() {
     Config config(settingsPath);
     config.load();
 
-    std::string apiKey;
-    if (const char* env = std::getenv("OPENROUTER_API_KEY");
-            env && std::string(env).length() > 0) {
-        apiKey = env;
-        std::cout << "API key source: environment variable\n";
-    } else {
-        std::cout << "API key source: none (set OPENROUTER_API_KEY)\n";
-    }
-    std::cout << "API key status: " << (apiKey.empty() ? "EMPTY" : "present") << "\n";
-
-    Encryption        encryption("default-32-byte-encryption-key!!");
-    OpenRouterService openrouterService(apiKey, encryption);
-    openrouterService.setLmStudioUrl(config.getLmStudioUrl());
+    LmStudioService lmstudioService;
+    lmstudioService.setLmStudioUrl(config.getLmStudioUrl());
     McpService        mcpService(config);
     McpRegistry       registry;
 
@@ -445,7 +338,7 @@ int main() {
 
     serverError = false;
     std::thread serverThread(runServer,
-        std::ref(config), std::ref(openrouterService),
+        std::ref(config), std::ref(lmstudioService),
         std::ref(mcpService), std::ref(registry),
         dataDir.string());
 
@@ -459,18 +352,15 @@ int main() {
         return 1;
     }
 
-    std::thread healthCheckThread(runOpenRouterHealthCheck);
     std::thread configWatchThread(runConfigFileWatch,
-        std::ref(config), std::ref(registry), std::ref(openrouterService),
+        std::ref(config), std::ref(registry), std::ref(lmstudioService),
         settingsPath, mcpJsonPath);
 
     std::cout << "\n=== Server started successfully ===\n";
     std::cout << "Press Ctrl+C to stop the server\n\n";
 
     serverThread.join();
-    shouldStopHealthCheck.store(true);
     shouldStopConfigWatch.store(true);
-    healthCheckThread.join();
     configWatchThread.join();
 
     curl_global_cleanup();

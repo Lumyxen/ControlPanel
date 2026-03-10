@@ -11,20 +11,6 @@
         <p class="page-subtle">Personalise your control panel.</p>
     </header>
 
-    <section class="card" aria-labelledby="api-title">
-        <h2 class="card-title" id="api-title">API Configuration</h2>
-        <p class="card-desc">Status of your backend OpenRouter connection.</p>
-
-        <div class="option-row">
-            <label>API Status</label>
-            <div class="input-group">
-                <span id="api-status" class="badge">Checking...</span>
-                <button type="button" id="refresh-api-status" class="btn">Refresh</button>
-            </div>
-            <p class="option-hint">The key is securely stored in your environment variables.</p>
-        </div>
-    </section>
-
     <section class="card" aria-labelledby="lmstudio-title">
         <h2 class="card-title" id="lmstudio-title">LM Studio</h2>
         <p class="card-desc">Connect to a local LM Studio server to use locally-running models.</p>
@@ -58,11 +44,11 @@
                 id="default-model-input"
                 class="text-input"
                 type="text"
-                placeholder="e.g. arcee-ai/trinity-large-preview:free"
+                placeholder="e.g. lmstudio::llama-3-8b-instruct"
                 autocomplete="off"
                 spellcheck="false"
             />
-            <p class="option-hint">Model ID pre-selected when opening a new chat. Must match an OpenRouter model ID exactly.</p>
+            <p class="option-hint">Model ID pre-selected when opening a new chat. Must exactly match an LM Studio model ID prefixed with <code>lmstudio::</code>.</p>
         </div>
 
         <div class="option-row">

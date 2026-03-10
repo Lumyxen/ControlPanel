@@ -3,7 +3,6 @@ import {
     startMonitoring,
     stopMonitoring,
     setConnectionChangeCallback,
-    setOpenRouterChangeCallback,
     retryConnection,
     startAutoRetry,
     stopAutoRetry,
@@ -11,9 +10,7 @@ import {
 
 // Modal state
 let connectionModal = null;
-let openRouterModal = null;
 let isConnectionModalVisible = false;
-let isOpenRouterModalVisible = false;
 
 /**
  * Initialize connection monitoring
@@ -22,7 +19,6 @@ let isOpenRouterModalVisible = false;
 export function initConnectionUI() {
     // Set up connection state change callbacks
     setConnectionChangeCallback(handleConnectionChange);
-    setOpenRouterChangeCallback(handleOpenRouterChange);
     
     // Start monitoring
     startMonitoring();
@@ -41,20 +37,6 @@ function handleConnectionChange(isConnected) {
     } else {
         // Connection lost
         showConnectionModal();
-    }
-}
-
-/**
- * Handle OpenRouter availability changes
- * @param {boolean} isAvailable - new availability state
- */
-function handleOpenRouterChange(isAvailable) {
-    if (isAvailable) {
-        // OpenRouter available
-        hideOpenRouterModal();
-    } else {
-        // OpenRouter unavailable
-        showOpenRouterModal();
     }
 }
 
@@ -145,85 +127,5 @@ function hideConnectionModal() {
         }
         connectionModal = null;
         isConnectionModalVisible = false;
-    }, 300);
-}
-
-/**
- * Create and show the OpenRouter unavailable modal
- */
-function showOpenRouterModal() {
-    if (isOpenRouterModalVisible) return;
-    
-    // Remove existing modal if any
-    hideOpenRouterModal();
-    
-    const overlay = document.createElement('div');
-    overlay.className = 'connection-modal-overlay';
-    overlay.id = 'openrouter-modal';
-    
-    overlay.innerHTML = `
-        <div class="connection-modal">
-            <div class="connection-modal-header">
-                <div class="connection-modal-icon warning">⚠️</div>
-                <h3 class="connection-modal-title">OpenRouter API Unavailable</h3>
-            </div>
-            <p class="connection-modal-message">
-                The OpenRouter API is currently unreachable. AI chat features may not work properly.
-            </p>
-            <div class="connection-modal-note">
-                💡 Note: Local features like settings will continue to work.
-            </div>
-            <div class="connection-modal-actions">
-                <button class="connection-modal-button secondary" id="or-modal-dismiss">Dismiss</button>
-                <button class="connection-modal-button primary" id="or-modal-retry">Retry Connection</button>
-            </div>
-            <div class="connection-modal-status">
-                <span class="connection-modal-status-dot offline"></span>
-                <span id="or-modal-status-text">OpenRouter API offline</span>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(overlay);
-    openRouterModal = overlay;
-    
-    // Add event listeners
-    overlay.querySelector('#or-modal-retry').addEventListener('click', async () => {
-        const statusText = overlay.querySelector('#or-modal-status-text');
-        const statusDot = overlay.querySelector('.connection-modal-status-dot');
-        statusText.textContent = 'Checking OpenRouter status...';
-        statusDot.className = 'connection-modal-status-dot reconnecting';
-        
-        // Trigger a health check
-        const event = new CustomEvent('checkOpenRouterHealth');
-        window.dispatchEvent(event);
-    });
-    
-    overlay.querySelector('#or-modal-dismiss').addEventListener('click', () => {
-        hideOpenRouterModal();
-    });
-    
-    // Show modal with animation
-    requestAnimationFrame(() => {
-        overlay.classList.add('visible');
-    });
-    
-    isOpenRouterModalVisible = true;
-}
-
-/**
- * Hide the OpenRouter modal
- */
-function hideOpenRouterModal() {
-    if (!openRouterModal) return;
-    
-    openRouterModal.classList.remove('visible');
-    
-    setTimeout(() => {
-        if (openRouterModal && openRouterModal.parentNode) {
-            openRouterModal.parentNode.removeChild(openRouterModal);
-        }
-        openRouterModal = null;
-        isOpenRouterModalVisible = false;
     }, 300);
 }
