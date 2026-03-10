@@ -35,14 +35,15 @@ function estimateTokensForText(text) {
 }
 
 /**
- * Extract full text that contributes to context (text + attachment descriptions)
+ * Extract full text that contributes to context (text + attachment descriptions + reasoning + tools)
  * Matches exactly what is sent to the model in chat-page.js
  */
 function getNodeFullText(node) {
 	if (!node) return "";
 
+	let text = "";
+
 	if (node.parts && Array.isArray(node.parts)) {
-		let text = "";
 		for (const part of node.parts) {
 			if (part.type === "text" && part.content) {
 				text += part.content + "\n";
@@ -69,12 +70,24 @@ function getNodeFullText(node) {
 				}
 				
 				text += info + "]\n";
-            }
+			}
 		}
-		return text.trim();
+	} else {
+		text += String(node.content || "") + "\n";
 	}
 
-	return String(node.content || "");
+	if (node.reasoning) {
+		text += `<think>\n${node.reasoning}\n</think>\n`;
+	}
+
+	if (node.toolCalls && Array.isArray(node.toolCalls)) {
+		for (const tc of node.toolCalls) {
+			const inputStr = typeof tc.input === 'object' ? JSON.stringify(tc.input) : String(tc.input || "");
+			text += `\n[Tool Execution: ${tc.name}]\nInput: ${inputStr}\nOutput: ${tc.output || ""}\n`;
+		}
+	}
+
+	return text.trim();
 }
 
 export function getModelContextLimitFromUI(root) {

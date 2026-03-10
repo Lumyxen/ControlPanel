@@ -1,4 +1,4 @@
-**Ultimate goal is to get a model like Qwen 3.5 2B to outperform Gemini 3.1 Pro in benchmarks**
+**Ultimate goal is to get a model like Qwen 3.5 2B in my AI harness to outperform Gemini 3.1 Pro in Google AI Studio in benchmarks**
 
 # TODO
 ## Main Control Panel
@@ -11,7 +11,7 @@
 
 ## AI Chat-box
 ### Planned Features
-- Chat encryption (automatic decryption during chat loading)
+- Live updating context window usage (doesn't wait for message sent or generation completion)
 - Migrate development onto skidbladnir to host it (not really a feature)
 - Add llama.cpp server API support for local AI on skidbladnir
 - Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
@@ -27,6 +27,7 @@
   - Get more aggressive with offputting data into the RAG DB the closer you get to the maximum context window
   - Stage progression as: Full data -> summary + RAG -> RAG
   - Strengthen/weight information in the RAG the more it gets used to make it more likely/easy to be recalled in the future
+    - Decay factor in the weighting
   - Allow the AI to switch to using an identifier that links to RAG memories to remember in the context window to remember to do specific tasks
   - Offput large documents (12k+ tokens) to make the AI read in chunks to prevent context overflow and more effectively handle memory
 - Headless browser tool
@@ -175,6 +176,7 @@
 - Fix ESC not canceling message editing and instead defocuses the text field on the first press
 - Newline character collapsing into previous line with the sequence: character -> newline -> character -> delete character
 - Hovering over the last message in a chat makes the chat slightly scrolls up
+- Don't force close the thinking box during generation
 
 #### General Bugs
 - Not properly getting context window size from LM Studio

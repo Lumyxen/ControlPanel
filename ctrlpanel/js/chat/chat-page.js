@@ -458,53 +458,72 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const graph = ensureGraph(chat);
 		const threadIds = computeThreadNodeIds(graph);
 		
+		const buildNodeTextForHistory = (node) => {
+			if (!node) return "";
+			let nodeContent = "";
+			
+			if (node.parts && Array.isArray(node.parts)) {
+				const textParts = [];
+				const attachmentInfos =[];
+				
+				for (const part of node.parts) {
+					if (part.type === "text" && part.content) {
+						textParts.push(part.content);
+					} else if (part.type === "attachment") {
+						const isImage = part.isImage ? " (image)" : "";
+						let attachmentInfo = `[Attachment: ${part.name} (${part.size} bytes)${isImage}]`;
+						
+						if (part.data && !part.isImage) {
+							try {
+								const base64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
+								if (base64Match) {
+									const chunk = base64Match[1].slice(0, 13336);
+									const binaryString = atob(chunk);
+									const bytes = new Uint8Array(binaryString.length);
+									for (let i = 0; i < binaryString.length; i++) {
+										bytes[i] = binaryString.charCodeAt(i);
+									}
+									const decoder = new TextDecoder('utf-8');
+									const textContent = decoder.decode(bytes).slice(0, 10000);
+									attachmentInfo += `\n[File Content:]\n${textContent}`;
+								}
+							} catch (e) {
+								console.warn('Could not read file content:', e);
+							}
+						}
+						attachmentInfos.push(attachmentInfo);
+					}
+				}
+				
+				nodeContent = textParts.join("");
+				if (attachmentInfos.length > 0) {
+					nodeContent += "\n" + attachmentInfos.join("\n");
+				}
+			} else if (node.content) {
+				nodeContent = node.content;
+			}
+			
+			if (node.reasoning) {
+				nodeContent = `<think>\n${node.reasoning}\n</think>\n\n` + nodeContent;
+			}
+			
+			if (node.toolCalls && Array.isArray(node.toolCalls) && node.toolCalls.length > 0) {
+				let toolsText = "";
+				for (const tc of node.toolCalls) {
+					const inputStr = typeof tc.input === 'object' ? JSON.stringify(tc.input) : String(tc.input || "");
+					toolsText += `\n[Tool Execution: ${tc.name}]\nInput: ${inputStr}\nOutput: ${tc.output || ""}\n`;
+				}
+				nodeContent += toolsText;
+			}
+			
+			return nodeContent;
+		};
+
 		let conversationHistory = "";
 		for (const nodeId of threadIds) {
 			const node = getNode(graph, nodeId);
 			if (node) {
-				let nodeContent = "";
-				
-				if (node.parts && Array.isArray(node.parts)) {
-					const textParts =[];
-					const attachmentInfos =[];
-					
-					for (const part of node.parts) {
-						if (part.type === "text" && part.content) {
-							textParts.push(part.content);
-						} else if (part.type === "attachment") {
-							const isImage = part.isImage ? " (image)" : "";
-							let attachmentInfo = `[Attachment: ${part.name} (${part.size} bytes)${isImage}]`;
-							
-							if (part.data && !part.isImage) {
-								try {
-                                    const base64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
-                                    if (base64Match) {
-                                        const chunk = base64Match[1].slice(0, 13336);
-                                        const binaryString = atob(chunk);
-                                        const bytes = new Uint8Array(binaryString.length);
-                                        for (let i = 0; i < binaryString.length; i++) {
-                                            bytes[i] = binaryString.charCodeAt(i);
-                                        }
-                                        const decoder = new TextDecoder('utf-8');
-                                        const textContent = decoder.decode(bytes).slice(0, 10000);
-                                        attachmentInfo += `\n[File Content:]\n${textContent}`;
-                                    }
-								} catch (e) {
-									console.warn('Could not read file content:', e);
-								}
-							}
-							attachmentInfos.push(attachmentInfo);
-						}
-					}
-					
-					nodeContent = textParts.join("");
-					if (attachmentInfos.length > 0) {
-						nodeContent += "\n" + attachmentInfos.join("\n");
-					}
-				} else if (node.content) {
-					nodeContent = node.content;
-				}
-				
+				const nodeContent = buildNodeTextForHistory(node);
 				if (nodeContent) {
 					const role = node.role === "user" ? "User" : "Assistant";
 					conversationHistory += `${role}: ${nodeContent}\n\n`;
@@ -515,49 +534,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (!conversationHistory.trim() && parentUserNodeId) {
 			const parentNode = getNode(graph, parentUserNodeId);
 			if (parentNode) {
-				let parentContent = "";
-				
-				if (parentNode.parts && Array.isArray(parentNode.parts)) {
-					const textParts =[];
-					const attachmentInfos =[];
-					
-					for (const part of parentNode.parts) {
-						if (part.type === "text" && part.content) {
-							textParts.push(part.content);
-						} else if (part.type === "attachment") {
-							const isImage = part.isImage ? " (image)" : "";
-							let attachmentInfo = `[Attachment: ${part.name} (${part.size} bytes)${isImage}]`;
-							
-							if (part.data && !part.isImage) {
-								try {
-                                    const base64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
-                                    if (base64Match) {
-                                        const chunk = base64Match[1].slice(0, 13336);
-                                        const binaryString = atob(chunk);
-                                        const bytes = new Uint8Array(binaryString.length);
-                                        for (let i = 0; i < binaryString.length; i++) {
-                                            bytes[i] = binaryString.charCodeAt(i);
-                                        }
-                                        const decoder = new TextDecoder('utf-8');
-                                        const textContent = decoder.decode(bytes).slice(0, 10000);
-                                        attachmentInfo += `\n[File Content:]\n${textContent}`;
-                                    }
-								} catch (e) {
-									console.warn('Could not read file content:', e);
-								}
-							}
-							attachmentInfos.push(attachmentInfo);
-						}
-					}
-					
-					parentContent = textParts.join("");
-					if (attachmentInfos.length > 0) {
-						parentContent += "\n" + attachmentInfos.join("\n");
-					}
-				} else if (parentNode.content) {
-					parentContent = parentNode.content;
-				}
-				
+				const parentContent = buildNodeTextForHistory(parentNode);
 				if (parentContent) {
 					conversationHistory = parentContent;
 				}
