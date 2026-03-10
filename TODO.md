@@ -173,7 +173,7 @@
 - Fix new thread not being created when deleting a message
 - Message shrinking/expanding unwantedly to strictly 2 lines when editing (make message editing properly size to original message size, expand/shrink with new/deleted lines)
 - Fix ESC not canceling message editing and instead defocuses the text field on the first press
-- Messages sometimes refusing to send
+- Newline character collapsing into previous line with the sequence: character -> newline -> character -> delete character
 
 #### General Bugs
 - Randomly getting completion before any generation, causing no response

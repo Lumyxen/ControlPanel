@@ -507,7 +507,7 @@ export function loadCurrentChat(setActiveCallback) {
 	const graph = chat ? ensureGraph(chat) : null;
 	const hasMessages = Boolean(graph && computeThreadNodeIds(graph).length > 0);
 
-	if (empty) empty.hidden = Boolean(currentChatId) || hasMessages;
+	if (empty) empty.hidden = hasMessages;
 	if (chat) renderThread(messages, chat, { editingNodeId: null, editingDraft: "" });
 	else messages.querySelectorAll(".chat-message, .chat-typing").forEach((el) => el.remove());
 
@@ -1001,10 +1001,21 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (!chat) return;
 		renderThread(messages, chat, uiState);
 		updateContextUI(root, chat);
+
+		// Bug 3 fix: keep the empty-state banner in sync after any rerender (e.g. after delete)
+		const g = ensureGraph(chat);
+		const hasMessages = computeThreadNodeIds(g).length > 0;
+		if (empty) empty.hidden = hasMessages;
+
 		if (uiState.editingNodeId) {
 			requestAnimationFrame(() => {
 				const el = messages.querySelector(`.chat-message[data-node-id="${uiState.editingNodeId}"] .chat-edit-input`);
-				el?.focus();
+				if (el) {
+					el.focus();
+					// Bug 2 fix: auto-size the edit textarea to its content on first render
+					el.style.height = "auto";
+					el.style.height = el.scrollHeight + "px";
+				}
 			});
 		}
 	};
@@ -1097,6 +1108,11 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				uiState.editingNodeId = null;
 				uiState.editingDraft = "";
 				uiState.editingSaveMode = null;
+				// Bug 3 fix: if the deletion left the thread empty, spin up a fresh chat so
+				// the user immediately has a clean thread to work in.
+				if (computeThreadNodeIds(graph).length === 0) {
+					createNewChat();
+				}
 				rerender();
 				renderChatList();
 				setActiveCallback && setActiveCallback();
@@ -1327,6 +1343,9 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	messages.addEventListener("input", (e) => {
 		const textarea = e.target.closest(".chat-edit-input");
 		if (!textarea) return;
+		// Bug 2 fix: grow/shrink the textarea as lines are added or removed
+		textarea.style.height = "auto";
+		textarea.style.height = textarea.scrollHeight + "px";
 		const msgEl = textarea.closest(".chat-message");
 		const nodeId = msgEl?.dataset.nodeId;
 		if (nodeId && uiState.editingNodeId === nodeId) {

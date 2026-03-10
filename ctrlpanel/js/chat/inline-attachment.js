@@ -919,15 +919,25 @@ export class InlineAttachmentManager {
 	extractParts() {
 		// Don't normalize here - it could interfere with cursor position
 		// Just read the DOM as-is
-		
+
 		const parts = [];
-		
-		for (const child of this.el.childNodes) {
-			if (child.nodeType === Node.TEXT_NODE) {
-				// Get text content
-				const text = child.textContent;
+
+		// Ensure the last text part doesn't already end with a newline before adding one.
+		// Used when entering a block-level element (div/p) that browsers insert for new lines.
+		const addNewlineIfNeeded = () => {
+			if (parts.length === 0) return;
+			const last = parts[parts.length - 1];
+			if (last?.type === "text" && !last.content.endsWith("\n")) {
+				last.content += "\n";
+			} else if (last?.type !== "text") {
+				parts.push({ type: "text", content: "\n" });
+			}
+		};
+
+		const processNode = (node) => {
+			if (node.nodeType === Node.TEXT_NODE) {
+				const text = node.textContent;
 				if (text) {
-					// Merge with previous text part if exists
 					const lastPart = parts[parts.length - 1];
 					if (lastPart?.type === "text") {
 						lastPart.content += text;
@@ -935,16 +945,16 @@ export class InlineAttachmentManager {
 						parts.push({ type: "text", content: text });
 					}
 				}
-			} else if (child.tagName === "BR") {
-				// Handle line breaks - add newline to previous text part or create new one
+			} else if (node.tagName === "BR") {
+				// Explicit line break
 				const lastPart = parts[parts.length - 1];
 				if (lastPart?.type === "text") {
 					lastPart.content += "\n";
 				} else {
 					parts.push({ type: "text", content: "\n" });
 				}
-			} else if (child.nodeType === Node.ELEMENT_NODE && child.classList?.contains("inline-attachment")) {
-				const id = child.dataset.attachmentId;
+			} else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains("inline-attachment")) {
+				const id = node.dataset.attachmentId;
 				const attachment = this.attachments.get(id);
 				if (attachment) {
 					parts.push({
@@ -957,9 +967,20 @@ export class InlineAttachmentManager {
 						data: attachment.data,
 					});
 				}
+			} else if (node.nodeType === Node.ELEMENT_NODE && (node.tagName === "DIV" || node.tagName === "P")) {
+				// Chrome/Edge create <div> or <p> elements for each paragraph when the user
+				// presses Enter in a contenteditable. Treat each block as a new line.
+				addNewlineIfNeeded();
+				for (const child of node.childNodes) {
+					processNode(child);
+				}
 			}
+		};
+
+		for (const child of this.el.childNodes) {
+			processNode(child);
 		}
-		
+
 		// Trim trailing whitespace from the last text part
 		const lastPart = parts[parts.length - 1];
 		if (lastPart?.type === "text") {
@@ -968,7 +989,7 @@ export class InlineAttachmentManager {
 				parts.pop();
 			}
 		}
-		
+
 		return parts;
 	}
 
