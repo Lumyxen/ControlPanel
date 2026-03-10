@@ -39,7 +39,6 @@ static size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, voi
         std::string data = line.substr(6);
 
         if (data == "[DONE]") {
-            // Do NOT forward [DONE] to the client yet; it will be sent when all rounds are complete.
             continue;
         }
 
@@ -48,7 +47,9 @@ static size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, voi
         std::string errs;
         std::istringstream ds(data);
         if (!Json::parseFromStream(reader, ds, &parsed, &errs)) {
-            if (ctx->onChunk) ctx->onChunk(line + "\n\n");
+            if (ctx->onChunk) {
+                if (!ctx->onChunk(line + "\n\n")) return 0; // Abort libcurl transfer
+            }
             continue;
         }
 
@@ -56,7 +57,9 @@ static size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, voi
         if (parsed.isMember("error")) {
             Json::StreamWriterBuilder wb;
             wb["indentation"] = "";
-            if (ctx->onChunk) ctx->onChunk("data: " + Json::writeString(wb, parsed) + "\n\n");
+            if (ctx->onChunk) {
+                if (!ctx->onChunk("data: " + Json::writeString(wb, parsed) + "\n\n")) return 0;
+            }
             ctx->finishReason = "_api_error_";
             continue;
         }
@@ -113,8 +116,9 @@ static size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, voi
 
             Json::StreamWriterBuilder wb;
             wb["indentation"] = "";
-            if (ctx->onChunk)
-                ctx->onChunk("data: " + Json::writeString(wb, newJson) + "\n\n");
+            if (ctx->onChunk) {
+                if (!ctx->onChunk("data: " + Json::writeString(wb, newJson) + "\n\n")) return 0;
+            }
         }
     }
 
@@ -238,7 +242,7 @@ Json::Value OpenRouterService::streamingChat(
 // Tool call deltas are accumulated into toolCallsOut; content is forwarded via onChunk.
 std::string OpenRouterService::streamOneRound(
         const Json::Value& requestBody,
-        std::function<void(const std::string&)> onChunk,
+        std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
         std::vector<StreamContext::ToolCallAccum>& toolCallsOut) const {
 
@@ -307,10 +311,16 @@ std::string OpenRouterService::streamOneRound(
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
+    // If the write callback aborts transfer purposefully, it throws a write error.
+    if (res == CURLE_WRITE_ERROR) {
+        return "_cancelled_";
+    }
+
     if (res != CURLE_OK) {
         onError(std::string("Connection error: ") + curl_easy_strerror(res));
         return "_internal_error_";
     }
+    
     if (httpCode != 200) {
         // Try to extract a clean human-readable message from the JSON error body
         std::string cleanMsg;
@@ -370,7 +380,7 @@ std::string OpenRouterService::streamOneRound(
 void OpenRouterService::streamingChatWithCallback(
         const std::string& model, const std::string& prompt,
         int maxTokens,
-        std::function<void(const std::string&)> onChunk,
+        std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
         const std::string& systemPrompt, double temperature) const {
 
@@ -382,9 +392,11 @@ void OpenRouterService::streamingChatWithCallback(
     if (temperature >= 0.0) body["temperature"] = temperature;
 
     std::vector<StreamContext::ToolCallAccum> unused;
-    streamOneRound(body, onChunk, onError, unused);
+    std::string finishReason = streamOneRound(body, onChunk, onError, unused);
 
-    if (onChunk) onChunk("data: [DONE]\n\n");
+    if (finishReason != "_cancelled_") {
+        if (onChunk) onChunk("data: [DONE]\n\n");
+    }
 }
 
 // ── streamingChatWithTools (agentic tool loop) ────────────────────────────────
@@ -393,7 +405,7 @@ void OpenRouterService::streamingChatWithTools(
         Json::Value messages,
         const Json::Value& tools,
         int maxTokens,
-        std::function<void(const std::string&)> onChunk,
+        std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
         McpRegistry* registry,
         double temperature) const {
@@ -416,6 +428,7 @@ void OpenRouterService::streamingChatWithTools(
         std::vector<StreamContext::ToolCallAccum> toolCalls;
         const std::string finishReason = streamOneRound(body, onChunk, onError, toolCalls);
 
+        if (finishReason == "_cancelled_") return;
         if (finishReason == "_internal_error_" || finishReason == "_api_error_") {
             return; // Error already sent up the pipe via WriteCallbackStream or onError
         }
@@ -459,7 +472,7 @@ void OpenRouterService::streamingChatWithTools(
                 fakeJson["choices"].append(fakeChoice);
                 Json::StreamWriterBuilder wb;
                 wb["indentation"] = "";
-                onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n");
+                if (!onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n")) return;
             }
 
             std::string resultStr;
@@ -508,7 +521,7 @@ void OpenRouterService::streamingChatWithTools(
 
                 Json::StreamWriterBuilder wb;
                 wb["indentation"] = "";
-                onChunk("data: " + Json::writeString(wb, toolEvent) + "\n\n");
+                if (!onChunk("data: " + Json::writeString(wb, toolEvent) + "\n\n")) return;
             }
         }
 

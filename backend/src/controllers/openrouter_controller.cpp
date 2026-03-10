@@ -7,6 +7,7 @@
 #include <thread>
 #include <chrono>
 #include <iostream>
+#include <atomic>
 
 void handleChat(const httplib::Request& req, httplib::Response& res, OpenRouterService& service) {
     try {
@@ -45,6 +46,7 @@ struct StreamingCtx {
     std::deque<std::string> chunks;
     std::mutex              mutex;
     bool                    done  = false;
+    std::atomic<bool>       cancelled{false};
     std::string             error;
 };
 
@@ -95,11 +97,14 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
 
         std::thread([ctx, &service, registry, model, prompt, maxTokens,
                      systemPrompt, temperature, tools]() mutable {
-            auto onChunk = [ctx](const std::string& chunk) {
+            auto onChunk = [ctx](const std::string& chunk) -> bool {
+                if (ctx->cancelled.load()) return false;
                 std::lock_guard<std::mutex> lock(ctx->mutex);
                 ctx->chunks.push_back(chunk);
+                return true;
             };
             auto onError = [ctx](const std::string& err) {
+                if (ctx->cancelled.load()) return;
                 std::lock_guard<std::mutex> lock(ctx->mutex);
                 ctx->error = err;
                 ctx->done  = true;
@@ -125,6 +130,11 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
         res.set_content_provider(
             "text/event-stream",
             [ctx](size_t /*offset*/, httplib::DataSink& sink) -> bool {
+                if (!sink.is_writable()) {
+                    ctx->cancelled.store(true);
+                    return false;
+                }
+
                 std::string to_write;
                 bool is_done = false;
 
@@ -152,9 +162,18 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                     }
                 }
 
-                if (!to_write.empty()) sink.write(to_write.data(), to_write.size());
-                if (is_done)          sink.done();
-                else if (to_write.empty()) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                if (!to_write.empty()) {
+                    if (!sink.write(to_write.data(), to_write.size())) {
+                        ctx->cancelled.store(true);
+                        return false;
+                    }
+                }
+                
+                if (is_done) {
+                    sink.done();
+                } else if (to_write.empty()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                }
 
                 return true;
             }

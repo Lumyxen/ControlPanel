@@ -148,20 +148,19 @@
 
 ### To Fix
 #### UI
-- Fix awkward sizing of OpenRouter API key status
 - Fix large empty space in chats
 - LaTeX formatting not properly fully functional, but mostly is
-- Tool call block disappears after generation completion
+- Messages flicker during longer generations that use auto-scroll
 
 #### UX
 - Fix new thread not being created when deleting a message
 - Message shrinking/expanding unwantedly to strictly 2 lines when editing (make message editing properly size to original message size, expand/shrink with new/deleted lines)
 - Fix ESC not canceling message editing and instead defocuses the text field on the first press
 - Messages sometimes refusing to send
+- User is not kicked from a chat history upon deletion
 
 #### General Bugs
 - Attachments don't count towards context window usage
-- Messages flicker during longer generations that use auto-scroll
 - Old AI message not removed when clicking regenerate on an AI message
 - Randomly getting completion before any generation, causing no response
 - Regeneration not properly removing previous AI message

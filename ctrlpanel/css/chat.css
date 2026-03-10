@@ -43,10 +43,6 @@
     font-size: 0.95rem;
 }
 
-.chat-empty p {
-    margin: 0;
-}
-
 .chat-form {
     display: flex;
     flex-direction: column;
@@ -694,7 +690,7 @@
     height: 100%;
 }
 
-/* (1) Upload button: sharp corners (not pill) */
+/* Upload button: sharp corners (not pill) */
 #chatUploadBtn {
     border-radius: var(--radius-none);
     position: relative;
@@ -718,7 +714,7 @@
     border: 1px solid color-mix(in srgb, var(--accent) 70%, var(--border));
 }
 
-/* Send button */
+/* Send/Stop button */
 .chat-send-btn {
     appearance: none;
     background: var(--ctp-mantle);
@@ -751,6 +747,19 @@
 .chat-send-btn svg {
     width: 18px;
     height: 18px;
+}
+
+/* Generating / Stop button state */
+.chat-send-btn.generating {
+    color: var(--ef-red, var(--ctp-red, #e67e80));
+    border-color: color-mix(in srgb, var(--ef-red, var(--ctp-red, #e67e80)) 50%, transparent);
+    background: color-mix(in srgb, var(--ef-red, var(--ctp-red, #e67e80)) 10%, transparent);
+}
+
+.chat-send-btn.generating:hover {
+    color: var(--ef-red, var(--ctp-red, #e67e80));
+    border-color: var(--ef-red, var(--ctp-red, #e67e80));
+    background: color-mix(in srgb, var(--ef-red, var(--ctp-red, #e67e80)) 20%, var(--panel));
 }
 
 /* Chat messages */
@@ -1122,7 +1131,7 @@
     color: var(--muted);
 }
 
-/* (3) Hover menu for message actions */
+/* Hover menu for message actions */
 .chat-message-menu {
     position: absolute;
     right: 10px;

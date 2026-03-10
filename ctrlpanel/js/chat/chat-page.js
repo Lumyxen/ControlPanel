@@ -527,13 +527,16 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		uiState.isGenerating = isGenerating;
 		const sendBtn = form.querySelector('.chat-send-btn');
 		if (sendBtn) {
-			sendBtn.disabled = isGenerating;
 			if (isGenerating) {
-				sendBtn.style.opacity = "0.45";
-				sendBtn.style.cursor = "not-allowed";
+				sendBtn.classList.add('generating');
+				sendBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="1" y="1" width="14" height="14" fill="currentColor"/></svg>`;
+				sendBtn.title = "Stop generating";
+				sendBtn.setAttribute("aria-label", "Stop generating");
 			} else {
-				sendBtn.style.opacity = "";
-				sendBtn.style.cursor = "";
+				sendBtn.classList.remove('generating');
+				sendBtn.innerHTML = `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M44.9,23.2l-38-18L6,5A2,2,0,0,0,4,7l6,18L4,43a2,2,0,0,0,2,2l.9-.2,38-18A2,2,0,0,0,44.9,23.2ZM9.5,39.1l4-12.1H24a2,2,0,0,0,0-4H13.5l-4-12.1L39.3,25Z" fill="currentColor"/></svg>`;
+				sendBtn.title = "Send (Ctrl+Enter) • Send without reply (Ctrl+Shift+Enter)";
+				sendBtn.setAttribute("aria-label", "Send message");
 			}
 		}
 	};
@@ -1266,7 +1269,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 	form.addEventListener("submit", (e) => {
 		e.preventDefault();
-		if (uiState.isGenerating) return;
+		if (uiState.isGenerating) {
+			stopTyping();
+			rerender();
+			setActiveCallback && setActiveCallback();
+			return;
+		}
 		
 		const parts = attachmentManager.extractParts();
 		if (!parts || parts.length === 0) return;
