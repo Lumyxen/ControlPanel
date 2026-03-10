@@ -11,24 +11,13 @@
 
 ## AI Chat-box
 ### Planned Features
-- Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
 - Chat encryption (automatic decryption during chat loading)
+- Optimise master prompt to prevent emoji spam
+- Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
+- AI generated chat title
 - Web search tool
 - Add calculator tool (replaces code execution reliance for math)
   - WolframAlpha API option
-- Headless browser tool
-##### Start giving updates to GamingwithNP
-- Mobile UI support
-- Migrate development onto skidbladnir to host it (not really a feature)
-- Add llama.cpp server API support for local AI on skidbladnir
-##### Start dogfooding for everyday questions
-- Reserve max output token length to the context window (don't allow user to add more to the history if max output token length exceeds remaining available context)
-- Be able to scroll up and stop auto-scroll
-- Button to go all the way to bottom of chat history
-- Add chat importing (from T3.chat & Google AI Studio)
-- Add chat exporting (T3.chat format, custom format as default)
-- Add logprobs
-  - Highlight uncertain tokens
 - Turn the response into a back-and-forth for the AI.
   - Allow it to generate drafts, relook through the drafts, refine it, edit mistakes, and push the finalised result to the user
   - Show the user the live process of editing as the output so the user gets a sense of progression
@@ -39,6 +28,18 @@
   - Strengthen/weight information in the RAG the more it gets used to make it more likely/easy to be recalled in the future
   - Allow the AI to switch to using an identifier that links to RAG memories to remember in the context window to remember to do specific tasks
   - Offput large documents (12k+ tokens) to make the AI read in chunks to prevent context overflow and more effectively handle memory
+- Headless browser tool
+##### Start giving updates to GamingwithNP
+- Mobile UI support
+- Migrate development onto skidbladnir to host it (not really a feature)
+- Add llama.cpp server API support for local AI on skidbladnir
+- Add chat importing (from T3.chat & Google AI Studio)
+- Add chat exporting (T3.chat format, custom format as default)
+- Reserve max output token length to the context window (don't allow user to add more to the history if max output token length exceeds remaining available context)
+- Be able to scroll up and stop auto-scroll
+- Button to go all the way to bottom of chat history
+- Add logprobs
+  - Highlight uncertain tokens
 - Add weather tool
   - Inputs user location on the current day by default
   - AI can specify a different location or date
@@ -85,7 +86,7 @@
   - Returns if WAN is available
   - If so, the WAN speeds (a speed test), latency, and jitter
   - Returns local speeds, latency, and jitter (between the localhost ecosystem)
-##### Start dogfooding for everything else with AI
+##### Start dogfooding the rest of AI stuff (programming)
 - Step-by-Step thought graph (show different steps and decisions in a visual graph, like why it decided to skip research on a task)
 - Rework settings page to have tabs
 - Tabbed chats (a top-bar to quickly change between chats instead of solely relying on the small side-bar chat navigatino)
@@ -167,7 +168,9 @@
 #### UI
 - Fix large empty space in chats
 - LaTeX formatting not properly fully functional, but mostly is
-- Messages flicker during longer generations that use auto-scroll
+- Messages flicker during longer generations that use auto-scroll with fast model generation speeds
+- No Markdown list nesting
+- Some tables just don't seem to start formatting at all
 
 #### UX
 - Fix new thread not being created when deleting a message
@@ -178,6 +181,8 @@
 #### General Bugs
 - Randomly getting completion before any generation, causing no response
 - Not properly getting context window size from LM Studio
+- Images don't get parsed for AI models that have vision capabilities
+- Sometimes pasting in text just seems to be weirdly displayed in the input text field, and is omitted from the sent message
 
 
 
@@ -226,6 +231,7 @@
     - Discord's Markdown features
     - Obsidian.md's Markdown features
   - LaTeX
+    - Not fully complete but mostly functional
 - Model selection dropdown
 - Tool selection dropdown
 - File attachments

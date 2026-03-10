@@ -89,26 +89,29 @@ function getNodeFullText(node) {
 
 export function getModelContextLimitFromUI(root) {
 	const selected = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
-	if (!selected) return 8192;
+	if (!selected) return 65536;
 
 	const modelId = selected.dataset.value;
+
+	let limit = 65536; // Fallback
 
 	// Prefer metadata (now includes LM Studio models and normalizes fallback keys dynamically)
 	if (modelId && modelMetadata.has(modelId)) {
 		const model = modelMetadata.get(modelId);
 		const contextLength = parseInt(model.context_length, 10);
 		if (!isNaN(contextLength) && contextLength > 0) {
-			return contextLength;
+			limit = contextLength;
+		}
+	} else {
+		// Fallback to data attribute (still works)
+		const contextLength = parseInt(selected.dataset.contextLength, 10);
+		if (!isNaN(contextLength) && contextLength > 0) {
+			limit = contextLength;
 		}
 	}
 
-	// Fallback to data attribute (still works)
-	const contextLength = parseInt(selected.dataset.contextLength, 10);
-	if (!isNaN(contextLength) && contextLength > 0) {
-		return contextLength;
-	}
-
-	return 8192;
+	// Apply minimum and maximum of 64k
+	return Math.min(Math.max(limit, 65536), 65536);
 }
 
 /**
