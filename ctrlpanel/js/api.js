@@ -37,21 +37,6 @@ export async function getLmStudioModels() {
     return makeRequest("/models/lmstudio");
 }
 
-export async function getPricing() {
-    return makeRequest("/pricing");
-}
-
-export async function sendChatMessage(model, prompt, maxTokens = 2048) {
-    return makeRequest("/chat", {
-        method: "POST",
-        body: JSON.stringify({
-            model,
-            prompt,
-            max_tokens: maxTokens,
-        }),
-    });
-}
-
 /**
  * Stream a chat message.
  *

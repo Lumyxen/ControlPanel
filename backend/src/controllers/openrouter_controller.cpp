@@ -198,17 +198,6 @@ void handleModels(const httplib::Request& /*req*/, httplib::Response& res,
     }
 }
 
-void handlePricing(const httplib::Request& /*req*/, httplib::Response& res,
-                   OpenRouterService& service) {
-    try {
-        res.status = 200;
-        res.set_content(service.getPricing().toStyledString(), "application/json");
-    } catch (const std::exception& e) {
-        res.status = 500;
-        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
-    }
-}
-
 void handleLmStudioModels(const httplib::Request& /*req*/, httplib::Response& res,
                            OpenRouterService& service) {
     try {

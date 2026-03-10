@@ -26,7 +26,6 @@ import {
 import { renderChatList } from "./sidebar.js";
 import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI } from "./context.js";
 import { getModels, getLmStudioModels } from "../api.js";
-import { formatBytes } from "./util.js";
 import { renderThread, showTyping, buildToolCallElement } from "./thread-ui.js";
 import { InlineAttachmentManager } from "./inline-attachment.js";
 import { parseMarkdown } from "./markdown.js";
@@ -113,72 +112,6 @@ function initTools(root, signal) {
 	};
 	checkboxes.forEach((cb) => cb.addEventListener("change", update, { signal }));
 	update();
-}
-
-function isImageFile(file) {
-	const type = String(file?.type || "");
-	if (type.startsWith("image/")) return true;
-	return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(String(file?.name || ""));
-}
-
-function makeXIcon() {
-	return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>`;
-}
-
-function renderAttachments(root, pending) {
-	const wrap = root.querySelector("#chatAttachments");
-	if (!wrap) return;
-	if (!pending.length) {
-		wrap.hidden = true;
-		wrap.innerHTML = "";
-		return;
-	}
-	wrap.hidden = false;
-	const list = document.createElement("div");
-	list.className = "chat-attachments-list";
-
-	pending.forEach((item) => {
-		const row = document.createElement("div");
-		row.className = "chat-attachment";
-		row.dataset.attachmentId = item.id;
-
-		const thumb = document.createElement("div");
-		thumb.className = "chat-attachment-thumb";
-		thumb.setAttribute("aria-hidden", "true");
-		if (item.isImage && item.previewUrl) {
-			const img = document.createElement("img");
-			img.src = item.previewUrl;
-			img.alt = "";
-			thumb.appendChild(img);
-		} else {
-			thumb.textContent = "FILE";
-		}
-
-		const meta = document.createElement("div");
-		meta.className = "chat-attachment-meta";
-		const name = document.createElement("div");
-		name.className = "chat-attachment-name";
-		name.textContent = item.file.name;
-		const size = document.createElement("div");
-		size.className = "chat-attachment-size";
-		size.textContent = formatBytes(item.file.size);
-		meta.append(name, size);
-
-		const remove = document.createElement("button");
-		remove.type = "button";
-		remove.className = "chat-attachment-remove";
-		remove.setAttribute("aria-label", `Remove ${item.file.name}`);
-		remove.title = "Remove";
-		remove.dataset.action = "remove-attachment";
-		remove.dataset.attachmentId = item.id;
-		remove.innerHTML = makeXIcon();
-
-		row.append(thumb, meta, remove);
-		list.appendChild(row);
-	});
-
-	wrap.innerHTML = "";
-	wrap.appendChild(list);
 }
 
 function initUpload(root, inputEl, attachmentManager, signal) {
@@ -420,16 +353,6 @@ function applyModel(root, modelId) {
 }
 
 /**
- * Choose and apply the right model for the currently active chat:
- *   1. The chat's own saved model — if found in the dropdown, use it.
- *      If saved but unavailable, fall straight to the settings default (skip lastModel).
- *   2. The last model the user explicitly picked (localStorage) — only when no chat model is set.
- *   3. The settings default model.
- *
- * Auto-selection via this function does NOT update lastSelectedModel.
- * @param {Element} root
- */
-/**
  * For LM Studio models that haven't loaded into the DOM yet, immediately
  * stamp the human-readable name onto the dropdown label so the user never
  * sees the stale HTML-default model name while waiting for the async fetch.
@@ -658,7 +581,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				let nodeContent = "";
 				
 				if (node.parts && Array.isArray(node.parts)) {
-					const textParts = [];
+					const textParts =[];
 					const attachmentInfos =[];
 					
 					for (const part of node.parts) {
@@ -766,6 +689,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 		// Shrink the requested max tokens if it mathematically pushes us out of the context window
 		if (estimatedPromptTokens + maxTokens > contextLimit) {
+            // Note: Keep maxTokens at least 256 for a reasonably complete block of response
 			maxTokens = Math.max(256, contextLimit - estimatedPromptTokens);
 		}
 		
@@ -1264,7 +1188,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				rerender();
 				setActiveCallback && setActiveCallback();
 			},
-			/*** FIXED REGENERATE HANDLER ***/
 			resend: () => {
 				stopTyping();
 				
@@ -1272,18 +1195,13 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				let userNode = getNode(graph, userNodeId);
 				if (!userNode) return;
 
-				// === FIX: permanently delete the old AI response (the one being regenerated) ===
-				// This eliminates the "hidden sibling" that was causing the old message to re-appear
-				// after deleting the newly generated response.
 				const currentResponseId = graph.selections?.[userNodeId];
 				if (currentResponseId) {
 					spliceDeleteNode(graph, currentResponseId);
 				}
 
-				// Clean selection on the user node (ready for the new response)
 				delete graph.selections[userNodeId];
 
-				// Make sure the user node is selected in its parent (so the thread shows correctly)
 				if (userNode.parentId) {
 					setSelectedChildId(graph, userNode.parentId, userNodeId);
 				}

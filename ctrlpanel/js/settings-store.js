@@ -143,13 +143,3 @@ export function startPolling() {
         }
     }, POLL_INTERVAL_MS);
 }
-
-/**
- * Stop background polling.
- */
-export function stopPolling() {
-    if (_pollTimerId !== null) {
-        clearInterval(_pollTimerId);
-        _pollTimerId = null;
-    }
-}

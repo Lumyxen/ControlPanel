@@ -30,16 +30,7 @@ class OpenRouterService {
 public:
     OpenRouterService(const std::string& apiKey, Encryption& encryption);
 
-    // ── Legacy / non-tool methods (unchanged API) ─────────────────────────────
     Json::Value chat(
-        const std::string& model,
-        const std::string& prompt,
-        int maxTokens           = 2048,
-        const std::string& systemPrompt = "",
-        double temperature      = -1.0
-    ) const;
-
-    Json::Value streamingChat(
         const std::string& model,
         const std::string& prompt,
         int maxTokens           = 2048,
@@ -88,7 +79,6 @@ public:
 
     // ── Utilities ─────────────────────────────────────────────────────────────
     Json::Value getModels()  const;
-    Json::Value getPricing() const;
 
     /** Fetch model list from a local LM Studio server. */
     Json::Value getLmStudioModels() const;

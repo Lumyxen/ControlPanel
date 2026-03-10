@@ -85,10 +85,6 @@ public:
 
     int         getPort()                    { std::lock_guard<std::mutex> l(mutex); return port; }
     std::string getHost()                    { std::lock_guard<std::mutex> l(mutex); return host; }
-    std::string getDefaultModel()            { std::lock_guard<std::mutex> l(mutex); return defaultModel; }
-    int         getFallbackMaxOutputTokens() { std::lock_guard<std::mutex> l(mutex); return fallbackMaxOutputTokens; }
-    double      getTemperature()             { std::lock_guard<std::mutex> l(mutex); return temperature; }
-    std::string getSystemPrompt()            { std::lock_guard<std::mutex> l(mutex); return systemPrompt; }
     std::string getLmStudioUrl()             { std::lock_guard<std::mutex> l(mutex); return lmStudioUrl; }
 
     /** Path to the MCP config file (sibling of settings.json, named mcp.json). */

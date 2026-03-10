@@ -28,8 +28,7 @@ public:
     McpStdioClient(const McpStdioClient&)            = delete;
     McpStdioClient& operator=(const McpStdioClient&) = delete;
 
-    const std::string& getName() const { return name_; }
-    bool               isReady() const { return ready_; }
+    bool isReady() const { return ready_; }
 
     bool       initialize();
     Json::Value listTools();

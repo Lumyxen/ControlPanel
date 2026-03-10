@@ -12,6 +12,8 @@
 ## AI Chat-box
 ### Planned Features
 - Chat encryption (automatic decryption during chat loading)
+- Migrate development onto skidbladnir to host it (not really a feature)
+- Add llama.cpp server API support for local AI on skidbladnir
 - Optimise master prompt to prevent emoji spam
 - Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
 - AI generated chat title
@@ -31,8 +33,6 @@
 - Headless browser tool
 ##### Start giving updates to GamingwithNP
 - Mobile UI support
-- Migrate development onto skidbladnir to host it (not really a feature)
-- Add llama.cpp server API support for local AI on skidbladnir
 - Add chat importing (from T3.chat & Google AI Studio)
 - Add chat exporting (T3.chat format, custom format as default)
 - Reserve max output token length to the context window (don't allow user to add more to the history if max output token length exceeds remaining available context)
@@ -50,7 +50,6 @@
 - Setting to change default model (already exists, but vastly improving on it)
 - Edit available model list
   - Model search
-    - OpenRouter
     - LM Studio
     - HuggingFace
   - Filters
@@ -109,7 +108,6 @@
   - Latency from sending message to first token
   - Total tokens
 - Add current tokens per second display (updated every 0.5s)
-- Be able to pause/resume AI responses (may not be possible over OpenRouter)
 - Stats
   - Overall tokens generated and sent
   - Overall currently existing tokens generated and sent
@@ -177,6 +175,7 @@
 - Message shrinking/expanding unwantedly to strictly 2 lines when editing (make message editing properly size to original message size, expand/shrink with new/deleted lines)
 - Fix ESC not canceling message editing and instead defocuses the text field on the first press
 - Newline character collapsing into previous line with the sequence: character -> newline -> character -> delete character
+- Hovering over the last message in a chat makes the chat slightly scrolls up
 
 #### General Bugs
 - Randomly getting completion before any generation, causing no response
@@ -195,7 +194,6 @@
 - Home page
 - AI chat-box
 - Settings page
-  - AI chat-box OpenRouter API key status
   - Configuration for AI generation values such as
     - Default model
     - Max output tokens fallback
@@ -212,7 +210,6 @@
 - Chat history
 - Multiple chats
 - Multiple API implementations
-  - OpenRouter
   - LM Studio Server
 - New chat button when sidebar is collapsed
 - Message hover menu
@@ -237,7 +234,6 @@
 - File attachments
   - Inline attachments
 - Context used/max info
-  - Dynamically updates limits to what OpenRouter reports
   - Context window highlighting (yellow @ 50%, red @ 90%)
 - A master system prompt
   - Optimised for:

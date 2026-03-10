@@ -62,8 +62,6 @@ export function coerceTheme(key) {
 	return `${fixedPalette}-${fixedFlavour}-${fixedAccent}`;
 }
 
-export function getCurrentTheme() { return currentTheme; }
-
 export function setTheme(themeKey, { persist = true, syncUI = true } = {}) {
 	const coerced = coerceTheme(themeKey);
 	document.documentElement.setAttribute("data-theme", coerced);
@@ -243,9 +241,9 @@ export function initSettingsPage(root) {
 	});
 
 	accentGrid.addEventListener("keydown", (e) => {
-		const navKeys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
+		const navKeys =["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
 		if (!navKeys.includes(e.key) && e.key !== " " && e.key !== "Enter") return;
-		const items = [...accentGrid.querySelectorAll('button[data-accent][role="radio"]')];
+		const items =[...accentGrid.querySelectorAll('button[data-accent][role="radio"]')];
 		if (!items.length) return;
 		const currentIdx = items.findIndex((el) => el.classList.contains("selected"));
 		let nextIdx = currentIdx;
@@ -351,7 +349,7 @@ export function initSettingsPage(root) {
 		// Only overwrite fields that the user hasn't started editing
 		// (use document.activeElement check to avoid clobbering focused inputs)
 		const focused = document.activeElement;
-		const aiFields = ["#default-model-input", "#temperature-slider", "#temperature-input",
+		const aiFields =["#default-model-input", "#temperature-slider", "#temperature-input",
 		                  "#max-tokens-input", "#system-prompt-input", "#lmstudio-url-input"];
 		const userIsEditing = aiFields.some((sel) => root.querySelector(sel) === focused);
 		if (!userIsEditing) {

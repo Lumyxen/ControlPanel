@@ -309,7 +309,7 @@ const markedModule = (function () {
 		}
 
 		tokenize(src) {
-			const tokens = [];
+			const tokens =[];
 
 			while (src) {
 				let match;
@@ -350,7 +350,7 @@ const markedModule = (function () {
 							if (/^-+:$/.test(s)) return 'right';
 							return null;
 						});
-						const rows = tableMatch[3] ? tableMatch[3].trim().split('\n') : [];
+						const rows = tableMatch[3] ? tableMatch[3].trim().split('\n') :[];
 						const cells = rows.map(row => row.replace(/^ {0,3}\|?|\|$/g, '').split('|').map(s => s.trim()));
 						tokens.push({ type: 'table', header, align, cells });
 						src = src.substring(tableMatch[0].length);
@@ -383,7 +383,7 @@ const markedModule = (function () {
 					const ordered = /^\d+\./.test(marker);
 					const start = ordered ? parseInt(marker) : 1;
 					const listContent = listMatch[0];
-					const items = [];
+					const items =[];
 					const itemRegex = new RegExp(`^ {0,3}${ordered ? '\\d+\\.' : '[-*+]'}\\s+(.*)$`, 'gm');
 					let itemMatch;
 					while ((itemMatch = itemRegex.exec(listContent)) !== null) {
@@ -489,7 +489,7 @@ function highlightCode(code, language) {
 	
 	const placeholders = {
 		strings: [],
-		comments: []
+		comments:[]
 	};
 
 	// 1. Extract Comments (Hide them first so keywords inside comments are ignored)
@@ -540,22 +540,22 @@ function highlightCode(code, language) {
 
 	// 4. Highlight Keywords
 	const keywords = {
-		javascript: ['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default'],
-		typescript: ['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'implements', 'interface', 'type', 'enum', 'namespace', 'module', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default', 'string', 'number', 'boolean', 'any', 'unknown', 'never', 'void', 'null', 'undefined', 'object', 'symbol', 'bigint', 'as', 'satisfies', 'infer', 'keyof', 'readonly', 'abstract', 'private', 'protected', 'public', 'static', 'get', 'set', 'declare'],
-		python: ['def', 'class', 'if', 'elif', 'else', 'for', 'while', 'return', 'yield', 'lambda', 'import', 'from', 'as', 'try', 'except', 'finally', 'raise', 'with', 'pass', 'break', 'continue', 'del', 'assert', 'global', 'nonlocal', 'True', 'False', 'None', 'and', 'or', 'not', 'in', 'is', 'async', 'await', 'match', 'case'],
-		java: ['public', 'private', 'protected', 'static', 'final', 'abstract', 'class', 'interface', 'extends', 'implements', 'return', 'void', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'default', 'try', 'catch', 'finally', 'throw', 'throws', 'new', 'this', 'super', 'true', 'false', 'null', 'import', 'package', 'instanceof', 'synchronized', 'volatile', 'transient', 'native', 'strictfp', 'const', 'goto'],
-		cpp: ['int', 'float', 'double', 'char', 'void', 'bool', 'auto', 'const', 'static', 'volatile', 'extern', 'inline', 'virtual', 'explicit', 'mutable', 'constexpr', 'consteval', 'constinit', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'goto', 'try', 'catch', 'throw', 'class', 'struct', 'union', 'enum', 'typedef', 'typename', 'template', 'namespace', 'using', 'public', 'private', 'protected', 'friend', 'operator', 'new', 'delete', 'sizeof', 'typeid', 'decltype', 'nullptr', 'true', 'false', 'this', 'override', 'final', 'noexcept', 'concept', 'requires', 'co_await', 'co_return', 'co_yield'],
-		c: ['int', 'float', 'double', 'char', 'void', 'short', 'long', 'signed', 'unsigned', 'const', 'static', 'volatile', 'extern', 'auto', 'register', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'goto', 'struct', 'union', 'enum', 'typedef', 'sizeof', 'inline', 'restrict'],
-		go: ['package', 'import', 'func', 'var', 'const', 'type', 'struct', 'interface', 'map', 'chan', 'if', 'else', 'for', 'range', 'switch', 'case', 'default', 'break', 'continue', 'fallthrough', 'return', 'goto', 'defer', 'go', 'select', 'make', 'new', 'len', 'cap', 'append', 'copy', 'close', 'delete', 'panic', 'recover', 'nil', 'true', 'false', 'iota'],
-		rust: ['fn', 'let', 'mut', 'const', 'static', 'type', 'struct', 'enum', 'trait', 'impl', 'pub', 'use', 'mod', 'crate', 'super', 'self', 'if', 'else', 'match', 'while', 'loop', 'for', 'in', 'break', 'continue', 'return', 'async', 'await', 'move', 'ref', 'where', 'unsafe', 'extern', 'as', 'dyn', 'yield', 'macro', 'union', 'typeof'],
-		json: ['true', 'false', 'null'],
-		html: ['DOCTYPE', 'html', 'head', 'body', 'title', 'meta', 'link', 'script', 'style', 'div', 'span', 'p', 'a', 'img', 'br', 'hr', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'form', 'input', 'button', 'select', 'option', 'textarea', 'label', 'nav', 'header', 'footer', 'main', 'section', 'article', 'aside'],
-		css: ['import', 'media', 'keyframes', 'font-face', 'supports', 'charset', 'important', 'color', 'background', 'border', 'margin', 'padding', 'width', 'height', 'display', 'position', 'top', 'left', 'right', 'bottom', 'float', 'clear', 'font', 'text', 'align', 'content', 'overflow', 'visibility', 'opacity', 'transform', 'transition', 'animation', 'flex', 'grid', 'min', 'max', 'calc', 'var'],
-		sql: ['SELECT', 'FROM', 'WHERE', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TABLE', 'INDEX', 'VIEW', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'FULL', 'CROSS', 'ON', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'ALL', 'DISTINCT', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'BETWEEN', 'LIKE', 'EXISTS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'IF', 'CAST', 'CONVERT', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'VALUES', 'INTO', 'SET'],
-		bash: ['if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'for', 'while', 'until', 'do', 'done', 'in', 'function', 'return', 'break', 'continue', 'shift', 'exit', 'export', 'local', 'readonly', 'unset', 'declare', 'typeset', 'source', 'alias', 'unalias', 'trap', 'wait', 'exec', 'eval', 'echo', 'printf', 'read', 'test', 'true', 'false', 'cd', 'pwd', 'ls', 'cat', 'grep', 'awk', 'sed', 'cut', 'sort', 'uniq', 'head', 'tail', 'chmod', 'chown', 'mkdir', 'rm', 'cp', 'mv', 'tar', 'gzip', 'gunzip', 'find', 'xargs', 'curl', 'wget', 'ssh', 'scp', 'sudo', 'su', 'ps', 'kill', 'top', 'df', 'du', 'free', 'uptime', 'date', 'time', 'sleep', 'jobs', 'fg', 'bg', 'disown', 'nohup', 'env', 'set', 'shopt', 'getopts', 'command', 'builtin', 'type', 'hash', 'ulimit', 'umask', 'caller', 'logout', 'exit']
+		javascript:['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default'],
+		typescript:['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'implements', 'interface', 'type', 'enum', 'namespace', 'module', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default', 'string', 'number', 'boolean', 'any', 'unknown', 'never', 'void', 'null', 'undefined', 'object', 'symbol', 'bigint', 'as', 'satisfies', 'infer', 'keyof', 'readonly', 'abstract', 'private', 'protected', 'public', 'static', 'get', 'set', 'declare'],
+		python:['def', 'class', 'if', 'elif', 'else', 'for', 'while', 'return', 'yield', 'lambda', 'import', 'from', 'as', 'try', 'except', 'finally', 'raise', 'with', 'pass', 'break', 'continue', 'del', 'assert', 'global', 'nonlocal', 'True', 'False', 'None', 'and', 'or', 'not', 'in', 'is', 'async', 'await', 'match', 'case'],
+		java:['public', 'private', 'protected', 'static', 'final', 'abstract', 'class', 'interface', 'extends', 'implements', 'return', 'void', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'default', 'try', 'catch', 'finally', 'throw', 'throws', 'new', 'this', 'super', 'true', 'false', 'null', 'import', 'package', 'instanceof', 'synchronized', 'volatile', 'transient', 'native', 'strictfp', 'const', 'goto'],
+		cpp:['int', 'float', 'double', 'char', 'void', 'bool', 'auto', 'const', 'static', 'volatile', 'extern', 'inline', 'virtual', 'explicit', 'mutable', 'constexpr', 'consteval', 'constinit', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'goto', 'try', 'catch', 'throw', 'class', 'struct', 'union', 'enum', 'typedef', 'typename', 'template', 'namespace', 'using', 'public', 'private', 'protected', 'friend', 'operator', 'new', 'delete', 'sizeof', 'typeid', 'decltype', 'nullptr', 'true', 'false', 'this', 'override', 'final', 'noexcept', 'concept', 'requires', 'co_await', 'co_return', 'co_yield'],
+		c:['int', 'float', 'double', 'char', 'void', 'short', 'long', 'signed', 'unsigned', 'const', 'static', 'volatile', 'extern', 'auto', 'register', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'goto', 'struct', 'union', 'enum', 'typedef', 'sizeof', 'inline', 'restrict'],
+		go:['package', 'import', 'func', 'var', 'const', 'type', 'struct', 'interface', 'map', 'chan', 'if', 'else', 'for', 'range', 'switch', 'case', 'default', 'break', 'continue', 'fallthrough', 'return', 'goto', 'defer', 'go', 'select', 'make', 'new', 'len', 'cap', 'append', 'copy', 'close', 'delete', 'panic', 'recover', 'nil', 'true', 'false', 'iota'],
+		rust:['fn', 'let', 'mut', 'const', 'static', 'type', 'struct', 'enum', 'trait', 'impl', 'pub', 'use', 'mod', 'crate', 'super', 'self', 'if', 'else', 'match', 'while', 'loop', 'for', 'in', 'break', 'continue', 'return', 'async', 'await', 'move', 'ref', 'where', 'unsafe', 'extern', 'as', 'dyn', 'yield', 'macro', 'union', 'typeof'],
+		json:['true', 'false', 'null'],
+		html:['DOCTYPE', 'html', 'head', 'body', 'title', 'meta', 'link', 'script', 'style', 'div', 'span', 'p', 'a', 'img', 'br', 'hr', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'form', 'input', 'button', 'select', 'option', 'textarea', 'label', 'nav', 'header', 'footer', 'main', 'section', 'article', 'aside'],
+		css:['import', 'media', 'keyframes', 'font-face', 'supports', 'charset', 'important', 'color', 'background', 'border', 'margin', 'padding', 'width', 'height', 'display', 'position', 'top', 'left', 'right', 'bottom', 'float', 'clear', 'font', 'text', 'align', 'content', 'overflow', 'visibility', 'opacity', 'transform', 'transition', 'animation', 'flex', 'grid', 'min', 'max', 'calc', 'var'],
+		sql:['SELECT', 'FROM', 'WHERE', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TABLE', 'INDEX', 'VIEW', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'FULL', 'CROSS', 'ON', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'ALL', 'DISTINCT', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'BETWEEN', 'LIKE', 'EXISTS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'IF', 'CAST', 'CONVERT', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'VALUES', 'INTO', 'SET'],
+		bash:['if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'for', 'while', 'until', 'do', 'done', 'in', 'function', 'return', 'break', 'continue', 'shift', 'exit', 'export', 'local', 'readonly', 'unset', 'declare', 'typeset', 'source', 'alias', 'unalias', 'trap', 'wait', 'exec', 'eval', 'echo', 'printf', 'read', 'test', 'true', 'false', 'cd', 'pwd', 'ls', 'cat', 'grep', 'awk', 'sed', 'cut', 'sort', 'uniq', 'head', 'tail', 'chmod', 'chown', 'mkdir', 'rm', 'cp', 'mv', 'tar', 'gzip', 'gunzip', 'find', 'xargs', 'curl', 'wget', 'ssh', 'scp', 'sudo', 'su', 'ps', 'kill', 'top', 'df', 'du', 'free', 'uptime', 'date', 'time', 'sleep', 'jobs', 'fg', 'bg', 'disown', 'nohup', 'env', 'set', 'shopt', 'getopts', 'command', 'builtin', 'type', 'hash', 'ulimit', 'umask', 'caller', 'logout', 'exit']
 	};
 
-	const langKeywords = keywords[lang] || [];
+	const langKeywords = keywords[lang] ||[];
 	if (langKeywords.length > 0) {
 		const keywordRegex = new RegExp('\\b(' + langKeywords.join('|') + ')\\b', 'g');
 		src = src.replace(keywordRegex, '<span class="md-keyword">$1</span>');
@@ -714,10 +714,5 @@ export function parseMarkdown(text) {
 
 	return html;
 }
-
-/**
- * Legacy highlight function for backwards compatibility
- */
-export { highlightCode };
 
 export default parseMarkdown;

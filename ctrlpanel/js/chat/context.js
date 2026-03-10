@@ -24,21 +24,11 @@ export function setModelMetadata(models) {
  * @param {string} modelId - Model ID
  * @returns {Object|null} Model metadata or null
  */
-export function getModelMetadata(modelId) {
+function getModelMetadata(modelId) {
 	return modelMetadata.get(modelId) || null;
 }
 
-/**
- * Get the currently selected model ID from the UI
- * @param {HTMLElement} root - Root element
- * @returns {string|null} Selected model ID or null
- */
-export function getSelectedModelId(root) {
-	const selected = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
-	return selected?.dataset?.value || null;
-}
-
-export function estimateTokensForText(text) {
+function estimateTokensForText(text) {
 	const s = String(text || "");
 	if (!s) return 0;
 	return Math.max(1, Math.ceil(s.length / 4));
@@ -97,7 +87,7 @@ export function getModelContextLimitFromUI(root) {
 
 	// Prefer metadata (now includes LM Studio models and normalizes fallback keys dynamically)
 	if (modelId && modelMetadata.has(modelId)) {
-		const model = modelMetadata.get(modelId);
+		const model = getModelMetadata(modelId);
 		const contextLength = parseInt(model.context_length, 10);
 		if (!isNaN(contextLength) && contextLength > 0) {
 			limit = contextLength;
@@ -119,7 +109,7 @@ export function getModelContextLimitFromUI(root) {
  */
 export function getModelMaxTokens(modelId) {
 	if (!modelId) return 8192;
-	const model = modelMetadata.get(modelId);
+	const model = getModelMetadata(modelId);
 	if (model) {
 		const maxTokens = parseInt(model.max_tokens, 10);
 		if (!isNaN(maxTokens) && maxTokens > 0) {
@@ -129,7 +119,7 @@ export function getModelMaxTokens(modelId) {
 	return 8192;
 }
 
-export function computeThreadTokenUsage(graph) {
+function computeThreadTokenUsage(graph) {
 	return computeThreadNodeIds(graph).reduce((total, id) => {
 		const node = getNode(graph, id);
 		const text = getNodeFullText(node);

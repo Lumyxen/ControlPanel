@@ -7,8 +7,6 @@ let navAbort = null;
 
 export const normalise = (hash) => hash.replace(/^#\/?/, "");
 export const currentRoute = () => normalise(location.hash) || DEFAULT_ROUTE;
-export const getDefaultRoute = () => DEFAULT_ROUTE;
-export function getOutlet() { return outlet; }
 
 function getChatIdFromRoute(route) {
 	try {

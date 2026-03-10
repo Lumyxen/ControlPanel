@@ -153,7 +153,7 @@ export function preprocessLatexText(text) {
 	});
 
 	// Step 2: Protect math blocks so we don't accidentally modify equations.
-	const mathBlocks = [];
+	const mathBlocks =[];
 	let mathIndex = 0;
 	safeText = safeText.replace(MATH_REGEX, (match) => {
 		const placeholder = `⚿MATHBLOCK${mathIndex}⚿`;
@@ -372,15 +372,3 @@ export function injectMath(html, mathBlocks) {
 	
 	return finalHtml;
 }
-
-export function parseLatex(text) {
-	const preprocessed = preprocessLatexText(text);
-	const { text: extracted, mathBlocks } = extractMath(preprocessed);
-	return injectMath(extracted, mathBlocks);
-}
-
-export function hasLatex(text) {
-	return /\$[^$]+\$|\$\$[^$]+\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\\[a-zA-Z]+/.test(text);
-}
-
-export default parseLatex;

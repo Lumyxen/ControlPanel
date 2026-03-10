@@ -14,9 +14,7 @@ class McpClient {
 public:
     McpClient(const std::string& name, const std::string& baseUrl);
 
-    const std::string& getName()    const { return name_; }
-    const std::string& getBaseUrl() const { return baseUrl_; }
-    bool               isReady()    const { return initialized_; }
+    bool isReady() const { return initialized_; }
 
     /** Perform the MCP handshake. Returns true on success. */
     bool initialize();
@@ -24,7 +22,7 @@ public:
     /**
      * Fetch the server's tool list.
      * Returns a JSON array in OpenAI tool-object format:
-     *   [ { "type": "function",
+     *[ { "type": "function",
      *       "function": { "name", "description", "parameters" } }, ... ]
      * Returns an empty array on failure.
      */

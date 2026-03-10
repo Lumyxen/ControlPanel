@@ -14,11 +14,6 @@ static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* use
     return size * nmemb;
 }
 
-static size_t WriteCallbackErrorBuffer(char* contents, size_t size, size_t nmemb, void* userp) {
-    ((std::string*)userp)->append((char*)contents, size * nmemb);
-    return size * nmemb;
-}
-
 // ── Streaming write callback ──────────────────────────────────────────────────
 // Processes SSE lines.  Forwards content/reasoning chunks via onChunk.
 // Accumulates tool_calls for the caller to inspect after the stream ends.
@@ -221,19 +216,6 @@ Json::Value OpenRouterService::chat(
     body["model"]      = model;
     body["messages"]   = buildMessages(prompt, systemPrompt);
     body["max_tokens"] = maxTokens;
-    if (temperature >= 0.0) body["temperature"] = temperature;
-    return makeRequest("/chat/completions", body);
-}
-
-// ── streamingChat (simple, non-tool) ─────────────────────────────────────────
-Json::Value OpenRouterService::streamingChat(
-        const std::string& model, const std::string& prompt,
-        int maxTokens, const std::string& systemPrompt, double temperature) const {
-    Json::Value body;
-    body["model"]      = model;
-    body["messages"]   = buildMessages(prompt, systemPrompt);
-    body["max_tokens"] = maxTokens;
-    body["stream"]     = true;
     if (temperature >= 0.0) body["temperature"] = temperature;
     return makeRequest("/chat/completions", body);
 }
@@ -606,13 +588,6 @@ Json::Value OpenRouterService::getModels() const {
     addModel("google/gemma-2-9b-it",                  "Google Gemma 2 9B",         "Google",     8192,  8192);
     addModel("meta-llama/llama-3-8b-instruct",        "Meta Llama 3 8B",           "Meta",       8192,  8192);
     addModel("mistralai/mistral-7b-instruct-v0.3",    "Mistral 7B Instruct v0.3",  "Mistral",  32768,  8192);
-    return response;
-}
-
-// ── getPricing ────────────────────────────────────────────────────────────────
-Json::Value OpenRouterService::getPricing() const {
-    Json::Value response;
-    response["data"] = Json::Value(Json::arrayValue);
     return response;
 }
 

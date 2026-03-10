@@ -204,7 +204,7 @@ void runConfigFileWatch(Config& config, McpRegistry& registry,
     fs::file_time_type lastSettingsTime{};
     fs::file_time_type lastMcpTime{};
 
-    auto safeModTime = [](const std::string& p) -> fs::file_time_type {
+    auto safeModTime =[](const std::string& p) -> fs::file_time_type {
         try {
             if (fs::exists(p)) return fs::last_write_time(p);
         } catch (...) {}
@@ -263,16 +263,16 @@ void runServer(Config& config, OpenRouterService& openrouterService,
     httplib::Server svr;
     { std::lock_guard<std::mutex> lock(g_serverMutex); g_server = &svr; }
 
-    svr.Options(".*", [](const httplib::Request& req, httplib::Response& res) {
+    svr.Options(".*",[](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req); res.status = 200;
     });
 
-    svr.Get("/health", [](const httplib::Request& req, httplib::Response& res) {
+    svr.Get("/health",[](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         res.set_content("{\"status\": \"ok\"}", "application/json");
     });
 
-    svr.Get("/api/health/external", [](const httplib::Request& req, httplib::Response& res) {
+    svr.Get("/api/health/external",[](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         Json::Value response;
         response["openrouter"] = openRouterHealthy.load();
@@ -308,11 +308,6 @@ void runServer(Config& config, OpenRouterService& openrouterService,
     svr.Get("/api/models/lmstudio", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleLmStudioModels(req, res, openrouterService);
-    });
-
-    svr.Get("/api/pricing", [&](const httplib::Request& req, httplib::Response& res) {
-        addSecurityHeaders(res); addCorsHeaders(res, req);
-        handlePricing(req, res, openrouterService);
     });
 
     svr.Get("/api/config/settings", [&](const httplib::Request& req, httplib::Response& res) {
@@ -362,7 +357,7 @@ void runServer(Config& config, OpenRouterService& openrouterService,
         addCorsHeaders(res, req);
         handleMcpPost(req, res, mcpService);
     });
-    svr.Get("/mcp", [](const httplib::Request& req, httplib::Response& res) {
+    svr.Get("/mcp",[](const httplib::Request& req, httplib::Response& res) {
         addCorsHeaders(res, req);
         handleMcpGet(req, res);
     });

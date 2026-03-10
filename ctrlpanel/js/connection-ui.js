@@ -7,7 +7,6 @@ import {
     retryConnection,
     startAutoRetry,
     stopAutoRetry,
-    isBackendConnected,
 } from './connection-monitor.js';
 
 // Modal state
@@ -227,21 +226,4 @@ function hideOpenRouterModal() {
         openRouterModal = null;
         isOpenRouterModalVisible = false;
     }, 300);
-}
-
-/**
- * Manually check connection status
- * @returns {boolean}
- */
-export function checkConnection() {
-    return isBackendConnected();
-}
-
-/**
- * Clean up connection monitoring on app shutdown
- */
-export function cleanupConnectionUI() {
-    stopMonitoring();
-    hideConnectionModal();
-    hideOpenRouterModal();
 }

@@ -25,14 +25,6 @@ export function isBackendConnected() {
 }
 
 /**
- * Check if OpenRouter is available
- * @returns {boolean}
- */
-export function isOpenRouterHealthy() {
-    return isOpenRouterAvailable;
-}
-
-/**
  * Set callback for connection state changes
  * @param {function(boolean)} callback - called with new connection state
  */
