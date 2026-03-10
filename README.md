@@ -53,7 +53,7 @@ Edit `data/settings.json` with your settings:
 
 ```json
 {
-    "defaultModel" : "arcee-ai/trinity-large-preview:free",
+    "defaultModel" : "lmstudio::llama-3-8b-instruct",
     "fallbackMaxOutputTokens" : 8192,
     "host" : "0.0.0.0",
     "port" : 1024,
@@ -64,10 +64,9 @@ Edit `data/settings.json` with your settings:
 
 ## API Endpoints
 - `GET /api/auth/verify` - Verify API key
-- `POST /api/openrouter/chat` - Send chat message
-- `GET /api/openrouter/streaming` - Streaming chat
-- `GET /api/openrouter/models` - List available models
-- `GET /api/openrouter/pricing` - Get pricing info
+- `POST /api/chat` - Send chat message
+- `GET /api/chat/stream` - Streaming chat
+- `GET /api/models` - List available local models from LM Studio
 - `GET /api/config/settings` - Get settings
 - `PUT /api/config/settings` - Update settings
 
