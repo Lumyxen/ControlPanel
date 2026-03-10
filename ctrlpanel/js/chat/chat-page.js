@@ -1,3 +1,4 @@
+// ./ctrlpanel/js/chat/chat-page.js
 import {
 	branchFromNode,
 	computeThreadNodeIds,
@@ -1195,16 +1196,30 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				rerender();
 				setActiveCallback && setActiveCallback();
 			},
+			/*** FIXED REGENERATE HANDLER ***/
 			resend: () => {
-				if (!node.parentId) return;
 				stopTyping();
 				
 				let userNodeId = node.role === "user" ? node.id : node.parentId;
 				let userNode = getNode(graph, userNodeId);
 				if (!userNode) return;
 
-				setSelectedChildId(graph, userNode.parentId, userNode.id);
-				delete graph.selections[userNode.id];
+				// === FIX: permanently delete the old AI response (the one being regenerated) ===
+				// This eliminates the "hidden sibling" that was causing the old message to re-appear
+				// after deleting the newly generated response.
+				const currentResponseId = graph.selections?.[userNodeId];
+				if (currentResponseId) {
+					spliceDeleteNode(graph, currentResponseId);
+				}
+
+				// Clean selection on the user node (ready for the new response)
+				delete graph.selections[userNodeId];
+
+				// Make sure the user node is selected in its parent (so the thread shows correctly)
+				if (userNode.parentId) {
+					setSelectedChildId(graph, userNode.parentId, userNodeId);
+				}
+
 				recomputeLeafId(graph);
 				
 				chat.updatedAt = Date.now();
@@ -1217,7 +1232,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				setActiveCallback && setActiveCallback();
 				
 				if (empty) empty.hidden = true;
-				startReply(userNode.id);
+				startReply(userNodeId);
 			},
 			copy: async () => {
 				let textToCopy = node.parts 
