@@ -5,6 +5,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <map>
 #include <chrono>
 
 // ── libcurl helpers ───────────────────────────────────────────────────────────
@@ -382,7 +383,7 @@ void OpenRouterService::streamingChatWithCallback(
         int maxTokens,
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
-        const std::string& systemPrompt, double temperature) const {
+        const std::string& systemPrompt, double temperature, int numCtx) const {
 
     Json::Value body;
     body["model"]      = model;
@@ -390,6 +391,8 @@ void OpenRouterService::streamingChatWithCallback(
     body["max_tokens"] = maxTokens;
     body["stream"]     = true;
     if (temperature >= 0.0) body["temperature"] = temperature;
+    // LM Studio: request the full loaded context window so it isn't silently capped
+    if (numCtx > 0)         body["num_ctx"]     = numCtx;
 
     std::vector<StreamContext::ToolCallAccum> unused;
     std::string finishReason = streamOneRound(body, onChunk, onError, unused);
@@ -408,7 +411,7 @@ void OpenRouterService::streamingChatWithTools(
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
         McpRegistry* registry,
-        double temperature) const {
+        double temperature, int numCtx) const {
 
     for (;;) {
         // Build request body
@@ -418,6 +421,8 @@ void OpenRouterService::streamingChatWithTools(
         body["max_tokens"] = maxTokens;
         body["stream"]     = true;
         if (temperature >= 0.0) body["temperature"] = temperature;
+        // LM Studio: request the full loaded context window so it isn't silently capped
+        if (numCtx > 0)         body["num_ctx"]     = numCtx;
 
         // Attach tools on every round so the model can keep using them
         if (!tools.isNull() && tools.isArray() && !tools.empty()) {
@@ -611,14 +616,15 @@ Json::Value OpenRouterService::getPricing() const {
     return response;
 }
 
-// ── getLmStudioModels ─────────────────────────────────────────────────────────
-Json::Value OpenRouterService::getLmStudioModels() const {
+// ── lmStudioGet – reusable single GET helper for LM Studio endpoints ──────────
+// Returns parsed JSON on success, or an object with "error" on failure.
+// httpCode is set to 0 on CURL error, otherwise to the HTTP response code.
+static Json::Value lmStudioGet(const std::string& url, long& httpCodeOut) {
+    httpCodeOut = 0;
     CURL* curl = curl_easy_init();
     if (!curl) {
         Json::Value err; err["error"] = "Failed to init CURL"; return err;
     }
-
-    const std::string url = lmStudioUrl_ + "/v1/models";
     std::string responseStr;
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");
@@ -629,19 +635,21 @@ Json::Value OpenRouterService::getLmStudioModels() const {
     curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &responseStr);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT,        5L);  // fast timeout – server may not be running
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT,        5L);
 
     CURLcode res = curl_easy_perform(curl);
-    long httpCode = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCodeOut);
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
-    if (res != CURLE_OK || httpCode != 200) {
+    if (res != CURLE_OK) {
         Json::Value err;
-        err["error"] = (res != CURLE_OK)
-            ? std::string("LM Studio unreachable: ") + curl_easy_strerror(res)
-            : "LM Studio returned HTTP " + std::to_string(httpCode);
+        err["error"] = std::string("LM Studio unreachable: ") + curl_easy_strerror(res);
+        return err;
+    }
+    if (httpCodeOut != 200) {
+        Json::Value err;
+        err["error"] = "LM Studio returned HTTP " + std::to_string(httpCodeOut);
         return err;
     }
 
@@ -652,23 +660,85 @@ Json::Value OpenRouterService::getLmStudioModels() const {
     if (!Json::parseFromStream(reader, stream, &result, &errs)) {
         Json::Value err; err["error"] = "Failed to parse LM Studio response"; return err;
     }
+    return result;
+}
 
-    // Normalise to same shape as OpenRouter: { data:[ { id, name, context_length } ] }
+// ── getLmStudioModels ─────────────────────────────────────────────────────────
+Json::Value OpenRouterService::getLmStudioModels() const {
+    // ── Step 1: query LM Studio's native API for max_context_length ───────────
+    // GET /api/v1/models returns all downloaded models with their true architectural
+    // max_context_length, regardless of what context window was used at load time.
+    // The OpenAI-compat /v1/models only returns the *loaded* context window (which
+    // may be a user-chosen value like 8192), so it is not suitable for this purpose.
+    std::map<std::string, int> nativeCtxMap; // modelId -> max_context_length
+    {
+        long httpCode = 0;
+        Json::Value nativeResult = lmStudioGet(lmStudioUrl_ + "/api/v1/models", httpCode);
+        if (httpCode == 200 && nativeResult.isMember("data") && nativeResult["data"].isArray()) {
+            for (const auto& m : nativeResult["data"]) {
+                std::string id = m.get("id", "").asString();
+                if (id.empty()) continue;
+                // Only consider models that are currently loaded
+                std::string state = m.get("state", "").asString();
+                if (state != "loaded") continue;
+                if (m.isMember("max_context_length") && m["max_context_length"].isInt()) {
+                    nativeCtxMap[id] = m["max_context_length"].asInt();
+                }
+            }
+        }
+        std::cout << "[LmStudio] Native API returned " << nativeCtxMap.size()
+                  << " loaded model(s) with max_context_length\n";
+    }
+
+    // ── Step 2: query the OpenAI-compat /v1/models for the list of loaded models
+    long httpCode = 0;
+    Json::Value result = lmStudioGet(lmStudioUrl_ + "/v1/models", httpCode);
+    if (httpCode != 200) {
+        return result; // error already set inside lmStudioGet
+    }
+
+    // ── Step 3: normalise to { data:[ { id, name, context_length, ... } ] } ──
     Json::Value out;
     out["data"] = Json::Value(Json::arrayValue);
     const Json::Value& src = result.isMember("data") ? result["data"] : result;
-    if (src.isArray()) {
-        for (const auto& m : src) {
-            Json::Value nm;
-            std::string id = m.get("id", "").asString();
-            if (id.empty()) continue;
-            nm["id"]             = "lmstudio::" + id;  // prefix so the backend can route it
-            nm["name"]           = m.isMember("name") ? m["name"] : Json::Value(id);
-            nm["context_length"] = m.get("context_length", 8192).asInt();
-            nm["max_tokens"]     = 8192;
-            nm["source"]         = "lmstudio";
-            out["data"].append(nm);
+    if (!src.isArray()) return out;
+
+    for (const auto& m : src) {
+        std::string id = m.get("id", "").asString();
+        if (id.empty()) continue;
+
+        Json::Value nm;
+        nm["id"]     = "lmstudio::" + id;
+        nm["name"]   = m.isMember("name") ? m["name"] : Json::Value(id);
+        nm["source"] = "lmstudio";
+
+        // ── Context length: prefer max_context_length from the native API ─────
+        // That value reflects the model's true architectural maximum, not the
+        // context window it happened to be loaded with.
+        int ctx_len = 0;
+        auto it = nativeCtxMap.find(id);
+        if (it != nativeCtxMap.end() && it->second > 0) {
+            ctx_len = it->second;
         }
+        // Fallback: fish through whatever the compat endpoint gave us
+        if (ctx_len <= 0) {
+            if      (m.isMember("context_length")          && m["context_length"].isInt())          ctx_len = m["context_length"].asInt();
+            else if (m.isMember("context_window")          && m["context_window"].isInt())          ctx_len = m["context_window"].asInt();
+            else if (m.isMember("max_context_length")      && m["max_context_length"].isInt())      ctx_len = m["max_context_length"].asInt();
+            else if (m.isMember("max_position_embeddings") && m["max_position_embeddings"].isInt()) ctx_len = m["max_position_embeddings"].asInt();
+            else if (m.isMember("architecture") && m["architecture"].isObject()
+                     && m["architecture"].isMember("context_length"))                               ctx_len = m["architecture"]["context_length"].asInt();
+        }
+        if (ctx_len <= 0) ctx_len = 8192; // last-resort fallback
+        nm["context_length"] = ctx_len;
+
+        // ── Max output tokens ─────────────────────────────────────────────────
+        int max_tokens = 8192;
+        if      (m.isMember("max_tokens")            && m["max_tokens"].isInt())            max_tokens = m["max_tokens"].asInt();
+        else if (m.isMember("max_completion_tokens") && m["max_completion_tokens"].isInt()) max_tokens = m["max_completion_tokens"].asInt();
+        nm["max_tokens"] = max_tokens;
+
+        out["data"].append(nm);
     }
     return out;
 }

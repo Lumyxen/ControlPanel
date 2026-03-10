@@ -70,9 +70,11 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
 
         std::string model        = body["model"].asString();
         std::string prompt       = body["prompt"].asString();
-        int maxTokens            = body.isMember("max_tokens")    ? body["max_tokens"].asInt()     : 2048;
-        std::string systemPrompt = body.isMember("system_prompt") ? body["system_prompt"].asString(): "";
-        double temperature       = body.isMember("temperature")   ? body["temperature"].asDouble() : -1.0;
+        int maxTokens            = body.isMember("max_tokens")     ? body["max_tokens"].asInt()     : 2048;
+        std::string systemPrompt = body.isMember("system_prompt")  ? body["system_prompt"].asString(): "";
+        double temperature       = body.isMember("temperature")    ? body["temperature"].asDouble() : -1.0;
+        // context_window is forwarded to LM Studio as num_ctx so it uses the full loaded context
+        int contextWindow        = body.isMember("context_window") ? body["context_window"].asInt() : 0;
 
         // Build tools array:
         // 1. Any tools explicitly sent by the client
@@ -96,7 +98,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
         auto ctx = std::make_shared<StreamingCtx>();
 
         std::thread([ctx, &service, registry, model, prompt, maxTokens,
-                     systemPrompt, temperature, tools]() mutable {
+                     systemPrompt, temperature, contextWindow, tools]() mutable {
             auto onChunk = [ctx](const std::string& chunk) -> bool {
                 if (ctx->cancelled.load()) return false;
                 std::lock_guard<std::mutex> lock(ctx->mutex);
@@ -116,11 +118,11 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                 Json::Value messages = service.buildMessages(prompt, systemPrompt);
                 service.streamingChatWithTools(
                     model, messages, tools, maxTokens,
-                    onChunk, onError, registry, temperature);
+                    onChunk, onError, registry, temperature, contextWindow);
             } else {
                 service.streamingChatWithCallback(
                     model, prompt, maxTokens, onChunk, onError,
-                    systemPrompt, temperature);
+                    systemPrompt, temperature, contextWindow);
             }
 
             std::lock_guard<std::mutex> lock(ctx->mutex);

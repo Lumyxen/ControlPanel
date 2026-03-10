@@ -1,4 +1,3 @@
-// ./ctrlpanel/js/chat/chat-page.js
 import {
 	branchFromNode,
 	computeThreadNodeIds,
@@ -295,7 +294,7 @@ async function loadLmStudioModels(root, signal) {
 	const menu = modelDropdown?.querySelector('.chat-dropdown-menu');
 	if (!menu) return;
 
-	// Remove any existing LM Studio section (for re-loads)
+	// Remove any existing LM Studio section
 	menu.querySelectorAll('.chat-dropdown-separator[data-source="lmstudio"], .chat-dropdown-item[data-source="lmstudio"]')
 		.forEach(el => el.remove());
 
@@ -327,7 +326,6 @@ async function loadLmStudioModels(root, signal) {
 		btn.dataset.value = model.id;
 		if (model.context_length) btn.dataset.contextLength = String(model.context_length);
 
-		// Humanise: strip path separators, use last segment as display name
 		const displayName = model.id.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
 		btn.innerHTML = `<span class="chat-dropdown-item-label">${displayName}</span><span class="chat-dropdown-item-badge">Local</span>`;
 
@@ -342,7 +340,7 @@ async function loadLmStudioModels(root, signal) {
 			if (label) label.textContent = displayName;
 			modelDropdown.classList.remove('open');
 			modelDropdown.querySelector('.chat-dropdown-toggle')?.setAttribute('aria-expanded', 'false');
-			// Persist selection
+
 			const chatId = getCurrentChatId();
 			if (chatId) setChatModel(chatId, model.id);
 			setLastSelectedModel(model.id);
@@ -353,12 +351,23 @@ async function loadLmStudioModels(root, signal) {
 		menu.appendChild(btn);
 	}
 
-	// If the current chat uses an LM Studio model, select it now
+	// === NEW: add LM Studio models to metadata map (so context window works reliably) ===
+	setModelMetadata(lmData);
+
+	// Determine which model should be active:
+	//   1. The current chat's saved model (if it's an LM Studio model)
+	//   2. The last manually-selected model (if it's LM Studio and no chat model is set)
 	const chatId = getCurrentChatId();
-	const chatModel = chatId ? getChatById(chatId) : null;
-	const activeModel = chatModel ? chatModel.model : null;
-	if (activeModel?.startsWith('lmstudio::')) {
-		const match = menu.querySelector(`.chat-dropdown-item[data-value="${CSS.escape(activeModel)}"]`);
+	const chatModel = chatId ? getChatModel(chatId) : null;
+	const lastModel = getLastSelectedModel();
+	const targetModel = chatModel?.startsWith('lmstudio::')
+		? chatModel
+		: (!chatModel && lastModel?.startsWith('lmstudio::'))
+			? lastModel
+			: null;
+
+	if (targetModel) {
+		const match = menu.querySelector(`.chat-dropdown-item[data-value="${CSS.escape(targetModel)}"]`);
 		if (match) {
 			menu.querySelectorAll('.chat-dropdown-item').forEach(i => {
 				i.classList.remove('selected');
@@ -367,10 +376,15 @@ async function loadLmStudioModels(root, signal) {
 			match.classList.add('selected');
 			match.setAttribute('aria-selected', 'true');
 			const label = modelDropdown.querySelector('.chat-dropdown-label');
-			const displayName = activeModel.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
+			const displayName = targetModel.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
 			if (label) label.textContent = displayName;
 		}
 	}
+
+	// Always refresh the context-window display now that metadata is populated
+	// and the correct model is selected.
+	const chat = chatId ? getChatById(chatId) : null;
+	updateContextUI(root, chat);
 }
 
 /**
@@ -415,6 +429,27 @@ function applyModel(root, modelId) {
  * Auto-selection via this function does NOT update lastSelectedModel.
  * @param {Element} root
  */
+/**
+ * For LM Studio models that haven't loaded into the DOM yet, immediately
+ * stamp the human-readable name onto the dropdown label so the user never
+ * sees the stale HTML-default model name while waiting for the async fetch.
+ * loadLmStudioModels() will create the real item and mark it selected later.
+ */
+function primeDropdownLabelForLmStudio(root, modelId) {
+	const modelDropdown = root.querySelector('[data-dropdown="model"]');
+	if (!modelDropdown) return;
+	const label = modelDropdown.querySelector('.chat-dropdown-label');
+	if (!label) return;
+	// Deselect every existing item so nothing conflicts
+	modelDropdown.querySelectorAll('.chat-dropdown-item').forEach(i => {
+		i.classList.remove('selected');
+		i.setAttribute('aria-selected', 'false');
+	});
+	// Show the model name right away — strip the prefix and path
+	const displayName = modelId.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
+	label.textContent = displayName;
+}
+
 function selectModelForCurrentChat(root) {
 	const chatId = getCurrentChatId();
 
@@ -423,15 +458,29 @@ function selectModelForCurrentChat(root) {
 	if (chatModel) {
 		// Found in dropdown → use it
 		if (applyModel(root, chatModel)) return;
+		// LM Studio models load asynchronously — the item isn't in the DOM yet.
+		// Prime the label immediately so the user sees the right name straight
+		// away, then loadLmStudioModels() will do the proper selection.
+		if (chatModel.startsWith('lmstudio::')) {
+			primeDropdownLabelForLmStudio(root, chatModel);
+			return;
+		}
 		// Saved but no longer available → fall back to settings default, not lastModel
 		const settings = SettingsStore.get();
 		if (settings?.defaultModel) applyModel(root, settings.defaultModel);
 		return;
 	}
 
-	// 2. Last model the user explicitly chose (no chat-specific preference set)
+	// 2. Last model the user explicitly chose (no chat-specific preference set).
 	const lastModel = getLastSelectedModel();
-	if (lastModel && applyModel(root, lastModel)) return;
+	if (lastModel) {
+		// LM Studio: prime the label now; loadLmStudioModels() will finish the job.
+		if (lastModel.startsWith('lmstudio::')) {
+			primeDropdownLabelForLmStudio(root, lastModel);
+			return;
+		}
+		if (applyModel(root, lastModel)) return;
+	}
 
 	// 3. Settings default
 	const settings = SettingsStore.get();
@@ -621,17 +670,18 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 							
 							if (part.data && !part.isImage) {
 								try {
-									const base64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
-									if (base64Match) {
-										const binaryString = atob(base64Match[1]);
-										const bytes = new Uint8Array(binaryString.length);
-										for (let i = 0; i < binaryString.length; i++) {
-											bytes[i] = binaryString.charCodeAt(i);
-										}
-										const decoder = new TextDecoder('utf-8');
-										const textContent = decoder.decode(bytes).slice(0, 10000);
-										attachmentInfo += `\n[File Content:]\n${textContent}`;
-									}
+                                    const base64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
+                                    if (base64Match) {
+                                        const chunk = base64Match[1].slice(0, 13336);
+                                        const binaryString = atob(chunk);
+                                        const bytes = new Uint8Array(binaryString.length);
+                                        for (let i = 0; i < binaryString.length; i++) {
+                                            bytes[i] = binaryString.charCodeAt(i);
+                                        }
+                                        const decoder = new TextDecoder('utf-8');
+                                        const textContent = decoder.decode(bytes).slice(0, 10000);
+                                        attachmentInfo += `\n[File Content:]\n${textContent}`;
+                                    }
 								} catch (e) {
 									console.warn('Could not read file content:', e);
 								}
@@ -673,17 +723,18 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 							
 							if (part.data && !part.isImage) {
 								try {
-									const base64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
-									if (base64Match) {
-										const binaryString = atob(base64Match[1]);
-										const bytes = new Uint8Array(binaryString.length);
-										for (let i = 0; i < binaryString.length; i++) {
-											bytes[i] = binaryString.charCodeAt(i);
-										}
-										const decoder = new TextDecoder('utf-8');
-										const textContent = decoder.decode(bytes).slice(0, 10000);
-										attachmentInfo += `\n[File Content:]\n${textContent}`;
-									}
+                                    const base64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
+                                    if (base64Match) {
+                                        const chunk = base64Match[1].slice(0, 13336);
+                                        const binaryString = atob(chunk);
+                                        const bytes = new Uint8Array(binaryString.length);
+                                        for (let i = 0; i < binaryString.length; i++) {
+                                            bytes[i] = binaryString.charCodeAt(i);
+                                        }
+                                        const decoder = new TextDecoder('utf-8');
+                                        const textContent = decoder.decode(bytes).slice(0, 10000);
+                                        attachmentInfo += `\n[File Content:]\n${textContent}`;
+                                    }
 								} catch (e) {
 									console.warn('Could not read file content:', e);
 								}
@@ -913,6 +964,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				currentSignal,
 				systemPrompt,
 				temperature,
+				contextLimit,
 			);
 			
 			if (errorFromStream) {

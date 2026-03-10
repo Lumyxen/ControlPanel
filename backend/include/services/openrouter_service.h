@@ -55,7 +55,8 @@ public:
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
         const std::string& systemPrompt = "",
-        double temperature = -1.0
+        double temperature = -1.0,
+        int numCtx = 0
     ) const;
 
     // ── Tool-aware streaming (agentic loop) ───────────────────────────────────
@@ -81,7 +82,8 @@ public:
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
         McpRegistry*        registry,
-        double              temperature   = -1.0
+        double              temperature   = -1.0,
+        int                 numCtx        = 0
     ) const;
 
     // ── Utilities ─────────────────────────────────────────────────────────────

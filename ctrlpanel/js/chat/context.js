@@ -5,11 +5,11 @@ import { computeThreadNodeIds, ensureGraph, getNode } from "./graph.js";
 let modelMetadata = new Map();
 
 /**
- * Store model metadata from API response
+ * Store / merge model metadata from API response
+ * (Now merges instead of clearing so LM Studio models are also kept)
  * @param {Array} models - Array of model objects from API
  */
 export function setModelMetadata(models) {
-	modelMetadata.clear();
 	if (Array.isArray(models)) {
 		for (const model of models) {
 			if (model.id) {
@@ -44,12 +44,56 @@ export function estimateTokensForText(text) {
 	return Math.max(1, Math.ceil(s.length / 4));
 }
 
+/**
+ * Extract full text that contributes to context (text + attachment descriptions)
+ * Matches exactly what is sent to the model in chat-page.js
+ */
+function getNodeFullText(node) {
+	if (!node) return "";
+
+	if (node.parts && Array.isArray(node.parts)) {
+		let text = "";
+		for (const part of node.parts) {
+			if (part.type === "text" && part.content) {
+				text += part.content + "\n";
+			} else if (part.type === "attachment") {
+				let info = `[Attachment: ${part.name} (${part.size} bytes)`;
+				if (part.isImage) info += " (image)";
+				
+				if (part.data && !part.isImage) {
+					try {
+						const base64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
+						if (base64Match) {
+							const binaryString = atob(base64Match[1]);
+							const bytes = new Uint8Array(binaryString.length);
+							for (let i = 0; i < binaryString.length; i++) {
+								bytes[i] = binaryString.charCodeAt(i);
+							}
+							const decoder = new TextDecoder('utf-8');
+							const textContent = decoder.decode(bytes);
+							info += `\n[File Content:]\n${textContent}`;
+						}
+					} catch (e) {
+						console.warn('Could not read file content for token estimation:', e);
+					}
+				}
+				
+				text += info + "]\n";
+            }
+		}
+		return text.trim();
+	}
+
+	return String(node.content || "");
+}
+
 export function getModelContextLimitFromUI(root) {
 	const selected = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
-	if (!selected) return 8192; // Default fallback if nothing selected
-	
-	// First try to get context_length from stored model metadata
+	if (!selected) return 8192;
+
 	const modelId = selected.dataset.value;
+
+	// Prefer metadata (now includes LM Studio models and normalizes fallback keys dynamically)
 	if (modelId && modelMetadata.has(modelId)) {
 		const model = modelMetadata.get(modelId);
 		const contextLength = parseInt(model.context_length, 10);
@@ -57,25 +101,21 @@ export function getModelContextLimitFromUI(root) {
 			return contextLength;
 		}
 	}
-	
-	// Fallback to data attribute from HTML (hardcoded values)
+
+	// Fallback to data attribute (still works)
 	const contextLength = parseInt(selected.dataset.contextLength, 10);
 	if (!isNaN(contextLength) && contextLength > 0) {
 		return contextLength;
 	}
-	
-	// Final default fallback
+
 	return 8192;
 }
 
 /**
  * Get max_tokens for a model from stored metadata
- * @param {string} modelId - Model ID
- * @returns {number} max_tokens value or default (8192)
  */
 export function getModelMaxTokens(modelId) {
 	if (!modelId) return 8192;
-
 	const model = modelMetadata.get(modelId);
 	if (model) {
 		const maxTokens = parseInt(model.max_tokens, 10);
@@ -83,19 +123,13 @@ export function getModelMaxTokens(modelId) {
 			return maxTokens;
 		}
 	}
-
-	return 8192; // Default fallback 
+	return 8192;
 }
 
 export function computeThreadTokenUsage(graph) {
 	return computeThreadNodeIds(graph).reduce((total, id) => {
 		const node = getNode(graph, id);
-		let text = "";
-		if (node?.parts && Array.isArray(node.parts)) {
-			text = node.parts.filter(p => p.type === "text").map(p => p.content).join("");
-		} else if (node?.content) {
-			text = node.content;
-		}
+		const text = getNodeFullText(node);
 		return total + estimateTokensForText(text);
 	}, 0);
 }
@@ -103,22 +137,20 @@ export function computeThreadTokenUsage(graph) {
 export function updateContextUI(root, chat) {
 	const el = root?.querySelector?.("#chatContext");
 	if (!el) return;
-	
-	// Always get the model context limit from the selected dropdown item
+
 	const max = getModelContextLimitFromUI(root);
-	
-	// Calculate used tokens only if there's a chat
+
 	let used = 0;
 	if (chat) {
 		const graph = ensureGraph(chat);
 		used = computeThreadTokenUsage(graph);
 	}
-	
+
 	el.textContent = `${used}/${max}`;
 	el.title = max > 0
 		? `Context Window: ${used} tokens used / ${max} total`
 		: "Context Window";
-		
+
 	if (max > 0) {
 		const ratio = used / max;
 		if (ratio >= 0.9) {

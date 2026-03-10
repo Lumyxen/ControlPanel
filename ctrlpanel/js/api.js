@@ -62,6 +62,7 @@ export async function sendChatMessage(model, prompt, maxTokens = 2048) {
  * @param {AbortSignal|null} signal
  * @param {string}   systemPrompt     - System prompt to prepend (sent to backend)
  * @param {number|null} temperature   - Sampling temperature (null = use backend default)
+ * @param {number|null} contextWindow - Context window size to request (used by LM Studio via num_ctx)
  */
 export async function streamChatMessage(
     model,
@@ -71,6 +72,7 @@ export async function streamChatMessage(
     signal = null,
     systemPrompt = "",
     temperature = null,
+    contextWindow = null,
 ) {
     const url = new URL(`${window.location.origin}${API_BASE}/chat/stream`);
 
@@ -89,6 +91,9 @@ export async function streamChatMessage(
     }
     if (temperature !== null && temperature !== undefined) {
         requestPayload.temperature = temperature;
+    }
+    if (contextWindow !== null && contextWindow > 0) {
+        requestPayload.context_window = contextWindow;
     }
 
     try {

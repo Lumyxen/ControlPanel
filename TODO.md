@@ -1,4 +1,4 @@
-**Ultimate goal is to get a model like LFM 2.5 1.2B or Qwen 3.5 2B to outperform Gemini 3.1 Pro in benchmarks**
+**Ultimate goal is to get a model like Qwen 3.5 2B to outperform Gemini 3.1 Pro in benchmarks**
 
 # TODO
 ## Main Control Panel
@@ -10,25 +10,34 @@
 - Put AI chat-box "new chat" button when sidebar is collapsed exclusively on AI chat-box pages
 
 ## AI Chat-box
-### Features
+### Planned Features
+- Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
+- Chat encryption (automatic decryption during chat loading)
+- Web search tool
 - Add calculator tool (replaces code execution reliance for math)
   - WolframAlpha API option
 - Headless browser tool
 ##### Start giving updates to GamingwithNP
 - Mobile UI support
-- Chat encryption (automatic decryption during chat loading)
+- Migrate development onto skidbladnir to host it (not really a feature)
+- Add llama.cpp server API support for local AI on skidbladnir
+##### Start dogfooding for everyday questions
 - Reserve max output token length to the context window (don't allow user to add more to the history if max output token length exceeds remaining available context)
 - Be able to scroll up and stop auto-scroll
 - Button to go all the way to bottom of chat history
-- Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
-- Add llama.cpp server API support for local AI on skidbladnir
-- Migrate development onto skidbladnir to host it (not really a feature)
 - Add chat importing (from T3.chat & Google AI Studio)
 - Add chat exporting (T3.chat format, custom format as default)
-- Add weather tool (returns weather data, user location (not exposed to AI) default, can specify a location)
 - Add logprobs
   - Highlight uncertain tokens
-##### Start dogfooding for everyday questions
+- Turn the response into a back-and-forth for the AI, allowing it to generate drafts, relook at it, refine it, and edit mistakes before sending the finalised result to what the user sees (do not block the user from seeing what the AI is generating at any point though).
+- RAG based memory
+  - Only load or allow models to use 64k tokens max.
+  - Get more aggressive with offputting data into the RAG DB the closer you get to the maximum context window
+  - Stage progression as: Full data -> summary + RAG -> RAG
+  - Strengthen/weight information in the RAG the more it gets used to make it more likely/easy to be recalled in the future
+  - Allow the AI to switch to using an identifier that links to RAG memories to remember in the context window to remember to do specific tasks
+  - Offput large documents (12k+ tokens) to make the AI read in chunks to prevent context overflow and more effectively handle memory
+- Add weather tool (returns weather data, user location (not exposed to AI) default, can specify a location)
 - Sort chat history by time since last chatted
 - Diff formatting
 - Change notice styling that back-end and/or an API connection is offline or lost
@@ -46,11 +55,7 @@
 - Add file checkpoints before each AI file edit to ensure edits are reversable
 - Allow the AI to attach files, allowing it to provide code updates with temp files without you having to copy an entire codeblock
 - Add LSP support for generated code files
-- Add automatic AI RAG memory (for infinite context. Context window serving as short-term memory, RAG memory serving as long-term memory)
-  - Progressively get more aggressive, making it harder to keep things in context window all at once for the AI, effectively making it impossible to ever reach the maximum context window
-  - Stage the progression into RAG memory. Summarise a message in context window and put full message into RAG memory, then remove the summary of the message later
 - Context message pinning (permanently remains in context window)
-- Turn the response into a back-and-forth for the AI, allowing it to generate drafts, relook at it, refine it, and edit mistakes before sending the finalised result to what the user sees (do not block the user from seeing what the AI is generating at any point though).
 - Add a tool for the AI to call for another AI that would specialise in fact checking
 - Add a tool for the AI to see the structure of the directory active directory (like tree but only shows current folder and path)
 - Ability to manually send a message into RAG memory storage
@@ -156,13 +161,11 @@
 - Message shrinking/expanding unwantedly to strictly 2 lines when editing (make message editing properly size to original message size, expand/shrink with new/deleted lines)
 - Fix ESC not canceling message editing and instead defocuses the text field on the first press
 - Messages sometimes refusing to send
-- User is not kicked from a chat history upon deletion
+- User is not kicked from a chat history upon deletion of that very chat
 
 #### General Bugs
-- Attachments don't count towards context window usage
-- Old AI message not removed when clicking regenerate on an AI message
 - Randomly getting completion before any generation, causing no response
-- Regeneration not properly removing previous AI message
+- Not properly getting context window size from LM Studio
 
 
 
@@ -188,7 +191,7 @@
 - Message sending/generation
 - Generation chunk streaming
 - Linux & Windows support for back-end
-  - Master binary with data being saved in ./
+  - Master binary with data being saved in ./data/
 - Chat history
 - Multiple chats
 - Multiple API implementations
