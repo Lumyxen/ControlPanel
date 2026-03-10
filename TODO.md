@@ -11,7 +11,6 @@
 
 ## AI Chat-box
 ### Features
-- Add LM Studio server API support for local AI on oseberg
 - Be able to stop AI response
 - Add calculator tool (replaces code execution reliance for math)
   - WolframAlpha API option
@@ -158,13 +157,14 @@
 - Fix new thread not being created when deleting a message
 - Message shrinking/expanding unwantedly to strictly 2 lines when editing (make message editing properly size to original message size, expand/shrink with new/deleted lines)
 - Fix ESC not canceling message editing and instead defocuses the text field on the first press
+- Messages sometimes refusing to send
 
 #### General Bugs
 - Attachments don't count towards context window usage
 - Messages flicker during longer generations that use auto-scroll
 - Old AI message not removed when clicking regenerate on an AI message
 - Randomly getting completion before any generation, causing no response
-- Messages sometimes refusing to send
+- Regeneration not properly removing previous AI message
 
 
 
@@ -193,7 +193,9 @@
   - Master binary with data being saved in ./
 - Chat history
 - Multiple chats
-- OpenRouter API implementation
+- Multiple API implementations
+  - OpenRouter
+  - LM Studio Server
 - New chat button when sidebar is collapsed
 - Message hover menu
   - AI message regeneration
