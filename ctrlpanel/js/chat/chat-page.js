@@ -1,3 +1,4 @@
+// ctrlpanel/js/chat/chat-page.js
 import {
 	branchFromNode,
 	computeThreadNodeIds,
@@ -24,7 +25,7 @@ import {
 	setLastSelectedModel,
 } from "./store.js";
 import { renderChatList } from "./sidebar.js";
-import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI } from "./context.js";
+import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI, estimateNodeTokens, estimatePartsTokens } from "./context.js";
 import { getModels } from "../api.js";
 import { renderThread, showTyping, buildToolCallElement } from "./thread-ui.js";
 import { InlineAttachmentManager } from "./inline-attachment.js";
@@ -226,8 +227,13 @@ async function loadAndPopulateModels(root, signal) {
 				const chatId = getCurrentChatId();
 				if (chatId) setChatModel(chatId, model.id);
 				setLastSelectedModel(model.id);
-				const chat = getChatById(chatId);
-				updateContextUI(root, chat);
+				
+				if (root._updateLiveContext) {
+					root._updateLiveContext();
+				} else {
+					const chat = getChatById(chatId);
+					updateContextUI(root, chat);
+				}
 			});
 
 			menu.appendChild(btn);
@@ -235,13 +241,21 @@ async function loadAndPopulateModels(root, signal) {
 		
 		selectModelForCurrentChat(root);
 
-		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
-		updateContextUI(root, chat);
+		if (root._updateLiveContext) {
+			root._updateLiveContext();
+		} else {
+			const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+			updateContextUI(root, chat);
+		}
 
 	} catch (err) {
 		console.error('Failed to load models:', err);
-		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
-		updateContextUI(root, chat);
+		if (root._updateLiveContext) {
+			root._updateLiveContext();
+		} else {
+			const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+			updateContextUI(root, chat);
+		}
 	}
 }
 
@@ -346,21 +360,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 	const attachmentManager = new InlineAttachmentManager(input);
 
-	// Load models entirely (since we removed async OR-to-LM split)
-	await loadAndPopulateModels(root, signal);
-
-	initDropdowns(root, signal);
-	initTools(root, signal);
-	initUpload(root, input, attachmentManager, signal);
-	const resizeInput = initAutoResize(input, signal);
-
-	const urlParams = new URLSearchParams(location.hash.split("?")[1] || "");
-	const chatIdFromUrl = urlParams.get("chat");
-	if (chatIdFromUrl && getChatById(chatIdFromUrl)) {
-		setCurrentChatId(chatIdFromUrl);
-		saveChats();
-	}
-
 	const uiState = {
 		editingNodeId: null,
 		editingDraft: "",
@@ -370,7 +369,73 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		streamAbort: null,
 		flushResponse: null,
 		isGenerating: false,
+		liveGeneratingNode: null,
 	};
+
+	const updateLiveContext = () => {
+		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+		let extraTokens = 0;
+
+		// Add tokens from the main input box
+		const parts = attachmentManager.extractParts();
+		if (parts && parts.length > 0) {
+			extraTokens += estimatePartsTokens(parts);
+		}
+
+		// Add tokens from currently generating text
+		if (uiState.isGenerating && uiState.liveGeneratingNode) {
+			extraTokens += estimateNodeTokens(uiState.liveGeneratingNode);
+		}
+
+		// Handle editing draft vs original node
+		if (uiState.editingNodeId && chat) {
+			const node = getNode(ensureGraph(chat), uiState.editingNodeId);
+			if (node) {
+				// subtract original node tokens
+				extraTokens -= estimateNodeTokens(node);
+
+				// add draft tokens
+				let draftParts =[];
+				if (node.parts) {
+					let textAdded = false;
+					for (const part of node.parts) {
+						if (part.type === "text" && !textAdded) {
+							draftParts.push({ type: "text", content: uiState.editingDraft });
+							textAdded = true;
+						} else if (part.type !== "text") {
+							draftParts.push(part);
+						}
+					}
+					if (!textAdded) draftParts.unshift({ type: "text", content: uiState.editingDraft });
+				} else {
+					draftParts =[{ type: "text", content: uiState.editingDraft }];
+				}
+				extraTokens += estimatePartsTokens(draftParts);
+			}
+		}
+
+		updateContextUI(root, chat, Math.max(0, extraTokens));
+	};
+	root._updateLiveContext = updateLiveContext;
+
+	// Load models entirely (since we removed async OR-to-LM split)
+	await loadAndPopulateModels(root, signal);
+
+	initDropdowns(root, signal);
+	initTools(root, signal);
+	initUpload(root, input, attachmentManager, signal);
+	const resizeInput = initAutoResize(input, signal);
+
+	input.addEventListener("input", () => {
+		updateLiveContext();
+	}, { signal });
+
+	const urlParams = new URLSearchParams(location.hash.split("?")[1] || "");
+	const chatIdFromUrl = urlParams.get("chat");
+	if (chatIdFromUrl && getChatById(chatIdFromUrl)) {
+		setCurrentChatId(chatIdFromUrl);
+		saveChats();
+	}
 
 	document.addEventListener("keydown", (e) => {
 		if ((e.key === "Escape" || e.key === "Esc") && uiState.editingNodeId) {
@@ -385,6 +450,9 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 	const setGeneratingState = (isGenerating) => {
 		uiState.isGenerating = isGenerating;
+		if (!isGenerating) {
+			uiState.liveGeneratingNode = null;
+		}
 		const sendBtn = form.querySelector('.chat-send-btn');
 		if (sendBtn) {
 			if (isGenerating) {
@@ -629,6 +697,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			} else if (errorFromStream) {
 				addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", `**Error:** ${errorFromStream}`);
 			}
+
+			uiState.liveGeneratingNode = null;
 		};
 		
 		try {
@@ -667,6 +737,14 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 							rawStreamText += delta.content;
 						}
 					}
+
+					uiState.liveGeneratingNode = {
+						role: "assistant",
+						content: rawStreamText,
+						reasoning: officialReasoningText,
+						toolCalls: activeToolCalls
+					};
+					updateLiveContext();
 						
 					if (uiState.typingEl) {
 						let parsedContent = "";
@@ -775,7 +853,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
 		if (!chat) return;
 		renderThread(messages, chat, uiState);
-		updateContextUI(root, chat);
+		updateLiveContext();
 
 		const g = ensureGraph(chat);
 		const hasMessages = computeThreadNodeIds(g).length > 0;
@@ -1109,6 +1187,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const nodeId = msgEl?.dataset.nodeId;
 		if (nodeId && uiState.editingNodeId === nodeId) {
 			uiState.editingDraft = textarea.value;
+			updateLiveContext();
 		}
 	}, { signal });
 
@@ -1150,21 +1229,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		}
 	}, { signal });
 
-	root.addEventListener("click", (e) => {
-		const item = e.target.closest('[data-dropdown="model"] .chat-dropdown-item');
-		if (!item) return;
-
-		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
-		updateContextUI(root, chat);
-
-		const selectedModel = item.dataset?.value;
-		if (selectedModel) {
-			setLastSelectedModel(selectedModel);
-			const chatId = getCurrentChatId();
-			if (chatId) setChatModel(chatId, selectedModel);
-		}
-	}, { signal });
-
-	updateContextUI(root, getCurrentChatId() ? getChatById(getCurrentChatId()) : null);
+	updateLiveContext();
 	input.focus();
 }

@@ -1,3 +1,4 @@
+// ctrlpanel/js/chat/context.js
 import { computeThreadNodeIds, ensureGraph, getNode } from "./graph.js";
 
 // Store for model metadata fetched from API
@@ -28,7 +29,7 @@ function getModelMetadata(modelId) {
 	return modelMetadata.get(modelId) || null;
 }
 
-function estimateTokensForText(text) {
+export function estimateTokensForText(text) {
 	const s = String(text || "");
 	if (!s) return 0;
 	return Math.max(1, Math.ceil(s.length / 4));
@@ -90,6 +91,16 @@ function getNodeFullText(node) {
 	return text.trim();
 }
 
+export function estimateNodeTokens(node) {
+	if (!node) return 0;
+	return estimateTokensForText(getNodeFullText(node));
+}
+
+export function estimatePartsTokens(parts) {
+	if (!parts || !parts.length) return 0;
+	return estimateTokensForText(getNodeFullText({ parts }));
+}
+
 export function getModelContextLimitFromUI(root) {
 	const selected = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
 	if (!selected) return 65536;
@@ -140,21 +151,21 @@ function computeThreadTokenUsage(graph) {
 	}, 0);
 }
 
-export function updateContextUI(root, chat) {
+export function updateContextUI(root, chat, extraTokens = 0) {
 	const el = root?.querySelector?.("#chatContext");
 	if (!el) return;
 
 	const max = getModelContextLimitFromUI(root);
 
-	let used = 0;
+	let used = extraTokens;
 	if (chat) {
 		const graph = ensureGraph(chat);
-		used = computeThreadTokenUsage(graph);
+		used += computeThreadTokenUsage(graph);
 	}
 
-	el.textContent = `${used}/${max}`;
+	el.textContent = `${Math.max(0, used)}/${max}`;
 	el.title = max > 0
-		? `Context Window: ${used} tokens used / ${max} total`
+		? `Context Window: ${Math.max(0, used)} tokens used / ${max} total`
 		: "Context Window";
 
 	if (max > 0) {

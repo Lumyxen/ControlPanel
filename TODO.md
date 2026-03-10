@@ -11,7 +11,6 @@
 
 ## AI Chat-box
 ### Planned Features
-- Live updating context window usage (doesn't wait for message sent or generation completion)
 - Migrate development onto skidbladnir to host it (not really a feature)
 - Add llama.cpp server API support for local AI on skidbladnir
 - Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
@@ -235,6 +234,7 @@
   - Inline attachments
 - Context used/max info
   - Context window highlighting (yellow @ 50%, red @ 90%)
+  - Very fast and snappy live updating
 - A master system prompt
   - Optimised for:
     - No yes-manning
