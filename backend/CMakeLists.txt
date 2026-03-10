@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(ctrlpanel_backend CXX)
+project(controlpanel CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -51,15 +51,15 @@ set(SOURCES
 )
 
 # ── Linux binary ──────────────────────────────────────────────────────────────
-add_executable(ctrlpanel_backend ${SOURCES})
-target_link_libraries(ctrlpanel_backend
+add_executable(controlpanel ${SOURCES})
+target_link_libraries(controlpanel
     ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread)
 
 # ── Windows .exe binary ───────────────────────────────────────────────────────
-add_executable(ctrlpanel_backend_exe ${SOURCES})
-set_target_properties(ctrlpanel_backend_exe PROPERTIES
-    OUTPUT_NAME "ctrlpanel_backend" SUFFIX ".exe")
-target_link_libraries(ctrlpanel_backend_exe
+add_executable(controlpanel_exe ${SOURCES})
+set_target_properties(controlpanel_exe PROPERTIES
+    OUTPUT_NAME "controlpanel" SUFFIX ".exe")
+target_link_libraries(controlpanel_exe
     ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread)
 
-install(TARGETS ctrlpanel_backend ctrlpanel_backend_exe DESTINATION bin)
+install(TARGETS controlpanel controlpanel_exe DESTINATION bin)
