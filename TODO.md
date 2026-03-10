@@ -11,7 +11,6 @@
 
 ## AI Chat-box
 ### Features
-- Be able to stop AI response
 - Add calculator tool (replaces code execution reliance for math)
   - WolframAlpha API option
 - Headless browser tool
