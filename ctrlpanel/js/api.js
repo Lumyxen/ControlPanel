@@ -33,6 +33,10 @@ export async function getModels() {
     return makeRequest("/models");
 }
 
+export async function getLmStudioModels() {
+    return makeRequest("/models/lmstudio");
+}
+
 export async function getPricing() {
     return makeRequest("/pricing");
 }

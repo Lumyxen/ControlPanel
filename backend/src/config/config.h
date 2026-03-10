@@ -14,6 +14,7 @@ private:
     int         fallbackMaxOutputTokens;
     double      temperature;
     std::string systemPrompt;
+    std::string lmStudioUrl;
 
     std::string settingsPath;
     std::mutex  mutex;
@@ -23,7 +24,8 @@ public:
         : port(8080), host("0.0.0.0"),
           defaultModel("arcee-ai/trinity-large-preview:free"),
           fallbackMaxOutputTokens(8192), temperature(0.7),
-          systemPrompt(""), settingsPath(path) {}
+          systemPrompt(""), lmStudioUrl("http://localhost:1234"),
+          settingsPath(path) {}
 
     // ── Persistence ───────────────────────────────────────────────────────────
 
@@ -40,6 +42,7 @@ public:
         if (cfg.isMember("defaultModel")) defaultModel = cfg["defaultModel"].asString();
         if (cfg.isMember("temperature"))  temperature  = cfg["temperature"].asDouble();
         if (cfg.isMember("systemPrompt")) systemPrompt = cfg["systemPrompt"].asString();
+        if (cfg.isMember("lmStudioUrl"))  lmStudioUrl  = cfg["lmStudioUrl"].asString();
 
         if (cfg.isMember("fallbackMaxOutputTokens"))
             fallbackMaxOutputTokens = cfg["fallbackMaxOutputTokens"].asInt();
@@ -59,6 +62,7 @@ public:
         if (root.isMember("defaultModel"))            defaultModel            = root["defaultModel"].asString();
         if (root.isMember("temperature"))             temperature             = root["temperature"].asDouble();
         if (root.isMember("systemPrompt"))            systemPrompt            = root["systemPrompt"].asString();
+        if (root.isMember("lmStudioUrl"))             lmStudioUrl             = root["lmStudioUrl"].asString();
         if (root.isMember("fallbackMaxOutputTokens")) fallbackMaxOutputTokens = root["fallbackMaxOutputTokens"].asInt();
         else if (root.isMember("maxTokens"))          fallbackMaxOutputTokens = root["maxTokens"].asInt();
         saveUnlocked();
@@ -73,6 +77,7 @@ public:
         root["fallbackMaxOutputTokens"] = fallbackMaxOutputTokens;
         root["temperature"]             = temperature;
         root["systemPrompt"]            = systemPrompt;
+        root["lmStudioUrl"]             = lmStudioUrl;
         return root;
     }
 
@@ -84,6 +89,7 @@ public:
     int         getFallbackMaxOutputTokens() { std::lock_guard<std::mutex> l(mutex); return fallbackMaxOutputTokens; }
     double      getTemperature()             { std::lock_guard<std::mutex> l(mutex); return temperature; }
     std::string getSystemPrompt()            { std::lock_guard<std::mutex> l(mutex); return systemPrompt; }
+    std::string getLmStudioUrl()             { std::lock_guard<std::mutex> l(mutex); return lmStudioUrl; }
 
     /** Path to the MCP config file (sibling of settings.json, named mcp.json). */
     std::string getMcpConfigPath() const {
@@ -108,6 +114,7 @@ private:
         root["fallbackMaxOutputTokens"] = fallbackMaxOutputTokens;
         root["temperature"]             = temperature;
         root["systemPrompt"]            = systemPrompt;
+        root["lmStudioUrl"]             = lmStudioUrl;
 
         std::ofstream file(settingsPath);
         if (file.is_open()) {

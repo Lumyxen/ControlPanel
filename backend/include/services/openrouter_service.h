@@ -76,7 +76,7 @@ public:
      */
     void streamingChatWithTools(
         const std::string&  model,
-        Json::Value         messages,          // by value – we append to it
+        Json::Value         messages,
         const Json::Value&  tools,
         int                 maxTokens,
         std::function<void(const std::string&)> onChunk,
@@ -89,12 +89,20 @@ public:
     Json::Value getModels()  const;
     Json::Value getPricing() const;
 
+    /** Fetch model list from a local LM Studio server. */
+    Json::Value getLmStudioModels() const;
+
+    /** Set / get the LM Studio base URL (default: http://localhost:1234). */
+    void        setLmStudioUrl(const std::string& url) { lmStudioUrl_ = url; }
+    std::string getLmStudioUrl() const                 { return lmStudioUrl_; }
+
     /** Build a messages array from the legacy string prompt format. */
     Json::Value buildMessages(const std::string& prompt,
                               const std::string& systemPrompt) const;
 
 private:
     std::string  apiKey;
+    std::string  lmStudioUrl_ = "http://localhost:1234";
     Encryption&  encryption;
 
     Json::Value makeRequest(const std::string& endpoint,

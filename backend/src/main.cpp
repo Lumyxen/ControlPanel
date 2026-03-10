@@ -98,7 +98,7 @@ void addSecurityHeaders(httplib::Response& res) {
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "img-src 'self' data: blob:; "
         "font-src 'self' https://cdn.jsdelivr.net; "
-        "connect-src 'self' https://api.openrouter.ai; "
+        "connect-src 'self' https://api.openrouter.ai http://localhost:* http://127.0.0.1:*; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self';");
     res.set_header("X-XSS-Protection", "1; mode=block");
     res.set_header("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -195,6 +195,7 @@ void runOpenRouterHealthCheck() {
 
 // ── Config + mcp.json file watcher ───────────────────────────────────────────
 void runConfigFileWatch(Config& config, McpRegistry& registry,
+                        OpenRouterService& service,
                         const std::string& settingsPath,
                         const std::string& mcpJsonPath) {
     std::cout << "[ConfigWatch] Watching: " << settingsPath << "\n";
@@ -222,6 +223,7 @@ void runConfigFileWatch(Config& config, McpRegistry& registry,
             if (st != lastSettingsTime) {
                 lastSettingsTime = st;
                 config.load();
+                service.setLmStudioUrl(config.getLmStudioUrl());
                 std::cout << "[ConfigWatch] settings.json changed – config reloaded\n";
             }
 
@@ -301,6 +303,11 @@ void runServer(Config& config, OpenRouterService& openrouterService,
     svr.Get("/api/models", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleModels(req, res, openrouterService);
+    });
+
+    svr.Get("/api/models/lmstudio", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        handleLmStudioModels(req, res, openrouterService);
     });
 
     svr.Get("/api/pricing", [&](const httplib::Request& req, httplib::Response& res) {
@@ -426,6 +433,7 @@ int main() {
 
     Encryption        encryption("default-32-byte-encryption-key!!");
     OpenRouterService openrouterService(apiKey, encryption);
+    openrouterService.setLmStudioUrl(config.getLmStudioUrl());
     McpService        mcpService(config);
     McpRegistry       registry;
 
@@ -458,7 +466,8 @@ int main() {
 
     std::thread healthCheckThread(runOpenRouterHealthCheck);
     std::thread configWatchThread(runConfigFileWatch,
-        std::ref(config), std::ref(registry), settingsPath, mcpJsonPath);
+        std::ref(config), std::ref(registry), std::ref(openrouterService),
+        settingsPath, mcpJsonPath);
 
     std::cout << "\n=== Server started successfully ===\n";
     std::cout << "Press Ctrl+C to stop the server\n\n";

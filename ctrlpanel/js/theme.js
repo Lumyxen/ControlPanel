@@ -197,6 +197,11 @@ function populateAISettingsFields(root, settings) {
 	if (systemPromptInput && settings.systemPrompt != null) {
 		systemPromptInput.value = settings.systemPrompt;
 	}
+
+	const lmStudioUrlInput = root.querySelector("#lmstudio-url-input");
+	if (lmStudioUrlInput && settings.lmStudioUrl != null) {
+		lmStudioUrlInput.value = settings.lmStudioUrl;
+	}
 }
 
 export function initSettingsPage(root) {
@@ -289,6 +294,35 @@ export function initSettingsPage(root) {
 		updateStatus();
 	}
 
+	// ─── LM Studio status ─────────────────────────────────────────────────────
+	const lmStudioStatusEl = root.querySelector("#lmstudio-status");
+	const refreshLmStudioBtn = root.querySelector("#refresh-lmstudio-status");
+
+	if (lmStudioStatusEl && refreshLmStudioBtn) {
+		const testLmStudio = async () => {
+			lmStudioStatusEl.textContent = "Testing…";
+			lmStudioStatusEl.className = "badge";
+			try {
+				const { getLmStudioModels } = await import("./api.js");
+				const res = await getLmStudioModels();
+				if (res && !res.error && res.data && res.data.length > 0) {
+					lmStudioStatusEl.textContent = `${res.data.length} model${res.data.length === 1 ? '' : 's'} found`;
+					lmStudioStatusEl.className = "badge badge-success";
+				} else if (res?.error) {
+					lmStudioStatusEl.textContent = "Unreachable";
+					lmStudioStatusEl.className = "badge badge-error";
+				} else {
+					lmStudioStatusEl.textContent = "No models";
+					lmStudioStatusEl.className = "badge badge-error";
+				}
+			} catch {
+				lmStudioStatusEl.textContent = "Unreachable";
+				lmStudioStatusEl.className = "badge badge-error";
+			}
+		};
+		refreshLmStudioBtn.addEventListener("click", testLmStudio);
+	}
+
 	// ─── AI Settings (defaultModel, temperature, maxTokens, systemPrompt) ────
 
 	const temperatureSlider = root.querySelector("#temperature-slider");
@@ -318,7 +352,7 @@ export function initSettingsPage(root) {
 		// (use document.activeElement check to avoid clobbering focused inputs)
 		const focused = document.activeElement;
 		const aiFields = ["#default-model-input", "#temperature-slider", "#temperature-input",
-		                  "#max-tokens-input", "#system-prompt-input"];
+		                  "#max-tokens-input", "#system-prompt-input", "#lmstudio-url-input"];
 		const userIsEditing = aiFields.some((sel) => root.querySelector(sel) === focused);
 		if (!userIsEditing) {
 			populateAISettingsFields(root, settings);
@@ -348,12 +382,14 @@ export function initSettingsPage(root) {
 				const defaultModelInput = root.querySelector("#default-model-input");
 				const maxTokensInput    = root.querySelector("#max-tokens-input");
 				const systemPromptInput = root.querySelector("#system-prompt-input");
+				const lmStudioUrlInput  = root.querySelector("#lmstudio-url-input");
 
 				const patch = {
 					systemPrompt:            systemPromptInput?.value ?? "",
 					defaultModel:            defaultModelInput?.value?.trim() ?? "",
 					temperature:             parseFloat(temperatureInput?.value ?? temperatureSlider?.value ?? "0.7") || 0.7,
 					fallbackMaxOutputTokens: parseInt(maxTokensInput?.value ?? "8192", 10) || 8192,
+					lmStudioUrl:             lmStudioUrlInput?.value?.trim() || "http://localhost:1234",
 				};
 
 				await SettingsStore.save(patch);

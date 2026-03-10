@@ -5,6 +5,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <chrono>
 
 // ── libcurl helpers ───────────────────────────────────────────────────────────
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
@@ -80,14 +81,14 @@ static size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, voi
                 while ((int)ctx->toolCalls.size() <= idx)
                     ctx->toolCalls.push_back({});
 
-                if (tc.isMember("id"))
+                if (tc.isMember("id") && tc["id"].isString())
                     ctx->toolCalls[idx].id = tc["id"].asString();
 
                 if (tc.isMember("function")) {
                     const auto& fn = tc["function"];
-                    if (fn.isMember("name"))
+                    if (fn.isMember("name") && fn["name"].isString())
                         ctx->toolCalls[idx].name += fn["name"].asString();
-                    if (fn.isMember("arguments"))
+                    if (fn.isMember("arguments") && fn["arguments"].isString())
                         ctx->toolCalls[idx].argumentsJson += fn["arguments"].asString();
                 }
             }
@@ -96,13 +97,13 @@ static size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, voi
         }
 
         // ── Forward content / reasoning ───────────────────────────────────────
-        bool hasContent   = delta.isMember("content")   && !delta["content"].asString().empty();
-        bool hasReasoning = delta.isMember("reasoning") && !delta["reasoning"].asString().empty();
+        bool hasContent   = delta.isMember("content")   && delta["content"].isString() && !delta["content"].asString().empty();
+        bool hasReasoning = delta.isMember("reasoning") && delta["reasoning"].isString() && !delta["reasoning"].asString().empty();
 
         if (hasContent || hasReasoning) {
             Json::Value newDelta;
             if (hasContent)   newDelta["content"]   = delta["content"].asString();
-            if (hasReasoning) newDelta["reasoning"]  = delta["reasoning"].asString();
+            if (hasReasoning) newDelta["reasoning"] = delta["reasoning"].asString();
 
             Json::Value newChoice;
             newChoice["delta"] = newDelta;
@@ -244,26 +245,45 @@ std::string OpenRouterService::streamOneRound(
     CURL* curl = curl_easy_init();
     if (!curl) { onError("Failed to init CURL"); return "_internal_error_"; }
 
-    std::string decryptedKey = decryptApiKey();
-    if (decryptedKey.empty()) {
-        onError("OpenRouter API key not configured");
-        curl_easy_cleanup(curl);
-        return "_internal_error_";
+    // ── Detect LM Studio vs OpenRouter ────────────────────────────────────────
+    // Mutable copy so we can strip the prefix before sending
+    Json::Value mutableBody = requestBody;
+    bool isLmStudio = false;
+    {
+        std::string modelId = mutableBody.get("model", "").asString();
+        if (modelId.rfind("lmstudio::", 0) == 0) {
+            isLmStudio = true;
+            mutableBody["model"] = modelId.substr(10); // strip prefix
+        }
     }
 
-    const std::string url = "https://openrouter.ai/api/v1/chat/completions";
-
+    std::string url;
     struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + decryptedKey).c_str());
-    headers = curl_slist_append(headers, "Content-Type: application/json");
-    headers = curl_slist_append(headers, "HTTP-Referer: http://localhost");
-    headers = curl_slist_append(headers, "X-Title: CtrlPanel");
-    headers = curl_slist_append(headers, "Accept: text/event-stream");
-    headers = curl_slist_append(headers, "Expect:");
+
+    if (isLmStudio) {
+        url = lmStudioUrl_ + "/v1/chat/completions";
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        headers = curl_slist_append(headers, "Accept: text/event-stream");
+        headers = curl_slist_append(headers, "Expect:");
+    } else {
+        std::string decryptedKey = decryptApiKey();
+        if (decryptedKey.empty()) {
+            onError("OpenRouter API key not configured");
+            curl_easy_cleanup(curl);
+            return "_internal_error_";
+        }
+        url = "https://openrouter.ai/api/v1/chat/completions";
+        headers = curl_slist_append(headers, ("Authorization: Bearer " + decryptedKey).c_str());
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        headers = curl_slist_append(headers, "HTTP-Referer: http://localhost");
+        headers = curl_slist_append(headers, "X-Title: CtrlPanel");
+        headers = curl_slist_append(headers, "Accept: text/event-stream");
+        headers = curl_slist_append(headers, "Expect:");
+    }
 
     Json::StreamWriterBuilder wb;
     wb["indentation"] = "";
-    std::string jsonBody = Json::writeString(wb, requestBody);
+    std::string jsonBody = Json::writeString(wb, mutableBody);
 
     StreamContext ctx;
     ctx.onChunk = onChunk;
@@ -272,7 +292,7 @@ std::string OpenRouterService::streamOneRound(
     curl_easy_setopt(curl, CURLOPT_POST,           1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,   CURL_HTTP_VERSION_2_0);
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,   isLmStudio ? CURL_HTTP_VERSION_1_1 : CURL_HTTP_VERSION_2_0);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,  (long)jsonBody.size());
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS,     jsonBody.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER,     headers);
@@ -288,12 +308,57 @@ std::string OpenRouterService::streamOneRound(
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {
-        onError(std::string("CURL error: ") + curl_easy_strerror(res));
+        onError(std::string("Connection error: ") + curl_easy_strerror(res));
         return "_internal_error_";
     }
     if (httpCode != 200) {
-        onError("HTTP error: " + std::to_string(httpCode)
-                + (ctx.buffer.empty() ? "" : " - " + ctx.buffer.substr(0, 300)));
+        // Try to extract a clean human-readable message from the JSON error body
+        std::string cleanMsg;
+        if (!ctx.buffer.empty()) {
+            Json::Value errJson;
+            Json::CharReaderBuilder rb;
+            std::string errs2;
+            std::istringstream ss(ctx.buffer);
+            if (Json::parseFromStream(rb, ss, &errJson, &errs2) && errJson.isMember("error")) {
+                const Json::Value& errObj = errJson["error"];
+                if (errObj.isObject()) {
+                    cleanMsg = errObj.get("message", "").asString();
+
+                    // For 429 rate-limit errors, append the reset time if available
+                    if (httpCode == 429 && errObj.isMember("metadata")) {
+                        const Json::Value& meta = errObj["metadata"];
+                        std::string resetMs;
+                        if (meta.isMember("headers") && meta["headers"].isMember("X-RateLimit-Reset"))
+                            resetMs = meta["headers"]["X-RateLimit-Reset"].asString();
+                        if (!resetMs.empty()) {
+                            try {
+                                long long resetEpochMs = std::stoll(resetMs);
+                                long long nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::system_clock::now().time_since_epoch()).count();
+                                long long diffSec = (resetEpochMs - nowMs) / 1000;
+                                if (diffSec > 0) {
+                                    if (diffSec >= 3600)
+                                        cleanMsg += " Resets in ~" + std::to_string(diffSec / 3600) + "h "
+                                                  + std::to_string((diffSec % 3600) / 60) + "m.";
+                                    else if (diffSec >= 60)
+                                        cleanMsg += " Resets in ~" + std::to_string(diffSec / 60) + "m.";
+                                    else
+                                        cleanMsg += " Resets in ~" + std::to_string(diffSec) + "s.";
+                                }
+                            } catch (...) {}
+                        }
+                    }
+                } else if (errObj.isString()) {
+                    cleanMsg = errObj.asString();
+                }
+            }
+        }
+        if (cleanMsg.empty()) {
+            cleanMsg = "HTTP " + std::to_string(httpCode) + " error";
+            if (!ctx.buffer.empty())
+                cleanMsg += ": " + ctx.buffer.substr(0, 200);
+        }
+        onError(cleanMsg);
         return "_internal_error_";
     }
 
@@ -386,18 +451,29 @@ void OpenRouterService::streamingChatWithTools(
         for (const auto& tc : toolCalls) {
             std::cout << "[OpenRouter] Executing tool: " << tc.name << "\n";
 
-            // Parse arguments first so we can send them to the frontend
-            Json::Value args(Json::objectValue);
-            if (!tc.argumentsJson.empty()) {
-                Json::CharReaderBuilder rb;
-                std::string errs;
-                std::istringstream ss(tc.argumentsJson);
-                Json::parseFromStream(rb, ss, &args, &errs);
+            // Inject a reasoning message to the front-end to communicate we are doing work
+            if (onChunk) {
+                Json::Value fakeChoice;
+                fakeChoice["delta"]["reasoning"] = "\n*Executing tool: " + tc.name + "*\n";
+                Json::Value fakeJson;
+                fakeJson["choices"].append(fakeChoice);
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
+                onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n");
             }
 
             std::string resultStr;
 
             if (registry) {
+                // Parse arguments
+                Json::Value args(Json::objectValue);
+                if (!tc.argumentsJson.empty()) {
+                    Json::CharReaderBuilder rb;
+                    std::string errs;
+                    std::istringstream ss(tc.argumentsJson);
+                    Json::parseFromStream(rb, ss, &args, &errs);
+                }
+
                 Json::Value result = registry->callTool(tc.name, args);
 
                 // Convert MCP content array → plain string for the tool message
@@ -415,26 +491,28 @@ void OpenRouterService::streamingChatWithTools(
                 resultStr = "{\"error\": \"No MCP registry available\"}";
             }
 
-            // Send a structured tool_call event so the frontend can display
-            // the tool name, input arguments, and output result visually.
-            if (onChunk) {
-                Json::Value tcEvent;
-                tcEvent["tool_call"]["name"]   = tc.name;
-                tcEvent["tool_call"]["input"]  = args;
-                tcEvent["tool_call"]["output"] = resultStr;
-                Json::StreamWriterBuilder wb;
-                wb["indentation"] = "";
-                onChunk("data: " + Json::writeString(wb, tcEvent) + "\n\n");
-            }
-
             Json::Value toolResultMsg;
             toolResultMsg["role"]         = "tool";
             toolResultMsg["tool_call_id"] = tc.id;
             toolResultMsg["content"]      = resultStr;
             messages.append(toolResultMsg);
+
+            // Send a custom tool execution event to the UI so it can render the block seamlessly
+            if (onChunk) {
+                Json::Value toolEvent;
+                toolEvent["type"] = "tool_execution";
+                toolEvent["tool_call"]["id"] = tc.id;
+                toolEvent["tool_call"]["name"] = tc.name;
+                toolEvent["tool_call"]["arguments"] = tc.argumentsJson;
+                toolEvent["tool_call"]["output"] = resultStr;
+
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
+                onChunk("data: " + Json::writeString(wb, toolEvent) + "\n\n");
+            }
         }
 
-        // Loop to next round with updated messages
+        // Loop to next round
     }
 
     if (onChunk) onChunk("data: [DONE]\n\n");
@@ -520,35 +598,115 @@ Json::Value OpenRouterService::getPricing() const {
     return response;
 }
 
+// ── getLmStudioModels ─────────────────────────────────────────────────────────
+Json::Value OpenRouterService::getLmStudioModels() const {
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        Json::Value err; err["error"] = "Failed to init CURL"; return err;
+    }
+
+    const std::string url = lmStudioUrl_ + "/v1/models";
+    std::string responseStr;
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+
+    curl_easy_setopt(curl, CURLOPT_URL,           url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER,     headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,  WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &responseStr);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT,        5L);  // fast timeout – server may not be running
+
+    CURLcode res = curl_easy_perform(curl);
+    long httpCode = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    if (res != CURLE_OK || httpCode != 200) {
+        Json::Value err;
+        err["error"] = (res != CURLE_OK)
+            ? std::string("LM Studio unreachable: ") + curl_easy_strerror(res)
+            : "LM Studio returned HTTP " + std::to_string(httpCode);
+        return err;
+    }
+
+    Json::Value result;
+    Json::CharReaderBuilder reader;
+    std::string errs;
+    std::istringstream stream(responseStr);
+    if (!Json::parseFromStream(reader, stream, &result, &errs)) {
+        Json::Value err; err["error"] = "Failed to parse LM Studio response"; return err;
+    }
+
+    // Normalise to same shape as OpenRouter: { data:[ { id, name, context_length } ] }
+    Json::Value out;
+    out["data"] = Json::Value(Json::arrayValue);
+    const Json::Value& src = result.isMember("data") ? result["data"] : result;
+    if (src.isArray()) {
+        for (const auto& m : src) {
+            Json::Value nm;
+            std::string id = m.get("id", "").asString();
+            if (id.empty()) continue;
+            nm["id"]             = "lmstudio::" + id;  // prefix so the backend can route it
+            nm["name"]           = m.isMember("name") ? m["name"] : Json::Value(id);
+            nm["context_length"] = m.get("context_length", 8192).asInt();
+            nm["max_tokens"]     = 8192;
+            nm["source"]         = "lmstudio";
+            out["data"].append(nm);
+        }
+    }
+    return out;
+}
+
 // ── makeRequest ───────────────────────────────────────────────────────────────
 Json::Value OpenRouterService::makeRequest(const std::string& endpoint,
                                             const Json::Value& body) const {
     CURL* curl = curl_easy_init();
     if (!curl) throw std::runtime_error("Failed to init CURL");
 
-    const std::string decryptedKey = decryptApiKey();
-    if (decryptedKey.empty()) {
-        Json::Value err;
-        err["error"] = "OpenRouter API key not configured";
-        return err;
+    Json::Value mutableBody = body;
+    bool isLmStudio = false;
+    {
+        std::string modelId = mutableBody.get("model", "").asString();
+        if (modelId.rfind("lmstudio::", 0) == 0) {
+            isLmStudio = true;
+            mutableBody["model"] = modelId.substr(10); // strip prefix
+        }
     }
 
-    std::string url = "https://openrouter.ai/api/v1" + endpoint;
-    std::string responseStr;
-
+    std::string url;
     struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + decryptedKey).c_str());
-    headers = curl_slist_append(headers, "Content-Type: application/json");
-    headers = curl_slist_append(headers, "HTTP-Referer: http://localhost");
-    headers = curl_slist_append(headers, "X-Title: CtrlPanel");
-    headers = curl_slist_append(headers, "Expect:");
 
-    std::string jsonBody = body.toStyledString();
+    if (isLmStudio) {
+        url = lmStudioUrl_ + "/v1" + endpoint;
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        headers = curl_slist_append(headers, "Expect:");
+    } else {
+        const std::string decryptedKey = decryptApiKey();
+        if (decryptedKey.empty()) {
+            Json::Value err;
+            err["error"] = "OpenRouter API key not configured";
+            curl_easy_cleanup(curl);
+            return err;
+        }
+        url = "https://openrouter.ai/api/v1" + endpoint;
+        headers = curl_slist_append(headers, ("Authorization: Bearer " + decryptedKey).c_str());
+        headers = curl_slist_append(headers, "Content-Type: application/json");
+        headers = curl_slist_append(headers, "HTTP-Referer: http://localhost");
+        headers = curl_slist_append(headers, "X-Title: CtrlPanel");
+        headers = curl_slist_append(headers, "Expect:");
+    }
+
+    std::string jsonBody = mutableBody.toStyledString();
+    std::string responseStr;
+    
     curl_easy_setopt(curl, CURLOPT_URL,           url.c_str());
     curl_easy_setopt(curl, CURLOPT_POST,           1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,   CURL_HTTP_VERSION_2_0);
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION,   isLmStudio ? CURL_HTTP_VERSION_1_1 : CURL_HTTP_VERSION_2_0);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,  (long)jsonBody.size());
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS,     jsonBody.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER,     headers);
@@ -568,7 +726,7 @@ Json::Value OpenRouterService::makeRequest(const std::string& endpoint,
     std::istringstream stream(responseStr);
 
     if (res != CURLE_OK) {
-        result["error"] = "Failed to connect to OpenRouter: " + std::string(curl_easy_strerror(res));
+        result["error"] = "Failed to connect: " + std::string(curl_easy_strerror(res));
         return result;
     }
     if (httpCode != 200) {

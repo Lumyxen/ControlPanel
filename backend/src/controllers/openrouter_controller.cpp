@@ -187,3 +187,15 @@ void handlePricing(const httplib::Request& /*req*/, httplib::Response& res,
         res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
     }
 }
+
+void handleLmStudioModels(const httplib::Request& /*req*/, httplib::Response& res,
+                           OpenRouterService& service) {
+    try {
+        Json::Value result = service.getLmStudioModels();
+        res.status = 200;
+        res.set_content(result.toStyledString(), "application/json");
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
+    }
+}

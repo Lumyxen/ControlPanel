@@ -164,6 +164,7 @@
 - Messages flicker during longer generations that use auto-scroll
 - Old AI message not removed when clicking regenerate on an AI message
 - Randomly getting completion before any generation, causing no response
+- Messages sometimes refusing to send
 
 
 

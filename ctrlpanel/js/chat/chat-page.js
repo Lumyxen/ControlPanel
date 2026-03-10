@@ -25,9 +25,9 @@ import {
 } from "./store.js";
 import { renderChatList } from "./sidebar.js";
 import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI } from "./context.js";
-import { getModels } from "../api.js";
+import { getModels, getLmStudioModels } from "../api.js";
 import { formatBytes } from "./util.js";
-import { renderThread, showTyping } from "./thread-ui.js";
+import { renderThread, showTyping, buildToolCallElement } from "./thread-ui.js";
 import { InlineAttachmentManager } from "./inline-attachment.js";
 import { parseMarkdown } from "./markdown.js";
 import { preprocessLatexText, extractMath, injectMath } from "./latex.js";
@@ -262,31 +262,113 @@ async function loadAndPopulateModels(root, signal) {
 		const menu = modelDropdown?.querySelector('.chat-dropdown-menu');
 		if (!menu) return;
 		
+		// Update context lengths on existing (static HTML) items
 		const modelMap = new Map();
 		for (const model of models) {
-			if (model.id) {
-				modelMap.set(model.id, model);
-			}
+			if (model.id) modelMap.set(model.id, model);
 		}
-		
 		const existingItems = menu.querySelectorAll('.chat-dropdown-item');
 		for (const item of existingItems) {
 			const modelId = item.dataset.value;
 			if (modelId && modelMap.has(modelId)) {
 				const model = modelMap.get(modelId);
-				if (model.context_length) {
-					item.dataset.contextLength = model.context_length;
-				}
+				if (model.context_length) item.dataset.contextLength = model.context_length;
 			}
 		}
 		
 		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
 		updateContextUI(root, chat);
+
+		// ── LM Studio models (fire-and-forget, don't block OR models) ──────────
+		loadLmStudioModels(root, signal).catch(() => {});
 		
 	} catch (err) {
 		console.error('Failed to load models:', err);
 		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
 		updateContextUI(root, chat);
+	}
+}
+
+async function loadLmStudioModels(root, signal) {
+	const modelDropdown = root.querySelector('[data-dropdown="model"]');
+	const menu = modelDropdown?.querySelector('.chat-dropdown-menu');
+	if (!menu) return;
+
+	// Remove any existing LM Studio section (for re-loads)
+	menu.querySelectorAll('.chat-dropdown-separator[data-source="lmstudio"], .chat-dropdown-item[data-source="lmstudio"]')
+		.forEach(el => el.remove());
+
+	let lmData;
+	try {
+		const res = await getLmStudioModels();
+		lmData = res?.data;
+	} catch { return; }
+
+	if (!lmData || lmData.length === 0) return;
+
+	// Divider
+	const sep = document.createElement('div');
+	sep.className = 'chat-dropdown-separator';
+	sep.setAttribute('data-source', 'lmstudio');
+	sep.setAttribute('role', 'separator');
+	sep.setAttribute('aria-hidden', 'true');
+	sep.innerHTML = '<span>LM Studio</span>';
+	menu.appendChild(sep);
+
+	for (const model of lmData) {
+		if (!model.id) continue;
+		const btn = document.createElement('button');
+		btn.type = 'button';
+		btn.className = 'chat-dropdown-item';
+		btn.setAttribute('role', 'option');
+		btn.setAttribute('aria-selected', 'false');
+		btn.setAttribute('data-source', 'lmstudio');
+		btn.dataset.value = model.id;
+		if (model.context_length) btn.dataset.contextLength = String(model.context_length);
+
+		// Humanise: strip path separators, use last segment as display name
+		const displayName = model.id.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
+		btn.innerHTML = `<span class="chat-dropdown-item-label">${displayName}</span><span class="chat-dropdown-item-badge">Local</span>`;
+
+		btn.addEventListener('click', () => {
+			menu.querySelectorAll('.chat-dropdown-item').forEach(i => {
+				i.classList.remove('selected');
+				i.setAttribute('aria-selected', 'false');
+			});
+			btn.classList.add('selected');
+			btn.setAttribute('aria-selected', 'true');
+			const label = modelDropdown.querySelector('.chat-dropdown-label');
+			if (label) label.textContent = displayName;
+			modelDropdown.classList.remove('open');
+			modelDropdown.querySelector('.chat-dropdown-toggle')?.setAttribute('aria-expanded', 'false');
+			// Persist selection
+			const chatId = getCurrentChatId();
+			if (chatId) setChatModel(chatId, model.id);
+			setLastSelectedModel(model.id);
+			const chat = getChatById(chatId);
+			updateContextUI(root, chat);
+		});
+
+		menu.appendChild(btn);
+	}
+
+	// If the current chat uses an LM Studio model, select it now
+	const chatId = getCurrentChatId();
+	const chatModel = chatId ? getChatById(chatId) : null;
+	const activeModel = chatModel ? chatModel.model : null;
+	if (activeModel?.startsWith('lmstudio::')) {
+		const match = menu.querySelector(`.chat-dropdown-item[data-value="${CSS.escape(activeModel)}"]`);
+		if (match) {
+			menu.querySelectorAll('.chat-dropdown-item').forEach(i => {
+				i.classList.remove('selected');
+				i.setAttribute('aria-selected', 'false');
+			});
+			match.classList.add('selected');
+			match.setAttribute('aria-selected', 'true');
+			const label = modelDropdown.querySelector('.chat-dropdown-label');
+			const displayName = activeModel.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
+			if (label) label.textContent = displayName;
+		}
 	}
 }
 
@@ -632,11 +714,11 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			maxTokens = Math.max(256, contextLimit - estimatedPromptTokens);
 		}
 		
-		let responseText = "";
-		let reasoningText = "";
+		let rawStreamText = "";
+		let officialReasoningText = "";
+		let activeToolCalls =[];
 		let errorFromStream = null;
 		let isSaved = false;
-		let toolCallsList = [];
 
 		// Resolve system prompt and temperature from the settings store (synchronous – no extra
 		// network round-trip; the store keeps itself fresh via background polling).
@@ -671,21 +753,47 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			if (isSaved) return;
 			isSaved = true;
 			
-			let finalContent = responseText;
+			let parsedContent = "";
+			let parsedReasoning = "";
+			let currentStr = rawStreamText;
+
+			while (true) {
+				let startIdx = currentStr.indexOf("<think>");
+				if (startIdx === -1) {
+					parsedContent += currentStr;
+					break;
+				}
+				
+				parsedContent += currentStr.substring(0, startIdx);
+				let endIdx = currentStr.indexOf("</think>", startIdx + 7);
+                
+				if (endIdx === -1) {
+					parsedReasoning += currentStr.substring(startIdx + 7);
+					break;
+				} else {
+					parsedReasoning += currentStr.substring(startIdx + 7, endIdx) + "\n\n";
+					currentStr = currentStr.substring(endIdx + 8);
+				}
+			}
+
+			let displayReasoning = officialReasoningText;
+			if (parsedReasoning) {
+				displayReasoning += (displayReasoning ? "\n\n" : "") + parsedReasoning.trim();
+			}
+
+			let finalContent = parsedContent.trim();
+			let finalReasoning = displayReasoning.trim();
+
 			if (errorFromStream) {
 				finalContent += finalContent ? `\n\n**Error:** ${errorFromStream}` : `**Error:** ${errorFromStream}`;
 			}
 
-			const savedToolCalls = toolCallsList.length > 0 ? toolCallsList : null;
-
-			if (finalContent || reasoningText || savedToolCalls) {
-				const node = addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", finalContent, null, null, savedToolCalls);
+			if (finalContent || finalReasoning || activeToolCalls.length > 0) {
+				const node = addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", finalContent);
 				if (node) {
-					if (reasoningText) node.reasoning = reasoningText;
-					// toolCalls is set via appendNode, but also set here directly in case
-					// appendNode's param list changes; matches the pattern used for reasoning.
-					if (savedToolCalls) node.toolCalls = savedToolCalls;
-					if (reasoningText || savedToolCalls) saveChats();
+					if (finalReasoning) node.reasoning = finalReasoning;
+					if (activeToolCalls.length > 0) node.toolCalls = activeToolCalls;
+					saveChats();
 				}
 			} else if (errorFromStream) {
 				addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", `**Error:** ${errorFromStream}`);
@@ -709,84 +817,93 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 						return;
 					}
 
-					// ── Structured tool_call event from the backend ───────────────────
-					if (chunk.tool_call) {
-						toolCallsList.push(chunk.tool_call);
-
-						if (uiState.typingEl) {
-							if (!uiState.typingEl.querySelector(".chat-message-content")) {
-								uiState.typingEl.innerHTML = '';
-								uiState.typingEl.className = "chat-message assistant";
-							}
-							let msgContent = uiState.typingEl.querySelector(".chat-message-content");
-							if (!msgContent) {
-								msgContent = document.createElement("div");
-								msgContent.className = "chat-message-content";
-								uiState.typingEl.appendChild(msgContent);
-							}
-
-							// Rebuild all tool call badges + current text content
-							let html = '';
-							if (reasoningText) {
-								const openAttr = responseText ? '' : 'open';
-								html += `<details class="message-reasoning" ${openAttr}><summary>Thinking...</summary><div class="reasoning-content">${escapeHtml(reasoningText)}</div></details>`;
-							}
-							toolCallsList.forEach((tc) => {
-								const displayName = tc.name.replace(/__/g, ' › ').replace(/_/g, ' ');
-								html += `<details class="message-tool-call"><summary class="tool-call-summary"><span class="tool-call-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span><span class="tool-call-name">${escapeHtml(displayName)}</span></summary><div class="tool-call-body"><div class="tool-call-section-label">Input</div><pre class="tool-call-code">${escapeHtml(typeof tc.input === 'object' ? JSON.stringify(tc.input, null, 2) : String(tc.input ?? ''))}</pre><div class="tool-call-section-label">Output</div><pre class="tool-call-code">${escapeHtml(String(tc.output ?? ''))}</pre></div></details>`;
-							});
-							if (responseText) {
-								const preprocessed = preprocessLatexText(responseText);
-								const { text, mathBlocks } = extractMath(preprocessed);
-								html += injectMath(parseMarkdown(text), mathBlocks);
-							}
-							msgContent.innerHTML = html;
-							if (messages) messages.scrollTop = messages.scrollHeight;
-						}
-						return;
+					// Custom event sent by backend when a tool finishes executing
+					if (chunk.type === "tool_execution" && chunk.tool_call) {
+						activeToolCalls.push({
+							id: chunk.tool_call.id,
+							name: chunk.tool_call.name,
+							input: chunk.tool_call.arguments,
+							output: chunk.tool_call.output
+						});
 					}
 
 					if (chunk.choices && chunk.choices[0] && chunk.choices[0].delta) {
 						const delta = chunk.choices[0].delta;
 						
 						if (delta.reasoning) {
-							reasoningText += delta.reasoning;
+							officialReasoningText += delta.reasoning;
 						}
 						if (delta.content) {
-							responseText += delta.content;
+							rawStreamText += delta.content;
+						}
+					}
+						
+					if (uiState.typingEl) {
+						let parsedContent = "";
+						let parsedReasoning = "";
+						let currentStr = rawStreamText;
+
+						while (true) {
+							let startIdx = currentStr.indexOf("<think>");
+							if (startIdx === -1) {
+								parsedContent += currentStr;
+								break;
+							}
+							
+							parsedContent += currentStr.substring(0, startIdx);
+							let endIdx = currentStr.indexOf("</think>", startIdx + 7);
+							
+							if (endIdx === -1) {
+								parsedReasoning += currentStr.substring(startIdx + 7);
+								break;
+							} else {
+								parsedReasoning += currentStr.substring(startIdx + 7, endIdx) + "\n\n";
+								currentStr = currentStr.substring(endIdx + 8);
+							}
+						}
+
+						let displayReasoning = officialReasoningText;
+						if (parsedReasoning) {
+							displayReasoning += (displayReasoning ? "\n\n" : "") + parsedReasoning.trim();
+						}
+
+						if (!uiState.typingEl.querySelector(".chat-message-content")) {
+							uiState.typingEl.innerHTML = '';
+							uiState.typingEl.className = "chat-message assistant";
 						}
 						
-						if (uiState.typingEl) {
-							if (!uiState.typingEl.querySelector(".chat-message-content")) {
-								uiState.typingEl.innerHTML = '';
-								uiState.typingEl.className = "chat-message assistant";
-							}
-							
-							let html = '';
-							if (reasoningText) {
-								const openAttr = responseText ? '' : 'open';
-								html += `<details class="message-reasoning" ${openAttr}><summary>Thinking...</summary><div class="reasoning-content">${escapeHtml(reasoningText)}</div></details>`;
-							}
-							toolCallsList.forEach((tc) => {
-								const displayName = tc.name.replace(/__/g, ' › ').replace(/_/g, ' ');
-								html += `<details class="message-tool-call"><summary class="tool-call-summary"><span class="tool-call-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span><span class="tool-call-name">${escapeHtml(displayName)}</span></summary><div class="tool-call-body"><div class="tool-call-section-label">Input</div><pre class="tool-call-code">${escapeHtml(typeof tc.input === 'object' ? JSON.stringify(tc.input, null, 2) : String(tc.input ?? ''))}</pre><div class="tool-call-section-label">Output</div><pre class="tool-call-code">${escapeHtml(String(tc.output ?? ''))}</pre></div></details>`;
-							});
-							if (responseText) {
-								const preprocessed = preprocessLatexText(responseText);
-								const { text, mathBlocks } = extractMath(preprocessed);
-								html += injectMath(parseMarkdown(text), mathBlocks);
-							}
-							
-							let msgContent = uiState.typingEl.querySelector(".chat-message-content");
-							if (!msgContent) {
-								msgContent = document.createElement("div");
-								msgContent.className = "chat-message-content";
-								uiState.typingEl.appendChild(msgContent);
-							}
-							msgContent.innerHTML = html;
-							
-							if (messages) messages.scrollTop = messages.scrollHeight;
+						let msgContent = uiState.typingEl.querySelector(".chat-message-content");
+						if (!msgContent) {
+							msgContent = document.createElement("div");
+							msgContent.className = "chat-message-content";
+							uiState.typingEl.appendChild(msgContent);
 						}
+						
+						msgContent.innerHTML = '';
+						
+						if (displayReasoning) {
+							const openAttr = parsedContent ? '' : 'open';
+							const reasoningHtml = `<details class="message-reasoning" ${openAttr}><summary>Thinking...</summary><div class="reasoning-content">${escapeHtml(displayReasoning)}</div></details>`;
+							msgContent.insertAdjacentHTML('beforeend', reasoningHtml);
+						}
+
+						if (activeToolCalls.length > 0) {
+							activeToolCalls.forEach(tc => {
+								msgContent.appendChild(buildToolCallElement(tc));
+							});
+						}
+
+						if (parsedContent) {
+							const preprocessed = preprocessLatexText(parsedContent);
+							const { text, mathBlocks } = extractMath(preprocessed);
+							const finalHtml = injectMath(parseMarkdown(text), mathBlocks);
+							const wrapper = document.createElement("div");
+							wrapper.className = "chat-message-text";
+							wrapper.innerHTML = finalHtml;
+							msgContent.appendChild(wrapper);
+						}
+						
+						if (messages) messages.scrollTop = messages.scrollHeight;
 					}
 				},
 				currentSignal,
@@ -798,6 +915,10 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				throw new Error(errorFromStream);
 			}
 
+			if (!rawStreamText && !officialReasoningText && activeToolCalls.length === 0) {
+				throw new Error("Empty response from AI");
+			}
+			
 			stopTyping();
 			rerender();
 			setActiveCallback && setActiveCallback();
