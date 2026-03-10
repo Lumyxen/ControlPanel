@@ -66,7 +66,7 @@ Edit `data/settings.json` with your settings:
 - `GET /api/auth/verify` - Verify API key
 - `POST /api/chat` - Send chat message
 - `GET /api/chat/stream` - Streaming chat
-- `GET /api/models` - List available local models from LM Studio
+- `GET /api/models` - List available models
 - `GET /api/config/settings` - Get settings
 - `PUT /api/config/settings` - Update settings
 

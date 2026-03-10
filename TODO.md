@@ -14,7 +14,6 @@
 - Chat encryption (automatic decryption during chat loading)
 - Migrate development onto skidbladnir to host it (not really a feature)
 - Add llama.cpp server API support for local AI on skidbladnir
-- Optimise master prompt to prevent emoji spam
 - Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
 - AI generated chat title
 - Web search tool
