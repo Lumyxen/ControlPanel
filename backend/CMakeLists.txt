@@ -1,16 +1,68 @@
 cmake_minimum_required(VERSION 3.16)
+
 project(ctrlpanel CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(JSONCPP REQUIRED jsoncpp)
-pkg_check_modules(LIBCURL REQUIRED libcurl)
+# Mac ARM (Apple Silicon) support
+if(APPLE)
+    set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build architectures for Mac OS X" FORCE)
+endif()
+
+include(FetchContent)
+
+# ── Detect cross-compilation ──────────────────────────────────────────────────
+# When using the aarch64 toolchain file, CMAKE_CROSSCOMPILING will be TRUE
+if(CMAKE_CROSSCOMPILING)
+    message(STATUS "Cross-compiling for ${CMAKE_SYSTEM_PROCESSOR} — using FetchContent for deps")
+
+    set(BUILD_SHARED_LIBS OFF)
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(JSONCPP_WITH_TESTS OFF CACHE BOOL "" FORCE)
+    set(JSONCPP_WITH_POST_BUILD_UNITTEST OFF CACHE BOOL "" FORCE)
+
+    FetchContent_Declare(
+        jsoncpp
+        GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp.git
+        GIT_TAG        1.9.6
+    )
+    FetchContent_MakeAvailable(jsoncpp)
+
+    # Disable pkg-config so curl can't find host x86 libs
+    set(PKG_CONFIG_EXECUTABLE "pkg-config-notfound" CACHE FILEPATH "" FORCE)
+
+    set(BUILD_CURL_EXE      OFF CACHE BOOL "" FORCE)
+    set(CURL_USE_OPENSSL    OFF CACHE BOOL "" FORCE)
+    set(CURL_USE_LIBPSL     OFF CACHE BOOL "" FORCE)
+    set(CURL_USE_LIBSSH2    OFF CACHE BOOL "" FORCE)
+    set(USE_LIBIDN2         OFF CACHE BOOL "" FORCE)
+    set(USE_NGHTTP2         OFF CACHE BOOL "" FORCE)
+    set(USE_NGHTTP3         OFF CACHE BOOL "" FORCE)
+    set(USE_QUICHE          OFF CACHE BOOL "" FORCE)
+    set(USE_NGTCP2          OFF CACHE BOOL "" FORCE)
+    set(CURL_ZLIB           OFF CACHE BOOL "" FORCE)
+    set(CURL_BROTLI         OFF CACHE BOOL "" FORCE)
+    set(CURL_ZSTD           OFF CACHE BOOL "" FORCE)
+    set(ENABLE_UNIX_SOCKETS OFF CACHE BOOL "" FORCE)
+    set(CURL_CA_BUNDLE      "none" CACHE STRING "" FORCE)
+    set(CURL_CA_PATH        "none" CACHE STRING "" FORCE)
+    FetchContent_Declare(
+        curl
+        GIT_REPOSITORY https://github.com/curl/curl.git
+        GIT_TAG        curl-8_11_0
+    )
+    FetchContent_MakeAvailable(curl)
+
+else()
+    # Native build — use system libs as before
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(JSONCPP REQUIRED jsoncpp)
+    pkg_check_modules(LIBCURL REQUIRED libcurl)
+endif()
+
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
-include_directories(${JSONCPP_INCLUDE_DIRS})
-include_directories(${LIBCURL_INCLUDE_DIRS})
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
@@ -36,10 +88,10 @@ set(SOURCES
 
     # Services
     src/services/lmstudio_service.cpp
-    src/services/mcp_service.cpp          # MCP server — built-in tools
-    src/services/mcp_client.cpp           # HTTP transport client
-    src/services/mcp_stdio_client.cpp     # Stdio transport client (subprocess)
-    src/services/mcp_registry.cpp         # Multi-server registry, parses mcp.json
+    src/services/mcp_service.cpp
+    src/services/mcp_client.cpp
+    src/services/mcp_stdio_client.cpp
+    src/services/mcp_registry.cpp
 
     # Controllers
     src/controllers/lmstudio_controller.cpp
@@ -50,16 +102,32 @@ set(SOURCES
     ${EMBED_CPP}
 )
 
-# ── Linux binary ──────────────────────────────────────────────────────────────
-add_executable(ctrlpanel ${SOURCES})
-target_link_libraries(ctrlpanel
-    ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread)
+if(CMAKE_CROSSCOMPILING)
+    # ── ARM binary only ───────────────────────────────────────────────────────
+    add_executable(ctrlpanel_arm ${SOURCES})
+    target_include_directories(ctrlpanel_arm PRIVATE
+        "${jsoncpp_SOURCE_DIR}/include"
+        "${curl_SOURCE_DIR}/include"
+    )
+    target_link_libraries(ctrlpanel_arm
+        jsoncpp_static libcurl pthread)
+    install(TARGETS ctrlpanel_arm DESTINATION bin)
 
-# ── Windows .exe binary ───────────────────────────────────────────────────────
-add_executable(ctrlpanel_exe ${SOURCES})
-set_target_properties(ctrlpanel_exe PROPERTIES
-    OUTPUT_NAME "ctrlpanel" SUFFIX ".exe")
-target_link_libraries(ctrlpanel_exe
-    ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread)
+else()
+    # ── Linux binary ──────────────────────────────────────────────────────────
+    include_directories(${JSONCPP_INCLUDE_DIRS})
+    include_directories(${LIBCURL_INCLUDE_DIRS})
 
-install(TARGETS ctrlpanel ctrlpanel_exe DESTINATION bin)
+    add_executable(ctrlpanel ${SOURCES})
+    target_link_libraries(ctrlpanel
+        ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread)
+
+    # ── Windows .exe binary ───────────────────────────────────────────────────
+    add_executable(ctrlpanel_exe ${SOURCES})
+    set_target_properties(ctrlpanel_exe PROPERTIES
+        OUTPUT_NAME "ctrlpanel" SUFFIX ".exe")
+    target_link_libraries(ctrlpanel_exe
+        ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread)
+
+    install(TARGETS ctrlpanel ctrlpanel_exe DESTINATION bin)
+endif()
