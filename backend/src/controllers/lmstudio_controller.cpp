@@ -9,6 +9,10 @@
 #include <iostream>
 #include <atomic>
 
+// ─────────────────────────────────────────────────────────────────────────────
+// handleChat  (non-streaming, lmstudio only)
+// ─────────────────────────────────────────────────────────────────────────────
+
 void handleChat(const httplib::Request& req, httplib::Response& res, LmStudioService& service) {
     try {
         Json::Value body;
@@ -28,7 +32,7 @@ void handleChat(const httplib::Request& req, httplib::Response& res, LmStudioSer
 
         std::string model        = body["model"].asString();
         std::string prompt       = body["prompt"].asString();
-        int maxTokens            = body.isMember("max_tokens")    ? body["max_tokens"].asInt()     : 2048;
+        int maxTokens            = body.isMember("max_tokens")    ? body["max_tokens"].asInt()     : 8192;
         std::string systemPrompt = body.isMember("system_prompt") ? body["system_prompt"].asString(): "";
         double temperature       = body.isMember("temperature")   ? body["temperature"].asDouble() : -1.0;
 
@@ -41,6 +45,10 @@ void handleChat(const httplib::Request& req, httplib::Response& res, LmStudioSer
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// StreamingCtx
+// ─────────────────────────────────────────────────────────────────────────────
+
 struct StreamingCtx {
     std::deque<std::string> chunks;
     std::mutex              mutex;
@@ -49,8 +57,13 @@ struct StreamingCtx {
     std::string             error;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// handleStreaming
+// ─────────────────────────────────────────────────────────────────────────────
+
 void handleStreaming(const httplib::Request& req, httplib::Response& res,
-                     LmStudioService& service, McpRegistry* registry) {
+                     LmStudioService& service, McpRegistry* registry,
+                     LlamaCppService* llamaCppService) {
     try {
         Json::Value body;
         Json::CharReaderBuilder reader;
@@ -69,7 +82,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
 
         std::string model        = body["model"].asString();
         std::string prompt       = body["prompt"].asString();
-        int maxTokens            = body.isMember("max_tokens")     ? body["max_tokens"].asInt()     : 2048;
+        int maxTokens            = body.isMember("max_tokens")     ? body["max_tokens"].asInt()     : 8192;
         std::string systemPrompt = body.isMember("system_prompt")  ? body["system_prompt"].asString(): "";
         double temperature       = body.isMember("temperature")    ? body["temperature"].asDouble() : -1.0;
         int contextWindow        = body.isMember("context_window") ? body["context_window"].asInt() : 0;
@@ -78,7 +91,10 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
             ? body["tools"]
             : Json::Value(Json::arrayValue);
 
-        if (registry && registry->liveCount() > 0) {
+        // Inject MCP tools (lmstudio only — llama.cpp tool support is pending)
+        const bool isLlamaCpp = model.rfind("llamacpp::", 0) == 0;
+
+        if (!isLlamaCpp && registry && registry->liveCount() > 0) {
             Json::Value mcpTools = registry->getAggregatedTools();
             for (const auto& t : mcpTools)
                 tools.append(t);
@@ -92,38 +108,73 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
 
         auto ctx = std::make_shared<StreamingCtx>();
 
-        std::thread([ctx, &service, registry, model, prompt, maxTokens,
-                     systemPrompt, temperature, contextWindow, tools]() mutable {
-            auto onChunk = [ctx](const std::string& chunk) -> bool {
-                if (ctx->cancelled.load()) return false;
-                std::lock_guard<std::mutex> lock(ctx->mutex);
-                ctx->chunks.push_back(chunk);
-                return true;
-            };
-            auto onError =[ctx](const std::string& err) {
-                if (ctx->cancelled.load()) return;
-                std::lock_guard<std::mutex> lock(ctx->mutex);
-                ctx->error = err;
-                ctx->done  = true;
-            };
-
-            bool useTools = tools.isArray() && !tools.empty();
-
-            if (useTools) {
-                Json::Value messages = service.buildMessages(prompt, systemPrompt);
-                service.streamingChatWithTools(
-                    model, messages, tools, maxTokens,
-                    onChunk, onError, registry, temperature, contextWindow);
-            } else {
-                service.streamingChatWithCallback(
-                    model, prompt, maxTokens, onChunk, onError,
-                    systemPrompt, temperature, contextWindow);
+        if (isLlamaCpp) {
+            // ── llama.cpp path ────────────────────────────────────────────────
+            if (!llamaCppService || !llamaCppService->isReady()) {
+                res.status = 503;
+                res.set_content("{\"error\": \"No llama.cpp model loaded\"}", "application/json");
+                return;
             }
 
-            std::lock_guard<std::mutex> lock(ctx->mutex);
-            ctx->done = true;
-        }).detach();
+            std::thread([ctx, llamaCppService, model, prompt, maxTokens,
+                         systemPrompt, temperature, contextWindow]() mutable {
+                auto onChunk = [ctx](const std::string& chunk) -> bool {
+                    if (ctx->cancelled.load()) return false;
+                    std::lock_guard<std::mutex> lock(ctx->mutex);
+                    ctx->chunks.push_back(chunk);
+                    return true;
+                };
+                auto onError = [ctx](const std::string& err) {
+                    if (ctx->cancelled.load()) return;
+                    std::lock_guard<std::mutex> lock(ctx->mutex);
+                    ctx->error = err;
+                    ctx->done  = true;
+                };
 
+                llamaCppService->streamingChatWithCallback(
+                    model, prompt, maxTokens, onChunk, onError,
+                    systemPrompt, temperature, contextWindow);
+
+                std::lock_guard<std::mutex> lock(ctx->mutex);
+                ctx->done = true;
+            }).detach();
+
+        } else {
+            // ── lmstudio path ─────────────────────────────────────────────────
+            const bool useTools = tools.isArray() && !tools.empty();
+
+            std::thread([ctx, &service, registry, model, prompt, maxTokens,
+                         systemPrompt, temperature, contextWindow, tools, useTools]() mutable {
+                auto onChunk =[ctx](const std::string& chunk) -> bool {
+                    if (ctx->cancelled.load()) return false;
+                    std::lock_guard<std::mutex> lock(ctx->mutex);
+                    ctx->chunks.push_back(chunk);
+                    return true;
+                };
+                auto onError = [ctx](const std::string& err) {
+                    if (ctx->cancelled.load()) return;
+                    std::lock_guard<std::mutex> lock(ctx->mutex);
+                    ctx->error = err;
+                    ctx->done  = true;
+                };
+
+                if (useTools) {
+                    Json::Value messages = service.buildMessages(prompt, systemPrompt);
+                    service.streamingChatWithTools(
+                        model, messages, tools, maxTokens,
+                        onChunk, onError, registry, temperature, contextWindow);
+                } else {
+                    service.streamingChatWithCallback(
+                        model, prompt, maxTokens, onChunk, onError,
+                        systemPrompt, temperature, contextWindow);
+                }
+
+                std::lock_guard<std::mutex> lock(ctx->mutex);
+                ctx->done = true;
+            }).detach();
+        }
+
+        // ── SSE content provider (same for both paths) ────────────────────────
         res.set_content_provider(
             "text/event-stream",
             [ctx](size_t /*offset*/, httplib::DataSink& sink) -> bool {
@@ -165,7 +216,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                         return false;
                     }
                 }
-                
+
                 if (is_done) {
                     sink.done();
                 } else if (to_write.empty()) {
@@ -182,11 +233,34 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// handleModels  — merges LM Studio + llama.cpp model lists
+// ─────────────────────────────────────────────────────────────────────────────
+
 void handleModels(const httplib::Request& /*req*/, httplib::Response& res,
-                  LmStudioService& service) {
+                  LmStudioService& service, LlamaCppService* llamaCppService) {
     try {
+        Json::Value combined;
+        combined["data"] = Json::Value(Json::arrayValue);
+
+        // LM Studio models (may fail / return empty if server is down)
+        Json::Value lmsModels = service.getModels();
+        if (lmsModels.isMember("data") && lmsModels["data"].isArray()) {
+            for (const auto& m : lmsModels["data"])
+                combined["data"].append(m);
+        }
+
+        // llama.cpp local models
+        if (llamaCppService && llamaCppService->isReady()) {
+            Json::Value lcpModels = llamaCppService->getModels();
+            if (lcpModels.isMember("data") && lcpModels["data"].isArray()) {
+                for (const auto& m : lcpModels["data"])
+                    combined["data"].append(m);
+            }
+        }
+
         res.status = 200;
-        res.set_content(service.getModels().toStyledString(), "application/json");
+        res.set_content(combined.toStyledString(), "application/json");
     } catch (const std::exception& e) {
         res.status = 500;
         res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");

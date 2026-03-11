@@ -54,11 +54,77 @@ if(CMAKE_CROSSCOMPILING)
     )
     FetchContent_MakeAvailable(curl)
 
+    # ── llama.cpp (ARM cross-compile) ─────────────────────────────────────────
+    option(ENABLE_LLAMACPP "Enable llama.cpp local inference" ON)
+
+    if(ENABLE_LLAMACPP)
+        message(STATUS "llama.cpp: enabled for ARM cross-compile")
+
+        set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+        set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(LLAMA_BUILD_SERVER   OFF CACHE BOOL "" FORCE)
+        set(LLAMA_BUILD_COMMON   OFF CACHE BOOL "" FORCE)
+        set(BUILD_SHARED_LIBS    OFF CACHE BOOL "" FORCE)
+
+        # CPU only — NEON will be auto-detected for aarch64
+        set(GGML_CUDA    OFF CACHE BOOL "" FORCE)
+        set(GGML_METAL   OFF CACHE BOOL "" FORCE)
+        set(GGML_VULKAN  OFF CACHE BOOL "" FORCE)
+        set(GGML_OPENCL  OFF CACHE BOOL "" FORCE)
+        set(GGML_SYCL    OFF CACHE BOOL "" FORCE)
+        set(GGML_HIPBLAS OFF CACHE BOOL "" FORCE)
+        # Disable OpenMP to avoid libgomp.so runtime dependency
+        set(GGML_OPENMP  OFF CACHE BOOL "" FORCE)
+
+        FetchContent_Declare(
+            llama_cpp
+            GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
+            GIT_TAG        b8252
+            GIT_SHALLOW    TRUE
+        )
+        FetchContent_MakeAvailable(llama_cpp)
+    else()
+        message(STATUS "llama.cpp: disabled (ENABLE_LLAMACPP=OFF)")
+    endif()
+
 else()
     # Native build — use system libs as before
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(JSONCPP REQUIRED jsoncpp)
     pkg_check_modules(LIBCURL REQUIRED libcurl)
+
+    # ── llama.cpp (native Linux only, optional) ───────────────────────────────
+    option(ENABLE_LLAMACPP "Enable llama.cpp local inference" ON)
+
+    if(ENABLE_LLAMACPP)
+        message(STATUS "llama.cpp: enabled — fetching via FetchContent")
+
+        set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+        set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(LLAMA_BUILD_SERVER   OFF CACHE BOOL "" FORCE)
+        set(LLAMA_BUILD_COMMON   OFF CACHE BOOL "" FORCE)
+        set(BUILD_SHARED_LIBS    OFF CACHE BOOL "" FORCE)
+
+        # Force CPU-only build — no CUDA, Metal, Vulkan, etc.
+        set(GGML_CUDA    OFF CACHE BOOL "" FORCE)
+        set(GGML_METAL   OFF CACHE BOOL "" FORCE)
+        set(GGML_VULKAN  OFF CACHE BOOL "" FORCE)
+        set(GGML_OPENCL  OFF CACHE BOOL "" FORCE)
+        set(GGML_SYCL    OFF CACHE BOOL "" FORCE)
+        set(GGML_HIPBLAS OFF CACHE BOOL "" FORCE)
+        # Disable OpenMP to avoid libgomp.so runtime dependency
+        set(GGML_OPENMP  OFF CACHE BOOL "" FORCE)
+
+        FetchContent_Declare(
+            llama_cpp
+            GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
+            GIT_TAG        b8277
+            GIT_SHALLOW    TRUE
+        )
+        FetchContent_MakeAvailable(llama_cpp)
+    else()
+        message(STATUS "llama.cpp: disabled (ENABLE_LLAMACPP=OFF)")
+    endif()
 endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -88,6 +154,7 @@ set(SOURCES
 
     # Services
     src/services/lmstudio_service.cpp
+    src/services/llamacpp_service.cpp
     src/services/mcp_service.cpp
     src/services/mcp_client.cpp
     src/services/mcp_stdio_client.cpp
@@ -111,6 +178,17 @@ if(CMAKE_CROSSCOMPILING)
     )
     target_link_libraries(ctrlpanel_arm
         jsoncpp_static libcurl pthread)
+
+    if(ENABLE_LLAMACPP)
+        target_include_directories(ctrlpanel_arm PRIVATE
+            ${llama_cpp_SOURCE_DIR}
+            ${llama_cpp_SOURCE_DIR}/include
+            ${llama_cpp_SOURCE_DIR}/ggml/include
+        )
+        target_link_libraries(ctrlpanel_arm llama)
+        target_compile_definitions(ctrlpanel_arm PRIVATE LLAMA_CPP_AVAILABLE)
+    endif()
+
     install(TARGETS ctrlpanel_arm DESTINATION bin)
 
 else()
@@ -122,7 +200,19 @@ else()
     target_link_libraries(ctrlpanel
         ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread)
 
+    if(ENABLE_LLAMACPP)
+        # llama.cpp may place llama.h under include/ (newer) or root (older)
+        target_include_directories(ctrlpanel PRIVATE
+            ${llama_cpp_SOURCE_DIR}
+            ${llama_cpp_SOURCE_DIR}/include
+            ${llama_cpp_SOURCE_DIR}/ggml/include
+        )
+        target_link_libraries(ctrlpanel llama)
+        target_compile_definitions(ctrlpanel PRIVATE LLAMA_CPP_AVAILABLE)
+    endif()
+
     # ── Windows .exe binary ───────────────────────────────────────────────────
+    # llama.cpp is Linux-only for now; Windows support can be added later.
     add_executable(ctrlpanel_exe ${SOURCES})
     set_target_properties(ctrlpanel_exe PROPERTIES
         OUTPUT_NAME "ctrlpanel" SUFFIX ".exe")

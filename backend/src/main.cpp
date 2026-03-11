@@ -15,6 +15,7 @@
 #include <httplib.h>
 #include "config/config.h"
 #include "services/lmstudio_service.h"
+#include "services/llamacpp_service.h"
 #include "services/mcp_service.h"
 #include "services/mcp_registry.h"
 #include "controllers/lmstudio_controller.h"
@@ -22,6 +23,10 @@
 #include "controllers/mcp_controller.h"
 #include "controllers/chat_controller.h"
 #include "embedded_frontend.h"
+
+#ifndef _WIN32
+#include <unistd.h>   // write(), STDOUT_FILENO
+#endif
 
 namespace fs = std::filesystem;
 
@@ -31,6 +36,9 @@ std::mutex g_serverMutex;
 std::atomic<bool> serverRunning{false};
 std::atomic<bool> serverError{false};
 std::atomic<bool> shouldStopConfigWatch{false};
+// Set by signal handler; acted upon by the main thread — keeps the handler
+// async-signal-safe (no mutexes, no stdio, no heap allocations).
+std::atomic<bool> g_shutdownRequested{false};
 
 fs::path getExecutableDir() {
     try { return fs::canonical("/proc/self/exe").parent_path(); }
@@ -171,17 +179,24 @@ void runConfigFileWatch(Config& config, McpRegistry& registry,
 }
 
 // ── Signal handler ────────────────────────────────────────────────────────────
-void signalHandler(int signal) {
-    std::cout << "\n[Signal] Received signal " << signal << ", shutting down...\n";
-    shouldStopConfigWatch.store(true);
-    std::lock_guard<std::mutex> lock(g_serverMutex);
-    if (g_server) g_server->stop();
+// IMPORTANT: This handler must be async-signal-safe. That means:
+//   - No heap allocation, no stdio (printf/cout), no mutex locks.
+//   - Only async-signal-safe functions (write(), atomic stores).
+// The actual shutdown work (stopping the server) is done by the main thread
+// which polls g_shutdownRequested.
+void signalHandler(int sig) {
+    // async-signal-safe: write() is on the POSIX async-signal-safe list.
+    const char msg[] = "\n[Signal] Shutdown requested, stopping server...\n";
+    (void)write(STDOUT_FILENO, msg, sizeof(msg) - 1);
+    (void)sig;
+    g_shutdownRequested.store(true, std::memory_order_relaxed);
 }
 
 // ── Server ────────────────────────────────────────────────────────────────────
 void runServer(Config& config, LmStudioService& lmstudioService,
                McpService& mcpService, McpRegistry& registry,
-               const std::string& dataDir) {
+               const std::string& dataDir,
+               LlamaCppService* llamaCppService) {
 
     std::string host = config.getHost();
     int port         = config.getPort();
@@ -206,12 +221,12 @@ void runServer(Config& config, LmStudioService& lmstudioService,
 
     svr.Post("/api/chat/stream", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
-        handleStreaming(req, res, lmstudioService, &registry);
+        handleStreaming(req, res, lmstudioService, &registry, llamaCppService);
     });
 
     svr.Get("/api/models", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
-        handleModels(req, res, lmstudioService);
+        handleModels(req, res, lmstudioService, llamaCppService);
     });
 
     svr.Get("/api/config/settings", [&](const httplib::Request& req, httplib::Response& res) {
@@ -304,43 +319,87 @@ void runServer(Config& config, LmStudioService& lmstudioService,
 
 // ── main ──────────────────────────────────────────────────────────────────────
 int main() {
+    // ── Data directory ────────────────────────────────────────────────────────
     fs::path dataDir = getExecutableDir() / "data";
-    if (!fs::exists(dataDir)) fs::create_directories(dataDir);
+    if (!fs::exists(dataDir)) {
+        fs::create_directories(dataDir);
+    }
 
+    // ── Models directory (create immediately so it always exists) ─────────────
+    fs::path modelsDir = dataDir / "models";
+    if (!fs::exists(modelsDir)) {
+        fs::create_directories(modelsDir);
+        std::cout << "[Startup] Created models directory: " << modelsDir.string() << "\n";
+    }
+
+    // ── Logging ───────────────────────────────────────────────────────────────
     TeeStream teeCout(std::cout, (dataDir / "backend.log").string());
     TeeStream teeCerr(std::cerr, (dataDir / "backend.log").string());
 
+    // ── Signal handling ───────────────────────────────────────────────────────
+    // Ignore SIGPIPE globally: if an MCP child dies while we're writing to its
+    // stdin pipe, write() will return -1/EPIPE instead of killing the process.
+#ifndef _WIN32
+    signal(SIGPIPE, SIG_IGN);
+#endif
+    // Install lightweight async-signal-safe handlers for SIGINT / SIGTERM.
+    // They only set a flag; the main thread acts on it below.
     std::signal(SIGINT,  signalHandler);
     std::signal(SIGTERM, signalHandler);
+
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
     const std::string settingsPath = (dataDir / "settings.json").string();
     const std::string mcpJsonPath  = (dataDir / "mcp.json").string();
 
+    // ── mcp.json: create immediately so it always exists on disk ─────────────
+    if (!fs::exists(mcpJsonPath)) {
+        std::ofstream mcpFile(mcpJsonPath);
+        if (mcpFile.is_open()) {
+            mcpFile << "{\n    \"mcpServers\": {}\n}\n";
+            mcpFile.close();
+            std::cout << "[Startup] Created empty mcp.json: " << mcpJsonPath << "\n";
+        } else {
+            std::cerr << "[Startup] Warning: could not create mcp.json at: " << mcpJsonPath << "\n";
+        }
+    }
+
+    // ── Config ────────────────────────────────────────────────────────────────
     Config config(settingsPath);
     config.load();
 
+    // ── Services ──────────────────────────────────────────────────────────────
     LmStudioService lmstudioService;
     lmstudioService.setLmStudioUrl(config.getLmStudioUrl());
-    McpService        mcpService(config);
-    McpRegistry       registry;
+
+    McpService  mcpService(config);
+    McpRegistry registry;
 
     // Load MCP clients from data/mcp.json
     registry.loadFromFile(mcpJsonPath);
 
+    // ── llama.cpp local inference service ─────────────────────────────────────
+    LlamaCppService llamaCppService(modelsDir.string());
+
+    // ── Startup banner ────────────────────────────────────────────────────────
     std::cout << "\n=== Control Panel Server ===\n";
     std::cout << "Server:       HTTP on port " << config.getPort()  << "\n";
     std::cout << "MCP server:   POST/GET /mcp\n";
     std::cout << "MCP clients:  " << registry.liveCount()           << " live"
               << "  (config: " << mcpJsonPath << ")\n";
     std::cout << "Data Dir:     " << dataDir.string()               << "\n";
+    std::cout << "Models Dir:   " << modelsDir.string()             << "\n";
+    if (llamaCppService.isReady())
+        std::cout << "Local model:  " << llamaCppService.getLoadedModelId() << "\n";
+    else
+        std::cout << "Local model:  none loaded (place a .gguf in " << modelsDir.string() << ")\n";
     std::cout << "===========================\n\n";
 
     serverError = false;
     std::thread serverThread(runServer,
         std::ref(config), std::ref(lmstudioService),
         std::ref(mcpService), std::ref(registry),
-        dataDir.string());
+        dataDir.string(), &llamaCppService);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
@@ -359,8 +418,24 @@ int main() {
     std::cout << "\n=== Server started successfully ===\n";
     std::cout << "Press Ctrl+C to stop the server\n\n";
 
-    serverThread.join();
+    // ── Main thread: wait for shutdown signal ─────────────────────────────────
+    // Polling here is intentional: the signal handler only sets a flag (which
+    // is async-signal-safe), and we do the actual work from this thread where
+    // it is safe to acquire mutexes and call library functions.
+    while (!g_shutdownRequested.load(std::memory_order_relaxed)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    std::cout << "\n[Signal] Received shutdown signal, stopping server...\n";
     shouldStopConfigWatch.store(true);
+
+    // Stop the HTTP server from the main thread (safe to do here).
+    {
+        std::lock_guard<std::mutex> lock(g_serverMutex);
+        if (g_server) g_server->stop();
+    }
+
+    serverThread.join();
     configWatchThread.join();
 
     curl_global_cleanup();

@@ -9,8 +9,9 @@ A highly personal web interface to give me the information and tools I need all 
 2. Ensure you have an LM Studio Server running
 3. Build the app (commands down below)
 4. Navigate to the build folder `backend/build/` and run the build file
-- **Linux**, run `ctrlpanel_backend`
-- **Windows**, run `ctrlpanel_backend.exe`
+- **Linux x64**, run `ctrlpanel`
+- **Linux ARM**, run `ctrlpanel_arm`
+- **Windows**, run `ctrlpanel.exe`
 5. In your browser, visit http://127.0.0.1:8080/
 
 ## About

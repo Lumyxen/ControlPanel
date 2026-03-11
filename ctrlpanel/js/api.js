@@ -48,7 +48,7 @@ export async function getModels() {
 export async function streamChatMessage(
     model,
     prompt,
-    maxTokens = 2048,
+    maxTokens = 8192,
     onChunk,
     signal = null,
     systemPrompt = "",

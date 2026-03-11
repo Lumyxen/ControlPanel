@@ -1,5 +1,6 @@
 # Build dir
 backend/build/
+backend/build-arm/
 
 # Test dir
 testing/

@@ -15,10 +15,15 @@ BLACKLIST_FOLDERS = frozenset([
 
 
 def get_tree(directory: Path) -> str:
-    """Generate directory tree using system 'tree' command."""
+    """Generate directory tree using system 'tree' command, excluding blacklisted folders."""
+    # Join blacklist folders into a pattern like "dev|.vscode|.git|build"
+    ignore_pattern = "|".join(BLACKLIST_FOLDERS)
+    
     try:
         return subprocess.check_output(
-            ["tree", str(directory)], text=True, stderr=subprocess.DEVNULL
+            ["tree", "-I", ignore_pattern, str(directory)], 
+            text=True, 
+            stderr=subprocess.DEVNULL
         )
     except (FileNotFoundError, subprocess.CalledProcessError):
         return f"# Directory: {directory}\n"
@@ -69,7 +74,7 @@ def dump_code(directory: Path) -> Tuple[str, Dict]:
 
 def write_md_chunks(content: str, output_dir: Path, max_bytes: int = 9216000) -> List[Path]:
     """
-    Split content into 90 KiB chunks and write to project.md (single) 
+    Split content into chunks and write to project.md (single) 
     or project1.md, project2.md, etc. (multiple).
     """
     lines = content.split('\n')
@@ -109,9 +114,7 @@ def write_md_chunks(content: str, output_dir: Path, max_bytes: int = 9216000) ->
     if current_chunk:
         chunks.append(''.join(current_chunk))
     
-    # Write files according to naming convention:
-    # - Single chunk: project.md
-    # - Multiple chunks: project1.md, project2.md, etc.
+    # Write files according to naming convention
     written_files = []
     
     if len(chunks) == 1:
@@ -248,7 +251,7 @@ def main():
         output_json.write_text(json.dumps(json_dump, indent=2), encoding="utf-8")
         print(f"✓ JSON: {output_json}")
         
-        # Write MD (split into 90 KiB chunks)
+        # Write MD (split into chunks)
         md_files = write_md_chunks(md_dump, script_dir)
         for f in md_files:
             print(f"✓ MD:   {f}")

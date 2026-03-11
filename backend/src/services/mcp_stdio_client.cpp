@@ -2,6 +2,7 @@
 #include <iostream>
 #include <sstream>
 #include <chrono>
+#include <thread>
 
 #ifndef _WIN32
 // ── POSIX-only includes ───────────────────────────────────────────────────────
@@ -24,14 +25,46 @@ McpStdioClient::McpStdioClient(const std::string& name,
     : name_(name), command_(command), args_(args), env_(env) {}
 
 McpStdioClient::~McpStdioClient() {
-    closePipes();
+    ready_ = false;
+
 #ifndef _WIN32
+    // Close our end of stdin first — the child gets EOF and should exit on its
+    // own (this is the polite shutdown path).
+    if (stdinFd_ >= 0) { close(stdinFd_);  stdinFd_  = -1; }
+    if (stdoutFd_ >= 0) { close(stdoutFd_); stdoutFd_ = -1; }
+
     if (pid_ > 0) {
+        // Wait up to ~1 s for the child to exit after EOF on its stdin.
+        int status = 0;
+        for (int i = 0; i < 10; ++i) {
+            pid_t ret = waitpid(pid_, &status, WNOHANG);
+            if (ret == pid_ || ret < 0) {
+                // Reaped or already gone.
+                pid_ = -1;
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        // Child is still alive — escalate to SIGTERM.
         kill(pid_, SIGTERM);
-        int status;
-        waitpid(pid_, &status, WNOHANG);
+
+        for (int i = 0; i < 10; ++i) {
+            pid_t ret = waitpid(pid_, &status, WNOHANG);
+            if (ret == pid_ || ret < 0) {
+                pid_ = -1;
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        // Last resort: SIGKILL then blocking wait to reap the zombie.
+        kill(pid_, SIGKILL);
+        waitpid(pid_, &status, 0);
         pid_ = -1;
     }
+#else
+    closePipes();
 #endif
 }
 
@@ -169,7 +202,6 @@ bool McpStdioClient::spawnProcess() {
     argv.push_back(nullptr);
 
     // Build environment: inherit current env, then overlay custom vars
-    // Count existing env
     int envCount = 0;
     for (char** e = environ; *e; ++e) ++envCount;
 
@@ -200,6 +232,15 @@ bool McpStdioClient::spawnProcess() {
 
     if (pid_ == 0) {
         // ── Child process ─────────────────────────────────────────────────────
+        //
+        // Put the child in its own session so that terminal signals (Ctrl+C →
+        // SIGINT) are NOT forwarded to it. The parent will shut it down cleanly
+        // by closing the stdin pipe (child gets EOF) or by sending SIGTERM from
+        // the destructor. Without setsid(), every Ctrl+C also kills the child,
+        // which produces ugly Python tracebacks and leaves the parent in an
+        // inconsistent state when it later tries to talk to a dead pipe.
+        setsid();
+
         dup2(stdinPipe[0],  STDIN_FILENO);
         dup2(stdoutPipe[1], STDOUT_FILENO);
         // Leave stderr open so the child can log
@@ -303,6 +344,8 @@ Json::Value McpStdioClient::sendRequest(const Json::Value& request) {
     wb["indentation"] = "";
     std::string line = Json::writeString(wb, request) + "\n";
 
+    // write() returns -1/EPIPE if the child is gone; SIGPIPE is suppressed
+    // globally (SIG_IGN in main) so we only need to check the return value.
     ssize_t written = write(stdinFd_, line.c_str(), line.size());
     if (written < 0) {
         std::cerr << "[McpStdioClient:" << name_ << "] write failed: "

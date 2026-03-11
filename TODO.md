@@ -11,10 +11,20 @@
 
 ## AI Chat-box
 ### Planned Features
-- Migrate development onto skidbladnir to host it (not really a feature)
-- Add llama.cpp server API support for local AI on skidbladnir
+- Settings for llama.cpp
+  - Switch automatically between llama.cpp builds (CUDA, ROCm, Vulkan, Rockchip NPU, CPU) based on hardware detected
+    - Allow user to manually change in settings
+    - Build with all 5 versions of llama.cpp built-in
+- Edit available model list
+  - Model search
+    - LM Studio
+    - HuggingFace (downloads model into ./data/models/)
+  - Filters
 - Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
 - AI generated chat title
+- Tool calls inline in the text instead of being shoved at the top
+- Markdown formatting inside of thinking block
+- Shift+Click to copy entire message including thinking block and tool calls
 - Web search tool
 - Add calculator tool (replaces code execution reliance for math)
   - WolframAlpha API option
@@ -29,6 +39,20 @@
     - Decay factor in the weighting
   - Allow the AI to switch to using an identifier that links to RAG memories to remember in the context window to remember to do specific tasks
   - Offput large documents (12k+ tokens) to make the AI read in chunks to prevent context overflow and more effectively handle memory
+- AI automated research (self-improvement)
+  - Choose the best open sourced (actual open source, not open weight) model available
+    - Train the AI for a set time (configurable, default 5 minutes)
+    - Record score on benchmarks
+  - Feed Qwen 3.5 35B A3B the results, making it try to improve it
+    - If it doesn't improve, discard
+    - If it improves, keep
+  - Once Qwen 3.5 35B A3B feels it'd do worse then the AI it created at improving the AI, it hands that job to the AI
+    - Continue going infinitely.
+  - Greatly discourage scaling and encourage downscaling without performance loss
+  - Encourage a liquid neural network type architecture to slowly involve into or take inspiration from
+  - Do NOT let the initial Qwen 3.5 35B A3B model OR the trained AI to not be in this harness, as to give it up-most capabilities
+  - Small model to keep watch unknowingly to the developer AI to kill the development loop as soon as any sort of malicious intent is detected
+  - NOT meant to be computationally reasonable yet. It's for a preparation for when it does become reasonable, which is entirely unknown and could be tomorrow, or even 2 years from now.
 - Headless browser tool
 ##### Start giving updates to GamingwithNP
 - Mobile UI support
@@ -47,11 +71,6 @@
 - Diff formatting
 - Change notice styling that back-end and/or an API connection is offline or lost
 - Setting to change default model (already exists, but vastly improving on it)
-- Edit available model list
-  - Model search
-    - LM Studio
-    - HuggingFace
-  - Filters
 - Ensure tool placeholder in global system prompt also returns description of each tool
 - Be able to attach local directories
 - Be able to attach ZIP files
@@ -145,7 +164,7 @@
     - Warn user if selected AI model is from the same company as the AI model being benchmarked
 
 ### Possible Features
-- Guide to how to setup a local AI model for new users
+- Support for an external llama.cpp server
 - Token usage graph like Kilo Code
 - Markdown and LaTeX processing in the input text field
 - Detachment from browser (sepparate app)
@@ -176,11 +195,13 @@
 - Newline character collapsing into previous line with the sequence: character -> newline -> character -> delete character
 - Hovering over the last message in a chat makes the chat slightly scrolls up
 - Don't force close the thinking box during generation
+- Message regeneration deletes messages after generation instead of before
 
 #### General Bugs
 - Not properly getting context window size from LM Studio
 - Images don't get parsed for AI models that have vision capabilities
 - Sometimes pasting in text just seems to be weirdly displayed in the input text field, and is omitted from the sent message
+- Stopping generation only stops it on the front end, keeping the back end or API generating.
 
 
 
@@ -204,12 +225,13 @@
 ### General
 - Message sending/generation
 - Generation chunk streaming
-- Linux & Windows support for back-end
+- Linux, Windows, and ARM support for back-end
   - Master binary with data being saved in ./data/
 - Chat history
 - Multiple chats
 - Multiple API implementations
   - LM Studio Server
+  - llama.cpp internal integration
 - New chat button when sidebar is collapsed
 - Message hover menu
   - AI message regeneration
