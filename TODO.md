@@ -202,7 +202,6 @@
 - Hovering over the last message in a chat makes the chat slightly scrolls up
 - Don't force close the thinking box during generation
 - Message regeneration deletes messages after generation instead of before
-- The model no longer wants to use reasoning??? (I love llama.cpp)
 
 #### General Bugs
 - Not properly getting context window size from LM Studio

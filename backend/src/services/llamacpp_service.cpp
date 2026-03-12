@@ -383,7 +383,7 @@ void LlamaCppService::doInference(
             static_cast<int32_t>(formattedPrompt.size()),
             nullptr,
             0,
-            /* add_special */  true,
+            /* add_special */  false,
             /* parse_special */ true
         );
         if (reqTokens < 0) reqTokens = -reqTokens;
@@ -396,7 +396,7 @@ void LlamaCppService::doInference(
                 static_cast<int32_t>(formattedPrompt.size()),
                 inputTokens.data(),
                 static_cast<int32_t>(inputTokens.size()),
-                /* add_special */  true,
+                /* add_special */  false,
                 /* parse_special */ true
             );
 
