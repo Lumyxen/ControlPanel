@@ -430,6 +430,18 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		updateLiveContext();
 	}, { signal });
 
+	input.addEventListener("keydown", (e) => {
+		if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+			e.preventDefault();
+			if (uiState.isGenerating) return;
+			
+			if (e.shiftKey) {
+				form.dataset.sendNoReply = "1";
+			}
+			form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+		}
+	}, { signal });
+
 	const urlParams = new URLSearchParams(location.hash.split("?")[1] || "");
 	const chatIdFromUrl = urlParams.get("chat");
 	if (chatIdFromUrl && getChatById(chatIdFromUrl)) {
