@@ -194,7 +194,6 @@
 - Fix large empty space in chats
 - LaTeX formatting not properly fully functional, but mostly is
 - Messages flicker during longer generations that use auto-scroll with fast model generation speeds
-- No Markdown list nesting
 - Some tables just don't seem to start formatting at all
 
 #### UX
