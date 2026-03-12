@@ -1,7 +1,8 @@
 .content {
     padding: 24px;
     transition: padding-left var(--sidebar-transition);
-    min-height: 100vh;
+    overflow-y: auto;   /* this column scrolls; the body/sidebar never do */
+    min-height: 0;      /* allow the grid child to shrink below its content size */
     display: flex;
     flex-direction: column;
 }

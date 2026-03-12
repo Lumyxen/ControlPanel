@@ -11,17 +11,26 @@
 
 ## AI Chat-box
 ### Planned Features
-- Settings for llama.cpp
-  - Switch automatically between llama.cpp builds (CUDA, ROCm, Vulkan, Rockchip NPU, CPU) based on hardware detected
-    - Allow user to manually change in settings
-    - Build with all 5 versions of llama.cpp built-in
+- Eval Batch Size
+  - Increases performance at the cost of memory usage
+- Switch automatically between llama.cpp builds (CUDA, ROCm, Vulkan, Rockchip NPU, CPU) based on hardware detected
+  - Build with all 5 versions of llama.cpp built-in
+  - Allow user to manually change in settings
 - Tone down llama.cpp max compute usage to allow computer use during generation
   - Ability to return to maximum usage in settings
+- Keep models loaded for 5 minutes after generation completion
+  - Setting to change time to unload after generation completion, down to immediate (step before 1 minute), up to infinite (step after 30 minutes)
+- KV cache reuse
+- KV Quantisation
+  - Reduce memory usage at the cost of decreasing context quality
 - Edit available model list
   - Model search
     - LM Studio
     - HuggingFace (downloads model into ./data/models/)
   - Filters
+- Speculative Decoding
+  - Setting to enable/disable this
+  - Setting to change both small and large models
 - Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
 - AI generated chat title
 - Tool calls inline in the text instead of being shoved at the top

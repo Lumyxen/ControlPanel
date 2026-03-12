@@ -107,6 +107,180 @@
         </div>
     </section>
 
+    <section class="card" aria-labelledby="llamacpp-title">
+        <h2 class="card-title" id="llamacpp-title">llama.cpp</h2>
+        <p class="card-desc">Settings for the built-in local inference engine. Model-load settings (marked ↻) require a backend restart to take effect. Sampler settings apply immediately.</p>
+
+        <div class="option-row">
+            <label for="llamacpp-flash-attn">Flash Attention ↻</label>
+            <div class="input-group" style="align-items: center; gap: 0.5rem;">
+                <input
+                    id="llamacpp-flash-attn"
+                    type="checkbox"
+                    checked
+                />
+                <span class="option-hint" style="margin: 0;">Enable Flash Attention for faster inference and lower memory usage on compatible hardware.</span>
+            </div>
+        </div>
+
+        <div class="option-row">
+            <label for="llamacpp-eval-batch-size">Eval Batch Size ↻</label>
+            <input
+                id="llamacpp-eval-batch-size"
+                type="number"
+                min="64"
+                max="16384"
+                step="64"
+                value="2048"
+                style="width: 8rem;"
+            />
+            <p class="option-hint">Number of tokens processed in parallel during the prefill phase. Higher values increase throughput but use more memory. Default: 2048.</p>
+        </div>
+
+        <div class="option-row">
+            <label for="llamacpp-ctx-size">Context Size Override ↻</label>
+            <input
+                id="llamacpp-ctx-size"
+                type="number"
+                min="0"
+                max="524288"
+                step="512"
+                value="0"
+                style="width: 8rem;"
+            />
+            <p class="option-hint">Override the model's native context window size in tokens. Set to <code>0</code> to use the model's trained context size (auto, capped at 65536 to prevent OOMs). Default: 0 (auto).</p>
+        </div>
+
+        <div class="option-row">
+            <label for="llamacpp-gpu-layers">GPU Layers ↻</label>
+            <input
+                id="llamacpp-gpu-layers"
+                type="number"
+                min="0"
+                max="999"
+                step="1"
+                value="0"
+                style="width: 8rem;"
+            />
+            <p class="option-hint">Number of model layers to offload to the GPU. Set to <code>0</code> for CPU-only inference. Set to a very large number (e.g. <code>999</code>) to offload all layers. Default: 0.</p>
+        </div>
+
+        <div class="option-row">
+            <label>CPU Threads ↻</label>
+            <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+                <div>
+                    <label for="llamacpp-threads" style="font-size: 0.8rem; opacity: 0.75;">Generation</label>
+                    <div>
+                        <input
+                            id="llamacpp-threads"
+                            type="number"
+                            min="0"
+                            max="256"
+                            step="1"
+                            value="0"
+                            style="width: 6rem;"
+                        />
+                    </div>
+                </div>
+                <div>
+                    <label for="llamacpp-threads-batch" style="font-size: 0.8rem; opacity: 0.75;">Batch / Prefill</label>
+                    <div>
+                        <input
+                            id="llamacpp-threads-batch"
+                            type="number"
+                            min="0"
+                            max="256"
+                            step="1"
+                            value="0"
+                            style="width: 6rem;"
+                        />
+                    </div>
+                </div>
+            </div>
+            <p class="option-hint">CPU thread counts for token generation and batch prefill respectively. Set to <code>0</code> to auto-detect (generation = physical cores, prefill = all logical threads). Default: 0 (auto).</p>
+        </div>
+
+        <div class="option-row">
+            <label for="llamacpp-top-p">Top-P</label>
+            <div class="input-group" style="gap: 0.75rem; align-items: center;">
+                <input
+                    id="llamacpp-top-p-slider"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value="0.9"
+                    style="flex: 1; min-width: 0;"
+                />
+                <input
+                    id="llamacpp-top-p"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value="0.9"
+                    style="flex: none; width: 5rem;"
+                />
+            </div>
+            <p class="option-hint">Nucleus sampling threshold. Only tokens whose cumulative probability exceeds this value are considered. Default: 0.9.</p>
+        </div>
+
+        <div class="option-row">
+            <label for="llamacpp-min-p">Min-P</label>
+            <div class="input-group" style="gap: 0.75rem; align-items: center;">
+                <input
+                    id="llamacpp-min-p-slider"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value="0.05"
+                    style="flex: 1; min-width: 0;"
+                />
+                <input
+                    id="llamacpp-min-p"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value="0.05"
+                    style="flex: none; width: 5rem;"
+                />
+            </div>
+            <p class="option-hint">Minimum probability threshold relative to the top token. Filters out very unlikely tokens. Default: 0.05.</p>
+        </div>
+
+        <div class="option-row">
+            <label for="llamacpp-repeat-penalty">Repetition Penalty</label>
+            <div class="input-group" style="gap: 0.75rem; align-items: center;">
+                <input
+                    id="llamacpp-repeat-penalty-slider"
+                    type="range"
+                    min="1"
+                    max="2"
+                    step="0.01"
+                    value="1.15"
+                    style="flex: 1; min-width: 0;"
+                />
+                <input
+                    id="llamacpp-repeat-penalty"
+                    type="number"
+                    min="1"
+                    max="2"
+                    step="0.01"
+                    value="1.15"
+                    style="flex: none; width: 5rem;"
+                />
+            </div>
+            <p class="option-hint">Penalises recently-used tokens to reduce repetition. 1.0 = no penalty, higher = more aggressive. Default: 1.15.</p>
+        </div>
+
+        <div class="input-group" style="margin-top: 0.75rem;">
+            <button type="button" id="save-llamacpp-settings" class="btn btn-primary">Save</button>
+            <span id="llamacpp-settings-status" class="option-hint" style="margin-left: 0.5rem;"></span>
+        </div>
+    </section>
+
     <section class="card" aria-labelledby="theme-title">
         <h2 class="card-title" id="theme-title">Theme</h2>
         <p class="card-desc">Choose a palette, variant, and accent colour.</p>

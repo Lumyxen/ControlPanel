@@ -1,5 +1,6 @@
 #include "services/llamacpp_service.h"
 #include "services/mcp_registry.h"
+#include "config/config.h"
 #include <filesystem>
 #include <iostream>
 #include <sstream>
@@ -26,8 +27,8 @@ static std::string modelIdFromPath(const std::string& path) {
 // Constructor / Destructor
 // ─────────────────────────────────────────────────────────────────────────────
 
-LlamaCppService::LlamaCppService(const std::string& modelsDir)
-    : modelsDir_(modelsDir)
+LlamaCppService::LlamaCppService(const std::string& modelsDir, Config& config)
+    : modelsDir_(modelsDir), config_(config)
 {
 #ifdef LLAMA_CPP_AVAILABLE
     llama_backend_init();
@@ -80,8 +81,17 @@ bool LlamaCppService::loadModel(const std::string& path) {
 #else
     std::cout << "[LlamaCpp] Loading model: " << path << "\n";
 
+    // ── Read settings from Config ─────────────────────────────────────────────
+    const bool   flashAttn      = config_.getLlamacppFlashAttn();
+    const int    evalBatchSize  = std::max(1, config_.getLlamacppEvalBatchSize());
+    const int    cfgCtxSize     = config_.getLlamacppCtxSize();   // 0 = auto
+    const int    gpuLayers      = config_.getLlamacppGpuLayers();
+    const int    cfgThreads     = config_.getLlamacppThreads();      // 0 = auto
+    const int    cfgThreadsBatch= config_.getLlamacppThreadsBatch(); // 0 = auto
+
+    // ── Model params ──────────────────────────────────────────────────────────
     llama_model_params mparams = llama_model_default_params();
-    mparams.n_gpu_layers = 0;
+    mparams.n_gpu_layers = gpuLayers;
 
     llama_model* m = llama_model_load_from_file(path.c_str(), mparams);
     if (!m) {
@@ -89,24 +99,45 @@ bool LlamaCppService::loadModel(const std::string& path) {
         return false;
     }
 
-    // Capture model's native context window
-    uint32_t model_n_ctx = llama_model_n_ctx_train(m);
-    
-    // Cap at a reasonable limit like 64k to prevent automatic CPU OOMs
-    uint32_t ctx_size = model_n_ctx > 0 ? std::min(model_n_ctx, (uint32_t)65536) : 32768;
+    // ── Context size ──────────────────────────────────────────────────────────
+    uint32_t ctx_size;
+    if (cfgCtxSize > 0) {
+        // User-specified override
+        ctx_size = static_cast<uint32_t>(cfgCtxSize);
+    } else {
+        // Auto: use the model's native training context, capped at 64k to
+        // prevent accidental CPU OOMs on large-context models.
+        uint32_t model_n_ctx = llama_model_n_ctx_train(m);
+        ctx_size = model_n_ctx > 0 ? std::min(model_n_ctx, (uint32_t)65536) : 32768;
+    }
 
-    llama_context_params cparams = llama_context_default_params();
-    cparams.n_ctx    = ctx_size;
-    cparams.n_batch  = static_cast<uint32_t>(n_batch_);
-    cparams.n_ubatch = static_cast<uint32_t>(n_batch_);
-    
-    // Use the latest enum parameter for flash attention 
-    cparams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
-
-    // Optimize CPU threads (approximating physical cores over logical)
+    // ── Thread count ──────────────────────────────────────────────────────────
     unsigned int hw_threads = std::thread::hardware_concurrency();
-    cparams.n_threads       = hw_threads > 0 ? std::max(1u, hw_threads / 2) : 4;
-    cparams.n_threads_batch = hw_threads > 0 ? hw_threads : 4;
+
+    uint32_t n_threads, n_threads_batch;
+    if (cfgThreads > 0) {
+        n_threads = static_cast<uint32_t>(cfgThreads);
+    } else {
+        // Default: approximate physical cores (half of logical threads)
+        n_threads = hw_threads > 0 ? std::max(1u, hw_threads / 2) : 4;
+    }
+    if (cfgThreadsBatch > 0) {
+        n_threads_batch = static_cast<uint32_t>(cfgThreadsBatch);
+    } else {
+        // Default: all logical threads for batch/prefill
+        n_threads_batch = hw_threads > 0 ? hw_threads : 4;
+    }
+
+    // ── Context params ────────────────────────────────────────────────────────
+    llama_context_params cparams = llama_context_default_params();
+    cparams.n_ctx           = ctx_size;
+    cparams.n_batch         = static_cast<uint32_t>(evalBatchSize);
+    cparams.n_ubatch        = static_cast<uint32_t>(evalBatchSize);
+    cparams.n_threads       = n_threads;
+    cparams.n_threads_batch = n_threads_batch;
+
+    cparams.flash_attn_type = flashAttn ? LLAMA_FLASH_ATTN_TYPE_ENABLED
+                                        : LLAMA_FLASH_ATTN_TYPE_AUTO;
 
     llama_context* c = llama_init_from_model(m, cparams);
     if (!c) {
@@ -120,13 +151,17 @@ bool LlamaCppService::loadModel(const std::string& path) {
 
     model_           = m;
     ctx_             = c;
-    n_ctx_           = ctx_size;
+    n_ctx_           = static_cast<int>(ctx_size);
+    n_batch_         = evalBatchSize;
     loadedModelPath_ = path;
     loadedModelId_   = modelIdFromPath(path);
     modelLoaded_     = true;
 
-    std::cout << "[LlamaCpp] Model ready: " << loadedModelId_
-              << "  (ctx=" << n_ctx_ << ", batch=" << n_batch_ << ")\n";
+    std::cout << "[LlamaCpp] Model ready: " << loadedModelId_ << "\n"
+              << "  ctx=" << n_ctx_ << "  batch=" << n_batch_
+              << "  flash_attn=" << (flashAttn ? "on" : "off")
+              << "  gpu_layers=" << gpuLayers
+              << "  threads=" << n_threads << "/" << n_threads_batch << "\n";
     return true;
 #endif
 }
@@ -153,7 +188,7 @@ Json::Value LlamaCppService::getModels() const {
         m["name"]           = stemFromPath(path);
         m["source"]         = "llamacpp";
         m["context_length"] = n_ctx_;
-        m["max_tokens"]     = 8192; // FIX: Fallback accurately to 8192 output tokens
+        m["max_tokens"]     = 8192; // Fallback to 8192 output tokens
         m["loaded"]         = (modelLoaded_ && loadedModelPath_ == path);
         out["data"].append(m);
     }
@@ -420,18 +455,20 @@ void LlamaCppService::doInference(
         nProcessed += chunkSize;
     }
 
-    // ── Sampler ───────────────────────────────────────────────────────────────
+    // ── Sampler — read live from Config so changes take effect without restart ─
     float temp           = (temperature > 0.0) ? static_cast<float>(temperature) : 0.7f;
     int   penaltyLastN   = 64;
-    float penaltyRepeat  = 1.15f;
+    float penaltyRepeat  = static_cast<float>(config_.getLlamacppRepeatPenalty());
     float penaltyFreq    = 0.0f;
     float penaltyPresent = 0.0f;
+    float topP           = static_cast<float>(config_.getLlamacppTopP());
+    float minP           = static_cast<float>(config_.getLlamacppMinP());
 
     llama_sampler* sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
     llama_sampler_chain_add(sampler, llama_sampler_init_penalties(
         penaltyLastN, penaltyRepeat, penaltyFreq, penaltyPresent));
-    llama_sampler_chain_add(sampler, llama_sampler_init_top_p(0.9f, 1));
-    llama_sampler_chain_add(sampler, llama_sampler_init_min_p(0.05f, 1));
+    llama_sampler_chain_add(sampler, llama_sampler_init_top_p(topP, 1));
+    llama_sampler_chain_add(sampler, llama_sampler_init_min_p(minP, 1));
     llama_sampler_chain_add(sampler, llama_sampler_init_temp(temp));
     llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 

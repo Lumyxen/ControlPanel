@@ -6,9 +6,7 @@
         transparent 70%
     );
     border-right: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    height: 100vh;
+    height: 100%;        /* fill the grid row, which is now locked to 100vh */
     overflow: hidden;
     user-select: none;
     -webkit-user-select: none;

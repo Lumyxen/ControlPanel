@@ -15,7 +15,7 @@ export const PALETTES = {
 			light: { label: "Light", dark: false },
 			softlight: { label: "Soft Light", dark: false },
 		},
-		accents:["red", "orange", "yellow", "green", "aqua", "blue", "purple"],
+		accents: ["red", "orange", "yellow", "green", "aqua", "blue", "purple"],
 		defaultFlavour: "harddark",
 		defaultAccent: "green",
 		accentVar: "--ef",
@@ -28,14 +28,14 @@ export const PALETTES = {
 			macchiato: { label: "Macchiato", dark: true },
 			mocha: { label: "Mocha", dark: true },
 		},
-		accents:["rosewater", "flamingo", "pink", "mauve", "red", "maroon", "peach", "yellow", "green", "teal", "sky", "sapphire", "blue", "lavender"],
+		accents: ["rosewater", "flamingo", "pink", "mauve", "red", "maroon", "peach", "yellow", "green", "teal", "sky", "sapphire", "blue", "lavender"],
 		defaultFlavour: "mocha",
 		defaultAccent: "green",
 		accentVar: "--ctp",
 	},
 };
 
-export const PALETTE_ORDER =["everforest", "catppuccin"];
+export const PALETTE_ORDER = ["everforest", "catppuccin"];
 
 let currentTheme = null;
 
@@ -165,6 +165,19 @@ export function syncSettingsUI(root) {
 	});
 }
 
+// ── Helpers for slider ↔ number input sync ────────────────────────────────────
+
+function linkSliderAndNumber(slider, number, min, max) {
+	if (!slider || !number) return;
+	slider.addEventListener("input", () => { number.value = slider.value; });
+	number.addEventListener("input", () => {
+		const v = Math.min(max, Math.max(min, parseFloat(number.value) || min));
+		slider.value = v;
+	});
+}
+
+// ── Populate fields from settings object ──────────────────────────────────────
+
 function populateAISettingsFields(root, settings) {
 	if (!settings) return;
 
@@ -196,6 +209,66 @@ function populateAISettingsFields(root, settings) {
 		lmStudioUrlInput.value = settings.lmStudioUrl;
 	}
 }
+
+function populateLlamaCppFields(root, settings) {
+	if (!settings) return;
+
+	const flashAttn = root.querySelector("#llamacpp-flash-attn");
+	if (flashAttn && settings.llamacppFlashAttn != null) {
+		flashAttn.checked = Boolean(settings.llamacppFlashAttn);
+	}
+
+	const evalBatchSize = root.querySelector("#llamacpp-eval-batch-size");
+	if (evalBatchSize && settings.llamacppEvalBatchSize != null) {
+		evalBatchSize.value = settings.llamacppEvalBatchSize;
+	}
+
+	const ctxSize = root.querySelector("#llamacpp-ctx-size");
+	if (ctxSize && settings.llamacppCtxSize != null) {
+		ctxSize.value = settings.llamacppCtxSize;
+	}
+
+	const gpuLayers = root.querySelector("#llamacpp-gpu-layers");
+	if (gpuLayers && settings.llamacppGpuLayers != null) {
+		gpuLayers.value = settings.llamacppGpuLayers;
+	}
+
+	const threads = root.querySelector("#llamacpp-threads");
+	if (threads && settings.llamacppThreads != null) {
+		threads.value = settings.llamacppThreads;
+	}
+
+	const threadsBatch = root.querySelector("#llamacpp-threads-batch");
+	if (threadsBatch && settings.llamacppThreadsBatch != null) {
+		threadsBatch.value = settings.llamacppThreadsBatch;
+	}
+
+	const topPSlider = root.querySelector("#llamacpp-top-p-slider");
+	const topP = root.querySelector("#llamacpp-top-p");
+	if (settings.llamacppTopP != null) {
+		const v = parseFloat(settings.llamacppTopP) ?? 0.9;
+		if (topPSlider) topPSlider.value = v;
+		if (topP) topP.value = v;
+	}
+
+	const minPSlider = root.querySelector("#llamacpp-min-p-slider");
+	const minP = root.querySelector("#llamacpp-min-p");
+	if (settings.llamacppMinP != null) {
+		const v = parseFloat(settings.llamacppMinP) ?? 0.05;
+		if (minPSlider) minPSlider.value = v;
+		if (minP) minP.value = v;
+	}
+
+	const repeatPenaltySlider = root.querySelector("#llamacpp-repeat-penalty-slider");
+	const repeatPenalty = root.querySelector("#llamacpp-repeat-penalty");
+	if (settings.llamacppRepeatPenalty != null) {
+		const v = parseFloat(settings.llamacppRepeatPenalty) ?? 1.15;
+		if (repeatPenaltySlider) repeatPenaltySlider.value = v;
+		if (repeatPenalty) repeatPenalty.value = v;
+	}
+}
+
+// ── Main settings page initialiser ───────────────────────────────────────────
 
 export function initSettingsPage(root) {
 	if (!root) return;
@@ -236,9 +309,9 @@ export function initSettingsPage(root) {
 	});
 
 	accentGrid.addEventListener("keydown", (e) => {
-		const navKeys =["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
+		const navKeys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
 		if (!navKeys.includes(e.key) && e.key !== " " && e.key !== "Enter") return;
-		const items =[...accentGrid.querySelectorAll('button[data-accent][role="radio"]')];
+		const items = [...accentGrid.querySelectorAll('button[data-accent][role="radio"]')];
 		if (!items.length) return;
 		const currentIdx = items.findIndex((el) => el.classList.contains("selected"));
 		let nextIdx = currentIdx;
@@ -256,6 +329,8 @@ export function initSettingsPage(root) {
 	});
 
 	syncSettingsUI(root);
+
+	// ── LM Studio status test ─────────────────────────────────────────────────
 
 	const lmStudioStatusEl = root.querySelector("#lmstudio-status");
 	const refreshLmStudioBtn = root.querySelector("#refresh-lmstudio-status");
@@ -284,6 +359,8 @@ export function initSettingsPage(root) {
 		refreshLmStudioBtn.addEventListener("click", testLmStudio);
 	}
 
+	// ── Temperature slider ↔ number sync ──────────────────────────────────────
+
 	const temperatureSlider = root.querySelector("#temperature-slider");
 	const temperatureInput  = root.querySelector("#temperature-input");
 
@@ -297,18 +374,41 @@ export function initSettingsPage(root) {
 		});
 	}
 
+	// ── llama.cpp slider ↔ number sync ───────────────────────────────────────
+
+	linkSliderAndNumber(root.querySelector("#llamacpp-top-p-slider"),         root.querySelector("#llamacpp-top-p"),         0, 1);
+	linkSliderAndNumber(root.querySelector("#llamacpp-min-p-slider"),         root.querySelector("#llamacpp-min-p"),         0, 1);
+	linkSliderAndNumber(root.querySelector("#llamacpp-repeat-penalty-slider"), root.querySelector("#llamacpp-repeat-penalty"), 1, 2);
+
+	// ── Populate from cached settings ─────────────────────────────────────────
+
 	const cached = SettingsStore.get();
 	if (cached) {
 		populateAISettingsFields(root, cached);
+		populateLlamaCppFields(root, cached);
 	}
+
+	// ── Subscribe to live settings changes ───────────────────────────────────
+
+	const allAIFields = [
+		"#default-model-input", "#temperature-slider", "#temperature-input",
+		"#max-tokens-input", "#system-prompt-input", "#lmstudio-url-input",
+	];
+	const allLlamaCppFields = [
+		"#llamacpp-flash-attn", "#llamacpp-eval-batch-size", "#llamacpp-ctx-size",
+		"#llamacpp-gpu-layers", "#llamacpp-threads", "#llamacpp-threads-batch",
+		"#llamacpp-top-p-slider", "#llamacpp-top-p",
+		"#llamacpp-min-p-slider", "#llamacpp-min-p",
+		"#llamacpp-repeat-penalty-slider", "#llamacpp-repeat-penalty",
+	];
+	const allWatchedFields = [...allAIFields, ...allLlamaCppFields];
 
 	const unsubscribe = SettingsStore.subscribe((settings) => {
 		const focused = document.activeElement;
-		const aiFields =["#default-model-input", "#temperature-slider", "#temperature-input",
-		                  "#max-tokens-input", "#system-prompt-input", "#lmstudio-url-input"];
-		const userIsEditing = aiFields.some((sel) => root.querySelector(sel) === focused);
+		const userIsEditing = allWatchedFields.some((sel) => root.querySelector(sel) === focused);
 		if (!userIsEditing) {
 			populateAISettingsFields(root, settings);
+			populateLlamaCppFields(root, settings);
 		}
 	});
 
@@ -320,8 +420,10 @@ export function initSettingsPage(root) {
 	});
 	observer.observe(document.body, { childList: true, subtree: true });
 
-	const saveBtn    = root.querySelector("#save-ai-settings");
-	const statusEl   = root.querySelector("#ai-settings-status");
+	// ── AI Behaviour save button ──────────────────────────────────────────────
+
+	const saveBtn  = root.querySelector("#save-ai-settings");
+	const statusEl = root.querySelector("#ai-settings-status");
 
 	if (saveBtn) {
 		saveBtn.addEventListener("click", async () => {
@@ -360,9 +462,63 @@ export function initSettingsPage(root) {
 		});
 	}
 
+	// ── llama.cpp save button ─────────────────────────────────────────────────
+
+	const saveLlamaCppBtn  = root.querySelector("#save-llamacpp-settings");
+	const llamaCppStatusEl = root.querySelector("#llamacpp-settings-status");
+
+	if (saveLlamaCppBtn) {
+		saveLlamaCppBtn.addEventListener("click", async () => {
+			saveLlamaCppBtn.disabled = true;
+			if (llamaCppStatusEl) { llamaCppStatusEl.textContent = "Saving…"; llamaCppStatusEl.style.color = ""; }
+
+			try {
+				const flashAttn      = root.querySelector("#llamacpp-flash-attn");
+				const evalBatchSize  = root.querySelector("#llamacpp-eval-batch-size");
+				const ctxSize        = root.querySelector("#llamacpp-ctx-size");
+				const gpuLayers      = root.querySelector("#llamacpp-gpu-layers");
+				const threads        = root.querySelector("#llamacpp-threads");
+				const threadsBatch   = root.querySelector("#llamacpp-threads-batch");
+				const topP           = root.querySelector("#llamacpp-top-p");
+				const minP           = root.querySelector("#llamacpp-min-p");
+				const repeatPenalty  = root.querySelector("#llamacpp-repeat-penalty");
+
+				const patch = {
+					llamacppFlashAttn:      flashAttn?.checked ?? true,
+					llamacppEvalBatchSize:  parseInt(evalBatchSize?.value ?? "2048", 10) || 2048,
+					llamacppCtxSize:        parseInt(ctxSize?.value ?? "0", 10) || 0,
+					llamacppGpuLayers:      parseInt(gpuLayers?.value ?? "0", 10) || 0,
+					llamacppThreads:        parseInt(threads?.value ?? "0", 10) || 0,
+					llamacppThreadsBatch:   parseInt(threadsBatch?.value ?? "0", 10) || 0,
+					llamacppTopP:           parseFloat(topP?.value ?? "0.9") || 0.9,
+					llamacppMinP:           parseFloat(minP?.value ?? "0.05") || 0.05,
+					llamacppRepeatPenalty:  parseFloat(repeatPenalty?.value ?? "1.15") || 1.15,
+				};
+
+				await SettingsStore.save(patch);
+
+				if (llamaCppStatusEl) {
+					llamaCppStatusEl.textContent = "Saved. Restart backend for model-load settings (↻) to take effect.";
+					llamaCppStatusEl.style.color = "var(--green, green)";
+					setTimeout(() => { llamaCppStatusEl.textContent = ""; }, 6000);
+				}
+			} catch (err) {
+				if (llamaCppStatusEl) {
+					llamaCppStatusEl.textContent = "Error: " + err.message;
+					llamaCppStatusEl.style.color = "var(--red, red)";
+				}
+			} finally {
+				saveLlamaCppBtn.disabled = false;
+			}
+		});
+	}
+
+	// ── Initial load if cache is cold ─────────────────────────────────────────
+
 	if (!SettingsStore.get()) {
 		SettingsStore.init().then((settings) => {
 			populateAISettingsFields(root, settings);
+			populateLlamaCppFields(root, settings);
 		}).catch(console.warn);
 	}
 }

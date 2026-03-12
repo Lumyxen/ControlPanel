@@ -6,6 +6,7 @@
 #include <mutex>
 #include <json/json.h>
 
+class Config;
 class McpRegistry;
 
 #ifdef LLAMA_CPP_AVAILABLE
@@ -24,10 +25,21 @@ class McpRegistry;
  * without the .gguf extension (e.g. "llamacpp::Qwen3.5-2B-Q6_K").
  *
  * When LLAMA_CPP_AVAILABLE is not defined every method is a safe no-op stub.
+ *
+ * Settings are read from Config at construction time and applied when loading
+ * the model. Changes to model-load settings (context size, batch size, flash
+ * attention, GPU layers, threads) require a backend restart to take effect.
+ * Sampler settings (top_p, min_p, repeat_penalty) are read on every inference
+ * call and take effect immediately.
  */
 class LlamaCppService {
 public:
-    explicit LlamaCppService(const std::string& modelsDir);
+    /**
+     * @param modelsDir  Directory scanned for .gguf model files.
+     * @param config     Application config; read at construction for model params,
+     *                   and on every inference call for sampler params.
+     */
+    explicit LlamaCppService(const std::string& modelsDir, Config& config);
     ~LlamaCppService();
 
     // Non-copyable / non-movable (owns raw llama pointers)
@@ -37,7 +49,7 @@ public:
     // ── Status ────────────────────────────────────────────────────────────────
 
     /** True if a model has been loaded and is ready for inference. */
-    bool        isReady()         const { return modelLoaded_; }
+    bool        isReady()          const { return modelLoaded_; }
     std::string getLoadedModelId() const { return loadedModelId_; }
 
     // ── Models API ────────────────────────────────────────────────────────────
@@ -45,8 +57,7 @@ public:
     /**
      * Scan modelsDir for .gguf files and return them in the standard
      * { "data":[ { "id", "name", "source", "context_length", "max_tokens" }, … ] }
-     * format.  Only includes the currently-loaded model (to avoid surfacing
-     * files that can't be used without a restart).
+     * format.
      */
     Json::Value getModels() const;
 
@@ -97,13 +108,14 @@ private:
     std::string loadedModelId_;
     bool        modelLoaded_ = false;
 
+    Config&          config_;
     mutable std::mutex inferMutex_;
 
 #ifdef LLAMA_CPP_AVAILABLE
     llama_model*   model_ = nullptr;
     llama_context* ctx_   = nullptr;
-    int            n_ctx_ = 8192;
-    int            n_batch_ = 2048; // Increased batch size for faster processing
+    int            n_ctx_   = 8192;
+    int            n_batch_ = 2048;
 #endif
 
     // ── Helpers ───────────────────────────────────────────────────────────────

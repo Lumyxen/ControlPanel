@@ -379,7 +379,7 @@ int main() {
     registry.loadFromFile(mcpJsonPath);
 
     // ── llama.cpp local inference service ─────────────────────────────────────
-    LlamaCppService llamaCppService(modelsDir.string());
+    LlamaCppService llamaCppService(modelsDir.string(), config);
 
     // ── Startup banner ────────────────────────────────────────────────────────
     std::cout << "\n=== Control Panel Server ===\n";

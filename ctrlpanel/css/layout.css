@@ -2,7 +2,8 @@
 body {
 	display: grid;
 	grid-template-columns: var(--sidebar-width) 1fr;
-	min-height: 100vh;
+	height: 100vh;       /* fixed to the viewport — never grows with content */
+	overflow: hidden;    /* body must not scroll; content column scrolls itself */
 	transition: grid-template-columns var(--sidebar-transition);
 }
 
