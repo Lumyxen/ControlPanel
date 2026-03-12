@@ -15,6 +15,8 @@
   - Switch automatically between llama.cpp builds (CUDA, ROCm, Vulkan, Rockchip NPU, CPU) based on hardware detected
     - Allow user to manually change in settings
     - Build with all 5 versions of llama.cpp built-in
+- Tone down llama.cpp max compute usage to allow computer use during generation
+  - Ability to return to maximum usage in settings
 - Edit available model list
   - Model search
     - LM Studio
