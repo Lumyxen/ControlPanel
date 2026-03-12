@@ -7,12 +7,10 @@
 
 ### To Fix
 #### UX
-- Put AI chat-box "new chat" button when sidebar is collapsed exclusively on AI chat-box pages
+- None
 
 ## AI Chat-box
 ### Planned Features
-- Eval Batch Size
-  - Increases performance at the cost of memory usage
 - Switch automatically between llama.cpp builds (CUDA, ROCm, Vulkan, Rockchip NPU, CPU) based on hardware detected
   - Build with all 5 versions of llama.cpp built-in
   - Allow user to manually change in settings

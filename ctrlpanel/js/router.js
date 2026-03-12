@@ -21,6 +21,8 @@ export function setActive(url, currentChatId) {
 	const urlChatId = isChat ? getChatIdFromRoute(url) : null;
 	const effectiveChatId = urlChatId || currentChatId || null;
 
+	document.body.classList.toggle("is-chat-page", isChat);
+
 	document.querySelectorAll("a[data-route]").forEach((a) => {
 		const href = a.getAttribute("href") || "";
 		const isChatLink = href.includes("ai-chat.html");

@@ -111,7 +111,7 @@ body.sidebar-collapsed .icon-button.fixed-toggle {
     transition: opacity 160ms ease, transform 160ms ease;
 }
 
-body.sidebar-collapsed .quick-new-chat {
+body.sidebar-collapsed.is-chat-page .quick-new-chat {
     opacity: 1;
     transform: translateX(0);
     pointer-events: auto;
@@ -119,8 +119,8 @@ body.sidebar-collapsed .quick-new-chat {
 
 @media (max-width: 800px) {
     /* On small screens the sidebar is effectively collapsed by layout,
-       so keep the quick new chat button available. */
-    .quick-new-chat {
+       so keep the quick new chat button available only on chat pages. */
+    body.is-chat-page .quick-new-chat {
         opacity: 1;
         transform: translateX(0);
         pointer-events: auto;
