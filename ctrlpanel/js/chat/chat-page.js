@@ -811,7 +811,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 							msgContent.appendChild(wrapper);
 						}
 						
-						if (messages) messages.scrollTop = messages.scrollHeight;
+						// Scroll the .content container so the scrollbar stays at the
+						// right edge of the page rather than inside the chat column
+						if (messages) {
+							const scrollEl = messages.closest('.content') || messages;
+							scrollEl.scrollTop = scrollEl.scrollHeight;
+						}
 					}
 				},
 				currentSignal,
@@ -833,99 +838,44 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			setActiveCallback && setActiveCallback();
 			
 		} catch (err) {
-			if (currentSignal.aborted || err.name === 'AbortError') {
-				if (uiState.flushResponse) {
-					uiState.flushResponse();
-					uiState.flushResponse = null;
-				}
-				return;
+			console.error("[ChatPage] Stream error:", err);
+			stopTyping();
+			
+			const errorText = err?.message || String(err);
+			if (errorText && errorText !== "Empty response from AI") {
+				addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", `**Error:** ${errorText}`);
+				saveChats();
 			}
 			
-			console.error("[ChatPage] AI request failed:", err);
-			errorFromStream = err.message || String(err) || "Unknown error";
-			stopTyping();
 			rerender();
 			setActiveCallback && setActiveCallback();
 		}
 	};
 
 	const rerender = () => {
-		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
-		if (!chat) return;
-		renderThread(messages, chat, uiState);
+		const currentChatId = getCurrentChatId();
+		const chat = currentChatId ? getChatById(currentChatId) : null;
+		const graph = chat ? ensureGraph(chat) : null;
+		const hasMessages = Boolean(graph && computeThreadNodeIds(graph).length > 0);
+
+		if (empty) empty.hidden = hasMessages || uiState.isGenerating;
+		if (chat) renderThread(messages, chat, uiState);
+		else messages.querySelectorAll(".chat-message, .chat-typing").forEach((el) => el.remove());
+
 		updateLiveContext();
-
-		const g = ensureGraph(chat);
-		const hasMessages = computeThreadNodeIds(g).length > 0;
-		if (empty) empty.hidden = hasMessages;
-
-		if (uiState.editingNodeId) {
-			requestAnimationFrame(() => {
-				const el = messages.querySelector(`.chat-message[data-node-id="${uiState.editingNodeId}"] .chat-edit-input`);
-				if (el) {
-					el.focus();
-					el.style.height = "auto";
-					el.style.height = el.scrollHeight + "px";
-				}
-			});
-		}
 	};
 
-	loadCurrentChat(() => setActiveCallback && setActiveCallback());
-
-	input.addEventListener("keydown", (e) => {
-		if (e.isComposing) return;
-		if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-			e.preventDefault();
-			if (uiState.isGenerating) return;
-			form.dataset.sendNoReply = e.shiftKey ? "1" : "";
-			form.requestSubmit();
-		}
-	}, { signal });
-
 	messages.addEventListener("click", (e) => {
-		const codeCopyBtn = e.target.closest('.md-code-copy');
-		if (codeCopyBtn) {
-			e.preventDefault();
-			e.stopPropagation();
-			const wrapper = codeCopyBtn.closest('.md-code-wrapper');
-			const codeEl = wrapper?.querySelector('code');
-			if (codeEl) {
-				navigator.clipboard.writeText(codeEl.textContent).then(() => {
-					const oldHtml = codeCopyBtn.innerHTML;
-					codeCopyBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M20 6L9 17l-5-5"/></svg>`;
-					codeCopyBtn.style.color = "var(--accent)";
-					setTimeout(() => {
-						codeCopyBtn.innerHTML = oldHtml;
-						codeCopyBtn.style.color = "";
-					}, 2000);
-				}).catch(err => {
-					console.error("Failed to copy code", err);
-				});
-			}
-			return;
-		}
-
-		const codeHeader = e.target.closest('.md-code-header');
-		if (codeHeader) {
-			e.preventDefault();
-			e.stopPropagation();
-			const wrapper = codeHeader.closest('.md-code-wrapper');
-			if (wrapper) {
-				wrapper.classList.toggle('collapsed');
-			}
-			return;
-		}
-
-		const btn = e.target.closest("button[data-action]");
+		const btn = e.target.closest(".chat-action-btn");
 		if (!btn) return;
+
 		const action = btn.dataset.action;
 		const msgEl = btn.closest(".chat-message");
 		const nodeId = msgEl?.dataset.nodeId;
-		if (!action || !nodeId) return;
+		if (!nodeId) return;
 
-		const chatId = getCurrentChatId();
-		const chat = chatId ? getChatById(chatId) : null;
+		const currentChatId = getCurrentChatId();
+		const chat = currentChatId ? getChatById(currentChatId) : null;
 		if (!chat) return;
 		const graph = ensureGraph(chat);
 		const node = getNode(graph, nodeId);
@@ -934,40 +884,23 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const handlers = {
 			thread: () => {
 				stopTyping();
-				branchFromNode(graph, nodeId, { preserveSelectedTail: false });
-				chat.updatedAt = Date.now();
-				saveChats();
-				uiState.editingNodeId = null;
-				uiState.editingDraft = "";
-				uiState.editingSaveMode = null;
-				rerender();
-				renderChatList();
-				setActiveCallback && setActiveCallback();
-			},
-			delete: () => {
-				stopTyping();
-				if (e.shiftKey) {
-					spliceDeleteNode(graph, nodeId);
-				} else {
-					deleteSubtree(graph, nodeId);
+				const branched = branchFromNode(graph, nodeId);
+				if (branched) {
 					recomputeLeafId(graph);
+					chat.updatedAt = Date.now();
+					saveChats();
+					uiState.editingNodeId = null;
+					uiState.editingDraft = "";
+					uiState.editingSaveMode = null;
+					rerender();
+					renderChatList();
+					setActiveCallback && setActiveCallback();
 				}
-				chat.updatedAt = Date.now();
-				saveChats();
-				uiState.editingNodeId = null;
-				uiState.editingDraft = "";
-				uiState.editingSaveMode = null;
-				if (computeThreadNodeIds(graph).length === 0) {
-					createNewChat();
-				}
-				rerender();
-				renderChatList();
-				setActiveCallback && setActiveCallback();
 			},
 			edit: () => {
 				stopTyping();
 				uiState.editingNodeId = nodeId;
-				
+
 				let textToEdit = "";
 				if (node.parts) {
 					textToEdit = node.parts.filter(p => p.type === "text").map(p => p.content).join("");
@@ -1229,6 +1162,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		}
 	}, { signal });
 
-	updateLiveContext();
+	rerender();
 	input.focus();
 }

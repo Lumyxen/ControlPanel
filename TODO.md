@@ -202,8 +202,6 @@
 - Hovering over the last message in a chat makes the chat slightly scrolls up
 - Don't force close the thinking box during generation
 - Message regeneration deletes messages after generation instead of before
-- Scroll bar in awkward position
-- Scrolling only works in the specific chat message area
 
 #### General Bugs
 - Not properly getting context window size from LM Studio

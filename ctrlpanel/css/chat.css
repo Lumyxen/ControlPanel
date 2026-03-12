@@ -9,7 +9,8 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    min-height: 0;
+    /* min-height: 0 removed — allows content to grow beyond the flex container
+       so that .content (the scroll root) scrolls instead of .chat-messages */
     max-width: 800px;
     width: 100%;
     margin: 0 auto;
@@ -17,15 +18,20 @@
 
 .chat-messages {
     flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
+    /* overflow removed — scrolling now happens at the .content level so the
+       scrollbar appears at the right edge of the page, not inside the column */
     padding: 16px 0;
 
     /* More separation between bubbles */
     display: flex;
     flex-direction: column;
     gap: 14px;
+}
+
+/* Remove bottom padding from .content when hosting the chat page so the
+   sticky form sits flush with the viewport bottom edge */
+.content:has(.chat-page) {
+    padding-bottom: 0;
 }
 
 /* Ensure hidden state actually hides, even if other rules set display */
@@ -53,6 +59,11 @@
     gap: 12px;
     margin: 0 -24px;
     width: calc(100% + 48px);
+
+    /* Sticky so the input bar remains visible while scrolling chat history */
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
 }
 
 /* Attachments (above textarea) */
@@ -495,7 +506,7 @@
     background: var(--ctp-mantle);
 }
 
-/* Tools icon: muted by default; green only when any tool is enabled */
+/* Tools icon: muted by default; accent only when any tool is enabled */
 .chat-dropdown-icon {
     width: 16px;
     height: 16px;
@@ -784,8 +795,8 @@
 .chat-message p {
     margin: 0;
     color: var(--text);
-    white-space: pre-wrap; /* keep newlines */
-    overflow-wrap: anywhere; /* wrap long tokens/urls */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
     word-break: break-word;
 }
 
@@ -799,19 +810,19 @@
 /* Table wrapper for horizontal scrolling */
 .md-table-wrapper {
     overflow-x: auto;
-    max-width: none; /* Allow extending beyond bubble */
+    max-width: none;
     margin: 0.5em 0;
 }
 
 .md-table-wrapper .md-table {
-    width: max-content; /* Don't force fit to container */
+    width: max-content;
     min-width: 100%;
     margin: 0;
 }
 
 .md-table-wrapper th,
 .md-table-wrapper td {
-    white-space: nowrap; /* Prevent word wrapping */
+    white-space: nowrap;
 }
 
 /* Reasoning/thinking section */
@@ -1333,7 +1344,7 @@
     border: 1px solid var(--border);
 }
 
-/* Updated Code Block Styles */
+/* Code Block Styles */
 .md-code-wrapper {
     border: 1px solid var(--border);
     border-radius: var(--radius-none, 0);
@@ -1403,7 +1414,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 22px; 
+    width: 22px;
     height: 22px;
     color: var(--muted);
 }
@@ -1551,7 +1562,7 @@
 .md-mention { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); padding: 0.1em 0.3em; border-radius: var(--radius-none, 0); font-weight: 500; }
 .md-timestamp { background: color-mix(in srgb, var(--ctp-mantle) 70%, transparent); color: var(--muted); padding: 0.1em 0.3em; border-radius: var(--radius-none, 0); font-size: 0.85em; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; border: 1px solid var(--border); }
 
-/* Callouts / Admonitions (Used natively for theorems/proofs too) */
+/* Callouts / Admonitions */
 .md-callout {
     margin: 0.75em 0;
     border: 1px solid var(--border);
@@ -1611,7 +1622,7 @@ del { text-decoration: line-through; color: var(--muted); }
     margin: 0.5em 0;
     background: color-mix(in srgb, var(--ctp-mantle) 50%, transparent);
     border: 1px solid var(--border);
-    border-radius: var(--radius-none, 0); /* Force zero-radius */
+    border-radius: var(--radius-none, 0);
     text-align: center;
 }
 
@@ -1626,7 +1637,7 @@ del { text-decoration: line-through; color: var(--muted); }
     font-size: 0.95em;
     background: color-mix(in srgb, var(--accent) 10%, transparent);
     padding: 0.1em 0.3em;
-    border-radius: var(--radius-none, 0); /* Force zero-radius */
+    border-radius: var(--radius-none, 0);
 }
 
 .latex-block {
@@ -1637,7 +1648,7 @@ del { text-decoration: line-through; color: var(--muted); }
     margin: 0.25em 0;
     background: color-mix(in srgb, var(--ctp-mantle) 50%, transparent);
     border: 1px solid var(--border);
-    border-radius: var(--radius-none, 0); /* Force zero-radius */
+    border-radius: var(--radius-none, 0);
     overflow-x: auto;
 }
 

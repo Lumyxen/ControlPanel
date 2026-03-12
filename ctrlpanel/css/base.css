@@ -64,3 +64,36 @@ textarea {
 		transition: none !important;
 	}
 }
+
+/* ==========================================
+   Themed Scrollbar
+   Square corners, follows theme palette
+   ========================================== */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--border) transparent;
+}
+
+*::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+	background: transparent;
+	border-radius: 0;
+}
+
+*::-webkit-scrollbar-thumb {
+	background-color: var(--border);
+	border-radius: 0;
+	border: none;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+	background-color: var(--muted);
+}
+
+*::-webkit-scrollbar-corner {
+	background: transparent;
+}

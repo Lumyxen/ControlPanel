@@ -151,58 +151,63 @@ export function buildToolCallElement(tc) {
 
 	const summary = document.createElement("summary");
 	summary.className = "tool-call-summary";
-	summary.innerHTML = `<span class="tool-call-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span><span class="tool-call-name">${escapeHtml(formatToolName(tc.name))}</span>`;
+
+	const iconEl = document.createElement("span");
+	iconEl.className = "tool-call-icon";
+	iconEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.6316 7.63137C15.2356 7.23535 15.0376 7.03735 14.9634 6.80902C14.8981 6.60817 14.8981 6.39183 14.9634 6.19098C15.0376 5.96265 15.2356 5.76465 15.6316 5.36863L18.47 2.53026C17.7168 2.18962 16.8806 2 16.0002 2C12.6865 2 10.0002 4.68629 10.0002 8C10.0002 8.49104 10.0592 8.9683 10.1705 9.42509C10.2896 9.91424 10.3492 10.1588 10.3387 10.3133C10.3276 10.4751 10.3035 10.5612 10.2289 10.7051C10.1576 10.8426 10.0211 10.9791 9.74804 11.2522L3.50023 17.5C2.6718 18.3284 2.6718 19.6716 3.50023 20.5C4.32865 21.3284 5.6718 21.3284 6.50023 20.5L12.748 14.2522C13.0211 13.9791 13.1576 13.8426 13.2951 13.7714C13.4391 13.6968 13.5251 13.6727 13.6869 13.6616C13.8414 13.651 14.086 13.7106 14.5751 13.8297C15.0319 13.941 15.5092 14 16.0002 14C19.3139 14 22.0002 11.3137 22.0002 8C22.0002 7.11959 21.8106 6.28347 21.47 5.53026L18.6316 8.36863C18.2356 8.76465 18.0376 8.96265 17.8092 9.03684C17.6084 9.1021 17.3921 9.1021 17.1912 9.03684C16.9629 8.96265 16.7649 8.76465 16.3689 8.36863L15.6316 7.63137Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+	const nameEl = document.createElement("span");
+	nameEl.className = "tool-call-name";
+	nameEl.textContent = formatToolName(tc.name);
+
+	summary.appendChild(iconEl);
+	summary.appendChild(nameEl);
+	details.appendChild(summary);
 
 	const body = document.createElement("div");
 	body.className = "tool-call-body";
 
-	// Input section
-	const inputLabel = document.createElement("div");
-	inputLabel.className = "tool-call-section-label";
-	inputLabel.textContent = "Input";
+	if (tc.input !== undefined && tc.input !== null) {
+		const inputLabel = document.createElement("div");
+		inputLabel.className = "tool-call-section-label";
+		inputLabel.textContent = "Input";
+		body.appendChild(inputLabel);
 
-	const inputPre = document.createElement("pre");
-	inputPre.className = "tool-call-code";
-	try {
-		const inputStr = typeof tc.input === "object"
+		const inputCode = document.createElement("pre");
+		inputCode.className = "tool-call-code";
+		inputCode.textContent = typeof tc.input === "object"
 			? JSON.stringify(tc.input, null, 2)
-			: String(tc.input ?? "");
-		inputPre.textContent = inputStr;
-	} catch {
-		inputPre.textContent = String(tc.input ?? "");
+			: String(tc.input);
+		body.appendChild(inputCode);
 	}
 
-	// Output section
-	const outputLabel = document.createElement("div");
-	outputLabel.className = "tool-call-section-label";
-	outputLabel.textContent = "Output";
+	if (tc.output !== undefined && tc.output !== null) {
+		const outputLabel = document.createElement("div");
+		outputLabel.className = "tool-call-section-label";
+		outputLabel.textContent = "Output";
+		body.appendChild(outputLabel);
 
-	const outputPre = document.createElement("pre");
-	outputPre.className = "tool-call-code";
-	outputPre.textContent = String(tc.output ?? "");
+		const outputCode = document.createElement("pre");
+		outputCode.className = "tool-call-code";
+		outputCode.textContent = typeof tc.output === "object"
+			? JSON.stringify(tc.output, null, 2)
+			: String(tc.output);
+		body.appendChild(outputCode);
+	}
 
-	body.appendChild(inputLabel);
-	body.appendChild(inputPre);
-	body.appendChild(outputLabel);
-	body.appendChild(outputPre);
-
-	details.appendChild(summary);
 	details.appendChild(body);
 	return details;
 }
 
-/**
- * Build reasoning element for assistant messages
- */
-function buildReasoningElement(reasoning) {
-	if (!reasoning) return null;
-	
+export function buildReasoningElement(reasoning) {
+	if (!reasoning || !reasoning.trim()) return null;
+
 	const details = document.createElement("details");
 	details.className = "message-reasoning";
-	
+
 	const summary = document.createElement("summary");
 	summary.textContent = "Thinking...";
-	
+
 	const content = document.createElement("div");
 	content.className = "reasoning-content";
 	content.textContent = reasoning;
@@ -321,13 +326,24 @@ function buildMessageElement({ node, isEditing, editingDraft, canBranchBack, can
 	return div;
 }
 
+/**
+ * Scroll the page to the bottom. Targets the .content scroll container so the
+ * scrollbar appears at the right edge of the viewport rather than inside the
+ * chat column.
+ * @param {Element} messagesEl  The #chatMessages element
+ */
+function scrollToBottom(messagesEl) {
+	const scrollEl = messagesEl.closest('.content') || messagesEl;
+	scrollEl.scrollTop = scrollEl.scrollHeight;
+}
+
 export function showTyping(container) {
 	const div = document.createElement("div");
 	div.className = "chat-typing";
 	div.setAttribute("aria-label", "Assistant is typing");
 	div.innerHTML = "<span></span><span></span><span></span>";
 	container.appendChild(div);
-	container.scrollTop = container.scrollHeight;
+	scrollToBottom(container);
 	return div;
 }
 
@@ -352,5 +368,5 @@ export function renderThread(messagesEl, chat, uiState) {
 		messagesEl.appendChild(el);
 	});
 
-	messagesEl.scrollTop = messagesEl.scrollHeight;
+	scrollToBottom(messagesEl);
 }
