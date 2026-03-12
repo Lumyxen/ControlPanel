@@ -191,10 +191,8 @@
 
 ### To Fix
 #### UI
-- Fix large empty space in chats
 - LaTeX formatting not properly fully functional, but mostly is
 - Messages flicker during longer generations that use auto-scroll with fast model generation speeds
-- Some tables just don't seem to start formatting at all
 
 #### UX
 - Fix new thread not being created when deleting a message
@@ -204,6 +202,8 @@
 - Hovering over the last message in a chat makes the chat slightly scrolls up
 - Don't force close the thinking box during generation
 - Message regeneration deletes messages after generation instead of before
+- Scroll bar in awkward position
+- Scrolling only works in the specific chat message area
 
 #### General Bugs
 - Not properly getting context window size from LM Studio
