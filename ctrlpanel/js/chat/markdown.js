@@ -308,6 +308,24 @@ const markedModule = (function () {
 			return out;
 		}
 
+		// Helper to render nested list elements accurately without wrapping the first top-level text in <p>
+		parseItem(src) {
+			src = (src || '').replace(/\r\n|\r/g, '\n');
+			const tokens = this.tokenize(src);
+			let out = '';
+
+			for (let i = 0; i < tokens.length; i++) {
+				const token = tokens[i];
+				if (token.type === 'paragraph' && i === 0) {
+					out += this.inlineParser.parse(token.text) + '\n';
+				} else {
+					out += this.render(token);
+				}
+			}
+
+			return out;
+		}
+
 		tokenize(src) {
 			const tokens =[];
 
@@ -337,23 +355,36 @@ const markedModule = (function () {
 					continue;
 				}
 
-				// Table (GFM)
-				match = src.match(/^ {0,3}\|?(.+)\|.*\n {0,3}\|?[\s\S]*\|[\s\S]*(?:\n|$)/);
-				if (match && src.match(/^ {0,3}\|?.*\|\n {0,3}\|?[\-:]+/)) {
-					const tableMatch = src.match(/^ {0,3}\|?(.+)\|\n {0,3}\|?([\s\S]*?)\|(?:\n([\s\S]*?))?(?:\n{2,}|\s*$)/);
+				// Table (GFM) - Robust to tables missing leading/trailing pipes
+				const tableHeaderRegex = /^ {0,3}\|?([^\n]+)\|[^\n]*\n {0,3}\|?([ \t\-:|]+)\|[ \t\-:|]*(?:\n|$)/;
+				if (src.match(tableHeaderRegex)) {
+					const tableBlockRegex = /^(?: {0,3}\|?[^\n]+\|[^\n]*(?:\n|$))+/;
+					const tableMatch = src.match(tableBlockRegex);
 					if (tableMatch) {
-						const header = tableMatch[1].split('|').map(s => s.trim()).filter(Boolean);
-						const alignRow = tableMatch[2].split('|').map(s => s.trim()).filter(Boolean);
-						const align = alignRow.map(s => {
+						const lines = tableMatch[0].trim().split('\n');
+						const headerLine = lines[0];
+						const alignLine = lines[1];
+						const rows = lines.slice(2);
+
+						const splitCells = (row) => {
+							const trimmed = row.replace(/^ {0,3}\|?|\|$/g, '');
+							return trimmed.split(/(?<!\\)\|/).map(s => s.trim().replace(/\\\|/g, '|'));
+						};
+						
+						const header = splitCells(headerLine);
+						const alignRaw = splitCells(alignLine);
+						const align = alignRaw.map(s => {
 							if (/^:-+:$/.test(s)) return 'center';
 							if (/^:-+/.test(s)) return 'left';
 							if (/^-+:$/.test(s)) return 'right';
 							return null;
 						});
-						const rows = tableMatch[3] ? tableMatch[3].trim().split('\n') :[];
-						const cells = rows.map(row => row.replace(/^ {0,3}\|?|\|$/g, '').split('|').map(s => s.trim()));
+						
+						const cells = rows.map(splitCells);
+						
 						tokens.push({ type: 'table', header, align, cells });
 						src = src.substring(tableMatch[0].length);
+						if (src.startsWith('\n')) src = src.substring(1);
 						continue;
 					}
 				}
@@ -377,23 +408,62 @@ const markedModule = (function () {
 
 				// List
 				const listMatch = src.match(/^( {0,3})([-*+]|\d+\.)\s+[\s\S]+?(?:\n{2,}(?!\s)|\s*$)/);
-				if (listMatch) {
-					const indent = listMatch[1].length;
-					const marker = listMatch[2];
-					const ordered = /^\d+\./.test(marker);
-					const start = ordered ? parseInt(marker) : 1;
-					const listContent = listMatch[0];
-					const items =[];
-					const itemRegex = new RegExp(`^ {0,3}${ordered ? '\\d+\\.' : '[-*+]'}\\s+(.*)$`, 'gm');
-					let itemMatch;
-					while ((itemMatch = itemRegex.exec(listContent)) !== null) {
-						const text = itemMatch[1].trim();
-						const task = /^\[[ xX]\]/.test(text);
-						const checked = /^\[[xX]\]/.test(text);
-						items.push({ text: task ? text.substring(4) : text, task, checked });
+				if (listMatch && src.match(/^( {0,3})([-*+]|\d+\.)\s+/)) {
+					const rawList = listMatch[0];
+					const baseIndent = listMatch[1].length;
+					const bull = listMatch[2];
+					const ordered = /^\d/.test(bull);
+					const start = ordered ? parseInt(bull, 10) : 1;
+
+					// Find items belonging strictly to this exact list depth
+					const itemRegex = new RegExp(`^( {0,3})([-*+]|\\d+\\.)[ \\t]+`, 'gm');
+					let itemRegexMatch;
+					const itemMatches =[];
+
+					while ((itemRegexMatch = itemRegex.exec(rawList)) !== null) {
+                        // Tolerate a small shift, but deeper indents are nested items belonging to the previous match
+						if (itemRegexMatch[1].length <= baseIndent + 1) {
+							itemMatches.push(itemRegexMatch);
+						}
 					}
+
+					if (itemMatches.length === 0) {
+						itemMatches.push({ index: 0, 0: listMatch[1] + listMatch[2] + ' ', 1: listMatch[1] });
+					}
+
+					const items =[];
+					for (let i = 0; i < itemMatches.length; i++) {
+						const startObj = itemMatches[i];
+						const endIdx = (i + 1 < itemMatches.length) ? itemMatches[i+1].index : rawList.length;
+						let itemRaw = rawList.substring(startObj.index, endIdx);
+						
+						// Strip the bullet marker itself
+						itemRaw = itemRaw.substring(startObj[0].length);
+						
+						let task = false;
+						let checked = false;
+						if (/^\[[ xX]\][ \t]/.test(itemRaw)) {
+							task = true;
+							checked = /^\[[xX]\]/.test(itemRaw);
+							itemRaw = itemRaw.substring(4);
+						}
+
+						// Remove the indentation footprint from multi-line structures so they can cascade
+						const indentToRemove = startObj[0].length;
+						const unindented = itemRaw.split('\n').map((line, index) => {
+							if (index === 0) return line;
+							let spaces = 0;
+							while (spaces < indentToRemove && line[spaces] === ' ') {
+								spaces++;
+							}
+							return line.substring(spaces);
+						}).join('\n');
+
+						items.push({ text: unindented.trimEnd(), task, checked });
+					}
+
 					tokens.push({ type: 'list', ordered, start, items });
-					src = src.substring(listMatch[0].length);
+					src = src.substring(rawList.length);
 					continue;
 				}
 
@@ -407,8 +477,7 @@ const markedModule = (function () {
 				}
 
 				// Paragraph & HTML Blocks intercept
-				// Regex carefully splits whenever it sees <div, </div, <details, etc. to prevent invalid <p> wrapper nesting.
-				match = src.match(/^([^\n]+(?:\n(?! {0,3}#{1,6}\s| {0,3}>| {0,3}[-*+]| {0,3}\d+\.|```|~~~| {0,3}<\/?div| {0,3}<\/?details|\n{2,})[^\n]+)*)/);
+				match = src.match(/^([^\n]+(?:\n(?! {0,3}#{1,6}\s| {0,3}>| {0,3}[-*+]| {0,3}\d+\.|```|~~~| {0,3}<\/?div| {0,3}<\/?details|\n{2,}| {0,3}\|?[^\n]+\|[^\n]*\n {0,3}\|?[ \t\-:|]+\|[ \t\-:|]*(?:\n|$))[^\n]+)*)/);
 				if (match) {
 					let text = match[1].trim();
 					if (/^ {0,3}<\/?(div|details|summary|p|ul|ol|li|table|thead|tbody|tr|td|th|blockquote|pre)/i.test(text)) {
@@ -444,7 +513,7 @@ const markedModule = (function () {
 				case 'list':
 					let body = '';
 					for (const item of token.items) {
-						body += this.renderer.listitem(this.inlineParser.parse(item.text), item.task, item.checked);
+						body += this.renderer.listitem(this.parseItem(item.text), item.task, item.checked);
 					}
 					return this.renderer.list(body, token.ordered, token.start);
 				case 'table': {
