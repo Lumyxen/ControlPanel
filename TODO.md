@@ -26,6 +26,8 @@
     - LM Studio
     - HuggingFace (downloads model into ./data/models/)
   - Filters
+- Add logprobs
+  - Highlight uncertain tokens
 - Speculative Decoding
   - Setting to enable/disable this
   - Setting to change both small and large models
@@ -72,8 +74,6 @@
 - Reserve max output token length to the context window (don't allow user to add more to the history if max output token length exceeds remaining available context)
 - Be able to scroll up and stop auto-scroll
 - Button to go all the way to bottom of chat history
-- Add logprobs
-  - Highlight uncertain tokens
 - Add weather tool
   - Inputs user location on the current day by default
   - AI can specify a different location or date
@@ -204,9 +204,10 @@
 - Hovering over the last message in a chat makes the chat slightly scrolls up
 - Don't force close the thinking box during generation
 - Message regeneration deletes messages after generation instead of before
+- Can't delete messages
 
-#### General Bugs
-- Images don't get parsed for AI models that have vision capabilities
+#### Misc Bugs
+- Images don't work for models via llama.cpp
 
 
 

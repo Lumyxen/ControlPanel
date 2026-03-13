@@ -113,19 +113,42 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
             res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
             return;
         }
+        // The frontend always sends "prompt" (used by llama.cpp and text-only LM Studio)
+        // and additionally sends "messages" when the thread contains image content blocks
+        // (for vision-capable LM Studio models). Both fields are validated below.
         if (!body.isMember("model") || !body.isMember("prompt")) {
             res.status = 400;
             res.set_content("{\"error\": \"Missing required fields: model, prompt\"}", "application/json");
             return;
         }
 
+        // "messages" is only present when the thread has image content (vision request).
+        const bool hasPrebuiltMessages = body.isMember("messages") && body["messages"].isArray()
+                                         && !body["messages"].empty();
+
         std::string model        = body["model"].asString();
         std::string prompt       = body["prompt"].asString();
-        int maxTokens            = body.isMember("max_tokens")     ? body["max_tokens"].asInt()     : 8192;
+        int maxTokens            = body.isMember("max_tokens")     ? body["max_tokens"].asInt()      : 8192;
         std::string systemPrompt = body.isMember("system_prompt")  ? body["system_prompt"].asString(): "";
-        double temperature       = body.isMember("temperature")    ? body["temperature"].asDouble() : -1.0;
-        int contextWindow        = body.isMember("context_window") ? body["context_window"].asInt() : 0;
-        std::string stream_id    = body.isMember("stream_id")      ? body["stream_id"].asString()   : "";
+        double temperature       = body.isMember("temperature")    ? body["temperature"].asDouble()  : -1.0;
+        int contextWindow        = body.isMember("context_window") ? body["context_window"].asInt()  : 0;
+        std::string stream_id    = body.isMember("stream_id")      ? body["stream_id"].asString()    : "";
+
+        // If the frontend sent a structured messages array, use it directly so that
+        // image content blocks (type: "image_url") are forwarded to the model as-is,
+        // enabling vision on any model that supports it.  Prepend the system prompt
+        // as the first message when one is configured.
+        Json::Value prebuiltMessages(Json::arrayValue);
+        if (hasPrebuiltMessages) {
+            if (!systemPrompt.empty()) {
+                Json::Value sysMsg;
+                sysMsg["role"]    = "system";
+                sysMsg["content"] = systemPrompt;
+                prebuiltMessages.append(sysMsg);
+            }
+            for (const auto& m : body["messages"])
+                prebuiltMessages.append(m);
+        }
 
         Json::Value tools = body.isMember("tools")
             ? body["tools"]
@@ -191,7 +214,8 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
             const bool useTools = tools.isArray() && !tools.empty();
 
             std::thread([ctx, &service, registry, model, prompt, maxTokens,
-                         systemPrompt, temperature, contextWindow, tools, useTools]() mutable {
+                         systemPrompt, temperature, contextWindow, tools,
+                         useTools, hasPrebuiltMessages, prebuiltMessages]() mutable {
                 auto onChunk =[ctx](const std::string& chunk) -> bool {
                     if (ctx->cancelled.load()) return false;
                     if (!chunk.empty()) {
@@ -207,8 +231,13 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                     ctx->done  = true;
                 };
 
-                if (useTools) {
-                    Json::Value messages = service.buildMessages(prompt, systemPrompt);
+                if (useTools || hasPrebuiltMessages) {
+                    // Use streamingChatWithTools for both tool calls and vision:
+                    //   - It accepts a pre-built messages array (preserving image_url blocks)
+                    //   - With an empty tools array it does a single round with no tool_choice
+                    Json::Value messages = hasPrebuiltMessages
+                        ? prebuiltMessages
+                        : service.buildMessages(prompt, systemPrompt);
                     service.streamingChatWithTools(
                         model, messages, tools, maxTokens,
                         onChunk, onError, registry, temperature, contextWindow);

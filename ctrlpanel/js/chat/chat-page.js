@@ -609,6 +609,96 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			return nodeContent;
 		};
 
+		/**
+		 * Build a structured OpenAI-format messages array for the current thread.
+		 * Unlike buildNodeTextForHistory (which flattens everything to a string),
+		 * this preserves image attachments as image_url content blocks so that
+		 * vision-capable models can actually see them.
+		 *
+		 * Message format:
+		 *   { role: "user"|"assistant", content: string | Array<ContentPart> }
+		 *
+		 * ContentPart types used:
+		 *   { type: "text",      text: "..." }
+		 *   { type: "image_url", image_url: { url: "data:<mime>;base64,..." } }
+		 *
+		 * @param {string[]} nodeIds - Ordered thread node IDs to include.
+		 * @returns {Array} OpenAI-compatible messages array.
+		 */
+		const buildApiMessages = (nodeIds) => {
+			const apiMessages = [];
+
+			for (const nodeId of nodeIds) {
+				const node = getNode(graph, nodeId);
+				if (!node) continue;
+
+				const role = node.role === "user" ? "user" : "assistant";
+
+				// ── Assistant messages: plain text only (no image output) ────────
+				if (role === "assistant") {
+					const textContent = buildNodeTextForHistory(node);
+					if (textContent) {
+						apiMessages.push({ role, content: textContent });
+					}
+					continue;
+				}
+
+				// ── User messages: check for image attachments ───────────────────
+				if (node.parts && Array.isArray(node.parts)) {
+					const textParts = [];
+					const contentBlocks = [];
+					let hasImages = false;
+
+					for (const part of node.parts) {
+						if (part.type === "text" && part.content) {
+							textParts.push(part.content);
+						} else if (part.type === "attachment") {
+							if (part.isImage && part.data) {
+								// Vision content block — include the full data URL
+								hasImages = true;
+								contentBlocks.push({
+									type: "image_url",
+									image_url: { url: part.data },
+								});
+							} else if (!part.isImage && part.data) {
+								// Non-image file — decode and embed as text
+								try {
+									const b64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
+									if (b64Match) {
+										const chunk = b64Match[1].slice(0, 13336);
+										const binary = atob(chunk);
+										const bytes = new Uint8Array(binary.length);
+										for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+										const text = new TextDecoder("utf-8").decode(bytes).slice(0, 10000);
+										textParts.push(`\n[File: ${part.name}]\n${text}`);
+									}
+								} catch (e) {
+									console.warn("[ChatPage] Could not decode file attachment:", e);
+								}
+							}
+						}
+					}
+
+					const combinedText = textParts.join("");
+
+					if (hasImages) {
+						// Multimodal message: text first, then image blocks
+						if (combinedText) {
+							contentBlocks.unshift({ type: "text", text: combinedText });
+						}
+						apiMessages.push({ role, content: contentBlocks });
+					} else if (combinedText) {
+						// Text-only message: use a plain string for efficiency
+						apiMessages.push({ role, content: combinedText });
+					}
+				} else if (node.content) {
+					apiMessages.push({ role, content: node.content });
+				}
+			}
+
+			return apiMessages;
+		};
+
 		let conversationHistory = "";
 		for (const nodeId of threadIds) {
 			const node = getNode(graph, nodeId);
@@ -634,6 +724,21 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (!conversationHistory.trim()) {
 			conversationHistory = "Hello";
 		}
+
+		// Build the structured messages array for vision/multimodal support.
+		// Mirrors the fallback logic in the conversationHistory block above:
+		// computeThreadNodeIds may not include the just-submitted user node on
+		// the very first message, so we add parentUserNodeId explicitly when empty.
+		let apiMessages = buildApiMessages(threadIds);
+		if (apiMessages.length === 0 && parentUserNodeId) {
+			apiMessages = buildApiMessages([parentUserNodeId]);
+		}
+
+		// Only use the structured messages path when the thread actually contains
+		// image content blocks. Text-only conversations keep using the flat prompt
+		// string — this keeps llama.cpp and non-vision LM Studio flows unchanged.
+		const hasVisionContent = apiMessages.some(m => Array.isArray(m.content));
+		const visionMessages = hasVisionContent ? apiMessages : null;
 
 		const estimatedPromptTokens = Math.ceil(conversationHistory.length / 3) + 200;
 
@@ -845,7 +950,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				systemPrompt,
 				temperature,
 				contextLimit,
-				uiState.activeStreamId
+				uiState.activeStreamId,
+				visionMessages, // Structured messages with image blocks; null for text-only chats
 			);
 			
 			if (errorFromStream) {

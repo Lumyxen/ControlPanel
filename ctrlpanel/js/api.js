@@ -37,7 +37,7 @@ export async function getModels() {
  * Stream a chat message.
  *
  * @param {string}   model
- * @param {string}   prompt           - Full conversation history string
+ * @param {string}   prompt           - Full conversation history string (used as fallback when messages is null)
  * @param {number}   maxTokens
  * @param {function} onChunk          - Called with each parsed SSE chunk
  * @param {AbortSignal|null} signal
@@ -45,6 +45,10 @@ export async function getModels() {
  * @param {number|null} temperature   - Sampling temperature (null = use backend default)
  * @param {number|null} contextWindow - Context window size to request (used by LM Studio via num_ctx)
  * @param {string|null} streamId      - Identifier mapping to backend for immediate explicit halt
+ * @param {Array|null} messages       - Structured OpenAI-format messages array (enables vision/multimodal).
+ *                                      When provided, takes precedence over prompt for the API call.
+ *                                      Each message: { role, content } where content may be a string
+ *                                      or an array of { type: "text"|"image_url", ... } parts.
  */
 export async function streamChatMessage(
     model,
@@ -56,6 +60,7 @@ export async function streamChatMessage(
     temperature = null,
     contextWindow = null,
     streamId = null,
+    messages = null,
 ) {
     const url = new URL(`${window.location.origin}${API_BASE}/chat/stream`);
 
@@ -63,12 +68,23 @@ export async function streamChatMessage(
         "Content-Type": "application/json",
     };
 
-    // Build request body – only include optional fields when they carry a value
+    // Build request body – only include optional fields when they carry a value.
+    // When a structured messages array is provided (e.g. containing image content blocks
+    // for vision models) send it instead of the flat prompt string. The backend will
+    // use messages directly, bypassing its internal prompt-string parser.
     const requestPayload = {
         model,
-        prompt,
         max_tokens: maxTokens,
     };
+
+    // Always send the flat prompt string — llama.cpp and text-only LM Studio
+    // paths rely on it. Also attach the structured messages array when it is
+    // provided (i.e. the thread contains image content blocks for vision models).
+    requestPayload.prompt = prompt;
+    if (messages && messages.length > 0) {
+        requestPayload.messages = messages;
+    }
+
     if (systemPrompt) {
         requestPayload.system_prompt = systemPrompt;
     }
