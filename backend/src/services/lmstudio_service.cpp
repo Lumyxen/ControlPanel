@@ -112,6 +112,14 @@ static size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, voi
     return realsize;
 }
 
+static int ProgressCallback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow) {
+    StreamContext* ctx = static_cast<StreamContext*>(clientp);
+    if (ctx->onChunk && !ctx->onChunk("")) {
+        return 1; // Return non-zero to abort the curl transfer immediately
+    }
+    return 0;
+}
+
 LmStudioService::LmStudioService() {
     curl_global_init(CURL_GLOBAL_DEFAULT);
 }
@@ -246,6 +254,9 @@ std::string LmStudioService::streamOneRound(
     curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &ctx);
     curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);
     curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 120L);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, ProgressCallback);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &ctx);
 
     CURLcode res = curl_easy_perform(curl);
     long httpCode = 0;
@@ -253,7 +264,7 @@ std::string LmStudioService::streamOneRound(
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
-    if (res == CURLE_WRITE_ERROR) {
+    if (res == CURLE_WRITE_ERROR || res == CURLE_ABORTED_BY_CALLBACK) {
         return "_cancelled_";
     }
 

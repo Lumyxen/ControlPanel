@@ -224,6 +224,11 @@ void runServer(Config& config, LmStudioService& lmstudioService,
         handleStreaming(req, res, lmstudioService, &registry, llamaCppService);
     });
 
+    svr.Post("/api/chat/stop", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        handleStopStream(req, res);
+    });
+
     svr.Get("/api/models", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleModels(req, res, lmstudioService, llamaCppService);

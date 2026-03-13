@@ -8,6 +8,57 @@
 #include <chrono>
 #include <iostream>
 #include <atomic>
+#include <unordered_map>
+#include <shared_mutex>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stream state registry for explicit cancellation
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct StreamingCtx {
+    std::deque<std::string> chunks;
+    std::mutex              mutex;
+    bool                    done  = false;
+    std::atomic<bool>       cancelled{false};
+    std::string             error;
+    std::chrono::steady_clock::time_point last_write = std::chrono::steady_clock::now();
+};
+
+static std::unordered_map<std::string, std::shared_ptr<StreamingCtx>> g_active_streams;
+static std::shared_mutex g_active_streams_mutex;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// handleStopStream
+// ─────────────────────────────────────────────────────────────────────────────
+
+void handleStopStream(const httplib::Request& req, httplib::Response& res) {
+    try {
+        Json::Value body;
+        Json::CharReaderBuilder reader;
+        std::string errs;
+        std::istringstream stream(req.body);
+        if (!Json::parseFromStream(reader, stream, &body, &errs)) {
+            res.status = 400;
+            res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
+            return;
+        }
+
+        std::string stream_id = body.isMember("stream_id") ? body["stream_id"].asString() : "";
+        if (!stream_id.empty()) {
+            std::shared_lock<std::shared_mutex> lock(g_active_streams_mutex);
+            auto it = g_active_streams.find(stream_id);
+            if (it != g_active_streams.end()) {
+                it->second->cancelled.store(true);
+                std::cout << "[Streaming] Explicitly cancelled stream " << stream_id << "\n";
+            }
+        }
+        res.status = 200;
+        res.set_content("{\"status\": \"stopped\"}", "application/json");
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // handleChat  (non-streaming, lmstudio only)
@@ -46,18 +97,6 @@ void handleChat(const httplib::Request& req, httplib::Response& res, LmStudioSer
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// StreamingCtx
-// ─────────────────────────────────────────────────────────────────────────────
-
-struct StreamingCtx {
-    std::deque<std::string> chunks;
-    std::mutex              mutex;
-    bool                    done  = false;
-    std::atomic<bool>       cancelled{false};
-    std::string             error;
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
 // handleStreaming
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -86,6 +125,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
         std::string systemPrompt = body.isMember("system_prompt")  ? body["system_prompt"].asString(): "";
         double temperature       = body.isMember("temperature")    ? body["temperature"].asDouble() : -1.0;
         int contextWindow        = body.isMember("context_window") ? body["context_window"].asInt() : 0;
+        std::string stream_id    = body.isMember("stream_id")      ? body["stream_id"].asString()   : "";
 
         Json::Value tools = body.isMember("tools")
             ? body["tools"]
@@ -108,6 +148,11 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
 
         auto ctx = std::make_shared<StreamingCtx>();
 
+        if (!stream_id.empty()) {
+            std::unique_lock<std::shared_mutex> lock(g_active_streams_mutex);
+            g_active_streams[stream_id] = ctx;
+        }
+
         if (isLlamaCpp) {
             // ── llama.cpp path ────────────────────────────────────────────────
             if (!llamaCppService || !llamaCppService->isReady()) {
@@ -120,8 +165,10 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                          systemPrompt, temperature, contextWindow]() mutable {
                 auto onChunk = [ctx](const std::string& chunk) -> bool {
                     if (ctx->cancelled.load()) return false;
-                    std::lock_guard<std::mutex> lock(ctx->mutex);
-                    ctx->chunks.push_back(chunk);
+                    if (!chunk.empty()) {
+                        std::lock_guard<std::mutex> lock(ctx->mutex);
+                        ctx->chunks.push_back(chunk);
+                    }
                     return true;
                 };
                 auto onError = [ctx](const std::string& err) {
@@ -147,8 +194,10 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                          systemPrompt, temperature, contextWindow, tools, useTools]() mutable {
                 auto onChunk =[ctx](const std::string& chunk) -> bool {
                     if (ctx->cancelled.load()) return false;
-                    std::lock_guard<std::mutex> lock(ctx->mutex);
-                    ctx->chunks.push_back(chunk);
+                    if (!chunk.empty()) {
+                        std::lock_guard<std::mutex> lock(ctx->mutex);
+                        ctx->chunks.push_back(chunk);
+                    }
                     return true;
                 };
                 auto onError = [ctx](const std::string& err) {
@@ -178,6 +227,10 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
         res.set_content_provider(
             "text/event-stream",
             [ctx](size_t /*offset*/, httplib::DataSink& sink) -> bool {
+                if (ctx->cancelled.load()) {
+                    return false;
+                }
+
                 if (!sink.is_writable()) {
                     ctx->cancelled.store(true);
                     return false;
@@ -210,20 +263,36 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                     }
                 }
 
+                auto now = std::chrono::steady_clock::now();
+
                 if (!to_write.empty()) {
                     if (!sink.write(to_write.data(), to_write.size())) {
                         ctx->cancelled.store(true);
                         return false;
                     }
+                    ctx->last_write = now;
                 }
 
                 if (is_done) {
                     sink.done();
                 } else if (to_write.empty()) {
+                    // Occasionally flush an empty SSE comment to reliably detect dropped HTTP client connections
+                    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx->last_write).count() >= 500) {
+                        if (!sink.write(":\n\n", 3)) {
+                            ctx->cancelled.store(true);
+                            return false;
+                        }
+                        ctx->last_write = now;
+                    }
                     std::this_thread::sleep_for(std::chrono::milliseconds(20));
                 }
 
-                return true;
+                return !ctx->cancelled.load();
+            },[stream_id](bool /*success*/) {
+                if (!stream_id.empty()) {
+                    std::unique_lock<std::shared_mutex> lock(g_active_streams_mutex);
+                    g_active_streams.erase(stream_id);
+                }
             }
         );
 

@@ -105,10 +105,9 @@ bool LlamaCppService::loadModel(const std::string& path) {
         // User-specified override
         ctx_size = static_cast<uint32_t>(cfgCtxSize);
     } else {
-        // Auto: use the model's native training context, capped at 64k to
-        // prevent accidental CPU OOMs on large-context models.
-        uint32_t model_n_ctx = llama_model_n_ctx_train(m);
-        ctx_size = model_n_ctx > 0 ? std::min(model_n_ctx, (uint32_t)65536) : 32768;
+        // Use a safe default instead of dynamically fetching model's native context window
+        // (which for models like Qwen 35B can be 64k+, creating a 100GB+ KV cache and locking the OS)
+        ctx_size = 8192;
     }
 
     // ── Thread count ──────────────────────────────────────────────────────────
@@ -320,7 +319,6 @@ void LlamaCppService::doInference(
         return;
     }
 
-    // FIX: Set a safe minimum bound, but remove the n_ctx / 2 clamp to allow huge responses on short prompts
     if (maxTokens <= 0) {
         maxTokens = 8192;
     }
@@ -424,13 +422,19 @@ void LlamaCppService::doInference(
     }
 
     // ── Clear context ─────────────────────────────────────────────────────────
-    llama_memory_seq_rm(llama_get_memory(ctx_), 0, -1, -1);
+    llama_memory_clear(llama_get_memory(ctx_), true);
 
     // ── Prefill in n_batch_-sized chunks ──────────────────────────────────────
     llama_batch batch = llama_batch_init(n_batch_, 0, 1);
 
     int nProcessed = 0;
     while (nProcessed < static_cast<int>(inputTokens.size())) {
+        if (!onChunk("")) {
+            llama_batch_free(batch);
+            llama_memory_clear(llama_get_memory(ctx_), true);
+            return;
+        }
+
         int chunkSize = std::min(n_batch_, static_cast<int>(inputTokens.size()) - nProcessed);
         
         batch.n_tokens = chunkSize;
@@ -450,6 +454,7 @@ void LlamaCppService::doInference(
         if (llama_decode(ctx_, batch) != 0) {
             onError("llama_decode (prefill) failed");
             llama_batch_free(batch);
+            llama_memory_clear(llama_get_memory(ctx_), true);
             return;
         }
         nProcessed += chunkSize;
@@ -477,6 +482,11 @@ void LlamaCppService::doInference(
     bool cancelled  = false;
 
     while (nGenerated < maxTokens && !cancelled) {
+        if (!onChunk("")) {
+            cancelled = true;
+            break;
+        }
+
         llama_token token = llama_sampler_sample(sampler, ctx_, -1);
 
         if (llama_vocab_is_eog(vocab, token)) break;
@@ -511,7 +521,7 @@ void LlamaCppService::doInference(
 
     llama_sampler_free(sampler);
     llama_batch_free(batch);
-    llama_memory_seq_rm(llama_get_memory(ctx_), 0, -1, -1);
+    llama_memory_clear(llama_get_memory(ctx_), true);
 
     if (!cancelled)
         onChunk("data: [DONE]\n\n");

@@ -207,7 +207,6 @@
 - Not properly getting context window size from LM Studio
 - Images don't get parsed for AI models that have vision capabilities
 - Sometimes pasting in text just seems to be weirdly displayed in the input text field, and is omitted from the sent message
-- Stopping generation only stops it on the front end, keeping the back end or API generating.
 
 
 

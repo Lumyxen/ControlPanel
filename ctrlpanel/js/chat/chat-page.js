@@ -31,7 +31,7 @@ import { renderThread, showTyping, buildToolCallElement } from "./thread-ui.js";
 import { InlineAttachmentManager } from "./inline-attachment.js";
 import { parseMarkdown } from "./markdown.js";
 import { preprocessLatexText, extractMath, injectMath } from "./latex.js";
-import { streamChatMessage } from "../api.js";
+import { streamChatMessage, stopChatMessage } from "../api.js";
 import * as SettingsStore from "../settings-store.js";
 
 const TOOLS_KEY = "ctrlpanel:toolsEnabled";
@@ -370,6 +370,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		flushResponse: null,
 		isGenerating: false,
 		liveGeneratingNode: null,
+		activeStreamId: null,
 	};
 
 	const updateLiveContext = () => {
@@ -482,6 +483,10 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	};
 
 	const stopTyping = () => {
+		if (uiState.activeStreamId) {
+			stopChatMessage(uiState.activeStreamId).catch(() => {});
+			uiState.activeStreamId = null;
+		}
 		if (uiState.flushResponse) {
 			uiState.flushResponse();
 			uiState.flushResponse = null;
@@ -502,6 +507,10 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	};
 
 	signal.addEventListener("abort", () => {
+		if (uiState.activeStreamId) {
+			stopChatMessage(uiState.activeStreamId).catch(() => {});
+			uiState.activeStreamId = null;
+		}
 		if (uiState.flushResponse) {
 			uiState.flushResponse();
 			uiState.flushResponse = null;
@@ -520,6 +529,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		
 		uiState.streamAbort = new AbortController();
 		const currentSignal = uiState.streamAbort.signal;
+		uiState.activeStreamId = "stream_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
 		
 		const modelSelect = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
 		const model = modelSelect?.dataset?.value || "";
@@ -835,6 +845,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				systemPrompt,
 				temperature,
 				contextLimit,
+				uiState.activeStreamId
 			);
 			
 			if (errorFromStream) {

@@ -44,6 +44,7 @@ export async function getModels() {
  * @param {string}   systemPrompt     - System prompt to prepend (sent to backend)
  * @param {number|null} temperature   - Sampling temperature (null = use backend default)
  * @param {number|null} contextWindow - Context window size to request (used by LM Studio via num_ctx)
+ * @param {string|null} streamId      - Identifier mapping to backend for immediate explicit halt
  */
 export async function streamChatMessage(
     model,
@@ -54,6 +55,7 @@ export async function streamChatMessage(
     systemPrompt = "",
     temperature = null,
     contextWindow = null,
+    streamId = null,
 ) {
     const url = new URL(`${window.location.origin}${API_BASE}/chat/stream`);
 
@@ -75,6 +77,9 @@ export async function streamChatMessage(
     }
     if (contextWindow !== null && contextWindow > 0) {
         requestPayload.context_window = contextWindow;
+    }
+    if (streamId) {
+        requestPayload.stream_id = streamId;
     }
 
     try {
@@ -158,6 +163,17 @@ export async function streamChatMessage(
         console.error("Streaming request failed:", err);
         throw err;
     }
+}
+
+/**
+ * Explicity tells the backend to cancel a running stream, overcoming TCP/OS layer networking cache delays.
+ * @param {string} streamId - Identical to the generation stream
+ */
+export async function stopChatMessage(streamId) {
+    return makeRequest("/chat/stop", {
+        method: "POST",
+        body: JSON.stringify({ stream_id: streamId })
+    });
 }
 
 export async function getSettings() {

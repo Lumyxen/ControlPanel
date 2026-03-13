@@ -14,6 +14,8 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                     LmStudioService& service, McpRegistry* registry,
                     LlamaCppService* llamaCppService = nullptr);
 
+void handleStopStream(const httplib::Request& req, httplib::Response& res);
+
 void handleModels  (const httplib::Request& req, httplib::Response& res,
                     LmStudioService& service,
                     LlamaCppService* llamaCppService = nullptr);
