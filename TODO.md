@@ -32,7 +32,9 @@
 - Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
 - AI generated chat title
 - Tool calls inline in the text instead of being shoved at the top
+- Rating blocks (like claude.ai's rating blocks)
 - Markdown formatting inside of thinking block
+- Copy LaTeX image (copies image with transparent background showing the LaTeX formatting)
 - Shift+Click to copy entire message including thinking block and tool calls
 - Web search tool
 - Add calculator tool (replaces code execution reliance for math)
@@ -204,9 +206,7 @@
 - Message regeneration deletes messages after generation instead of before
 
 #### General Bugs
-- Not properly getting context window size from LM Studio
 - Images don't get parsed for AI models that have vision capabilities
-- Sometimes pasting in text just seems to be weirdly displayed in the input text field, and is omitted from the sent message
 
 
 

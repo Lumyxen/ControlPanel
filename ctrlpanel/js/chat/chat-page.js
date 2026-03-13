@@ -1147,6 +1147,96 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		}
 	}, { signal });
 
+	/**
+	 * Rich copy — intercept Ctrl+C / Cmd+C on the chat thread.
+	 *
+	 * text/plain  → raw markdown source (** bold **, ## heading, ```code```, $LaTeX$…)
+	 * text/html   → rendered HTML with KaTeX replaced by its LaTeX source
+	 *
+	 * Attached to `document` (not #chatMessages) because the copy event fires on
+	 * the focused element / document.body and bubbles UP toward document — it never
+	 * passes through a descendant like #chatMessages.
+	 */
+	document.addEventListener("copy", (e) => {
+		const selection = window.getSelection();
+		if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+
+		const range = selection.getRangeAt(0);
+		if (!messages.contains(range.commonAncestorContainer)) return;
+
+		// ── 1. text/plain: pull raw markdown from the node store ─────────────
+		// Walking the rendered DOM loses all markdown syntax (**bold** → bold,
+		// ## h2 → h2, ```code``` → code, etc.). The node store has the originals.
+		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+		const graph = chat ? ensureGraph(chat) : null;
+
+		/** Raw markdown text for a node. */
+		const nodeRawText = (node) => {
+			if (!node) return "";
+			if (node.parts && Array.isArray(node.parts)) {
+				return node.parts.filter(p => p.type === "text").map(p => p.content).join("");
+			}
+			return String(node.content || "");
+		};
+
+		// Which .chat-message elements does the selection touch?
+		const allMsgEls = [...messages.querySelectorAll(".chat-message[data-node-id]")];
+		const selectedMsgEls = allMsgEls.filter(el => range.intersectsNode(el));
+
+		let plainPayload = "";
+
+		if (graph && selectedMsgEls.length > 0) {
+			const parts = [];
+			for (const msgEl of selectedMsgEls) {
+				const node = getNode(graph, msgEl.dataset.nodeId);
+				const raw = nodeRawText(node);
+				if (raw) parts.push(raw);
+			}
+			plainPayload = parts.join("\n\n");
+		}
+
+		// Fallback: selection.toString() (loses markdown but better than nothing)
+		if (!plainPayload) plainPayload = selection.toString();
+
+		// ── 2. text/html: rendered HTML with KaTeX → LaTeX source ─────────────
+		const container = document.createElement("div");
+		container.appendChild(range.cloneContents());
+
+		// Strip UI chrome: action menus, code-block toolbars, typing indicator
+		container
+			.querySelectorAll(".chat-message-menu, .md-code-header, .chat-typing, .chat-message-inline-attachment, .latex-preamble")
+			.forEach(el => el.remove());
+
+		// Collapse tool-call blocks to their summary line
+		container.querySelectorAll(".message-tool-call").forEach(el => {
+			const summary = el.querySelector("summary");
+			el.replaceWith(document.createTextNode(summary ? summary.textContent.trim() : ""));
+		});
+
+		// KaTeX output → $…$ / $$…$$ using the embedded MathML annotation
+		// (process .katex-display first so the inner .katex doesn't double-fire)
+		container.querySelectorAll(".katex-display").forEach(el => {
+			const src = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim();
+			if (src) el.replaceWith(document.createTextNode(`$$${src}$$`));
+		});
+		container.querySelectorAll(".katex").forEach(el => {
+			const src = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim();
+			if (src) el.replaceWith(document.createTextNode(`$${src}$`));
+		});
+
+		const htmlPayload = `<!DOCTYPE html><html><body>${container.innerHTML}</body></html>`;
+
+		// ── 3. Write to clipboard ─────────────────────────────────────────────
+		e.preventDefault();
+		if (!e.clipboardData) return;
+		e.clipboardData.setData("text/plain", plainPayload);
+		try {
+			e.clipboardData.setData("text/html", htmlPayload);
+		} catch {
+			// Firefox doesn't support text/html in the copy event — plain text is enough.
+		}
+	}, { signal });
+
 	form.addEventListener("submit", (e) => {
 		e.preventDefault();
 		if (uiState.isGenerating) {

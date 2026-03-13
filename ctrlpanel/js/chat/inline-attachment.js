@@ -537,7 +537,8 @@ export class InlineAttachmentManager {
 	handlePaste(e) {
 		const items = e.clipboardData?.items;
 		if (!items) return;
-		
+
+		// Handle file paste first
 		for (const item of items) {
 			if (item.kind === "file") {
 				e.preventDefault();
@@ -545,6 +546,30 @@ export class InlineAttachmentManager {
 				if (file) this.addFile(file);
 				return; // Only handle the first file
 			}
+		}
+
+		// Strip rich formatting (e.g. from VS Code, chat messages) — always paste as plain text.
+		// Without this, the browser pastes styled HTML directly into the contenteditable, which
+		// renders with foreign backgrounds/colours and gets silently dropped by extractParts().
+		const text = e.clipboardData.getData("text/plain");
+		if (text) {
+			e.preventDefault();
+			const selection = window.getSelection();
+			if (!selection || !selection.rangeCount) return;
+			const range = selection.getRangeAt(0);
+			// Delete any selected content first
+			range.deleteContents();
+			// Insert the plain text as a single text node
+			const textNode = document.createTextNode(text);
+			range.insertNode(textNode);
+			// Move cursor to end of inserted text
+			range.setStartAfter(textNode);
+			range.collapse(true);
+			selection.removeAllRanges();
+			selection.addRange(range);
+			this.normalizeDOM();
+			this.updateEmptyState();
+			this.el.dispatchEvent(new Event("input", { bubbles: true }));
 		}
 	}
 
@@ -971,6 +996,12 @@ export class InlineAttachmentManager {
 				// Chrome/Edge create <div> or <p> elements for each paragraph when the user
 				// presses Enter in a contenteditable. Treat each block as a new line.
 				addNewlineIfNeeded();
+				for (const child of node.childNodes) {
+					processNode(child);
+				}
+			} else if (node.nodeType === Node.ELEMENT_NODE) {
+				// Safety net: recurse into any other element (e.g. <span> from rich pastes that
+				// slipped through) so their text content is never silently lost.
 				for (const child of node.childNodes) {
 					processNode(child);
 				}

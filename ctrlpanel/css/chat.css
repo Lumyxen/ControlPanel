@@ -22,10 +22,10 @@
        scrollbar appears at the right edge of the page, not inside the column */
     padding: 16px 0;
 
-    /* More separation between bubbles */
+    /* More separation between bubbles — use margin-bottom instead of flex gap
+       so the spacing area belongs to the element, enabling click-to-select anywhere. */
     display: flex;
     flex-direction: column;
-    gap: 14px;
 }
 
 /* Remove bottom padding from .content when hosting the chat page so the
@@ -779,6 +779,7 @@
     max-width: 100%;
     min-width: 0;
     position: relative;
+    margin-bottom: 14px;
 }
 
 .chat-message.user {

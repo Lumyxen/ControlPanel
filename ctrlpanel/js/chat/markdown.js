@@ -13,7 +13,7 @@ const markedModule = (function () {
 
 	const defaults = {
 		gfm: true,
-		breaks: false,
+		breaks: true,
 		langPrefix: 'language-'
 	};
 
@@ -775,7 +775,7 @@ export function parseMarkdown(text) {
 
 	const options = {
 		gfm: true,
-		breaks: false
+		breaks: true
 	};
 
 	let html = markedModule.parse(preprocessed, options);
