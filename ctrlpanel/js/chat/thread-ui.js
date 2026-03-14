@@ -366,6 +366,14 @@ export function renderThread(messagesEl, chat, uiState) {
 			canResend: Boolean(node.parentId) && node.role !== "system",
 		});
 		messagesEl.appendChild(el);
+
+		if (uiState?.editingNodeId === node.id) {
+			const ta = el.querySelector(".chat-edit-input");
+			if (ta) {
+				ta.style.height = "auto";
+				ta.style.height = ta.scrollHeight + "px";
+			}
+		}
 	});
 
 	scrollToBottom(messagesEl);

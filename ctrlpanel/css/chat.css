@@ -1217,9 +1217,8 @@
 /* Edit textarea inside a bubble */
 .chat-edit-input {
     width: 100%;
-    min-height: 72px;
-    max-height: 240px;
-    resize: vertical;
+    resize: none;
+    overflow-y: hidden;
 
     appearance: none;
     background: transparent;

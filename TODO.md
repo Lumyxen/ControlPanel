@@ -45,6 +45,7 @@
   - Allow it to generate drafts, relook through the drafts, refine it, edit mistakes, and push the finalised result to the user
   - Show the user the live process of editing as the output so the user gets a sense of progression
 - Do exact token counting instead of estimation
+- Text showing model loading and prompt processing percentages and time
 - RAG based memory
   - Only load or allow models to use 64k tokens max.
   - Get more aggressive with offputting data into the RAG DB the closer you get to the maximum context window
@@ -197,8 +198,6 @@
 - LaTeX formatting not properly fully functional, but mostly is
 
 #### UX
-- Fix new thread not being created when deleting a message
-- Message shrinking/expanding unwantedly to strictly 2 lines when editing (make message editing properly size to original message size, expand/shrink with new/deleted lines)
 - Fix ESC not canceling message editing and instead defocuses the text field on the first press
 
 #### Misc Bugs
