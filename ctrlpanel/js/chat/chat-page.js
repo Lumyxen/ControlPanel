@@ -148,12 +148,8 @@ function initUpload(root, inputEl, attachmentManager, signal) {
 }
 
 function initAutoResize(element, signal) {
-	const resize = () => {
-		element.style.height = "auto";
-		const newHeight = Math.min(element.scrollHeight, 300);
-		element.style.height = newHeight + "px";
-	};
-	
+	// A contenteditable div natively auto-expands via CSS max-height/min-height.
+	// We only need to manage the empty state for the placeholder without forcing height repaints.
 	const updatePlaceholder = () => {
 		const text = element.textContent || "";
 		const hasAttachments = element.querySelector(".inline-attachment");
@@ -162,7 +158,6 @@ function initAutoResize(element, signal) {
 	};
 	
 	const handleInput = () => {
-		resize();
 		updatePlaceholder();
 	};
 	
@@ -173,14 +168,10 @@ function initAutoResize(element, signal) {
 	}, { signal });
 	
 	requestAnimationFrame(() => {
-		resize();
 		updatePlaceholder();
 	});
 	
-	window.addEventListener("resize", resize, { signal });
-	
 	return () => {
-		resize();
 		updatePlaceholder();
 	};
 }
@@ -626,7 +617,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		 * @returns {Array} OpenAI-compatible messages array.
 		 */
 		const buildApiMessages = (nodeIds) => {
-			const apiMessages = [];
+			const apiMessages =[];
 
 			for (const nodeId of nodeIds) {
 				const node = getNode(graph, nodeId);
@@ -645,8 +636,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 				// ── User messages: check for image attachments ───────────────────
 				if (node.parts && Array.isArray(node.parts)) {
-					const textParts = [];
-					const contentBlocks = [];
+					const textParts =[];
+					const contentBlocks =[];
 					let hasImages = false;
 
 					for (const part of node.parts) {
@@ -1344,13 +1335,13 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		};
 
 		// Which .chat-message elements does the selection touch?
-		const allMsgEls = [...messages.querySelectorAll(".chat-message[data-node-id]")];
+		const allMsgEls =[...messages.querySelectorAll(".chat-message[data-node-id]")];
 		const selectedMsgEls = allMsgEls.filter(el => range.intersectsNode(el));
 
 		let plainPayload = "";
 
 		if (graph && selectedMsgEls.length > 0) {
-			const parts = [];
+			const parts =[];
 			for (const msgEl of selectedMsgEls) {
 				const node = getNode(graph, msgEl.dataset.nodeId);
 				const raw = nodeRawText(node);

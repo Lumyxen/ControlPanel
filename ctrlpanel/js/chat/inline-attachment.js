@@ -1,3 +1,4 @@
+// ctrlpanel/js/chat/inline-attachment.js
 /**
  * InlineAttachmentManager - Handles inline file attachments in contenteditable
  * 
@@ -101,7 +102,7 @@ export function isImageFile(file) {
 	const type = String(file?.type || "");
 	if (type.startsWith("image/")) return true;
 	const ext = getFileExtension(file?.name || "");
-	return ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext);
+	return["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext);
 }
 
 /**
@@ -125,44 +126,6 @@ function getFiletypeName(filename) {
  */
 function createXIcon() {
 	return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>`;
-}
-
-/**
- * Normalize the DOM by merging adjacent text nodes and removing empty ones
- * This is crucial for consistent cursor behavior
- */
-function normalizeContentEditable(el) {
-	// First, merge adjacent text nodes
-	el.normalize();
-	
-	// Then clean up any problematic text nodes
-	const childNodes = Array.from(el.childNodes);
-	for (const node of childNodes) {
-		if (node.nodeType === Node.TEXT_NODE) {
-			// Remove empty text nodes (but keep one if it's the only content)
-			// Also preserve text nodes that are just whitespace if they're between elements
-			if (!node.textContent) {
-				if (el.childNodes.length > 1) {
-					node.remove();
-				}
-			}
-		}
-	}
-	
-	// Remove consecutive BR elements (keep only one)
-	const nodes = Array.from(el.childNodes);
-	let lastWasBR = false;
-	for (const node of nodes) {
-		if (node.tagName === "BR") {
-			if (lastWasBR) {
-				node.remove();
-			} else {
-				lastWasBR = true;
-			}
-		} else if (node.nodeType !== Node.TEXT_NODE || node.textContent.trim()) {
-			lastWasBR = false;
-		}
-	}
 }
 
 /**
@@ -237,23 +200,9 @@ export class InlineAttachmentManager {
 		// Handle paste
 		this.el.addEventListener("paste", (e) => this.handlePaste(e));
 		
-		// Handle input events to normalize DOM
+		// Update placeholder empty state passively on input
 		this.el.addEventListener("input", () => {
-			// Debounce normalization
-			if (this._normalizeTimeout) {
-				clearTimeout(this._normalizeTimeout);
-			}
-			this._normalizeTimeout = setTimeout(() => {
-				// Only normalize if we're not in the middle of an operation
-				if (!this.isProcessing) {
-					this.normalizeDOM();
-				}
-			}, 50);
-		});
-		
-		// Clean up on blur
-		this.el.addEventListener("blur", () => {
-			this.normalizeDOM();
+			this.updateEmptyState();
 		});
 		
 		// Handle focus - ensure cursor is in a valid position
@@ -264,13 +213,6 @@ export class InlineAttachmentManager {
 				this.el.appendChild(textNode);
 			}
 		});
-	}
-
-	/**
-	 * Normalize the DOM structure
-	 */
-	normalizeDOM() {
-		normalizeContentEditable(this.el);
 	}
 
 	/**
@@ -306,15 +248,14 @@ export class InlineAttachmentManager {
 						for (const chip of chipsInRange) {
 							this.removeAttachmentChip(chip);
 						}
-						// Let the browser handle the remaining text deletion
+						// Let the browser handle the remaining text deletion natively
 						range.deleteContents();
-						this.normalizeDOM();
 					} finally {
 						this.isProcessing = false;
 					}
 					return;
 				}
-				// Let the browser handle normal selection deletion
+				// Let the browser handle normal selection deletion natively
 				return;
 			}
 			
@@ -327,7 +268,6 @@ export class InlineAttachmentManager {
 				try {
 					// Remove the chip
 					this.removeAttachmentChip(chip);
-					this.normalizeDOM();
 				} finally {
 					this.isProcessing = false;
 				}
@@ -372,7 +312,7 @@ export class InlineAttachmentManager {
 	 * Get all chips within a range
 	 */
 	getChipsInRange(range) {
-		const chips = [];
+		const chips =[];
 		const walker = document.createTreeWalker(
 			range.commonAncestorContainer,
 			NodeFilter.SHOW_ELEMENT,
@@ -393,7 +333,7 @@ export class InlineAttachmentManager {
 	}
 
 	/**
-	 * Get adjacent attachment chip - improved version
+	 * Get adjacent attachment chip securely
 	 */
 	getAdjacentChip(range, direction) {
 		if (!range.collapsed) return null;
@@ -401,101 +341,102 @@ export class InlineAttachmentManager {
 		const container = range.startContainer;
 		const offset = range.startOffset;
 		
-		// Helper to check if a node is a chip
 		const isChip = (node) => 
 			node?.nodeType === Node.ELEMENT_NODE && 
 			node.classList?.contains("inline-attachment");
 		
-		// Helper to check if a node is just a BR element
-		const isBR = (node) => node?.nodeType === Node.ELEMENT_NODE && node.tagName === "BR";
-		
-		// Helper to check if a text node is empty or just whitespace
+		// Only skip strictly empty text nodes
 		const isEmptyText = (node) => 
-			node?.nodeType === Node.TEXT_NODE && !node.textContent.trim();
+			node?.nodeType === Node.TEXT_NODE && node.textContent === "";
 		
 		if (direction === "before") {
-			// We're looking for a chip that's IMMEDIATELY before the cursor
-			// The cursor must be at the START of a text node (position 0)
-			// and the previous sibling must be a chip (possibly with BR in between)
-			
 			if (container.nodeType === Node.TEXT_NODE) {
-				// Only consider if cursor is at position 0
 				if (offset !== 0) return null;
 				
-				// Check previous sibling
 				let prev = container.previousSibling;
-				
-				// Skip BR elements and empty text nodes
-				while (prev && (isBR(prev) || isEmptyText(prev))) {
+				while (prev && isEmptyText(prev)) {
 					prev = prev.previousSibling;
 				}
 				
-				// If previous sibling is a chip, return it
 				if (isChip(prev)) return prev;
 				
-				// If we're in a nested structure, check parent's previous sibling
 				if (container.parentElement !== this.el) {
 					let parentPrev = container.parentElement.previousSibling;
-					while (parentPrev && (isBR(parentPrev) || isEmptyText(parentPrev))) {
+					while (parentPrev && isEmptyText(parentPrev)) {
 						parentPrev = parentPrev.previousSibling;
 					}
 					if (isChip(parentPrev)) return parentPrev;
 				}
 			} else if (container === this.el) {
-				// Cursor is directly in the contenteditable
-				// Check the element at offset-1
 				const children = Array.from(this.el.childNodes);
 				if (offset > 0) {
 					let prev = children[offset - 1];
-					// Skip BR and empty text
-					while (prev && (isBR(prev) || isEmptyText(prev))) {
+					while (prev && isEmptyText(prev)) {
 						const prevIndex = children.indexOf(prev) - 1;
 						prev = prevIndex >= 0 ? children[prevIndex] : null;
 					}
 					if (isChip(prev)) return prev;
 				}
+			} else {
+				const children = Array.from(container.childNodes);
+				if (offset > 0) {
+					let prev = children[offset - 1];
+					while (prev && isEmptyText(prev)) {
+						const prevIndex = children.indexOf(prev) - 1;
+						prev = prevIndex >= 0 ? children[prevIndex] : null;
+					}
+					if (isChip(prev)) return prev;
+				} else if (offset === 0) {
+					let parentPrev = container.previousSibling;
+					while (parentPrev && isEmptyText(parentPrev)) {
+						parentPrev = parentPrev.previousSibling;
+					}
+					if (isChip(parentPrev)) return parentPrev;
+				}
 			}
-		} else {
-			// Direction: after
-			// We're looking for a chip that's IMMEDIATELY after the cursor
-			// The cursor must be at the END of a text node
-			// and the next sibling must be a chip (possibly with BR in between)
-			
+		} else { // direction === "after"
 			if (container.nodeType === Node.TEXT_NODE) {
-				// Only consider if cursor is at the end
 				if (offset !== container.textContent.length) return null;
 				
-				// Check next sibling
 				let next = container.nextSibling;
-				
-				// Skip BR elements and empty text nodes
-				while (next && (isBR(next) || isEmptyText(next))) {
+				while (next && isEmptyText(next)) {
 					next = next.nextSibling;
 				}
 				
-				// If next sibling is a chip, return it
 				if (isChip(next)) return next;
 				
-				// If we're in a nested structure, check parent's next sibling
 				if (container.parentElement !== this.el) {
 					let parentNext = container.parentElement.nextSibling;
-					while (parentNext && (isBR(parentNext) || isEmptyText(parentNext))) {
+					while (parentNext && isEmptyText(parentNext)) {
 						parentNext = parentNext.nextSibling;
 					}
 					if (isChip(parentNext)) return parentNext;
 				}
 			} else if (container === this.el) {
-				// Cursor is directly in the contenteditable
-				// Check the element at offset
 				const children = Array.from(this.el.childNodes);
 				if (offset < children.length) {
 					let next = children[offset];
-					// Skip BR and empty text
-					while (next && (isBR(next) || isEmptyText(next))) {
+					while (next && isEmptyText(next)) {
 						const nextIndex = children.indexOf(next) + 1;
 						next = nextIndex < children.length ? children[nextIndex] : null;
 					}
 					if (isChip(next)) return next;
+				}
+			} else {
+				const children = Array.from(container.childNodes);
+				if (offset < children.length) {
+					let next = children[offset];
+					while (next && isEmptyText(next)) {
+						const nextIndex = children.indexOf(next) + 1;
+						next = nextIndex < children.length ? children[nextIndex] : null;
+					}
+					if (isChip(next)) return next;
+				} else {
+					let parentNext = container.nextSibling;
+					while (parentNext && isEmptyText(parentNext)) {
+						parentNext = parentNext.nextSibling;
+					}
+					if (isChip(parentNext)) return parentNext;
 				}
 			}
 		}
@@ -548,9 +489,7 @@ export class InlineAttachmentManager {
 			}
 		}
 
-		// Strip rich formatting (e.g. from VS Code, chat messages) — always paste as plain text.
-		// Without this, the browser pastes styled HTML directly into the contenteditable, which
-		// renders with foreign backgrounds/colours and gets silently dropped by extractParts().
+		// Because we removed white-space: pre-wrap, we must natively manage spaces and newlines
 		const text = e.clipboardData.getData("text/plain");
 		if (text) {
 			e.preventDefault();
@@ -559,15 +498,33 @@ export class InlineAttachmentManager {
 			const range = selection.getRangeAt(0);
 			// Delete any selected content first
 			range.deleteContents();
-			// Insert the plain text as a single text node
-			const textNode = document.createTextNode(text);
-			range.insertNode(textNode);
-			// Move cursor to end of inserted text
-			range.setStartAfter(textNode);
-			range.collapse(true);
-			selection.removeAllRanges();
-			selection.addRange(range);
-			this.normalizeDOM();
+			
+			const lines = text.split(/\r\n|\r|\n/);
+			const frag = document.createDocumentFragment();
+			for (let i = 0; i < lines.length; i++) {
+				if (lines[i]) {
+					// Replace regular spaces with non-breaking spaces so multi-spaces don't collapse
+					const lineText = lines[i].replace(/ /g, "\u00A0");
+					frag.appendChild(document.createTextNode(lineText));
+				}
+				if (i < lines.length - 1) {
+					frag.appendChild(document.createElement("br"));
+				}
+			}
+			
+			// To ensure the cursor can sit reliably at the end of the pasted content
+			frag.appendChild(document.createTextNode(""));
+			
+			const lastChild = frag.lastChild;
+			range.insertNode(frag);
+			
+			if (lastChild) {
+				range.setStartAfter(lastChild);
+				range.collapse(true);
+				selection.removeAllRanges();
+				selection.addRange(range);
+			}
+			
 			this.updateEmptyState();
 			this.el.dispatchEvent(new Event("input", { bubbles: true }));
 		}
@@ -871,7 +828,7 @@ export class InlineAttachmentManager {
 	}
 
 	/**
-	 * Remove an attachment chip - improved version
+	 * Remove an attachment chip
 	 */
 	removeAttachmentChip(chip) {
 		const id = chip.dataset.attachmentId;
@@ -907,9 +864,6 @@ export class InlineAttachmentManager {
 		// Remove from tracking
 		this.attachments.delete(id);
 		
-		// Clean up empty text nodes and normalize
-		this.normalizeDOM();
-		
 		// Update empty state
 		this.updateEmptyState();
 		
@@ -942,13 +896,9 @@ export class InlineAttachmentManager {
 	 * Extract content as parts array
 	 */
 	extractParts() {
-		// Don't normalize here - it could interfere with cursor position
-		// Just read the DOM as-is
-
-		const parts = [];
+		const parts =[];
 
 		// Ensure the last text part doesn't already end with a newline before adding one.
-		// Used when entering a block-level element (div/p) that browsers insert for new lines.
 		const addNewlineIfNeeded = () => {
 			if (parts.length === 0) return;
 			const last = parts[parts.length - 1];
@@ -961,8 +911,11 @@ export class InlineAttachmentManager {
 
 		const processNode = (node) => {
 			if (node.nodeType === Node.TEXT_NODE) {
-				const text = node.textContent;
+				let text = node.textContent;
 				if (text) {
+					// Convert HTML non-breaking spaces back to regular spaces for the LLM
+					text = text.replace(/\u00A0/g, " ");
+					
 					const lastPart = parts[parts.length - 1];
 					if (lastPart?.type === "text") {
 						lastPart.content += text;
@@ -971,12 +924,44 @@ export class InlineAttachmentManager {
 					}
 				}
 			} else if (node.tagName === "BR") {
+				// Check if this BR is just a trailing placeholder for the browser
+				let isPlaceholder = true;
+				let next = node.nextSibling;
+				while (next) {
+					if (next.nodeType === Node.TEXT_NODE && next.textContent.length > 0) {
+						isPlaceholder = false;
+						break;
+					}
+					if (next.nodeType === Node.ELEMENT_NODE && next.tagName !== "BR" && !next.classList?.contains("inline-attachment")) {
+						isPlaceholder = false;
+						break;
+					}
+					if (next.classList?.contains("inline-attachment")) {
+						isPlaceholder = false;
+						break;
+					}
+					if (next.tagName === "BR") {
+						isPlaceholder = false;
+						break;
+					}
+					next = next.nextSibling;
+				}
+
+				if (isPlaceholder) return;
+
 				// Explicit line break
 				const lastPart = parts[parts.length - 1];
 				if (lastPart?.type === "text") {
 					lastPart.content += "\n";
 				} else {
 					parts.push({ type: "text", content: "\n" });
+				}
+			} else if (node.nodeType === Node.ELEMENT_NODE && (node.tagName === "DIV" || node.tagName === "P")) {
+				// Chrome/Edge create <div> or <p> elements for each paragraph when the user
+				// presses Enter in a contenteditable. Treat each block as a new line.
+				addNewlineIfNeeded();
+				for (const child of node.childNodes) {
+					processNode(child);
 				}
 			} else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains("inline-attachment")) {
 				const id = node.dataset.attachmentId;
@@ -991,13 +976,6 @@ export class InlineAttachmentManager {
 						isImage: attachment.isImage,
 						data: attachment.data,
 					});
-				}
-			} else if (node.nodeType === Node.ELEMENT_NODE && (node.tagName === "DIV" || node.tagName === "P")) {
-				// Chrome/Edge create <div> or <p> elements for each paragraph when the user
-				// presses Enter in a contenteditable. Treat each block as a new line.
-				addNewlineIfNeeded();
-				for (const child of node.childNodes) {
-					processNode(child);
 				}
 			} else if (node.nodeType === Node.ELEMENT_NODE) {
 				// Safety net: recurse into any other element (e.g. <span> from rich pastes that

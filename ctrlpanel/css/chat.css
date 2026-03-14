@@ -186,8 +186,8 @@
     overflow-y: auto;
     overflow-wrap: anywhere;
     word-break: break-word;
-    white-space: pre-wrap;
     display: block;
+    position: relative;
 }
 
 /* Show placeholder when empty (including when only whitespace/empty text nodes exist) */
@@ -200,10 +200,6 @@
     position: absolute;
     left: 0;
     top: 0;
-}
-
-.chat-input {
-    position: relative;
 }
 
 .chat-input:focus {
