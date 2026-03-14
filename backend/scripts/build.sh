@@ -6,7 +6,10 @@ echo "=== Building all targets ==="
 
 # Clean and configure
 rm -rf build
-cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DENABLE_LLAMACPP=ON \
+    -DENABLE_LLAMACPP_VISION=ON
 
 # Build x86 Linux + Windows targets
 cmake --build build --target ctrlpanel -j$(nproc)
@@ -16,7 +19,9 @@ cmake --build build --target ctrlpanel_exe -j$(nproc)
 rm -rf build-arm
 cmake -B build-arm \
     -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake \
-    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_BUILD_TYPE=Release \
+    -DENABLE_LLAMACPP=ON \
+    -DENABLE_LLAMACPP_VISION=ON
 cmake --build build-arm --target ctrlpanel_arm -j$(nproc)
 
 # Copy ARM binary into the main build dir

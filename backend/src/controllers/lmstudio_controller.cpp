@@ -115,7 +115,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
         }
         // The frontend always sends "prompt" (used by llama.cpp and text-only LM Studio)
         // and additionally sends "messages" when the thread contains image content blocks
-        // (for vision-capable LM Studio models). Both fields are validated below.
+        // (for vision-capable models). Both fields are validated below.
         if (!body.isMember("model") || !body.isMember("prompt")) {
             res.status = 400;
             res.set_content("{\"error\": \"Missing required fields: model, prompt\"}", "application/json");
@@ -180,12 +180,13 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
             // ── llama.cpp path ────────────────────────────────────────────────
             if (!llamaCppService || !llamaCppService->isReady()) {
                 res.status = 503;
-                res.set_content("{\"error\": \"No llama.cpp model loaded\"}", "application/json");
+                res.set_content("{\"error\": \"llama.cpp service not available\"}", "application/json");
                 return;
             }
 
             std::thread([ctx, llamaCppService, model, prompt, maxTokens,
-                         systemPrompt, temperature, contextWindow]() mutable {
+                         systemPrompt, temperature, contextWindow,
+                         hasPrebuiltMessages, prebuiltMessages]() mutable {
                 auto onChunk = [ctx](const std::string& chunk) -> bool {
                     if (ctx->cancelled.load()) return false;
                     if (!chunk.empty()) {
@@ -201,9 +202,21 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                     ctx->done  = true;
                 };
 
-                llamaCppService->streamingChatWithCallback(
-                    model, prompt, maxTokens, onChunk, onError,
-                    systemPrompt, temperature, contextWindow);
+                if (hasPrebuiltMessages) {
+                    // Vision request: route through streamingChatWithTools so the
+                    // service receives the full structured messages array (including
+                    // image_url content blocks) instead of the flat prompt string.
+                    // Tools are not yet supported for llama.cpp, so an empty array
+                    // is passed and the registry pointer is null.
+                    llamaCppService->streamingChatWithTools(
+                        model, prebuiltMessages, Json::Value(Json::arrayValue),
+                        maxTokens, onChunk, onError, nullptr,
+                        temperature, contextWindow);
+                } else {
+                    llamaCppService->streamingChatWithCallback(
+                        model, prompt, maxTokens, onChunk, onError,
+                        systemPrompt, temperature, contextWindow);
+                }
 
                 std::lock_guard<std::mutex> lock(ctx->mutex);
                 ctx->done = true;

@@ -2,8 +2,9 @@
 
 # TODO
 ## Main Control Panel
-### Features
+### Planned Features
 - Search bar functionality and UI with AI chat-box
+- GitHub/GitLab/Codeberg/Directory LoC display
 
 ### To Fix
 #### UX
@@ -21,10 +22,13 @@
 - KV cache reuse
 - KV Quantisation
   - Reduce memory usage at the cost of decreasing context quality
+- Center LaTeX formatting
+  - Better live updating of the formatting
 - Edit available model list
   - Model search
     - LM Studio
     - HuggingFace (downloads model into ./data/models/)
+      - Automatically finds the mmproj for the model.
   - Filters
 - Add logprobs
   - Highlight uncertain tokens
@@ -45,6 +49,7 @@
   - Allow it to generate drafts, relook through the drafts, refine it, edit mistakes, and push the finalised result to the user
   - Show the user the live process of editing as the output so the user gets a sense of progression
 - Do exact token counting instead of estimation
+  - Show small warning under context window usage block when falling back to estimation because model's tokenisation is unknown
 - Text showing model loading and prompt processing percentages and time
 - RAG based memory
   - Only load or allow models to use 64k tokens max.
@@ -201,7 +206,7 @@
 - Fix ESC not canceling message editing and instead defocuses the text field on the first press
 
 #### Misc Bugs
-- Images don't work for models via llama.cpp
+- Don't load the AI model on runtime, instead loading it on message generation
 
 
 
@@ -249,7 +254,8 @@
     - Discord's Markdown features
     - Obsidian.md's Markdown features
   - LaTeX
-    - Not fully complete but mostly functional
+    - MathJax
+    - KaTeX
 - Model selection dropdown
 - Tool selection dropdown
 - File attachments

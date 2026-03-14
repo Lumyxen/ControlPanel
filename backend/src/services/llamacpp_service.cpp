@@ -8,11 +8,13 @@
 #include <cstring>
 #include <thread>
 
-namespace fs = std::filesystem;
+#ifdef LLAMA_CPP_VISION_AVAILABLE
+#define STB_IMAGE_STATIC
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+#endif
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+namespace fs = std::filesystem;
 
 static std::string stemFromPath(const std::string& path) {
     fs::path p(path);
@@ -23,18 +25,12 @@ static std::string modelIdFromPath(const std::string& path) {
     return "llamacpp::" + stemFromPath(path);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Constructor / Destructor
-// ─────────────────────────────────────────────────────────────────────────────
-
 LlamaCppService::LlamaCppService(const std::string& modelsDir, Config& config)
     : modelsDir_(modelsDir), config_(config)
 {
 #ifdef LLAMA_CPP_AVAILABLE
     llama_backend_init();
 
-    // Suppress llama.cpp's extremely verbose stdout/stderr logging.
-    // Only actual errors are forwarded; all info/debug noise is dropped.
     llama_log_set([](ggml_log_level level, const char* text, void*) {
         if (level == GGML_LOG_LEVEL_ERROR) {
             std::cerr << "[LlamaCpp] " << text;
@@ -68,11 +64,11 @@ LlamaCppService::~LlamaCppService() {
     if (model_) { llama_model_free(model_); model_ = nullptr; }
     llama_backend_free();
 #endif
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// loadModel
-// ─────────────────────────────────────────────────────────────────────────────
+#ifdef LLAMA_CPP_VISION_AVAILABLE
+    if (clipCtx_) { clip_free(clipCtx_); clipCtx_ = nullptr; }
+#endif
+}
 
 bool LlamaCppService::loadModel(const std::string& path) {
 #ifndef LLAMA_CPP_AVAILABLE
@@ -81,15 +77,13 @@ bool LlamaCppService::loadModel(const std::string& path) {
 #else
     std::cout << "[LlamaCpp] Loading model: " << path << "\n";
 
-    // ── Read settings from Config ─────────────────────────────────────────────
     const bool   flashAttn      = config_.getLlamacppFlashAttn();
     const int    evalBatchSize  = std::max(1, config_.getLlamacppEvalBatchSize());
-    const int    cfgCtxSize     = config_.getLlamacppCtxSize();   // 0 = auto
+    const int    cfgCtxSize     = config_.getLlamacppCtxSize();
     const int    gpuLayers      = config_.getLlamacppGpuLayers();
-    const int    cfgThreads     = config_.getLlamacppThreads();      // 0 = auto
-    const int    cfgThreadsBatch= config_.getLlamacppThreadsBatch(); // 0 = auto
+    const int    cfgThreads     = config_.getLlamacppThreads();
+    const int    cfgThreadsBatch= config_.getLlamacppThreadsBatch();
 
-    // ── Model params ──────────────────────────────────────────────────────────
     llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = gpuLayers;
 
@@ -99,35 +93,12 @@ bool LlamaCppService::loadModel(const std::string& path) {
         return false;
     }
 
-    // ── Context size ──────────────────────────────────────────────────────────
-    uint32_t ctx_size;
-    if (cfgCtxSize > 0) {
-        // User-specified override
-        ctx_size = static_cast<uint32_t>(cfgCtxSize);
-    } else {
-        // Use a safe default instead of dynamically fetching model's native context window
-        // (which for models like Qwen 35B can be 64k+, creating a 100GB+ KV cache and locking the OS)
-        ctx_size = 8192;
-    }
-
-    // ── Thread count ──────────────────────────────────────────────────────────
+    uint32_t ctx_size = (cfgCtxSize > 0) ? static_cast<uint32_t>(cfgCtxSize) : 8192;
     unsigned int hw_threads = std::thread::hardware_concurrency();
 
-    uint32_t n_threads, n_threads_batch;
-    if (cfgThreads > 0) {
-        n_threads = static_cast<uint32_t>(cfgThreads);
-    } else {
-        // Default: approximate physical cores (half of logical threads)
-        n_threads = hw_threads > 0 ? std::max(1u, hw_threads / 2) : 4;
-    }
-    if (cfgThreadsBatch > 0) {
-        n_threads_batch = static_cast<uint32_t>(cfgThreadsBatch);
-    } else {
-        // Default: all logical threads for batch/prefill
-        n_threads_batch = hw_threads > 0 ? hw_threads : 4;
-    }
+    uint32_t n_threads = (cfgThreads > 0) ? static_cast<uint32_t>(cfgThreads) : (hw_threads > 0 ? std::max(1u, hw_threads / 2) : 4);
+    uint32_t n_threads_batch = (cfgThreadsBatch > 0) ? static_cast<uint32_t>(cfgThreadsBatch) : (hw_threads > 0 ? hw_threads : 4);
 
-    // ── Context params ────────────────────────────────────────────────────────
     llama_context_params cparams = llama_context_default_params();
     cparams.n_ctx           = ctx_size;
     cparams.n_batch         = static_cast<uint32_t>(evalBatchSize);
@@ -161,13 +132,46 @@ bool LlamaCppService::loadModel(const std::string& path) {
               << "  flash_attn=" << (flashAttn ? "on" : "off")
               << "  gpu_layers=" << gpuLayers
               << "  threads=" << n_threads << "/" << n_threads_batch << "\n";
+
+#ifdef LLAMA_CPP_VISION_AVAILABLE
+    {
+        const fs::path modelDir = fs::path(path).parent_path();
+        for (const auto& entry : fs::directory_iterator(modelDir)) {
+            const std::string fname = entry.path().filename().string();
+            if (entry.path().extension() == ".gguf" &&
+                fname.find("mmproj") != std::string::npos) {
+
+                clip_context_params clipParams{};
+                clip_init_result clipResult =
+                    clip_init(entry.path().string().c_str(), clipParams);
+
+                if (clipResult.ctx_a) {
+                    clip_free(clipResult.ctx_a);
+                    clipResult.ctx_a = nullptr;
+                }
+
+                if (clipResult.ctx_v) {
+                    if (clipCtx_) clip_free(clipCtx_);
+                    clipCtx_       = clipResult.ctx_v;
+                    visionEnabled_ = true;
+                    std::cout << "[LlamaCpp] Vision projector loaded: " << fname << "\n";
+                } else {
+                    std::cerr << "[LlamaCpp] Found mmproj file but clip_init failed: "
+                              << fname << "\n";
+                }
+                break;
+            }
+        }
+        if (!visionEnabled_) {
+            std::cout << "[LlamaCpp] No mmproj file found in " << modelDir.string()
+                      << " — vision disabled.\n";
+        }
+    }
+#endif
+
     return true;
 #endif
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// getModels  — lists ALL .gguf files in modelsDir_
-// ─────────────────────────────────────────────────────────────────────────────
 
 Json::Value LlamaCppService::getModels() const {
     Json::Value out;
@@ -179,6 +183,9 @@ Json::Value LlamaCppService::getModels() const {
     for (const auto& entry : fs::directory_iterator(modelsDir_)) {
         if (entry.path().extension() != ".gguf") continue;
 
+        const std::string fname = entry.path().filename().string();
+        if (fname.find("mmproj") != std::string::npos) continue;
+
         const std::string path = entry.path().string();
         const std::string id   = modelIdFromPath(path);
 
@@ -187,17 +194,13 @@ Json::Value LlamaCppService::getModels() const {
         m["name"]           = stemFromPath(path);
         m["source"]         = "llamacpp";
         m["context_length"] = n_ctx_;
-        m["max_tokens"]     = 8192; // Fallback to 8192 output tokens
+        m["max_tokens"]     = 8192;
         m["loaded"]         = (modelLoaded_ && loadedModelPath_ == path);
         out["data"].append(m);
     }
 #endif
     return out;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// buildMessages
-// ─────────────────────────────────────────────────────────────────────────────
 
 Json::Value LlamaCppService::buildMessages(const std::string& prompt,
                                             const std::string& systemPrompt) const {
@@ -219,10 +222,6 @@ Json::Value LlamaCppService::buildMessages(const std::string& prompt,
     }
     return messages;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// parseMessages
-// ─────────────────────────────────────────────────────────────────────────────
 
 std::vector<std::pair<std::string, std::string>>
 LlamaCppService::parseMessages(const std::string& prompt,
@@ -271,10 +270,6 @@ LlamaCppService::parseMessages(const std::string& prompt,
     return result;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// makeContentChunk
-// ─────────────────────────────────────────────────────────────────────────────
-
 std::string LlamaCppService::makeContentChunk(const std::string& text) {
     std::string escaped;
     escaped.reserve(text.size() + 4);
@@ -298,9 +293,40 @@ std::string LlamaCppService::makeContentChunk(const std::string& text) {
     return "data: {\"choices\":[{\"delta\":{\"content\":\"" + escaped + "\"}}]}\n\n";
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// doInference
-// ─────────────────────────────────────────────────────────────────────────────
+std::vector<uint8_t> LlamaCppService::decodeBase64Image(const std::string& dataUrl) {
+    const size_t commaPos = dataUrl.find(',');
+    const std::string b64 = (commaPos != std::string::npos)
+        ? dataUrl.substr(commaPos + 1)
+        : dataUrl;
+
+    uint8_t dt[256];
+    std::fill(dt, dt + 256, static_cast<uint8_t>(0xFF));
+    for (int i = 0; i < 26; ++i) {
+        dt[static_cast<uint8_t>('A' + i)] = static_cast<uint8_t>(i);
+        dt[static_cast<uint8_t>('a' + i)] = static_cast<uint8_t>(26 + i);
+    }
+    for (int i = 0; i < 10; ++i)
+        dt[static_cast<uint8_t>('0' + i)] = static_cast<uint8_t>(52 + i);
+    dt[static_cast<uint8_t>('+')] = 62;
+    dt[static_cast<uint8_t>('/')] = 63;
+
+    std::vector<uint8_t> out;
+    out.reserve(b64.size() * 3 / 4);
+
+    uint32_t buf  = 0;
+    int      bits = 0;
+    for (unsigned char c : b64) {
+        if (c == '=') break;
+        if (dt[c] == 0xFF) continue;
+        buf  = (buf << 6) | static_cast<uint32_t>(dt[c]);
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out.push_back(static_cast<uint8_t>((buf >> bits) & 0xFF));
+        }
+    }
+    return out;
+}
 
 void LlamaCppService::doInference(
     const std::vector<std::pair<std::string, std::string>>& messages,
@@ -319,13 +345,11 @@ void LlamaCppService::doInference(
         return;
     }
 
-    if (maxTokens <= 0) {
-        maxTokens = 8192;
-    }
+    if (maxTokens <= 0) maxTokens = 8192;
 
     const llama_vocab* vocab = llama_model_get_vocab(model_);
 
-    int maxInputTokens = n_ctx_ - 4; // Always ensure a few tokens of breathing room
+    int maxInputTokens = n_ctx_ - 4;
     if (maxInputTokens <= 0) {
         onError("Context too small for inference");
         return;
@@ -335,13 +359,11 @@ void LlamaCppService::doInference(
     std::vector<llama_token> inputTokens;
     std::vector<std::pair<std::string, std::string>> currentMessages = messages;
 
-    // Find our first true non-system prompt
     size_t firstNonSystem = 0;
     while (firstNonSystem < currentMessages.size() && currentMessages[firstNonSystem].first == "system") {
         firstNonSystem++;
     }
 
-    // Gracefully handle context overflow by popping old messages recursively instead of brutally truncating the tail
     while (true) {
         std::vector<std::string> contentStore;
         contentStore.reserve(currentMessages.size());
@@ -354,11 +376,7 @@ void LlamaCppService::doInference(
         }
 
         int tmplLen = llama_chat_apply_template(
-            nullptr,
-            chatMsgs.data(), chatMsgs.size(),
-            /* add_ass */ true,
-            nullptr, 0
-        );
+            nullptr, chatMsgs.data(), chatMsgs.size(), true, nullptr, 0);
 
         if (tmplLen < 0) {
             onError("llama_chat_apply_template failed (unsupported template?)");
@@ -367,64 +385,47 @@ void LlamaCppService::doInference(
 
         std::vector<char> tmplBuf(static_cast<size_t>(tmplLen) + 1, '\0');
         llama_chat_apply_template(
-            nullptr,
-            chatMsgs.data(), chatMsgs.size(),
-            /* add_ass */ true,
-            tmplBuf.data(), static_cast<int32_t>(tmplBuf.size())
-        );
+            nullptr, chatMsgs.data(), chatMsgs.size(), true,
+            tmplBuf.data(), static_cast<int32_t>(tmplBuf.size()));
         formattedPrompt = std::string(tmplBuf.data(), static_cast<size_t>(tmplLen));
 
-        // Determine exact token length size needed
         int reqTokens = llama_tokenize(
-            vocab,
-            formattedPrompt.c_str(),
+            vocab, formattedPrompt.c_str(),
             static_cast<int32_t>(formattedPrompt.size()),
-            nullptr,
-            0,
-            /* add_special */  false,
-            /* parse_special */ true
-        );
+            nullptr, 0, false, true);
         if (reqTokens < 0) reqTokens = -reqTokens;
 
         if (reqTokens <= maxInputTokens || currentMessages.size() <= firstNonSystem + 1) {
             inputTokens.resize(reqTokens);
             int nTokens = llama_tokenize(
-                vocab,
-                formattedPrompt.c_str(),
+                vocab, formattedPrompt.c_str(),
                 static_cast<int32_t>(formattedPrompt.size()),
-                inputTokens.data(),
-                static_cast<int32_t>(inputTokens.size()),
-                /* add_special */  false,
-                /* parse_special */ true
-            );
-
+                inputTokens.data(), static_cast<int32_t>(inputTokens.size()),
+                false, true);
             if (nTokens < 0) nTokens = -nTokens;
             inputTokens.resize(static_cast<size_t>(nTokens));
-            
-            // As a final absolute fallback edge case, trim the head to safeguard if one single message was impossibly huge
+
             if (nTokens > maxInputTokens) {
                 size_t excess = nTokens - maxInputTokens;
                 inputTokens.erase(inputTokens.begin(), inputTokens.begin() + excess);
-                std::cerr << "[LlamaCpp] Warning: prompt forcefully truncated by " << excess << " tokens from the beginning\n";
+                std::cerr << "[LlamaCpp] Warning: prompt forcefully truncated by "
+                          << excess << " tokens from the beginning\n";
             }
             break;
         }
 
-        // Drop the oldest non-system message and attempt to fit again
         currentMessages.erase(currentMessages.begin() + firstNonSystem);
     }
 
     int remainingCtx = n_ctx_ - inputTokens.size() - 1;
-    if (maxTokens > remainingCtx) maxTokens = remainingCtx; // Dynamically clamp based on exact remaining room
+    if (maxTokens > remainingCtx) maxTokens = remainingCtx;
     if (maxTokens <= 0) {
         onError("Prompt fills the entire context window");
         return;
     }
 
-    // ── Clear context ─────────────────────────────────────────────────────────
     llama_memory_clear(llama_get_memory(ctx_), true);
 
-    // ── Prefill in n_batch_-sized chunks ──────────────────────────────────────
     llama_batch batch = llama_batch_init(n_batch_, 0, 1);
 
     int nProcessed = 0;
@@ -436,20 +437,16 @@ void LlamaCppService::doInference(
         }
 
         int chunkSize = std::min(n_batch_, static_cast<int>(inputTokens.size()) - nProcessed);
-        
         batch.n_tokens = chunkSize;
         for (int i = 0; i < chunkSize; ++i) {
             batch.token[i]     = inputTokens[nProcessed + i];
             batch.pos[i]       = nProcessed + i;
             batch.n_seq_id[i]  = 1;
             batch.seq_id[i][0] = 0;
-            batch.logits[i]    = 0; // false
+            batch.logits[i]    = 0;
         }
-        
-        // Only calculate logits for the absolute final token of the entire prompt
-        if (nProcessed + chunkSize == static_cast<int>(inputTokens.size())) {
-            batch.logits[chunkSize - 1] = 1; // true
-        }
+        if (nProcessed + chunkSize == static_cast<int>(inputTokens.size()))
+            batch.logits[chunkSize - 1] = 1;
 
         if (llama_decode(ctx_, batch) != 0) {
             onError("llama_decode (prefill) failed");
@@ -460,35 +457,25 @@ void LlamaCppService::doInference(
         nProcessed += chunkSize;
     }
 
-    // ── Sampler — read live from Config so changes take effect without restart ─
     float temp           = (temperature > 0.0) ? static_cast<float>(temperature) : 0.7f;
-    int   penaltyLastN   = 64;
     float penaltyRepeat  = static_cast<float>(config_.getLlamacppRepeatPenalty());
-    float penaltyFreq    = 0.0f;
-    float penaltyPresent = 0.0f;
     float topP           = static_cast<float>(config_.getLlamacppTopP());
     float minP           = static_cast<float>(config_.getLlamacppMinP());
 
     llama_sampler* sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    llama_sampler_chain_add(sampler, llama_sampler_init_penalties(
-        penaltyLastN, penaltyRepeat, penaltyFreq, penaltyPresent));
+    llama_sampler_chain_add(sampler, llama_sampler_init_penalties(64, penaltyRepeat, 0.0f, 0.0f));
     llama_sampler_chain_add(sampler, llama_sampler_init_top_p(topP, 1));
     llama_sampler_chain_add(sampler, llama_sampler_init_min_p(minP, 1));
     llama_sampler_chain_add(sampler, llama_sampler_init_temp(temp));
     llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
-    // ── Generation loop ───────────────────────────────────────────────────────
     int  nGenerated = 0;
     bool cancelled  = false;
 
     while (nGenerated < maxTokens && !cancelled) {
-        if (!onChunk("")) {
-            cancelled = true;
-            break;
-        }
+        if (!onChunk("")) { cancelled = true; break; }
 
         llama_token token = llama_sampler_sample(sampler, ctx_, -1);
-
         if (llama_vocab_is_eog(vocab, token)) break;
 
         char piece[256];
@@ -497,25 +484,23 @@ void LlamaCppService::doInference(
 
         if (nPiece > 0) {
             piece[nPiece] = '\0';
-            std::string text(piece, static_cast<size_t>(nPiece));
-            if (!onChunk(makeContentChunk(text))) {
+            if (!onChunk(makeContentChunk(std::string(piece, static_cast<size_t>(nPiece))))) {
                 cancelled = true;
                 break;
             }
         }
 
-        batch.n_tokens = 1;
-        batch.token[0] = token;
-        batch.pos[0] = inputTokens.size() + nGenerated;
-        batch.n_seq_id[0] = 1;
+        batch.n_tokens     = 1;
+        batch.token[0]     = token;
+        batch.pos[0]       = inputTokens.size() + nGenerated;
+        batch.n_seq_id[0]  = 1;
         batch.seq_id[0][0] = 0;
-        batch.logits[0] = 1; // Need logits for the next iteration
+        batch.logits[0]    = 1;
 
         if (llama_decode(ctx_, batch) != 0) {
             onError("llama_decode (generation) failed");
             break;
         }
-
         ++nGenerated;
     }
 
@@ -523,14 +508,261 @@ void LlamaCppService::doInference(
     llama_batch_free(batch);
     llama_memory_clear(llama_get_memory(ctx_), true);
 
-    if (!cancelled)
-        onChunk("data: [DONE]\n\n");
+    if (!cancelled) onChunk("data: [DONE]\n\n");
 #endif
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// streamingChatWithCallback
-// ─────────────────────────────────────────────────────────────────────────────
+#ifdef LLAMA_CPP_VISION_AVAILABLE
+void LlamaCppService::doInferenceWithVision(
+    const std::vector<std::pair<std::string, std::string>>& messages,
+    const std::vector<std::vector<uint8_t>>& imageDataList,
+    int maxTokens,
+    double temperature,
+    std::function<bool(const std::string&)> onChunk,
+    std::function<void(const std::string&)> onError
+) const {
+    if (!model_ || !ctx_ || !clipCtx_) {
+        onError("Vision inference unavailable: model or vision projector not loaded");
+        return;
+    }
+    if (maxTokens <= 0) maxTokens = 8192;
+
+    const llama_vocab* vocab    = llama_model_get_vocab(model_);
+    const int          maxInput = n_ctx_ - 4;
+
+    auto applyTemplate = [&](const std::vector<std::pair<std::string, std::string>>& msgs) -> std::string {
+        std::vector<std::string> store;
+        store.reserve(msgs.size());
+        std::vector<llama_chat_message> cm;
+        cm.reserve(msgs.size());
+        for (const auto&[role, text] : msgs) {
+            store.push_back(text);
+            cm.push_back({role.c_str(), store.back().c_str()});
+        }
+        const int len = llama_chat_apply_template(nullptr, cm.data(), cm.size(), true, nullptr, 0);
+        if (len < 0) return "";
+        std::vector<char> buf(static_cast<size_t>(len) + 1, '\0');
+        llama_chat_apply_template(nullptr, cm.data(), cm.size(), true, buf.data(), static_cast<int32_t>(buf.size()));
+        return std::string(buf.data(), static_cast<size_t>(len));
+    };
+
+    const std::string promptFull = applyTemplate(messages);
+    if (promptFull.empty()) {
+        onError("llama_chat_apply_template failed (unsupported template?)");
+        return;
+    }
+
+    std::vector<std::string> promptChunks;
+    std::string remaining = promptFull;
+    const std::string delim = "<image>";
+
+    for (size_t i = 0; i < imageDataList.size(); ++i) {
+        size_t pos = remaining.find(delim);
+        if (pos == std::string::npos) {
+            std::cerr << "[LlamaCpp] Warning: Not enough <image> placeholders in rendered prompt. The chat template might have stripped them.\n";
+            break;
+        }
+        promptChunks.push_back(remaining.substr(0, pos));
+        remaining = remaining.substr(pos + delim.length());
+    }
+    promptChunks.push_back(remaining);
+
+    // IMPORTANT: Because applyTemplate handles the template boundary tokens (BOS, IM_START, etc)
+    // we explicitly pass `false` for add_special so we don't accidentally double-inject BOS
+    // tokens at the start of each text chunk, which corrupts the LLM's understanding of where it is.
+    auto tokenize = [&](const std::string& s) -> std::vector<llama_token> {
+        int n = llama_tokenize(vocab, s.c_str(), static_cast<int32_t>(s.size()), nullptr, 0, false, true);
+        if (n < 0) n = -n;
+        std::vector<llama_token> toks(static_cast<size_t>(n));
+        int actual = llama_tokenize(vocab, s.c_str(), static_cast<int32_t>(s.size()), toks.data(), n, false, true);
+        if (actual < 0) actual = -actual;
+        toks.resize(static_cast<size_t>(actual));
+        return toks;
+    };
+
+    llama_memory_clear(llama_get_memory(ctx_), true);
+    llama_batch batch = llama_batch_init(n_batch_, 0, 1);
+    int nPast = 0;
+
+    auto evalSpan = [&](const std::vector<llama_token>& toks, bool setFinalLogit) -> bool {
+        int i = 0;
+        int count = static_cast<int>(toks.size());
+        while (i < count) {
+            if (!onChunk("")) return false;
+            const int chunk = std::min(n_batch_, count - i);
+            batch.n_tokens = chunk;
+            for (int j = 0; j < chunk; ++j) {
+                batch.token[j]     = toks[i + j];
+                batch.pos[j]       = nPast + j;
+                batch.n_seq_id[j]  = 1;
+                batch.seq_id[j][0] = 0;
+                batch.logits[j]    = 0;
+            }
+            if (setFinalLogit && (i + chunk == count)) {
+                batch.logits[chunk - 1] = 1;
+            }
+            if (llama_decode(ctx_, batch) != 0) {
+                onError("llama_decode (vision prefill) failed");
+                return false;
+            }
+            nPast += chunk;
+            i     += chunk;
+        }
+        return true;
+    };
+
+    const int nThreads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
+    const int nEmbd    = clip_n_mmproj_embd(clipCtx_);
+
+    for (size_t i = 0; i < promptChunks.size(); ++i) {
+        std::vector<llama_token> toks = tokenize(promptChunks[i]);
+        
+        if (!toks.empty()) {
+            bool isLast = (i == promptChunks.size() - 1);
+            if (!evalSpan(toks, isLast)) {
+                llama_batch_free(batch);
+                llama_memory_clear(llama_get_memory(ctx_), true);
+                return;
+            }
+        }
+
+        if (i < imageDataList.size()) {
+            if (!onChunk("")) {
+                llama_batch_free(batch);
+                llama_memory_clear(llama_get_memory(ctx_), true);
+                return;
+            }
+
+            const auto& imgBytes = imageDataList[i];
+            int imgW = 0, imgH = 0, imgChannels = 0;
+            unsigned char* rawPixels = stbi_load_from_memory(
+                imgBytes.data(), static_cast<int>(imgBytes.size()),
+                &imgW, &imgH, &imgChannels, 3);
+            
+            if (!rawPixels) {
+                std::cerr << "[LlamaCpp] stbi_load_from_memory failed — skipping image\n";
+                continue;
+            }
+
+            clip_image_u8* imgU8 = clip_image_u8_init();
+            clip_build_img_from_pixels(rawPixels, imgW, imgH, imgU8);
+            stbi_image_free(rawPixels);
+
+            clip_image_f32_batch* batchF32 = clip_image_f32_batch_init();
+            if (!clip_image_preprocess(clipCtx_, imgU8, batchF32)) {
+                std::cerr << "[LlamaCpp] clip_image_preprocess failed — skipping image\n";
+                clip_image_u8_free(imgU8);
+                clip_image_f32_batch_free(batchF32);
+                continue;
+            }
+            clip_image_u8_free(imgU8);
+
+            const size_t nSubImages = clip_image_f32_batch_n_images(batchF32);
+            for (size_t si = 0; si < nSubImages; ++si) {
+                clip_image_f32* imgF32 = clip_image_f32_get_img(batchF32, static_cast<int>(si));
+                const int nPatches = clip_n_output_tokens(clipCtx_, imgF32);
+                std::vector<float> emb(static_cast<size_t>(nPatches * nEmbd));
+
+                if (!clip_image_encode(clipCtx_, nThreads, imgF32, emb.data())) {
+                    std::cerr << "[LlamaCpp] clip_image_encode failed — skipping sub-image " << si << "\n";
+                    continue;
+                }
+
+                for (int p = 0; p < nPatches; p += n_batch_) {
+                    int chunk = std::min(n_batch_, nPatches - p);
+                    llama_batch embdBatch = llama_batch_init(chunk, nEmbd, 1);
+                    for (int j = 0; j < chunk; ++j) {
+                        std::memcpy(embdBatch.embd + j * nEmbd,
+                                    emb.data() + (p + j) * nEmbd,
+                                    static_cast<size_t>(nEmbd) * sizeof(float));
+                        embdBatch.pos[j]       = nPast + p + j;
+                        embdBatch.n_seq_id[j]  = 1;
+                        embdBatch.seq_id[j][0] = 0;
+                        
+                        bool isVeryLast = (i == promptChunks.size() - 1) && (si == nSubImages - 1) && ((p + j) == nPatches - 1);
+                        embdBatch.logits[j]    = isVeryLast ? 1 : 0; 
+                    }
+                    embdBatch.n_tokens = chunk;
+
+                    if (llama_decode(ctx_, embdBatch) != 0) {
+                        llama_batch_free(embdBatch);
+                        clip_image_f32_batch_free(batchF32);
+                        onError("llama_decode (image embed) failed");
+                        llama_batch_free(batch);
+                        llama_memory_clear(llama_get_memory(ctx_), true);
+                        return;
+                    }
+                    llama_batch_free(embdBatch);
+                }
+                nPast += nPatches;
+            }
+            clip_image_f32_batch_free(batchF32);
+        }
+    }
+
+    const int remainCtx = n_ctx_ - nPast - 1;
+    if (maxTokens > remainCtx) maxTokens = remainCtx;
+    if (maxTokens <= 0) {
+        onError("No context remaining after vision prefill");
+        llama_batch_free(batch);
+        llama_memory_clear(llama_get_memory(ctx_), true);
+        return;
+    }
+
+    const float temp          = (temperature > 0.0) ? static_cast<float>(temperature) : 0.7f;
+    const float penaltyRepeat = static_cast<float>(config_.getLlamacppRepeatPenalty());
+    const float topP          = static_cast<float>(config_.getLlamacppTopP());
+    const float minP          = static_cast<float>(config_.getLlamacppMinP());
+
+    llama_sampler* sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    llama_sampler_chain_add(sampler, llama_sampler_init_penalties(64, penaltyRepeat, 0.0f, 0.0f));
+    llama_sampler_chain_add(sampler, llama_sampler_init_top_p(topP, 1));
+    llama_sampler_chain_add(sampler, llama_sampler_init_min_p(minP, 1));
+    llama_sampler_chain_add(sampler, llama_sampler_init_temp(temp));
+    llama_sampler_chain_add(sampler, llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
+
+    int  nGenerated = 0;
+    bool cancelled  = false;
+
+    while (nGenerated < maxTokens && !cancelled) {
+        if (!onChunk("")) { cancelled = true; break; }
+
+        const llama_token token = llama_sampler_sample(sampler, ctx_, -1);
+        if (llama_vocab_is_eog(vocab, token)) break;
+
+        char piece[256];
+        int  nPiece = llama_token_to_piece(vocab, token, piece, sizeof(piece) - 1, 0, false);
+        if (nPiece < 0) nPiece = 0;
+
+        if (nPiece > 0) {
+            piece[nPiece] = '\0';
+            if (!onChunk(makeContentChunk(std::string(piece, static_cast<size_t>(nPiece))))) {
+                cancelled = true;
+                break;
+            }
+        }
+
+        batch.n_tokens     = 1;
+        batch.token[0]     = token;
+        batch.pos[0]       = nPast + nGenerated;
+        batch.n_seq_id[0]  = 1;
+        batch.seq_id[0][0] = 0;
+        batch.logits[0]    = 1;
+
+        if (llama_decode(ctx_, batch) != 0) {
+            onError("llama_decode (generation) failed");
+            break;
+        }
+        ++nGenerated;
+    }
+
+    llama_sampler_free(sampler);
+    llama_batch_free(batch);
+    llama_memory_clear(llama_get_memory(ctx_), true);
+
+    if (!cancelled) onChunk("data: [DONE]\n\n");
+}
+#endif // LLAMA_CPP_VISION_AVAILABLE
 
 void LlamaCppService::streamingChatWithCallback(
     const std::string& /*model*/,
@@ -548,46 +780,87 @@ void LlamaCppService::streamingChatWithCallback(
     }
 
     auto messages = parseMessages(prompt, systemPrompt);
-
     std::unique_lock<std::mutex> lock(inferMutex_);
     doInference(messages, maxTokens, temperature, onChunk, onError);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// streamingChatWithTools  (tool support not yet implemented — falls back)
-// ─────────────────────────────────────────────────────────────────────────────
-
 void LlamaCppService::streamingChatWithTools(
-    const std::string& model,
+    const std::string& /*model*/,
     Json::Value messages,
-    const Json::Value& /*tools*/,
+    const Json::Value& tools,
     int maxTokens,
     std::function<bool(const std::string&)> onChunk,
     std::function<void(const std::string&)> onError,
     McpRegistry* /*registry*/,
     double temperature,
-    int numCtx
+    int /*numCtx*/
 ) const {
-    std::cout << "[LlamaCpp] Tool calls not yet supported — running without tools\n";
-
-    std::string prompt;
-    std::string sysPrompt;
-
-    for (const auto& msg : messages) {
-        const std::string role    = msg.get("role",    "user").asString();
-        const std::string content = msg.get("content", "").asString();
-
-        if (role == "system") {
-            sysPrompt = content;
-        } else if (role == "user") {
-            if (!prompt.empty()) prompt += "\n";
-            prompt += "User: " + content;
-        } else if (role == "assistant") {
-            if (!prompt.empty()) prompt += "\n";
-            prompt += "Assistant: " + content;
-        }
+    if (!modelLoaded_) {
+        onError("No llama.cpp model loaded");
+        return;
     }
 
-    streamingChatWithCallback(model, prompt, maxTokens,
-                              onChunk, onError, sysPrompt, temperature, numCtx);
+    if (tools.isArray() && !tools.empty())
+        std::cout << "[LlamaCpp] Tool calls not yet supported — running without tools\n";
+
+    std::vector<std::pair<std::string, std::string>> textMessages;
+    textMessages.reserve(static_cast<size_t>(messages.size()));
+
+    std::vector<std::vector<uint8_t>> allImageData;
+
+    for (const auto& msg : messages) {
+        const std::string role = msg.get("role", "user").asString();
+        std::string text;
+
+        const Json::Value& contentVal = msg["content"];
+
+        if (contentVal.isString()) {
+            text = contentVal.asString();
+        } else if (contentVal.isArray()) {
+            for (const auto& part : contentVal) {
+                const std::string type = part.get("type", "").asString();
+                if (type == "text") {
+                    text += part.get("text", "").asString();
+                } else if (type == "image_url") {
+                    const std::string url = part["image_url"].get("url", "").asString();
+                    if (!url.empty()) {
+                        auto bytes = decodeBase64Image(url);
+                        if (!bytes.empty()) {
+                            allImageData.push_back(std::move(bytes));
+                            text += "<image>\n";
+                        } else {
+                            std::cerr << "[LlamaCpp] image_url decoded to 0 bytes — skipping\n";
+                        }
+                    }
+                }
+            }
+        }
+
+        textMessages.push_back({role, text});
+    }
+
+    std::unique_lock<std::mutex> lock(inferMutex_);
+
+#ifdef LLAMA_CPP_VISION_AVAILABLE
+    if (!allImageData.empty()) {
+        if (visionEnabled_) {
+            doInferenceWithVision(
+                textMessages,
+                allImageData,
+                maxTokens, temperature, onChunk, onError);
+            return;
+        } else {
+            onError("Image content received but no multimodal projector is loaded. "
+                    "Place a *mmproj*.gguf alongside the model to enable vision.");
+            return;
+        }
+    }
+#else
+    if (!allImageData.empty()) {
+        onError("Image content received but llama.cpp vision support is not enabled in this build.");
+        return;
+    }
+#endif
+
+    doInference(textMessages, maxTokens, temperature, onChunk, onError);
 }

@@ -204,9 +204,10 @@ export function buildReasoningElement(reasoning) {
 
 	const details = document.createElement("details");
 	details.className = "message-reasoning";
+	details.open = false; // FIX: explicitly closed for completed messages
 
 	const summary = document.createElement("summary");
-	summary.textContent = "Thinking...";
+	summary.textContent = "Thinking"; // FIX: "Thinking..." → "Thinking" to distinguish completed state from active streaming
 
 	const content = document.createElement("div");
 	content.className = "reasoning-content";

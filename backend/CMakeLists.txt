@@ -1,3 +1,4 @@
+# backend/CMakeLists.txt
 cmake_minimum_required(VERSION 3.16)
 
 project(ctrlpanel CXX)
@@ -13,7 +14,6 @@ endif()
 include(FetchContent)
 
 # ── Detect cross-compilation ──────────────────────────────────────────────────
-# When using the aarch64 toolchain file, CMAKE_CROSSCOMPILING will be TRUE
 if(CMAKE_CROSSCOMPILING)
     message(STATUS "Cross-compiling for ${CMAKE_SYSTEM_PROCESSOR} — using FetchContent for deps")
 
@@ -29,7 +29,6 @@ if(CMAKE_CROSSCOMPILING)
     )
     FetchContent_MakeAvailable(jsoncpp)
 
-    # Disable pkg-config so curl can't find host x86 libs
     set(PKG_CONFIG_EXECUTABLE "pkg-config-notfound" CACHE FILEPATH "" FORCE)
 
     set(BUILD_CURL_EXE      OFF CACHE BOOL "" FORCE)
@@ -55,25 +54,24 @@ if(CMAKE_CROSSCOMPILING)
     FetchContent_MakeAvailable(curl)
 
     # ── llama.cpp (ARM cross-compile) ─────────────────────────────────────────
-    option(ENABLE_LLAMACPP "Enable llama.cpp local inference" ON)
+    option(ENABLE_LLAMACPP        "Enable llama.cpp local inference"         ON)
+    option(ENABLE_LLAMACPP_VISION "Enable vision/multimodal support (llava)" OFF)
 
     if(ENABLE_LLAMACPP)
         message(STATUS "llama.cpp: enabled for ARM cross-compile")
 
         set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
         set(LLAMA_BUILD_SERVER   OFF CACHE BOOL "" FORCE)
         set(LLAMA_BUILD_COMMON   OFF CACHE BOOL "" FORCE)
+        set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
         set(BUILD_SHARED_LIBS    OFF CACHE BOOL "" FORCE)
 
-        # CPU only — NEON will be auto-detected for aarch64
         set(GGML_CUDA    OFF CACHE BOOL "" FORCE)
         set(GGML_METAL   OFF CACHE BOOL "" FORCE)
         set(GGML_VULKAN  OFF CACHE BOOL "" FORCE)
         set(GGML_OPENCL  OFF CACHE BOOL "" FORCE)
         set(GGML_SYCL    OFF CACHE BOOL "" FORCE)
         set(GGML_HIPBLAS OFF CACHE BOOL "" FORCE)
-        # Disable OpenMP to avoid libgomp.so runtime dependency
         set(GGML_OPENMP  OFF CACHE BOOL "" FORCE)
 
         FetchContent_Declare(
@@ -88,43 +86,113 @@ if(CMAKE_CROSSCOMPILING)
     endif()
 
 else()
-    # Native build — use system libs as before
+    # ── Native build ──────────────────────────────────────────────────────────
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(JSONCPP REQUIRED jsoncpp)
     pkg_check_modules(LIBCURL REQUIRED libcurl)
 
-    # ── llama.cpp (native Linux only, optional) ───────────────────────────────
-    option(ENABLE_LLAMACPP "Enable llama.cpp local inference" ON)
+    option(ENABLE_LLAMACPP        "Enable llama.cpp local inference"         ON)
+    option(ENABLE_LLAMACPP_VISION "Enable vision/multimodal support (llava)" OFF)
 
     if(ENABLE_LLAMACPP)
         message(STATUS "llama.cpp: enabled — fetching via FetchContent")
 
         set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
         set(LLAMA_BUILD_SERVER   OFF CACHE BOOL "" FORCE)
         set(LLAMA_BUILD_COMMON   OFF CACHE BOOL "" FORCE)
+        set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
         set(BUILD_SHARED_LIBS    OFF CACHE BOOL "" FORCE)
 
-        # Force CPU-only build — no CUDA, Metal, Vulkan, etc.
         set(GGML_CUDA    OFF CACHE BOOL "" FORCE)
         set(GGML_METAL   OFF CACHE BOOL "" FORCE)
         set(GGML_VULKAN  OFF CACHE BOOL "" FORCE)
         set(GGML_OPENCL  OFF CACHE BOOL "" FORCE)
         set(GGML_SYCL    OFF CACHE BOOL "" FORCE)
         set(GGML_HIPBLAS OFF CACHE BOOL "" FORCE)
-        # Disable OpenMP to avoid libgomp.so runtime dependency
         set(GGML_OPENMP  OFF CACHE BOOL "" FORCE)
 
         FetchContent_Declare(
             llama_cpp
             GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
-            GIT_TAG        b8277
+            GIT_TAG        b8337
             GIT_SHALLOW    TRUE
         )
         FetchContent_MakeAvailable(llama_cpp)
     else()
         message(STATUS "llama.cpp: disabled (ENABLE_LLAMACPP=OFF)")
     endif()
+endif()
+
+# ── Vision: locate headers and collect sources ────────────────────────────────
+if(ENABLE_LLAMACPP AND ENABLE_LLAMACPP_VISION)
+    # Locate clip.h
+    if(EXISTS "${llama_cpp_SOURCE_DIR}/tools/mtmd/clip.h")
+        set(LLAVA_INCLUDE_DIR "${llama_cpp_SOURCE_DIR}/tools/mtmd")
+    elseif(EXISTS "${llama_cpp_SOURCE_DIR}/examples/llava/clip.h")
+        set(LLAVA_INCLUDE_DIR "${llama_cpp_SOURCE_DIR}/examples/llava")
+    else()
+        message(FATAL_ERROR
+            "ENABLE_LLAMACPP_VISION=ON but clip.h was not found.\n"
+            "Searched:\n"
+            "  ${llama_cpp_SOURCE_DIR}/tools/mtmd\n"
+            "  ${llama_cpp_SOURCE_DIR}/examples/llava")
+    endif()
+    message(STATUS "Vision: clip.h from ${LLAVA_INCLUDE_DIR}")
+
+    # Locate stb_image.h
+    find_file(STB_IMAGE_H stb_image.h
+        PATHS
+            "${llama_cpp_SOURCE_DIR}/vendor/stb"
+            "${llama_cpp_SOURCE_DIR}/common"
+            "${llama_cpp_SOURCE_DIR}/ggml/src/ggml-cpu"
+            "${llama_cpp_SOURCE_DIR}/thirdparty"
+            "${llama_cpp_SOURCE_DIR}/third_party/stb"
+        NO_DEFAULT_PATH
+    )
+    if(STB_IMAGE_H)
+        get_filename_component(STB_IMAGE_DIR "${STB_IMAGE_H}" DIRECTORY)
+        message(STATUS "Vision: stb_image.h from ${STB_IMAGE_DIR}")
+    else()
+        file(GLOB_RECURSE STB_IMAGE_CANDIDATES "${llama_cpp_SOURCE_DIR}/*/stb_image.h")
+        if(STB_IMAGE_CANDIDATES)
+            list(GET STB_IMAGE_CANDIDATES 0 STB_IMAGE_H)
+            get_filename_component(STB_IMAGE_DIR "${STB_IMAGE_H}" DIRECTORY)
+            message(STATUS "Vision: stb_image.h (fallback search) from ${STB_IMAGE_DIR}")
+        else()
+            message(FATAL_ERROR "stb_image.h not found in the llama.cpp source tree.")
+        endif()
+    endif()
+
+    # Collect vision .cpp files, excluding CLI tools and deprecation-warning
+    file(GLOB LLAVA_SOURCES_ROOT "${LLAVA_INCLUDE_DIR}/*.cpp")
+    file(GLOB LLAVA_SOURCES_MODELS "${LLAVA_INCLUDE_DIR}/models/*.cpp")
+    set(LLAVA_SOURCES_ALL ${LLAVA_SOURCES_ROOT} ${LLAVA_SOURCES_MODELS})
+
+    set(LLAVA_SOURCES "")
+    foreach(src ${LLAVA_SOURCES_ALL})
+        get_filename_component(fname "${src}" NAME)
+        if(fname MATCHES ".*-cli\\.cpp$" OR fname STREQUAL "mtmd-helper.cpp" OR fname STREQUAL "deprecation-warning.cpp")
+            message(STATUS "Vision: skipping ${fname}")
+        else()
+            list(APPEND LLAVA_SOURCES "${src}")
+            message(STATUS "Vision: including ${fname}")
+        endif()
+    endforeach()
+
+    # Global includes
+    include_directories(${LLAVA_INCLUDE_DIR})
+    if(EXISTS "${LLAVA_INCLUDE_DIR}/models")
+        include_directories(${LLAVA_INCLUDE_DIR}/models)
+    endif()
+    include_directories(${STB_IMAGE_DIR})
+    include_directories(
+        ${llama_cpp_SOURCE_DIR}
+        ${llama_cpp_SOURCE_DIR}/include
+        ${llama_cpp_SOURCE_DIR}/ggml/include
+    )
+    
+    # Silence the annoying ggml_scale_mode deprecation warnings in clip-graph.h
+    add_compile_options(-Wno-deprecated-enum-enum-conversion)
 endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -169,6 +237,10 @@ set(SOURCES
     ${EMBED_CPP}
 )
 
+if(ENABLE_LLAMACPP AND ENABLE_LLAMACPP_VISION)
+    list(APPEND SOURCES ${LLAVA_SOURCES})
+endif()
+
 if(CMAKE_CROSSCOMPILING)
     # ── ARM binary only ───────────────────────────────────────────────────────
     add_executable(ctrlpanel_arm ${SOURCES})
@@ -185,39 +257,62 @@ if(CMAKE_CROSSCOMPILING)
             ${llama_cpp_SOURCE_DIR}/include
             ${llama_cpp_SOURCE_DIR}/ggml/include
         )
-        target_link_libraries(ctrlpanel_arm llama)
+        # Link both llama AND ggml
+        target_link_libraries(ctrlpanel_arm llama ggml)
         target_compile_definitions(ctrlpanel_arm PRIVATE LLAMA_CPP_AVAILABLE)
+
+        if(ENABLE_LLAMACPP_VISION)
+            target_compile_definitions(ctrlpanel_arm PRIVATE LLAMA_CPP_VISION_AVAILABLE)
+        endif()
     endif()
 
     install(TARGETS ctrlpanel_arm DESTINATION bin)
 
 else()
-    # ── Linux binary ──────────────────────────────────────────────────────────
+    # ── Linux & Windows native builds ─────────────────────────────────────────
     include_directories(${JSONCPP_INCLUDE_DIRS})
     include_directories(${LIBCURL_INCLUDE_DIRS})
 
+    # Create Linux Binary
     add_executable(ctrlpanel ${SOURCES})
     target_link_libraries(ctrlpanel
         ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread)
 
-    if(ENABLE_LLAMACPP)
-        # llama.cpp may place llama.h under include/ (newer) or root (older)
-        target_include_directories(ctrlpanel PRIVATE
-            ${llama_cpp_SOURCE_DIR}
-            ${llama_cpp_SOURCE_DIR}/include
-            ${llama_cpp_SOURCE_DIR}/ggml/include
-        )
-        target_link_libraries(ctrlpanel llama)
-        target_compile_definitions(ctrlpanel PRIVATE LLAMA_CPP_AVAILABLE)
-    endif()
-
-    # ── Windows .exe binary ───────────────────────────────────────────────────
-    # llama.cpp is Linux-only for now; Windows support can be added later.
+    # Create Windows Binary (compiling locally via dummy .exe extension)
     add_executable(ctrlpanel_exe ${SOURCES})
     set_target_properties(ctrlpanel_exe PROPERTIES
         OUTPUT_NAME "ctrlpanel" SUFFIX ".exe")
     target_link_libraries(ctrlpanel_exe
         ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread)
+
+    # Setup llama.cpp for BOTH binaries
+    if(ENABLE_LLAMACPP)
+        # Apply to Linux binary
+        target_include_directories(ctrlpanel PRIVATE
+            ${llama_cpp_SOURCE_DIR}
+            ${llama_cpp_SOURCE_DIR}/include
+            ${llama_cpp_SOURCE_DIR}/ggml/include
+        )
+        # Link both llama AND ggml
+        target_link_libraries(ctrlpanel llama ggml)
+        target_compile_definitions(ctrlpanel PRIVATE LLAMA_CPP_AVAILABLE)
+
+        # Apply to Windows binary
+        target_include_directories(ctrlpanel_exe PRIVATE
+            ${llama_cpp_SOURCE_DIR}
+            ${llama_cpp_SOURCE_DIR}/include
+            ${llama_cpp_SOURCE_DIR}/ggml/include
+        )
+        # Link both llama AND ggml
+        target_link_libraries(ctrlpanel_exe llama ggml)
+        target_compile_definitions(ctrlpanel_exe PRIVATE LLAMA_CPP_AVAILABLE)
+
+        # Handle Vision Definitions for both
+        if(ENABLE_LLAMACPP_VISION)
+            target_compile_definitions(ctrlpanel PRIVATE LLAMA_CPP_VISION_AVAILABLE)
+            target_compile_definitions(ctrlpanel_exe PRIVATE LLAMA_CPP_VISION_AVAILABLE)
+        endif()
+    endif()
 
     install(TARGETS ctrlpanel ctrlpanel_exe DESTINATION bin)
 endif()

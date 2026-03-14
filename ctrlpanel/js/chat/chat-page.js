@@ -131,7 +131,7 @@ function initUpload(root, inputEl, attachmentManager, signal) {
 	uploadBtn.addEventListener("click", () => uploadInput.click(), { signal });
 	
 	uploadInput.addEventListener("change", async () => {
-		const selected = Array.from(uploadInput.files || []);
+		const selected = Array.from(uploadInput.files ||[]);
 		uploadInput.value = "";
 		
 		for (const file of selected) {
@@ -148,8 +148,6 @@ function initUpload(root, inputEl, attachmentManager, signal) {
 }
 
 function initAutoResize(element, signal) {
-	// A contenteditable div natively auto-expands via CSS max-height/min-height.
-	// We only need to manage the empty state for the placeholder without forcing height repaints.
 	const updatePlaceholder = () => {
 		const text = element.textContent || "";
 		const hasAttachments = element.querySelector(".inline-attachment");
@@ -179,7 +177,7 @@ function initAutoResize(element, signal) {
 async function loadAndPopulateModels(root, signal) {
 	try {
 		const response = await getModels();
-		const models = response?.data || [];
+		const models = response?.data ||[];
 		
 		setModelMetadata(models);
 		
@@ -187,7 +185,6 @@ async function loadAndPopulateModels(root, signal) {
 		const menu = modelDropdown?.querySelector('.chat-dropdown-menu');
 		if (!menu) return;
 		
-		// Clear existing static items
 		menu.innerHTML = '';
 		
 		for (const model of models) {
@@ -250,13 +247,6 @@ async function loadAndPopulateModels(root, signal) {
 	}
 }
 
-/**
- * Apply a specific model ID to the model dropdown.
- * Returns true if the model was found and selected; false otherwise.
- * @param {Element} root
- * @param {string}  modelId
- * @returns {boolean}
- */
 function applyModel(root, modelId) {
 	if (!modelId) return false;
 	const modelDropdown = root.querySelector('[data-dropdown="model"]');
@@ -368,26 +358,21 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
 		let extraTokens = 0;
 
-		// Add tokens from the main input box
 		const parts = attachmentManager.extractParts();
 		if (parts && parts.length > 0) {
 			extraTokens += estimatePartsTokens(parts);
 		}
 
-		// Add tokens from currently generating text
 		if (uiState.isGenerating && uiState.liveGeneratingNode) {
 			extraTokens += estimateNodeTokens(uiState.liveGeneratingNode);
 		}
 
-		// Handle editing draft vs original node
 		if (uiState.editingNodeId && chat) {
 			const node = getNode(ensureGraph(chat), uiState.editingNodeId);
 			if (node) {
-				// subtract original node tokens
 				extraTokens -= estimateNodeTokens(node);
 
-				// add draft tokens
-				let draftParts = [];
+				let draftParts =[];
 				if (node.parts) {
 					let textAdded = false;
 					for (const part of node.parts) {
@@ -400,7 +385,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					}
 					if (!textAdded) draftParts.unshift({ type: "text", content: uiState.editingDraft });
 				} else {
-					draftParts = [{ type: "text", content: uiState.editingDraft }];
+					draftParts =[{ type: "text", content: uiState.editingDraft }];
 				}
 				extraTokens += estimatePartsTokens(draftParts);
 			}
@@ -410,7 +395,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	};
 	root._updateLiveContext = updateLiveContext;
 
-	// Load models entirely (since we removed async OR-to-LM split)
 	await loadAndPopulateModels(root, signal);
 
 	initDropdowns(root, signal);
@@ -441,9 +425,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		saveChats();
 	}
 
-	// Fallback: cancel editing via Escape when the edit textarea is not focused.
-	// Must NOT use capture:true — that would intercept the event before it reaches
-	// the textarea's own keydown listener, preventing it from ever firing.
 	document.addEventListener("keydown", (e) => {
 		if ((e.key === "Escape" || e.key === "Esc") && uiState.editingNodeId) {
 			e.preventDefault();
@@ -472,6 +453,18 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				sendBtn.title = "Send (Ctrl+Enter) • Send without reply (Ctrl+Shift+Enter)";
 				sendBtn.setAttribute("aria-label", "Send message");
 			}
+		}
+	};
+
+	// FIX: Close the live thinking box in typingEl before stopTyping tears it down.
+	// This prevents the open <details> from persisting across the brief gap between
+	// stopTyping() removing the element and rerender() inserting the rebuilt (closed) one.
+	// User can still open/close the box freely during active generation — this only
+	// fires at stream completion, not during streaming.
+	const closeTypingReasoning = () => {
+		if (uiState.typingEl) {
+			const liveReasoning = uiState.typingEl.querySelector('.message-reasoning');
+			if (liveReasoning) liveReasoning.open = false;
 		}
 	};
 
@@ -546,8 +539,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			let nodeContent = "";
 			
 			if (node.parts && Array.isArray(node.parts)) {
-				const textParts = [];
-				const attachmentInfos = [];
+				const textParts =[];
+				const attachmentInfos =[];
 				
 				for (const part of node.parts) {
 					if (part.type === "text" && part.content) {
@@ -602,24 +595,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			return nodeContent;
 		};
 
-		/**
-		 * Build a structured OpenAI-format messages array for the current thread.
-		 * Unlike buildNodeTextForHistory (which flattens everything to a string),
-		 * this preserves image attachments as image_url content blocks so that
-		 * vision-capable models can actually see them.
-		 *
-		 * Message format:
-		 *   { role: "user"|"assistant", content: string | Array<ContentPart> }
-		 *
-		 * ContentPart types used:
-		 *   { type: "text",      text: "..." }
-		 *   { type: "image_url", image_url: { url: "data:<mime>;base64,..." } }
-		 *
-		 * @param {string[]} nodeIds - Ordered thread node IDs to include.
-		 * @returns {Array} OpenAI-compatible messages array.
-		 */
 		const buildApiMessages = (nodeIds) => {
-			const apiMessages = [];
+			const apiMessages =[];
 
 			for (const nodeId of nodeIds) {
 				const node = getNode(graph, nodeId);
@@ -627,7 +604,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 				const role = node.role === "user" ? "user" : "assistant";
 
-				// ── Assistant messages: plain text only (no image output) ────────
 				if (role === "assistant") {
 					const textContent = buildNodeTextForHistory(node);
 					if (textContent) {
@@ -636,10 +612,9 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					continue;
 				}
 
-				// ── User messages: check for image attachments ───────────────────
 				if (node.parts && Array.isArray(node.parts)) {
 					const textParts = [];
-					const contentBlocks = [];
+					const contentBlocks =[];
 					let hasImages = false;
 
 					for (const part of node.parts) {
@@ -647,14 +622,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 							textParts.push(part.content);
 						} else if (part.type === "attachment") {
 							if (part.isImage && part.data) {
-								// Vision content block — include the full data URL
 								hasImages = true;
 								contentBlocks.push({
 									type: "image_url",
 									image_url: { url: part.data },
 								});
 							} else if (!part.isImage && part.data) {
-								// Non-image file — decode and embed as text
 								try {
 									const b64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
 									if (b64Match) {
@@ -675,13 +648,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					const combinedText = textParts.join("");
 
 					if (hasImages) {
-						// Multimodal message: text first, then image blocks
+						// PUSH the text so it appears AFTER the images
 						if (combinedText) {
-							contentBlocks.unshift({ type: "text", text: combinedText });
+							contentBlocks.push({ type: "text", text: combinedText });
 						}
 						apiMessages.push({ role, content: contentBlocks });
 					} else if (combinedText) {
-						// Text-only message: use a plain string for efficiency
 						apiMessages.push({ role, content: combinedText });
 					}
 				} else if (node.content) {
@@ -718,18 +690,11 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			conversationHistory = "Hello";
 		}
 
-		// Build the structured messages array for vision/multimodal support.
-		// Mirrors the fallback logic in the conversationHistory block above:
-		// computeThreadNodeIds may not include the just-submitted user node on
-		// the very first message, so we add parentUserNodeId explicitly when empty.
 		let apiMessages = buildApiMessages(threadIds);
 		if (apiMessages.length === 0 && parentUserNodeId) {
 			apiMessages = buildApiMessages([parentUserNodeId]);
 		}
 
-		// Only use the structured messages path when the thread actually contains
-		// image content blocks. Text-only conversations keep using the flat prompt
-		// string — this keeps llama.cpp and non-vision LM Studio flows unchanged.
 		const hasVisionContent = apiMessages.some(m => Array.isArray(m.content));
 		const visionMessages = hasVisionContent ? apiMessages : null;
 
@@ -741,7 +706,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		
 		let rawStreamText = "";
 		let officialReasoningText = "";
-		let activeToolCalls = [];
+		let activeToolCalls =[];
 		let errorFromStream = null;
 		let isSaved = false;
 
@@ -766,6 +731,11 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			const toolNames = enabledToolValues.map(v => TOOL_LABELS[v] ?? v);
 			const toolsString = toolNames.length > 0 ? toolNames.join(", ") : "none";
 			systemPrompt = systemPrompt.replaceAll("{tools}", toolsString);
+		}
+
+		if (hasVisionContent) {
+			const visionHint = "[System Override: You have native multimodal vision capabilities. The user has attached an image. Analyze the visual data directly. Do not claim you are a text-only reasoning engine or that you cannot see images.]";
+			systemPrompt = systemPrompt ? (systemPrompt + "\n\n" + visionHint) : visionHint;
 		}
 
 		uiState.flushResponse = () => {
@@ -907,43 +877,30 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 							uiState.typingEl.appendChild(msgContent);
 						}
 
-						// ── Incremental DOM updates ─────────────────────────────────
-						// Never wipe msgContent from scratch — update each section
-						// in-place so that open/closed state on <details>, scroll
-						// positions on tables and code blocks, and any other user
-						// interactions are preserved across every streaming token.
-
-						// 1. Reasoning block: create once, update its text in-place.
 						if (displayReasoning) {
 							let reasoningEl = msgContent.querySelector('.message-reasoning');
 							if (!reasoningEl) {
 								reasoningEl = document.createElement('details');
 								reasoningEl.className = 'message-reasoning';
-								reasoningEl.open = true; // open by default on first render
+								reasoningEl.open = true;
 								reasoningEl.innerHTML = '<summary>Thinking...</summary><div class="reasoning-content"></div>';
-								// Always sits at the top, before tool calls and text.
 								msgContent.insertBefore(reasoningEl, msgContent.firstChild);
 							}
 							const reasoningContent = reasoningEl.querySelector('.reasoning-content');
 							if (reasoningContent) reasoningContent.textContent = displayReasoning;
 						}
 
-						// 2. Tool calls: only append ones that aren't in the DOM yet.
 						const existingToolCallEls = msgContent.querySelectorAll('.message-tool-call');
 						if (activeToolCalls.length > existingToolCallEls.length) {
 							for (let i = existingToolCallEls.length; i < activeToolCalls.length; i++) {
 								const tcEl = buildToolCallElement(activeToolCalls[i]);
 								const textWrapper = msgContent.querySelector('.chat-message-text');
-								// Insert after reasoning/existing tool calls, before text.
 								textWrapper
 									? msgContent.insertBefore(tcEl, textWrapper)
 									: msgContent.appendChild(tcEl);
 							}
 						}
 
-						// 3. Main text: update the wrapper's innerHTML in-place.
-						//    The wrapper element itself is never replaced, so any
-						//    ancestor scroll state outside it is untouched.
 						if (parsedContent) {
 							let textWrapper = msgContent.querySelector('.chat-message-text');
 							if (!textWrapper) {
@@ -956,13 +913,9 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 							const finalHtml = injectMath(parseMarkdown(text), mathBlocks);
 							textWrapper.innerHTML = finalHtml;
 						} else {
-							// No text content yet (still purely in reasoning) —
-							// remove stale text wrapper if it somehow exists.
 							msgContent.querySelector('.chat-message-text')?.remove();
 						}
 						
-						// Scroll the .content container so the scrollbar stays at the
-						// right edge of the page rather than inside the chat column
 						if (messages) {
 							const scrollEl = messages.closest('.content') || messages;
 							scrollEl.scrollTop = scrollEl.scrollHeight;
@@ -974,7 +927,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				temperature,
 				contextLimit,
 				uiState.activeStreamId,
-				visionMessages, // Structured messages with image blocks; null for text-only chats
+				visionMessages,
 			);
 			
 			if (errorFromStream) {
@@ -984,20 +937,20 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			if (!rawStreamText && !officialReasoningText && activeToolCalls.length === 0) {
 				throw new Error("Empty response from AI");
 			}
-			
+
+			// FIX: Close the live thinking box before teardown so the open state doesn't
+			// persist across the microtask gap between stopTyping() and rerender().
+			closeTypingReasoning();
 			stopTyping();
 			rerender();
 			setActiveCallback && setActiveCallback();
 			
 		} catch (err) {
 			console.error("[ChatPage] Stream error:", err);
+			// FIX: Same close-before-teardown on the error path.
+			closeTypingReasoning();
 			stopTyping();
 			
-			// Only add an error node if flushResponse hasn't already saved partial
-			// content. When the user manually stops generation, flushResponse runs
-			// first (saving the partial response) and sets isSaved=true — adding
-			// another error-only node here would leave a stale "Error: aborted"
-			// message in the history that can't be cleanly deleted.
 			if (!isSaved) {
 				const errorText = err?.message || String(err);
 				if (errorText && errorText !== "Empty response from AI") {
@@ -1021,9 +974,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (chat) renderThread(messages, chat, uiState);
 		else messages.querySelectorAll(".chat-message, .chat-typing").forEach((el) => el.remove());
 
-		// Attach Escape handler directly on the textarea and focus it.
-		// keydown always fires before blur, so e.preventDefault() here reliably
-		// suppresses any native defocus and cancels editing on the first press.
 		if (uiState.editingNodeId) {
 			const editTextarea = messages.querySelector(".chat-edit-input");
 			if (editTextarea) {
@@ -1117,7 +1067,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				const saveMode = uiState.editingSaveMode ?? "reset";
 
 				if (saveMode === "preserve") {
-					// Preserve: update node text in-place without affecting history
 					if (node.parts) {
 						let textSet = false;
 						node.parts = node.parts.map(p => {
@@ -1140,7 +1089,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					rerender();
 					setActiveCallback && setActiveCallback();
 				} else {
-					// Reset (default): create sibling copy with new text, delete old subtree response
 					const sibling = createSiblingCopy(graph, nodeId);
 					if (!sibling) return;
 
@@ -1202,10 +1150,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				let userNode = getNode(graph, userNodeId);
 				if (!userNode) return;
 
-				// Delete all children of the user node (not just the selected one).
-				// After a stopped generation there may be two children: the partial
-				// content node (saved by flushResponse) and the error node — both
-				// need to go before the new generation starts.
 				const childrenToDelete = [...(userNode.children || [])];
 				childrenToDelete.forEach((childId) => deleteSubtree(graph, childId));
 
@@ -1248,10 +1192,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			delete: () => {
 				stopTyping();
 				if (e.shiftKey) {
-					// Shift+click: splice-delete only this message, keep children
 					spliceDeleteNode(graph, nodeId);
 				} else {
-					// Normal click: delete this message and all history up to it
 					deleteSubtree(graph, nodeId);
 				}
 				recomputeLeafId(graph);
@@ -1296,16 +1238,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		}
 	}, { signal });
 
-	/**
-	 * Rich copy — intercept Ctrl+C / Cmd+C on the chat thread.
-	 *
-	 * text/plain  → raw markdown source (** bold **, ## heading, ```code```, $LaTeX$…)
-	 * text/html   → rendered HTML with KaTeX replaced by its LaTeX source
-	 *
-	 * Attached to `document` (not #chatMessages) because the copy event fires on
-	 * the focused element / document.body and bubbles UP toward document — it never
-	 * passes through a descendant like #chatMessages.
-	 */
 	document.addEventListener("copy", (e) => {
 		const selection = window.getSelection();
 		if (!selection || selection.isCollapsed || !selection.rangeCount) return;
@@ -1313,13 +1245,9 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const range = selection.getRangeAt(0);
 		if (!messages.contains(range.commonAncestorContainer)) return;
 
-		// ── 1. text/plain: pull raw markdown from the node store ─────────────
-		// Walking the rendered DOM loses all markdown syntax (**bold** → bold,
-		// ## h2 → h2, ```code``` → code, etc.). The node store has the originals.
 		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
 		const graph = chat ? ensureGraph(chat) : null;
 
-		/** Raw markdown text for a node. */
 		const nodeRawText = (node) => {
 			if (!node) return "";
 			if (node.parts && Array.isArray(node.parts)) {
@@ -1328,14 +1256,13 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			return String(node.content || "");
 		};
 
-		// Which .chat-message elements does the selection touch?
 		const allMsgEls = [...messages.querySelectorAll(".chat-message[data-node-id]")];
 		const selectedMsgEls = allMsgEls.filter(el => range.intersectsNode(el));
 
 		let plainPayload = "";
 
 		if (graph && selectedMsgEls.length > 0) {
-			const parts = [];
+			const parts =[];
 			for (const msgEl of selectedMsgEls) {
 				const node = getNode(graph, msgEl.dataset.nodeId);
 				const raw = nodeRawText(node);
@@ -1344,26 +1271,20 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			plainPayload = parts.join("\n\n");
 		}
 
-		// Fallback: selection.toString() (loses markdown but better than nothing)
 		if (!plainPayload) plainPayload = selection.toString();
 
-		// ── 2. text/html: rendered HTML with KaTeX → LaTeX source ─────────────
 		const container = document.createElement("div");
 		container.appendChild(range.cloneContents());
 
-		// Strip UI chrome: action menus, code-block toolbars, typing indicator
 		container
 			.querySelectorAll(".chat-message-menu, .md-code-header, .chat-typing, .chat-message-inline-attachment, .latex-preamble")
 			.forEach(el => el.remove());
 
-		// Collapse tool-call blocks to their summary line
 		container.querySelectorAll(".message-tool-call").forEach(el => {
 			const summary = el.querySelector("summary");
 			el.replaceWith(document.createTextNode(summary ? summary.textContent.trim() : ""));
 		});
 
-		// KaTeX output → $…$ / $$…$$ using the embedded MathML annotation
-		// (process .katex-display first so the inner .katex doesn't double-fire)
 		container.querySelectorAll(".katex-display").forEach(el => {
 			const src = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim();
 			if (src) el.replaceWith(document.createTextNode(`$$${src}$$`));
@@ -1375,14 +1296,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 		const htmlPayload = `<!DOCTYPE html><html><body>${container.innerHTML}</body></html>`;
 
-		// ── 3. Write to clipboard ─────────────────────────────────────────────
 		e.preventDefault();
 		if (!e.clipboardData) return;
 		e.clipboardData.setData("text/plain", plainPayload);
 		try {
 			e.clipboardData.setData("text/html", htmlPayload);
 		} catch {
-			// Firefox doesn't support text/html in the copy event — plain text is enough.
 		}
 	}, { signal });
 
