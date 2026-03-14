@@ -118,6 +118,8 @@ body.sidebar-collapsed .content {
 
 .palette-tile,
 .flavour-tile {
+    position: relative; /* FIX: contain absolutely-positioned child inputs so the
+                           browser doesn't scroll the page when input.checked is set */
     display: inline-grid;
     grid-auto-flow: column;
     align-items: center;
