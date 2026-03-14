@@ -970,10 +970,17 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			console.error("[ChatPage] Stream error:", err);
 			stopTyping();
 			
-			const errorText = err?.message || String(err);
-			if (errorText && errorText !== "Empty response from AI") {
-				addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", `**Error:** ${errorText}`);
-				saveChats();
+			// Only add an error node if flushResponse hasn't already saved partial
+			// content. When the user manually stops generation, flushResponse runs
+			// first (saving the partial response) and sets isSaved=true — adding
+			// another error-only node here would leave a stale "Error: aborted"
+			// message in the history that can't be cleanly deleted.
+			if (!isSaved) {
+				const errorText = err?.message || String(err);
+				if (errorText && errorText !== "Empty response from AI") {
+					addChildMessageToChat(activeChatId, parentUserNodeId, "assistant", `**Error:** ${errorText}`);
+					saveChats();
+				}
 			}
 			
 			rerender();
@@ -1180,10 +1187,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				let userNode = getNode(graph, userNodeId);
 				if (!userNode) return;
 
-				const currentResponseId = graph.selections?.[userNodeId];
-				if (currentResponseId) {
-					spliceDeleteNode(graph, currentResponseId);
-				}
+				// Delete all children of the user node (not just the selected one).
+				// After a stopped generation there may be two children: the partial
+				// content node (saved by flushResponse) and the error node — both
+				// need to go before the new generation starts.
+				const childrenToDelete = [...(userNode.children || [])];
+				childrenToDelete.forEach((childId) => deleteSubtree(graph, childId));
 
 				delete graph.selections[userNodeId];
 
@@ -1220,6 +1229,25 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				} catch (err) {
 					console.error("Failed to copy text: ", err);
 				}
+			},
+			delete: () => {
+				stopTyping();
+				if (e.shiftKey) {
+					// Shift+click: splice-delete only this message, keep children
+					spliceDeleteNode(graph, nodeId);
+				} else {
+					// Normal click: delete this message and all history up to it
+					deleteSubtree(graph, nodeId);
+				}
+				recomputeLeafId(graph);
+				chat.updatedAt = Date.now();
+				saveChats();
+				uiState.editingNodeId = null;
+				uiState.editingDraft = "";
+				uiState.editingSaveMode = null;
+				rerender();
+				renderChatList();
+				setActiveCallback && setActiveCallback();
 			},
 		};
 

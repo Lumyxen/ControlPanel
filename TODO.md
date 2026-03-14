@@ -203,8 +203,6 @@
 - Newline character collapsing into previous line with the sequence: character -> newline -> character -> delete character
 - Hovering over the last message in a chat makes the chat slightly scrolls up
 - Don't force close the thinking box during generation
-- Message regeneration deletes messages after generation instead of before
-- Can't delete messages
 
 #### Misc Bugs
 - Images don't work for models via llama.cpp
@@ -260,6 +258,7 @@
 - Tool selection dropdown
 - File attachments
   - Inline attachments
+  - Image support
 - Context used/max info
   - Context window highlighting (yellow @ 50%, red @ 90%)
   - Very fast and snappy live updating
