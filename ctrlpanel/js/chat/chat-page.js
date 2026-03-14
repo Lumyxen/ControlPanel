@@ -102,7 +102,7 @@ function initDropdowns(root, signal) {
 function initTools(root, signal) {
 	const toolsDropdown = root.querySelector('[data-dropdown="tools"]');
 	if (!toolsDropdown) return;
-	const checkboxes =[...toolsDropdown.querySelectorAll('input[type="checkbox"][name="tool"]')];
+	const checkboxes = [...toolsDropdown.querySelectorAll('input[type="checkbox"][name="tool"]')];
 	const enabled = new Set(JSON.parse(localStorage.getItem(TOOLS_KEY) || "[]"));
 	checkboxes.forEach((cb) => cb.checked = enabled.has(cb.value));
 
@@ -131,7 +131,7 @@ function initUpload(root, inputEl, attachmentManager, signal) {
 	uploadBtn.addEventListener("click", () => uploadInput.click(), { signal });
 	
 	uploadInput.addEventListener("change", async () => {
-		const selected = Array.from(uploadInput.files ||[]);
+		const selected = Array.from(uploadInput.files || []);
 		uploadInput.value = "";
 		
 		for (const file of selected) {
@@ -179,7 +179,7 @@ function initAutoResize(element, signal) {
 async function loadAndPopulateModels(root, signal) {
 	try {
 		const response = await getModels();
-		const models = response?.data ||[];
+		const models = response?.data || [];
 		
 		setModelMetadata(models);
 		
@@ -387,7 +387,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				extraTokens -= estimateNodeTokens(node);
 
 				// add draft tokens
-				let draftParts =[];
+				let draftParts = [];
 				if (node.parts) {
 					let textAdded = false;
 					for (const part of node.parts) {
@@ -400,7 +400,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					}
 					if (!textAdded) draftParts.unshift({ type: "text", content: uiState.editingDraft });
 				} else {
-					draftParts =[{ type: "text", content: uiState.editingDraft }];
+					draftParts = [{ type: "text", content: uiState.editingDraft }];
 				}
 				extraTokens += estimatePartsTokens(draftParts);
 			}
@@ -441,16 +441,18 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		saveChats();
 	}
 
+	// Fallback: cancel editing via Escape when the edit textarea is not focused.
+	// Must NOT use capture:true — that would intercept the event before it reaches
+	// the textarea's own keydown listener, preventing it from ever firing.
 	document.addEventListener("keydown", (e) => {
 		if ((e.key === "Escape" || e.key === "Esc") && uiState.editingNodeId) {
 			e.preventDefault();
-			e.stopPropagation();
 			uiState.editingNodeId = null;
 			uiState.editingDraft = "";
 			uiState.editingSaveMode = null;
 			rerender();
 		}
-	}, { signal, capture: true });
+	}, { signal });
 
 	const setGeneratingState = (isGenerating) => {
 		uiState.isGenerating = isGenerating;
@@ -545,7 +547,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			
 			if (node.parts && Array.isArray(node.parts)) {
 				const textParts = [];
-				const attachmentInfos =[];
+				const attachmentInfos = [];
 				
 				for (const part of node.parts) {
 					if (part.type === "text" && part.content) {
@@ -617,7 +619,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		 * @returns {Array} OpenAI-compatible messages array.
 		 */
 		const buildApiMessages = (nodeIds) => {
-			const apiMessages =[];
+			const apiMessages = [];
 
 			for (const nodeId of nodeIds) {
 				const node = getNode(graph, nodeId);
@@ -636,8 +638,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 				// ── User messages: check for image attachments ───────────────────
 				if (node.parts && Array.isArray(node.parts)) {
-					const textParts =[];
-					const contentBlocks =[];
+					const textParts = [];
+					const contentBlocks = [];
 					let hasImages = false;
 
 					for (const part of node.parts) {
@@ -739,7 +741,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		
 		let rawStreamText = "";
 		let officialReasoningText = "";
-		let activeToolCalls =[];
+		let activeToolCalls = [];
 		let errorFromStream = null;
 		let isSaved = false;
 
@@ -1019,6 +1021,25 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (chat) renderThread(messages, chat, uiState);
 		else messages.querySelectorAll(".chat-message, .chat-typing").forEach((el) => el.remove());
 
+		// Attach Escape handler directly on the textarea and focus it.
+		// keydown always fires before blur, so e.preventDefault() here reliably
+		// suppresses any native defocus and cancels editing on the first press.
+		if (uiState.editingNodeId) {
+			const editTextarea = messages.querySelector(".chat-edit-input");
+			if (editTextarea) {
+				editTextarea.focus();
+				editTextarea.addEventListener("keydown", (e) => {
+					if (e.key === "Escape" || e.key === "Esc") {
+						e.preventDefault();
+						uiState.editingNodeId = null;
+						uiState.editingDraft = "";
+						uiState.editingSaveMode = null;
+						rerender();
+					}
+				});
+			}
+		}
+
 		updateLiveContext();
 	};
 
@@ -1090,90 +1111,70 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					rerender();
 					return;
 				}
+
 				stopTyping();
-				let effectiveNode = node;
 
-				const getUpdatedParts = () => {
+				const saveMode = uiState.editingSaveMode ?? "reset";
+
+				if (saveMode === "preserve") {
+					// Preserve: update node text in-place without affecting history
 					if (node.parts) {
-						const newParts =[];
-						let textAdded = false;
-						for (const part of node.parts) {
-							if (part.type === "text") {
-								if (!textAdded) {
-									newParts.push({ type: "text", content: next });
-									textAdded = true;
-								}
-							} else {
-								newParts.push(JSON.parse(JSON.stringify(part)));
+						let textSet = false;
+						node.parts = node.parts.map(p => {
+							if (p.type === "text" && !textSet) {
+								textSet = true;
+								return { ...p, content: next };
 							}
-						}
-						if (!textAdded) {
-							newParts.unshift({ type: "text", content: next });
-						}
-						return newParts;
-					}
-					return null;
-				};
-
-				if (node.role === "assistant") {
-					const preserve = uiState.editingSaveMode === "preserve";
-					const branched = branchFromNode(graph, nodeId, { preserveSelectedTail: preserve });
-					if (branched) {
-						branched.content = String(next);
-						const updatedParts = getUpdatedParts();
-						if (updatedParts) branched.parts = updatedParts;
-						branched.editedAt = Date.now();
-						effectiveNode = branched;
-						if (!preserve) {
-							effectiveNode.children =[];
-							delete graph.selections[effectiveNode.id];
-							recomputeLeafId(graph);
-						} else {
-							recomputeLeafId(graph);
-						}
-					}
-				} else {
-					const hadResponse = nodeHasGeneratedResponse(graph, nodeId);
-					if (hadResponse) {
-						const updatedParts = getUpdatedParts();
-						const sibling = createSiblingCopy(graph, nodeId, { 
-							content: next, 
-							timestamp: Date.now(),
-							parts: updatedParts
+							return p;
 						});
-						if (sibling) effectiveNode = sibling;
+						if (!textSet) node.parts.unshift({ type: "text", content: next });
 					} else {
-						node.content = String(next);
-						const updatedParts = getUpdatedParts();
-						if (updatedParts) node.parts = updatedParts;
-						node.editedAt = Date.now();
-						recomputeLeafId(graph);
+						node.content = next;
 					}
-				}
+					node.editedAt = Date.now();
+					chat.updatedAt = Date.now();
+					saveChats();
+					uiState.editingNodeId = null;
+					uiState.editingDraft = "";
+					uiState.editingSaveMode = null;
+					rerender();
+					setActiveCallback && setActiveCallback();
+				} else {
+					// Reset (default): create sibling copy with new text, delete old subtree response
+					const sibling = createSiblingCopy(graph, nodeId);
+					if (!sibling) return;
 
-				chat.updatedAt = Date.now();
-				saveChats();
-				uiState.editingNodeId = null;
-				uiState.editingDraft = "";
-				uiState.editingSaveMode = null;
-				rerender();
-				renderChatList();
-				setActiveCallback && setActiveCallback();
+					if (sibling.parts) {
+						let textSet = false;
+						sibling.parts = sibling.parts.map(p => {
+							if (p.type === "text" && !textSet) {
+								textSet = true;
+								return { ...p, content: next };
+							}
+							return p;
+						});
+						if (!textSet) sibling.parts.unshift({ type: "text", content: next });
+					} else {
+						sibling.content = next;
+					}
+					sibling.editedAt = Date.now();
 
-				if (effectiveNode.role === "user") {
+					recomputeLeafId(graph);
+					chat.updatedAt = Date.now();
+					saveChats();
+					uiState.editingNodeId = null;
+					uiState.editingDraft = "";
+					uiState.editingSaveMode = null;
+
+					rerender();
+					setActiveCallback && setActiveCallback();
+
 					if (empty) empty.hidden = true;
-					startReply(effectiveNode.id);
+					startReply(sibling.id);
 				}
 			},
-			"branch-back": () => {
-				const nodeNow = getNode(graph, nodeId);
-				if (!nodeNow?.parentId) return;
-				const parent = getNode(graph, nodeNow.parentId);
-				const siblings = parent?.children ||[];
-				const idx = siblings.indexOf(nodeId);
-				if (idx <= 0) return;
-				stopTyping();
-				setSelectedChildId(graph, nodeNow.parentId, siblings[idx - 1]);
+			back: () => {
+				setSelectedChildId(graph, node.parentId, nodeId, -1);
 				recomputeLeafId(graph);
 				chat.updatedAt = Date.now();
 				saveChats();
@@ -1183,15 +1184,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				rerender();
 				setActiveCallback && setActiveCallback();
 			},
-			"branch-forward": () => {
-				const nodeNow = getNode(graph, nodeId);
-				if (!nodeNow?.parentId) return;
-				const parent = getNode(graph, nodeNow.parentId);
-				const siblings = parent?.children ||[];
-				const idx = siblings.indexOf(nodeId);
-				if (idx === -1 || idx >= siblings.length - 1) return;
-				stopTyping();
-				setSelectedChildId(graph, nodeNow.parentId, siblings[idx + 1]);
+			forward: () => {
+				setSelectedChildId(graph, node.parentId, nodeId, +1);
 				recomputeLeafId(graph);
 				chat.updatedAt = Date.now();
 				saveChats();
@@ -1335,13 +1329,13 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		};
 
 		// Which .chat-message elements does the selection touch?
-		const allMsgEls =[...messages.querySelectorAll(".chat-message[data-node-id]")];
+		const allMsgEls = [...messages.querySelectorAll(".chat-message[data-node-id]")];
 		const selectedMsgEls = allMsgEls.filter(el => range.intersectsNode(el));
 
 		let plainPayload = "";
 
 		if (graph && selectedMsgEls.length > 0) {
-			const parts =[];
+			const parts = [];
 			for (const msgEl of selectedMsgEls) {
 				const node = getNode(graph, msgEl.dataset.nodeId);
 				const raw = nodeRawText(node);

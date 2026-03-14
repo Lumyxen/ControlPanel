@@ -195,7 +195,7 @@
 
 ### To Fix
 #### UI
-- LaTeX formatting not properly fully functional, but mostly is
+- None
 
 #### UX
 - Fix ESC not canceling message editing and instead defocuses the text field on the first press
