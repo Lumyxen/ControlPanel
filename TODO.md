@@ -22,8 +22,11 @@
 - KV cache reuse
 - KV Quantisation
   - Reduce memory usage at the cost of decreasing context quality
+- Button to go all the way to bottom of chat history
+- Be able to scroll up and stop auto-scroll or scroll down and re-enter auto-scroll
 - Center LaTeX formatting
   - Better live updating of the formatting
+- Better model folder structure (each model has a directory containing .gguf, .mmproj, and .tiktoken/vocab.json)
 - Edit available model list
   - Model search
     - LM Studio
@@ -59,6 +62,8 @@
     - Decay factor in the weighting
   - Allow the AI to switch to using an identifier that links to RAG memories to remember in the context window to remember to do specific tasks
   - Offput large documents (12k+ tokens) to make the AI read in chunks to prevent context overflow and more effectively handle memory
+- Headless browser tool
+##### Start giving updates to GamingwithNP
 - AI automated research (self-improvement)
   - Choose the best open sourced (actual open source, not open weight) model available
     - Train the AI for a set time (configurable, default 5 minutes)
@@ -73,14 +78,10 @@
   - Do NOT let the initial Qwen 3.5 35B A3B model OR the trained AI to not be in this harness, as to give it up-most capabilities
   - Small model to keep watch unknowingly to the developer AI to kill the development loop as soon as any sort of malicious intent is detected
   - NOT meant to be computationally reasonable yet. It's for a preparation for when it does become reasonable, which is entirely unknown and could be tomorrow, or even 2 years from now.
-- Headless browser tool
-##### Start giving updates to GamingwithNP
 - Mobile UI support
 - Add chat importing (from T3.chat & Google AI Studio)
 - Add chat exporting (T3.chat format, custom format as default)
 - Reserve max output token length to the context window (don't allow user to add more to the history if max output token length exceeds remaining available context)
-- Be able to scroll up and stop auto-scroll
-- Button to go all the way to bottom of chat history
 - Add weather tool
   - Inputs user location on the current day by default
   - AI can specify a different location or date
@@ -206,7 +207,7 @@
 - Fix ESC not canceling message editing and instead defocuses the text field on the first press
 
 #### Misc Bugs
-- Don't load the AI model on runtime, instead loading it on message generation
+- None
 
 
 

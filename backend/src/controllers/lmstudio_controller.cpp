@@ -178,7 +178,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
 
         if (isLlamaCpp) {
             // ── llama.cpp path ────────────────────────────────────────────────
-            if (!llamaCppService || !llamaCppService->isReady()) {
+            if (!llamaCppService) {
                 res.status = 503;
                 res.set_content("{\"error\": \"llama.cpp service not available\"}", "application/json");
                 return;
@@ -361,8 +361,8 @@ void handleModels(const httplib::Request& /*req*/, httplib::Response& res,
                 combined["data"].append(m);
         }
 
-        // llama.cpp local models
-        if (llamaCppService && llamaCppService->isReady()) {
+        // llama.cpp local models (directory scan — no model needs to be loaded)
+        if (llamaCppService) {
             Json::Value lcpModels = llamaCppService->getModels();
             if (lcpModels.isMember("data") && lcpModels["data"].isArray()) {
                 for (const auto& m : lcpModels["data"])

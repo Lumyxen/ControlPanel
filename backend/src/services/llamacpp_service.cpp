@@ -40,22 +40,15 @@ LlamaCppService::LlamaCppService(const std::string& modelsDir, Config& config)
     std::cout << "[LlamaCpp] Backend initialised\n";
 #else
     std::cout << "[LlamaCpp] Built without LLAMA_CPP_AVAILABLE — inference disabled\n";
-    return;
 #endif
 
+    // Model loading is deferred to the first inference call (lazy loading).
+    // No .gguf scan is performed here.
     if (!fs::exists(modelsDir_)) {
         std::cout << "[LlamaCpp] Models directory does not exist: " << modelsDir_ << "\n";
-        return;
+    } else {
+        std::cout << "[LlamaCpp] Model will be loaded on first message generation\n";
     }
-
-    for (const auto& entry : fs::directory_iterator(modelsDir_)) {
-        if (entry.path().extension() == ".gguf") {
-            if (loadModel(entry.path().string())) break;
-        }
-    }
-
-    if (!modelLoaded_)
-        std::cout << "[LlamaCpp] No .gguf models found in: " << modelsDir_ << "\n";
 }
 
 LlamaCppService::~LlamaCppService() {
@@ -67,6 +60,30 @@ LlamaCppService::~LlamaCppService() {
 
 #ifdef LLAMA_CPP_VISION_AVAILABLE
     if (clipCtx_) { clip_free(clipCtx_); clipCtx_ = nullptr; }
+#endif
+}
+
+bool LlamaCppService::ensureModelLoaded() {
+    if (modelLoaded_) return true;
+
+#ifndef LLAMA_CPP_AVAILABLE
+    return false;
+#else
+    if (!fs::exists(modelsDir_)) {
+        std::cout << "[LlamaCpp] Models directory does not exist: " << modelsDir_ << "\n";
+        return false;
+    }
+
+    for (const auto& entry : fs::directory_iterator(modelsDir_)) {
+        if (entry.path().extension() == ".gguf") {
+            const std::string fname = entry.path().filename().string();
+            if (fname.find("mmproj") != std::string::npos) continue;
+            if (loadModel(entry.path().string())) return true;
+        }
+    }
+
+    std::cout << "[LlamaCpp] No .gguf models found in: " << modelsDir_ << "\n";
+    return false;
 #endif
 }
 
@@ -773,10 +790,14 @@ void LlamaCppService::streamingChatWithCallback(
     const std::string& systemPrompt,
     double temperature,
     int /*numCtx*/
-) const {
+) {
+    // Lazy load: load the model on the first generation request if not yet loaded.
     if (!modelLoaded_) {
-        onError("No llama.cpp model loaded");
-        return;
+        std::cout << "[LlamaCpp] Model not loaded — loading now before generation...\n";
+        if (!ensureModelLoaded()) {
+            onError("No llama.cpp model loaded");
+            return;
+        }
     }
 
     auto messages = parseMessages(prompt, systemPrompt);
@@ -794,10 +815,14 @@ void LlamaCppService::streamingChatWithTools(
     McpRegistry* /*registry*/,
     double temperature,
     int /*numCtx*/
-) const {
+) {
+    // Lazy load: load the model on the first generation request if not yet loaded.
     if (!modelLoaded_) {
-        onError("No llama.cpp model loaded");
-        return;
+        std::cout << "[LlamaCpp] Model not loaded — loading now before generation...\n";
+        if (!ensureModelLoaded()) {
+            onError("No llama.cpp model loaded");
+            return;
+        }
     }
 
     if (tools.isArray() && !tools.empty())
