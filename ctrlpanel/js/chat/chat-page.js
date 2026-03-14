@@ -913,29 +913,59 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 							msgContent.className = "chat-message-content";
 							uiState.typingEl.appendChild(msgContent);
 						}
-						
-						msgContent.innerHTML = '';
-						
+
+						// ── Incremental DOM updates ─────────────────────────────────
+						// Never wipe msgContent from scratch — update each section
+						// in-place so that open/closed state on <details>, scroll
+						// positions on tables and code blocks, and any other user
+						// interactions are preserved across every streaming token.
+
+						// 1. Reasoning block: create once, update its text in-place.
 						if (displayReasoning) {
-							const openAttr = parsedContent ? '' : 'open';
-							const reasoningHtml = `<details class="message-reasoning" ${openAttr}><summary>Thinking...</summary><div class="reasoning-content">${escapeHtml(displayReasoning)}</div></details>`;
-							msgContent.insertAdjacentHTML('beforeend', reasoningHtml);
+							let reasoningEl = msgContent.querySelector('.message-reasoning');
+							if (!reasoningEl) {
+								reasoningEl = document.createElement('details');
+								reasoningEl.className = 'message-reasoning';
+								reasoningEl.open = true; // open by default on first render
+								reasoningEl.innerHTML = '<summary>Thinking...</summary><div class="reasoning-content"></div>';
+								// Always sits at the top, before tool calls and text.
+								msgContent.insertBefore(reasoningEl, msgContent.firstChild);
+							}
+							const reasoningContent = reasoningEl.querySelector('.reasoning-content');
+							if (reasoningContent) reasoningContent.textContent = displayReasoning;
 						}
 
-						if (activeToolCalls.length > 0) {
-							activeToolCalls.forEach(tc => {
-								msgContent.appendChild(buildToolCallElement(tc));
-							});
+						// 2. Tool calls: only append ones that aren't in the DOM yet.
+						const existingToolCallEls = msgContent.querySelectorAll('.message-tool-call');
+						if (activeToolCalls.length > existingToolCallEls.length) {
+							for (let i = existingToolCallEls.length; i < activeToolCalls.length; i++) {
+								const tcEl = buildToolCallElement(activeToolCalls[i]);
+								const textWrapper = msgContent.querySelector('.chat-message-text');
+								// Insert after reasoning/existing tool calls, before text.
+								textWrapper
+									? msgContent.insertBefore(tcEl, textWrapper)
+									: msgContent.appendChild(tcEl);
+							}
 						}
 
+						// 3. Main text: update the wrapper's innerHTML in-place.
+						//    The wrapper element itself is never replaced, so any
+						//    ancestor scroll state outside it is untouched.
 						if (parsedContent) {
+							let textWrapper = msgContent.querySelector('.chat-message-text');
+							if (!textWrapper) {
+								textWrapper = document.createElement('div');
+								textWrapper.className = 'chat-message-text';
+								msgContent.appendChild(textWrapper);
+							}
 							const preprocessed = preprocessLatexText(parsedContent);
 							const { text, mathBlocks } = extractMath(preprocessed);
 							const finalHtml = injectMath(parseMarkdown(text), mathBlocks);
-							const wrapper = document.createElement("div");
-							wrapper.className = "chat-message-text";
-							wrapper.innerHTML = finalHtml;
-							msgContent.appendChild(wrapper);
+							textWrapper.innerHTML = finalHtml;
+						} else {
+							// No text content yet (still purely in reasoning) —
+							// remove stale text wrapper if it somehow exists.
+							msgContent.querySelector('.chat-message-text')?.remove();
 						}
 						
 						// Scroll the .content container so the scrollbar stays at the

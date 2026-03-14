@@ -20,7 +20,7 @@
     flex: 1;
     /* overflow removed — scrolling now happens at the .content level so the
        scrollbar appears at the right edge of the page, not inside the column */
-    padding: 16px 0;
+    padding: 16px 0 40px;
 
     /* More separation between bubbles — use margin-bottom instead of flex gap
        so the spacing area belongs to the element, enabling click-to-select anywhere. */
