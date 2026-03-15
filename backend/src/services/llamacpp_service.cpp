@@ -406,14 +406,6 @@ void LlamaCppService::doInference(
             tmplBuf.data(), static_cast<int32_t>(tmplBuf.size()));
         formattedPrompt = std::string(tmplBuf.data(), static_cast<size_t>(tmplLen));
 
-        // Append thinking prefill (if configured) to steer the model past
-        // system-prompt narration. This text becomes part of the prompt, so
-        // the model generates *from* this point rather than from a blank slate.
-        {
-            const std::string prefill = config_.getLlamacppThinkingPrefill();
-            if (!prefill.empty()) formattedPrompt += prefill;
-        }
-
         int reqTokens = llama_tokenize(
             vocab, formattedPrompt.c_str(),
             static_cast<int32_t>(formattedPrompt.size()),
@@ -571,16 +563,10 @@ void LlamaCppService::doInferenceWithVision(
         return std::string(buf.data(), static_cast<size_t>(len));
     };
 
-    std::string promptFull = applyTemplate(messages);
+    const std::string promptFull = applyTemplate(messages);
     if (promptFull.empty()) {
         onError("llama_chat_apply_template failed (unsupported template?)");
         return;
-    }
-
-    // Append thinking prefill for vision path too.
-    {
-        const std::string prefill = config_.getLlamacppThinkingPrefill();
-        if (!prefill.empty()) promptFull += prefill;
     }
 
     std::vector<std::string> promptChunks;
