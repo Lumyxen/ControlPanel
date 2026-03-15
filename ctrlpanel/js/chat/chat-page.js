@@ -26,7 +26,7 @@ import {
 import { renderChatList } from "./sidebar.js";
 import { updateContextUI, setModelMetadata, getModelMaxTokens, getModelContextLimitFromUI, estimateNodeTokens, estimatePartsTokens } from "./context.js";
 import { getModels } from "../api.js";
-import { renderThread, showTyping, buildToolCallElement } from "./thread-ui.js";
+import { renderThread, showTyping, buildToolCallElement, patchMessageEditState } from "./thread-ui.js";
 import { InlineAttachmentManager } from "./inline-attachment.js";
 import { parseMarkdown } from "./markdown.js";
 import { preprocessLatexText, extractMath, injectMath } from "./latex.js";
@@ -424,16 +424,31 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		saveChats();
 	}
 
+	// Primary ESC handler: runs in capture phase so it fires before any element-level
+	// handlers. With contenteditable (instead of <textarea>) this works in all browsers —
+	// Firefox no longer intercepts ESC natively, so keydown reaches JS normally.
 	document.addEventListener("keydown", (e) => {
 		if ((e.key === "Escape" || e.key === "Esc") && uiState.editingNodeId) {
 			e.preventDefault();
-			e.stopPropagation(); // prevent double-handling after DOM rebuild
 			uiState.editingNodeId = null;
 			uiState.editingDraft = "";
 			uiState.editingSaveMode = null;
 			rerender();
 		}
-	}, { capture: true, signal }); // capture fires BEFORE the textarea's native blur on ESC
+	}, { capture: true, signal });
+
+	// Safety net: if somehow keydown was missed (edge case browser behaviour),
+	// keyup will still cancel the edit since editingNodeId will still be set.
+	// On normal paths the keydown handler above already cleared editingNodeId,
+	// making this a no-op.
+	document.addEventListener("keyup", (e) => {
+		if ((e.key === "Escape" || e.key === "Esc") && uiState.editingNodeId) {
+			uiState.editingNodeId = null;
+			uiState.editingDraft = "";
+			uiState.editingSaveMode = null;
+			rerender();
+		}
+	}, { signal });
 
 	const setGeneratingState = (isGenerating) => {
 		uiState.isGenerating = isGenerating;
@@ -975,10 +990,16 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		else messages.querySelectorAll(".chat-message, .chat-typing").forEach((el) => el.remove());
 
 		if (uiState.editingNodeId) {
-			const editTextarea = messages.querySelector(".chat-edit-input");
-			if (editTextarea) {
-				editTextarea.focus();
-				// ESC is handled by the document capture listener above
+			const editEl = messages.querySelector(".chat-edit-input");
+			if (editEl) {
+				editEl.focus();
+				// Place cursor at end of content
+				const range = document.createRange();
+				const sel = window.getSelection();
+				range.selectNodeContents(editEl);
+				range.collapse(false); // false = collapse to end
+				sel?.removeAllRanges();
+				sel?.addRange(range);
 			}
 		}
 
@@ -1027,20 +1048,44 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				} else {
 					textToEdit = String(node.content || "");
 				}
-				
+
 				uiState.editingDraft = textToEdit;
 				uiState.editingSaveMode = null;
-				rerender();
+
+				// Patch only this message in-place — avoids tearing down and
+				// rebuilding the whole thread, which causes Chromium to paint an
+				// intermediate empty-container state that squishes other messages.
+				const patched = patchMessageEditState(messages, graph, node, true, textToEdit);
+				if (!patched) { rerender(); return; }
+
+				// Focus + place cursor at end
+				const editEl = messages.querySelector('.chat-edit-input');
+				if (editEl) {
+					editEl.focus({ preventScroll: true });
+					const range = document.createRange();
+					const sel = window.getSelection();
+					range.selectNodeContents(editEl);
+					range.collapse(false);
+					sel?.removeAllRanges();
+					sel?.addRange(range);
+				}
+				updateLiveContext();
 			},
 			cancel: () => {
+				const cancelNodeId = uiState.editingNodeId;
 				uiState.editingNodeId = null;
 				uiState.editingDraft = "";
 				uiState.editingSaveMode = null;
-				rerender();
+				const cancelNode = cancelNodeId ? getNode(graph, cancelNodeId) : null;
+				const patched = cancelNode
+					? patchMessageEditState(messages, graph, cancelNode, false, null)
+					: false;
+				if (!patched) rerender();
+				else updateLiveContext();
 			},
 			save: () => {
-				const textarea = msgEl.querySelector(".chat-edit-input");
-				const next = textarea ? textarea.value.trimEnd() : uiState.editingDraft;
+				const editEl = msgEl.querySelector(".chat-edit-input");
+				const next = editEl ? (editEl.innerText ?? "").trimEnd() : uiState.editingDraft;
 				
 				const oldText = node.parts 
 					? node.parts.filter(p => p.type === "text").map(p => p.content).join("")
@@ -1204,36 +1249,55 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	}, { signal });
 
 	messages.addEventListener("keydown", (e) => {
-		const textarea = e.target.closest(".chat-edit-input");
-		if (!textarea) return;
-		const msgEl = textarea.closest(".chat-message");
+		const editEl = e.target.closest(".chat-edit-input");
+		if (!editEl) return;
+		const msgEl = editEl.closest(".chat-message");
 		const nodeId = msgEl?.dataset.nodeId;
 		if (!nodeId) return;
 
 		if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+			// Ctrl/Cmd+Enter: save the edit
 			e.preventDefault();
 			uiState.editingSaveMode = e.shiftKey ? "preserve" : "reset";
 			msgEl.querySelector('button[data-action="save"]')?.click();
-		} else if (e.key === "Escape" || e.key === "Esc") {
-			// Belt-and-suspenders: also cancel here in case the capture handler
-			// already cleared editingNodeId but rerender hasn't run yet.
+		} else if (e.key === "Enter") {
+			// Plain Enter: insert a literal newline character.
+			// If we allow the default, browsers insert a <div> or <br> element
+			// which corrupts the plain-text content we read back via innerText.
 			e.preventDefault();
+			// execCommand('insertText') is the most cross-browser reliable way to
+			// insert text at the caret, handling selection replacement automatically.
+			// It is deprecated in spec but supported in every current browser and
+			// triggers the 'input' event so our draft-sync handler fires normally.
+			document.execCommand("insertText", false, "\n");
+		} else if (e.key === "Escape" || e.key === "Esc") {
+			// Belt-and-suspenders: fires on Chrome/Safari where keydown works fine
+			// (the document capture handler above handles it first, making editingNodeId
+			// null so this becomes a no-op). On Firefox the keyup handler is primary.
+			e.preventDefault();
+			const escNodeId = uiState.editingNodeId;
 			uiState.editingNodeId = null;
 			uiState.editingDraft = "";
 			uiState.editingSaveMode = null;
-			rerender();
+			const escNode = escNodeId ? getNode(graph, escNodeId) : null;
+			const patched = escNode
+				? patchMessageEditState(messages, graph, escNode, false, null)
+				: false;
+			if (!patched) rerender();
 		}
 	}, { signal });
 
 	messages.addEventListener("input", (e) => {
-		const textarea = e.target.closest(".chat-edit-input");
-		if (!textarea) return;
-		textarea.style.height = "auto";
-		textarea.style.height = textarea.scrollHeight + "px";
-		const msgEl = textarea.closest(".chat-message");
+		const editEl = e.target.closest(".chat-edit-input");
+		if (!editEl) return;
+		const msgEl = editEl.closest(".chat-message");
 		const nodeId = msgEl?.dataset.nodeId;
 		if (nodeId && uiState.editingNodeId === nodeId) {
-			uiState.editingDraft = textarea.value;
+			// innerText reflects what the user sees, including \n for line breaks.
+			// A lone <br> inserted by some browsers into an empty contenteditable
+			// reads as "\n" via innerText — we strip a single trailing newline here
+			// so the draft doesn't accumulate phantom whitespace.
+			uiState.editingDraft = (editEl.innerText ?? "").replace(/\n$/, "");
 			updateLiveContext();
 		}
 	}, { signal });

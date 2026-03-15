@@ -204,10 +204,13 @@
 
 ### To Fix
 #### UI
-- Chromium moves elements when editing a message.
+##### Chromium
+- Awkard message editing text field sizing causing unwanted scrolling
 
 #### UX
-- None
+##### Firefox
+- ESC does not properly cancel message editing, requiring 2 presses of ESC
+  - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
 
 #### Misc Bugs
 - None

@@ -381,3 +381,55 @@ export function renderThread(messagesEl, chat, uiState) {
 
 	scrollToBottom(messagesEl);
 }
+
+/**
+ * Update a single message element between normal and editing state WITHOUT
+ * rebuilding the rest of the thread.  This avoids Chromium painting the
+ * intermediate empty-thread state that causes surrounding messages to shift.
+ *
+ * @param {Element} messagesEl  The #chatMessages container
+ * @param {object}  graph       The chat graph
+ * @param {object}  node        The node being toggled
+ * @param {boolean} isEditing   Whether we're entering (true) or leaving (false) edit mode
+ * @param {string}  editingDraft  Current draft text (only used when isEditing=true)
+ * @returns {boolean} false if the element wasn't found (caller should fall back to renderThread)
+ */
+export function patchMessageEditState(messagesEl, graph, node, isEditing, editingDraft) {
+	const msgEl = messagesEl.querySelector(`[data-node-id="${node.id}"]`);
+	if (!msgEl) return false;
+
+	// Swap content container
+	const oldContent = msgEl.querySelector('.chat-message-content');
+	const newContent = buildContentContainer(node, isEditing, editingDraft);
+	if (oldContent) msgEl.replaceChild(newContent, oldContent);
+	else msgEl.insertBefore(newContent, msgEl.querySelector('.chat-message-menu'));
+
+	// Swap menu
+	const nav = getSiblingNavState(graph, node.id);
+	const canResend = Boolean(node.parentId) && node.role !== "system";
+	const oldMenu = msgEl.querySelector('.chat-message-menu');
+	const newMenu = document.createElement('div');
+	newMenu.className = 'chat-message-menu';
+	newMenu.setAttribute('role', 'toolbar');
+	newMenu.setAttribute('aria-label', 'Message actions');
+	if (isEditing) {
+		newMenu.append(
+			createActionButton({ action: 'save', label: 'Save edit', title: 'Save', iconName: 'check' }),
+			createActionButton({ action: 'cancel', label: 'Cancel edit', title: 'Cancel', iconName: 'x' })
+		);
+	} else {
+		newMenu.append(
+			createActionButton({ action: 'branch-back', label: 'Previous thread', title: 'Previous thread', iconName: 'chev-left', disabled: !nav.canBack }),
+			createActionButton({ action: 'branch-forward', label: 'Next thread', title: 'Next thread', iconName: 'chev-right', disabled: !nav.canForward }),
+			createActionButton({ action: 'thread', label: 'Create new thread from this message', title: 'New thread', iconName: 'branch' }),
+			createActionButton({ action: 'edit', label: 'Edit message', title: 'Edit', iconName: 'edit' }),
+			createActionButton({ action: 'resend', label: 'Regenerate from here', title: 'Regenerate', iconName: 'refresh', disabled: !canResend }),
+			createActionButton({ action: 'delete', label: 'Delete message', title: 'Delete (shift+click to delete only this message)', iconName: 'trash' }),
+			createActionButton({ action: 'copy', label: 'Copy raw message', title: 'Copy', iconName: 'copy' })
+		);
+	}
+	if (oldMenu) msgEl.replaceChild(newMenu, oldMenu);
+	else msgEl.appendChild(newMenu);
+
+	return true;
+}

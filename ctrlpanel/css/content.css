@@ -3,12 +3,14 @@
     transition: padding-left var(--sidebar-transition);
     overflow-y: auto;   /* this column scrolls; the body/sidebar never do */
     /* Chromium fix: pre-reserve the scrollbar gutter so adding/removing the
-       scrollbar never triggers a width reflow. Without this, entering edit
-       mode causes renderThread to change total DOM height, which can tip the
-       page over the scrollbar threshold — Chromium then allocates/deallocates
-       ~15px for the gutter, shifting every element inside (input drifts right,
-       messages jump up/down). Firefox uses overlay scrollbars and is unaffected. */
+       scrollbar never triggers a width reflow (fixes the right-shift on edit). */
     scrollbar-gutter: stable;
+    /* Chromium fix: disable scroll anchoring. When edit mode swaps in a
+       contenteditable the content height changes; Chromium's anchor algorithm
+       picks a nearby element and adjusts scrollTop to "stabilise" it, which
+       visually squishes the topmost and bottommost visible messages.
+       Firefox's anchoring heuristic doesn't misfire here. */
+    overflow-anchor: none;
     min-height: 0;      /* allow the grid child to shrink below its content size */
     display: flex;
     flex-direction: column;
