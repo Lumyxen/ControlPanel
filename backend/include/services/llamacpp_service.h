@@ -46,7 +46,7 @@ public:
         const std::string& systemPrompt = "",
         double temperature = -1.0,
         int numCtx = 0
-    ) const;
+    );
 
     void streamingChatWithTools(
         const std::string& model,
@@ -58,7 +58,7 @@ public:
         McpRegistry* registry,
         double temperature = -1.0,
         int numCtx = 0
-    ) const;
+    );
 
 private:
     std::string modelsDir_;
@@ -82,6 +82,7 @@ private:
 #endif
 
     bool loadModel(const std::string& path);
+    bool ensureModelLoaded();
 
     std::vector<std::pair<std::string, std::string>>
     parseMessages(const std::string& prompt,

@@ -241,15 +241,25 @@ function buildContentContainer(node, isEditing, editingDraft) {
 	}
 
 	if (isEditing) {
-		const textarea = document.createElement("textarea");
-		textarea.className = "chat-edit-input";
+		// Use a contenteditable div instead of <textarea>.
+		// Firefox intercepts ESC on a focused <textarea> at the native level and
+		// never dispatches the keydown event to JS at all, making it impossible to
+		// cancel an edit on the first keypress. contenteditable elements have no
+		// such native ESC interception, so keydown fires normally in all browsers.
+		const editEl = document.createElement("div");
+		editEl.className = "chat-edit-input";
+		editEl.contentEditable = "true";
+		editEl.setAttribute("role", "textbox");
+		editEl.setAttribute("aria-multiline", "true");
+		editEl.setAttribute("aria-label", "Edit message");
+		editEl.spellcheck = true;
 		// For editing, combine text parts
-		const textContent = node.parts 
+		const textContent = node.parts
 			? node.parts.filter(p => p.type === "text").map(p => p.content).join("")
 			: String(node.content || "");
-		textarea.value = editingDraft ?? textContent;
-		textarea.setAttribute("aria-label", "Edit message");
-		container.appendChild(textarea);
+		// innerText assignment respects \n as a line break and sets plain text only
+		editEl.innerText = editingDraft ?? textContent;
+		container.appendChild(editEl);
 	} else if (node.parts && Array.isArray(node.parts)) {
 		// Render parts in order
 		node.parts.forEach((part) => {
@@ -367,14 +377,6 @@ export function renderThread(messagesEl, chat, uiState) {
 			canResend: Boolean(node.parentId) && node.role !== "system",
 		});
 		messagesEl.appendChild(el);
-
-		if (uiState?.editingNodeId === node.id) {
-			const ta = el.querySelector(".chat-edit-input");
-			if (ta) {
-				ta.style.height = "auto";
-				ta.style.height = ta.scrollHeight + "px";
-			}
-		}
 	});
 
 	scrollToBottom(messagesEl);

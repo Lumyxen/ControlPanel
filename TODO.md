@@ -12,7 +12,7 @@
 
 ## AI Chat-box
 ### Planned Features
-- Switch automatically between llama.cpp builds (CUDA, ROCm, Vulkan, Rockchip NPU, CPU) based on hardware detected
+- Switch automatically between llama.cpp builds (CUDA, ROCm, Vulkan, CPU) or RKNN-LLM based on hardware detected
   - Build with all 5 versions of llama.cpp built-in
   - Allow user to manually change in settings
 - Tone down llama.cpp max compute usage to allow computer use during generation
@@ -31,7 +31,8 @@
   - Model search
     - LM Studio
     - HuggingFace (downloads model into ./data/models/)
-      - Automatically finds the mmproj for the model.
+      - Automatically finds the mmproj and vocab for the model.
+      - Automatically converts gguf models into .rkllm on NPU build
   - Filters
 - Add logprobs
   - Highlight uncertain tokens
@@ -45,6 +46,7 @@
 - Markdown formatting inside of thinking block
 - Copy LaTeX image (copies image with transparent background showing the LaTeX formatting)
 - Shift+Click to copy entire message including thinking block and tool calls
+- Custom theme setting (list of variables and hex/rgb values)
 - Web search tool
 - Add calculator tool (replaces code execution reliance for math)
   - WolframAlpha API option
@@ -183,6 +185,7 @@
     - Warn user if selected AI model is from the same company as the AI model being benchmarked
 
 ### Possible Features
+- Setting to force thinking blocks on models that have thinking natively
 - Support for an external llama.cpp server
 - Token usage graph like Kilo Code
 - Markdown and LaTeX processing in the input text field
@@ -201,10 +204,10 @@
 
 ### To Fix
 #### UI
-- None
+- Chromium moves elements when editing a message.
 
 #### UX
-- Fix ESC not canceling message editing and instead defocuses the text field on the first press
+- None
 
 #### Misc Bugs
 - None

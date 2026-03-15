@@ -2,6 +2,13 @@
     padding: 24px;
     transition: padding-left var(--sidebar-transition);
     overflow-y: auto;   /* this column scrolls; the body/sidebar never do */
+    /* Chromium fix: pre-reserve the scrollbar gutter so adding/removing the
+       scrollbar never triggers a width reflow. Without this, entering edit
+       mode causes renderThread to change total DOM height, which can tip the
+       page over the scrollbar threshold — Chromium then allocates/deallocates
+       ~15px for the gutter, shifting every element inside (input drifts right,
+       messages jump up/down). Firefox uses overlay scrollbars and is unaffected. */
+    scrollbar-gutter: stable;
     min-height: 0;      /* allow the grid child to shrink below its content size */
     display: flex;
     flex-direction: column;

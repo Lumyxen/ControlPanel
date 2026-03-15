@@ -1217,10 +1217,16 @@
 /* Edit textarea inside a bubble */
 .chat-edit-input {
     width: 100%;
-    resize: none;
-    overflow-y: hidden;
 
-    appearance: none;
+    /* white-space: pre-wrap is critical — without it, \n characters in the
+       contenteditable's text nodes are collapsed and not rendered as line breaks */
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+    /* Chromium fix: pre-reserve the scrollbar gutter so it never causes a
+       width reflow when the scrollbar appears/disappears during editing. */
+    scrollbar-gutter: stable;
+
     background: transparent;
     border: 1px solid var(--border);
     border-radius: var(--radius-none);
@@ -1233,8 +1239,11 @@
 }
 
 .chat-edit-input:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+    /* Use box-shadow instead of outline+offset: an outward outline-offset expands
+       the scroll container geometry in Chromium, shifting surrounding messages.
+       box-shadow is painted in screen space and never affects layout or scroll size. */
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent);
 }
 
 .chat-typing {

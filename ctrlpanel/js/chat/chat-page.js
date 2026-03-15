@@ -1,4 +1,3 @@
-// ctrlpanel/js/chat/chat-page.js
 import {
 	branchFromNode,
 	computeThreadNodeIds,
@@ -428,12 +427,13 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	document.addEventListener("keydown", (e) => {
 		if ((e.key === "Escape" || e.key === "Esc") && uiState.editingNodeId) {
 			e.preventDefault();
+			e.stopPropagation(); // prevent double-handling after DOM rebuild
 			uiState.editingNodeId = null;
 			uiState.editingDraft = "";
 			uiState.editingSaveMode = null;
 			rerender();
 		}
-	}, { signal });
+	}, { capture: true, signal }); // capture fires BEFORE the textarea's native blur on ESC
 
 	const setGeneratingState = (isGenerating) => {
 		uiState.isGenerating = isGenerating;
@@ -978,15 +978,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			const editTextarea = messages.querySelector(".chat-edit-input");
 			if (editTextarea) {
 				editTextarea.focus();
-				editTextarea.addEventListener("keydown", (e) => {
-					if (e.key === "Escape" || e.key === "Esc") {
-						e.preventDefault();
-						uiState.editingNodeId = null;
-						uiState.editingDraft = "";
-						uiState.editingSaveMode = null;
-						rerender();
-					}
-				});
+				// ESC is handled by the document capture listener above
 			}
 		}
 
@@ -1222,6 +1214,14 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			e.preventDefault();
 			uiState.editingSaveMode = e.shiftKey ? "preserve" : "reset";
 			msgEl.querySelector('button[data-action="save"]')?.click();
+		} else if (e.key === "Escape" || e.key === "Esc") {
+			// Belt-and-suspenders: also cancel here in case the capture handler
+			// already cleared editingNodeId but rerender hasn't run yet.
+			e.preventDefault();
+			uiState.editingNodeId = null;
+			uiState.editingDraft = "";
+			uiState.editingSaveMode = null;
+			rerender();
 		}
 	}, { signal });
 
