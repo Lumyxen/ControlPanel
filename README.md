@@ -1,10 +1,3 @@
-
-
-
-Here is the updated `README.md` with the accurate, fully mapped list of all the API endpoints currently implemented in the C++ backend. I've categorised them so they are much easier to read!
-
-### `./README.md`
-```md
 # Control Panel
 A highly personal web interface to give me the information and tools I need all in 1 place
 
@@ -108,4 +101,3 @@ I do use AI heavily on this project to program.
 This does not mean that design choices are dictated by the AI models. This means I'm the one fine tuning and deciding on the UI aspects. If something with the UI is like that, it's either a bug or because I wanted it like that.
 
 I personally care about the result than the code itself. This does not mean I like unoptimised slop. If something doesn't work, that's bad. If something does work, that's good. If a function is optimised to levels that are good, I do not care if it was or wasn't written by AI, I care that it exists. If it works, it works. If it works well, it works well. This is a personal project. I'm not forcing you to use it.
-```
