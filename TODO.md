@@ -204,12 +204,12 @@
 
 ### To Fix
 #### UI
-##### Chromium
-- Awkard message editing text field sizing causing unwanted scrolling
 - Removing a selected llama.cpp build in the files keeps the build highlighted despite greying out
 - Inconsistent wording, calling llama.cpp builds models, other times the backend
 - Unwanted and unnecessary descriptors such as specifying hot-swap on the llama.cpp apply button
 - Compiling progress bar not working
+##### Chromium
+- Awkard message editing text field sizing causing unwanted scrolling
 
 #### UX
 - LM Studio API url test incorrectly adds in llama.cpp models
