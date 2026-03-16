@@ -41,6 +41,7 @@
 - Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
 - AI generated chat title
 - Tool calls inline in the text instead of being shoved at the top
+- Rework settings page to have tabs
 - Rating blocks (like claude.ai's rating blocks)
 - Markdown formatting inside of thinking block
 - Copy LaTeX image (copies image with transparent background showing the LaTeX formatting)
@@ -126,7 +127,6 @@
   - Returns local speeds, latency, and jitter (between the localhost ecosystem)
 ##### Start dogfooding the rest of AI stuff (programming)
 - Step-by-Step thought graph (show different steps and decisions in a visual graph, like why it decided to skip research on a task)
-- Rework settings page to have tabs
 - Tabbed chats (a top-bar to quickly change between chats instead of solely relying on the small side-bar chat navigatino)
 - UI for thread management, replacing quick-action buttons on message hover
 - UI for model selection instead of dropdown
@@ -208,6 +208,7 @@
 - Inconsistent wording, calling llama.cpp builds models, other times the backend
 - Unwanted and unnecessary descriptors such as specifying hot-swap on the llama.cpp apply button
 - Compiling progress bar not working
+- UI reload after finishing building a llama.cpp version, causing a flicker
 ##### Chromium
 - Awkard message editing text field sizing causing unwanted scrolling
 
