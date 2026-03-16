@@ -155,7 +155,7 @@ void runConfigFileWatch(Config& config, McpRegistry& registry,
                         const std::string& settingsPath,
                         const std::string& mcpJsonPath) {
     fs::file_time_type lastSt{}, lastMt{};
-    auto safeTime = [](const std::string& p) -> fs::file_time_type {
+    auto safeTime =[](const std::string& p) -> fs::file_time_type {
         try { if (fs::exists(p)) return fs::last_write_time(p); } catch(...) {}
         return {};
     };
@@ -213,10 +213,19 @@ void runServer(Config& config, LmStudioService& lmstudioService,
     httplib::Server svr;
     { std::lock_guard<std::mutex> lk(g_serverMutex); g_server = &svr; }
 
-    svr.Options(".*", [](const httplib::Request& req, httplib::Response& res) {
+    svr.set_logger([](const httplib::Request& req, const httplib::Response& res) {
+        if (req.path == "/health" || 
+            req.path == "/api/llamacpp/build/status" || 
+            req.path == "/api/llamacpp/build/log") {
+            return;
+        }
+        std::cout << "[HTTP] " << req.method << " " << req.path << " - " << res.status << "\n";
+    });
+
+    svr.Options(".*",[](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req); res.status = 200;
     });
-    svr.Get("/health", [](const httplib::Request& req, httplib::Response& res) {
+    svr.Get("/health",[](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         res.set_content("{\"status\":\"ok\"}", "application/json");
     });
@@ -506,7 +515,7 @@ void runServer(Config& config, LmStudioService& lmstudioService,
     svr.Post("/mcp", [&](const httplib::Request& req, httplib::Response& res) {
         addCorsHeaders(res, req); handleMcpPost(req, res, mcpService);
     });
-    svr.Get("/mcp", [](const httplib::Request& req, httplib::Response& res) {
+    svr.Get("/mcp",[](const httplib::Request& req, httplib::Response& res) {
         addCorsHeaders(res, req); handleMcpGet(req, res);
     });
 
@@ -533,7 +542,6 @@ void runServer(Config& config, LmStudioService& lmstudioService,
 
     const std::string host = config.getHost();
     const int port         = config.getPort();
-    std::cout << "[Server] Starting on " << host << ":" << port << "\n";
 
     if (!svr.bind_to_port(host.c_str(), port)) {
         std::cerr << "[Server] ERROR: Failed to bind to " << host << ":" << port << "\n";
@@ -623,7 +631,7 @@ int main() {
     if (llamaCppService.isReady())
         std::cout << "Local model:    " << llamaCppService.getLoadedModelId() << "\n";
     else
-        std::cout << "Local model:    none (place a .gguf in " << modelsDir.string() << ")\n";
+        std::cout << "Local model:    none\n";
     std::cout << "===========================\n\n";
 
     serverError = false;

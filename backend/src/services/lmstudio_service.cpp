@@ -230,6 +230,8 @@ std::string LmStudioService::streamOneRound(
     }
 
     std::string url = lmStudioUrl_ + "/v1/chat/completions";
+    std::cout << "[LmStudio] Streaming round started (model: " << modelId << ")\n";
+
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "Accept: text/event-stream");
@@ -261,6 +263,8 @@ std::string LmStudioService::streamOneRound(
     CURLcode res = curl_easy_perform(curl);
     long httpCode = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+    std::cout << "[LmStudio] Streaming round ended (HTTP " << httpCode << ")\n";
+
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
@@ -552,6 +556,8 @@ Json::Value LmStudioService::makeRequest(const std::string& endpoint,
     }
 
     std::string url = lmStudioUrl_ + "/v1" + endpoint;
+    std::cout << "[LmStudio] Request started: POST " << endpoint << " (model: " << modelId << ")\n";
+
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "Expect:");
@@ -574,6 +580,8 @@ Json::Value LmStudioService::makeRequest(const std::string& endpoint,
     CURLcode res = curl_easy_perform(curl);
     long httpCode = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+    std::cout << "[LmStudio] Request ended (HTTP " << httpCode << ")\n";
+
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 

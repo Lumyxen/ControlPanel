@@ -71,19 +71,9 @@ LlamaCppService::LlamaCppService(const std::string& modelsDir,
     const std::string pref     = config_.getLlamacppBackend();
     const std::string resolved = resolveBackend(pref);
 
-    std::cout << "[LlamaCpp] Libs dir: " << libsDir_ << "\n";
-    std::cout << "[LlamaCpp] Backend preference: " << pref
-              << "  →  loading: " << resolved << "\n";
-
     if (!loadLib(resolved) && resolved != "cpu") {
         std::cerr << "[LlamaCpp] Failed to load '" << resolved << "' — trying cpu\n";
         loadLib("cpu");
-    }
-
-    if (!fs::exists(modelsDir_)) {
-        std::cout << "[LlamaCpp] Models directory does not exist: " << modelsDir_ << "\n";
-    } else {
-        std::cout << "[LlamaCpp] Model will be loaded on first generation request\n";
     }
 }
 
@@ -270,7 +260,6 @@ bool LlamaCppService::ensureModelLoaded() {
     if (!api_->loaded) return false;
 
     if (!fs::exists(modelsDir_)) {
-        std::cout << "[LlamaCpp] Models directory does not exist: " << modelsDir_ << "\n";
         return false;
     }
 
@@ -286,6 +275,9 @@ bool LlamaCppService::ensureModelLoaded() {
 }
 
 void LlamaCppService::unloadModel() {
+    if (modelLoaded_) {
+        std::cout << "[LlamaCpp] Unloaded model: " << loadedModelId_ << "\n";
+    }
     if (ctx_ && api_->loaded && api_->free) {
         api_->free(static_cast<llama_context*>(ctx_));
         ctx_ = nullptr;
@@ -550,6 +542,8 @@ void LlamaCppService::doInference(
     if (maxTokens > remainCtx) maxTokens = remainCtx;
     if (maxTokens <= 0) { onError("Prompt fills entire context window"); return; }
 
+    std::cout << "[LlamaCpp] Inference started (input tokens: " << inputTokens.size() << ")\n";
+
     api_->memory_clear(api_->get_memory(ctx), true);
     llama_batch batch = api_->batch_init(n_batch_, 0, 1);
     int nProcessed = 0;
@@ -609,6 +603,8 @@ void LlamaCppService::doInference(
     api_->batch_free(batch);
     api_->memory_clear(api_->get_memory(ctx), true);
     if (!cancelled) onChunk("data: [DONE]\n\n");
+
+    std::cout << "[LlamaCpp] Inference completed (generated " << nGen << " tokens)\n";
 }
 
 // =============================================================================
@@ -622,7 +618,6 @@ void LlamaCppService::streamingChatWithCallback(
     const std::string& systemPrompt, double temperature, int)
 {
     if (!modelLoaded_) {
-        std::cout << "[LlamaCpp] Loading model on first request...\n";
         if (!ensureModelLoaded()) { onError("No llama.cpp model loaded"); return; }
     }
     std::unique_lock<std::mutex> lock(inferMutex_);
@@ -636,7 +631,6 @@ void LlamaCppService::streamingChatWithTools(
     McpRegistry*, double temperature, int)
 {
     if (!modelLoaded_) {
-        std::cout << "[LlamaCpp] Loading model on first request...\n";
         if (!ensureModelLoaded()) { onError("No llama.cpp model loaded"); return; }
     }
     if (tools.isArray() && !tools.empty())
