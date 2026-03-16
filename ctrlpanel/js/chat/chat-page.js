@@ -35,11 +35,6 @@ import * as SettingsStore from "../settings-store.js";
 
 const TOOLS_KEY = "ctrlpanel:toolsEnabled";
 
-/**
- * Escape HTML special characters to prevent XSS
- * @param {string} text
- * @returns {string}
- */
 function escapeHtml(text) {
 	if (!text) return "";
 	const div = document.createElement("div");
@@ -130,19 +125,16 @@ function initUpload(root, inputEl, attachmentManager, signal) {
 	uploadBtn.addEventListener("click", () => uploadInput.click(), { signal });
 	
 	uploadInput.addEventListener("change", async () => {
-		const selected = Array.from(uploadInput.files ||[]);
+		const selected = Array.from(uploadInput.files || []);
 		uploadInput.value = "";
-		
 		for (const file of selected) {
 			await attachmentManager.addFile(file);
 		}
-		
 		updateCount();
 	}, { signal });
 
 	attachmentManager.options.onAttachmentAdded = updateCount;
 	attachmentManager.options.onAttachmentRemoved = updateCount;
-
 	updateCount();
 }
 
@@ -154,38 +146,27 @@ function initAutoResize(element, signal) {
 		element.dataset.empty = isEmpty ? "true" : "false";
 	};
 	
-	const handleInput = () => {
-		updatePlaceholder();
-	};
-	
+	const handleInput = () => { updatePlaceholder(); };
 	element.addEventListener("input", handleInput, { signal });
-	
-	element.addEventListener("paste", () => {
-		setTimeout(handleInput, 0);
-	}, { signal });
-	
-	requestAnimationFrame(() => {
-		updatePlaceholder();
-	});
-	
-	return () => {
-		updatePlaceholder();
-	};
+	element.addEventListener("paste", () => { setTimeout(handleInput, 0); }, { signal });
+	requestAnimationFrame(() => { updatePlaceholder(); });
+	return () => { updatePlaceholder(); };
 }
 
+// ── PATCHED: strip llamacpp:: prefix, show correct badge ─────────────────────
 async function loadAndPopulateModels(root, signal) {
 	try {
 		const response = await getModels();
-		const models = response?.data ||[];
-		
+		const models = response?.data || [];
+
 		setModelMetadata(models);
-		
+
 		const modelDropdown = root.querySelector('[data-dropdown="model"]');
 		const menu = modelDropdown?.querySelector('.chat-dropdown-menu');
 		if (!menu) return;
-		
+
 		menu.innerHTML = '';
-		
+
 		for (const model of models) {
 			if (!model.id) continue;
 			const btn = document.createElement('button');
@@ -196,8 +177,20 @@ async function loadAndPopulateModels(root, signal) {
 			btn.dataset.value = model.id;
 			if (model.context_length) btn.dataset.contextLength = String(model.context_length);
 
-			const displayName = model.id.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
-			btn.innerHTML = `<span class="chat-dropdown-item-label">${displayName}</span><span class="chat-dropdown-item-badge">Local</span>`;
+			const isLlamaCpp = model.source === 'llamacpp' || model.id.startsWith('llamacpp::');
+
+			// Strip source prefix, take the last path segment, humanise dashes
+			const displayName = model.id
+				.replace('llamacpp::', '')
+				.replace('lmstudio::', '')
+				.split('/')
+				.pop()
+				.replace(/-/g, ' ');
+
+			// "GGUF" for local llama.cpp files, "LM Studio" for LM Studio
+			const badge = isLlamaCpp ? 'GGUF' : 'LM Studio';
+
+			btn.innerHTML = `<span class="chat-dropdown-item-label">${displayName}</span><span class="chat-dropdown-item-badge">${badge}</span>`;
 
 			btn.addEventListener('click', () => {
 				menu.querySelectorAll('.chat-dropdown-item').forEach(i => {
@@ -246,6 +239,7 @@ async function loadAndPopulateModels(root, signal) {
 	}
 }
 
+// ── PATCHED: strip llamacpp:: prefix in applyModel display name ───────────────
 function applyModel(root, modelId) {
 	if (!modelId) return false;
 	const modelDropdown = root.querySelector('[data-dropdown="model"]');
@@ -262,7 +256,12 @@ function applyModel(root, modelId) {
 		if (isMatch) {
 			matched = true;
 			if (label) {
-				const displayName = modelId.replace('lmstudio::', '').split('/').pop().replace(/-/g, ' ');
+				const displayName = modelId
+					.replace('llamacpp::', '')
+					.replace('lmstudio::', '')
+					.split('/')
+					.pop()
+					.replace(/-/g, ' ');
 				label.textContent = displayName;
 			}
 		}
@@ -277,7 +276,6 @@ function applyModel(root, modelId) {
 function selectModelForCurrentChat(root) {
 	const chatId = getCurrentChatId();
 
-	// 1. Chat-specific model
 	const chatModel = chatId ? getChatModel(chatId) : null;
 	if (chatModel) {
 		if (applyModel(root, chatModel)) return;
@@ -286,13 +284,11 @@ function selectModelForCurrentChat(root) {
 		return;
 	}
 
-	// 2. Last model the user explicitly chose
 	const lastModel = getLastSelectedModel();
 	if (lastModel) {
 		if (applyModel(root, lastModel)) return;
 	}
 
-	// 3. Settings default
 	const settings = SettingsStore.get();
 	if (settings?.defaultModel) {
 		applyModel(root, settings.defaultModel);
@@ -371,7 +367,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			if (node) {
 				extraTokens -= estimateNodeTokens(node);
 
-				let draftParts =[];
+				let draftParts = [];
 				if (node.parts) {
 					let textAdded = false;
 					for (const part of node.parts) {
@@ -384,7 +380,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					}
 					if (!textAdded) draftParts.unshift({ type: "text", content: uiState.editingDraft });
 				} else {
-					draftParts =[{ type: "text", content: uiState.editingDraft }];
+					draftParts = [{ type: "text", content: uiState.editingDraft }];
 				}
 				extraTokens += estimatePartsTokens(draftParts);
 			}
@@ -401,18 +397,13 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	initUpload(root, input, attachmentManager, signal);
 	const resizeInput = initAutoResize(input, signal);
 
-	input.addEventListener("input", () => {
-		updateLiveContext();
-	}, { signal });
+	input.addEventListener("input", () => { updateLiveContext(); }, { signal });
 
 	input.addEventListener("keydown", (e) => {
 		if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
 			e.preventDefault();
 			if (uiState.isGenerating) return;
-			
-			if (e.shiftKey) {
-				form.dataset.sendNoReply = "1";
-			}
+			if (e.shiftKey) { form.dataset.sendNoReply = "1"; }
 			form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
 		}
 	}, { signal });
@@ -424,9 +415,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		saveChats();
 	}
 
-	// Primary ESC handler: runs in capture phase so it fires before any element-level
-	// handlers. With contenteditable (instead of <textarea>) this works in all browsers —
-	// Firefox no longer intercepts ESC natively, so keydown reaches JS normally.
 	document.addEventListener("keydown", (e) => {
 		if ((e.key === "Escape" || e.key === "Esc") && uiState.editingNodeId) {
 			e.preventDefault();
@@ -437,10 +425,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		}
 	}, { capture: true, signal });
 
-	// Safety net: if somehow keydown was missed (edge case browser behaviour),
-	// keyup will still cancel the edit since editingNodeId will still be set.
-	// On normal paths the keydown handler above already cleared editingNodeId,
-	// making this a no-op.
 	document.addEventListener("keyup", (e) => {
 		if ((e.key === "Escape" || e.key === "Esc") && uiState.editingNodeId) {
 			uiState.editingNodeId = null;
@@ -452,9 +436,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 	const setGeneratingState = (isGenerating) => {
 		uiState.isGenerating = isGenerating;
-		if (!isGenerating) {
-			uiState.liveGeneratingNode = null;
-		}
+		if (!isGenerating) { uiState.liveGeneratingNode = null; }
 		const sendBtn = form.querySelector('.chat-send-btn');
 		if (sendBtn) {
 			if (isGenerating) {
@@ -471,11 +453,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		}
 	};
 
-	// FIX: Close the live thinking box in typingEl before stopTyping tears it down.
-	// This prevents the open <details> from persisting across the brief gap between
-	// stopTyping() removing the element and rerender() inserting the rebuilt (closed) one.
-	// User can still open/close the box freely during active generation — this only
-	// fires at stream completion, not during streaming.
 	const closeTypingReasoning = () => {
 		if (uiState.typingEl) {
 			const liveReasoning = uiState.typingEl.querySelector('.message-reasoning');
@@ -488,37 +465,17 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			stopChatMessage(uiState.activeStreamId).catch(() => {});
 			uiState.activeStreamId = null;
 		}
-		if (uiState.flushResponse) {
-			uiState.flushResponse();
-			uiState.flushResponse = null;
-		}
-		if (uiState.streamAbort) {
-			uiState.streamAbort.abort();
-			uiState.streamAbort = null;
-		}
-		if (uiState.typingTimeout) {
-			clearTimeout(uiState.typingTimeout);
-			uiState.typingTimeout = null;
-		}
-		if (uiState.typingEl) {
-			uiState.typingEl.remove();
-			uiState.typingEl = null;
-		}
+		if (uiState.flushResponse) { uiState.flushResponse(); uiState.flushResponse = null; }
+		if (uiState.streamAbort) { uiState.streamAbort.abort(); uiState.streamAbort = null; }
+		if (uiState.typingTimeout) { clearTimeout(uiState.typingTimeout); uiState.typingTimeout = null; }
+		if (uiState.typingEl) { uiState.typingEl.remove(); uiState.typingEl = null; }
 		setGeneratingState(false);
 	};
 
 	signal.addEventListener("abort", () => {
-		if (uiState.activeStreamId) {
-			stopChatMessage(uiState.activeStreamId).catch(() => {});
-			uiState.activeStreamId = null;
-		}
-		if (uiState.flushResponse) {
-			uiState.flushResponse();
-			uiState.flushResponse = null;
-		}
-		if (uiState.streamAbort) {
-			uiState.streamAbort.abort();
-		}
+		if (uiState.activeStreamId) { stopChatMessage(uiState.activeStreamId).catch(() => {}); uiState.activeStreamId = null; }
+		if (uiState.flushResponse) { uiState.flushResponse(); uiState.flushResponse = null; }
+		if (uiState.streamAbort) { uiState.streamAbort.abort(); }
 	});
 
 	const startReply = async (parentUserNodeId) => {
@@ -527,7 +484,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		setGeneratingState(true);
 		
 		const activeChatId = getCurrentChatId();
-		
 		uiState.streamAbort = new AbortController();
 		const currentSignal = uiState.streamAbort.signal;
 		uiState.activeStreamId = "stream_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
@@ -541,10 +497,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const contextLimit = getModelContextLimitFromUI(root);
 		
 		const chat = getChatById(activeChatId);
-		if (!chat) {
-			stopTyping();
-			return;
-		}
+		if (!chat) { stopTyping(); return; }
 		
 		const graph = ensureGraph(chat);
 		const threadIds = computeThreadNodeIds(graph);
@@ -554,8 +507,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			let nodeContent = "";
 			
 			if (node.parts && Array.isArray(node.parts)) {
-				const textParts =[];
-				const attachmentInfos =[];
+				const textParts = [];
+				const attachmentInfos = [];
 				
 				for (const part of node.parts) {
 					if (part.type === "text" && part.content) {
@@ -571,32 +524,23 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 									const chunk = base64Match[1].slice(0, 13336);
 									const binaryString = atob(chunk);
 									const bytes = new Uint8Array(binaryString.length);
-									for (let i = 0; i < binaryString.length; i++) {
-										bytes[i] = binaryString.charCodeAt(i);
-									}
-									const decoder = new TextDecoder('utf-8');
-									const textContent = decoder.decode(bytes).slice(0, 10000);
+									for (let i = 0; i < binaryString.length; i++) { bytes[i] = binaryString.charCodeAt(i); }
+									const textContent = new TextDecoder('utf-8').decode(bytes).slice(0, 10000);
 									attachmentInfo += `\n[File Content:]\n${textContent}`;
 								}
-							} catch (e) {
-								console.warn('Could not read file content:', e);
-							}
+							} catch (e) { console.warn('Could not read file content:', e); }
 						}
 						attachmentInfos.push(attachmentInfo);
 					}
 				}
 				
 				nodeContent = textParts.join("");
-				if (attachmentInfos.length > 0) {
-					nodeContent += "\n" + attachmentInfos.join("\n");
-				}
+				if (attachmentInfos.length > 0) nodeContent += "\n" + attachmentInfos.join("\n");
 			} else if (node.content) {
 				nodeContent = node.content;
 			}
 			
-			if (node.reasoning) {
-				nodeContent = `<think>\n${node.reasoning}\n</think>\n\n` + nodeContent;
-			}
+			if (node.reasoning) nodeContent = `<think>\n${node.reasoning}\n</think>\n\n` + nodeContent;
 			
 			if (node.toolCalls && Array.isArray(node.toolCalls) && node.toolCalls.length > 0) {
 				let toolsText = "";
@@ -611,25 +555,21 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		};
 
 		const buildApiMessages = (nodeIds) => {
-			const apiMessages =[];
-
+			const apiMessages = [];
 			for (const nodeId of nodeIds) {
 				const node = getNode(graph, nodeId);
 				if (!node) continue;
-
 				const role = node.role === "user" ? "user" : "assistant";
 
 				if (role === "assistant") {
 					const textContent = buildNodeTextForHistory(node);
-					if (textContent) {
-						apiMessages.push({ role, content: textContent });
-					}
+					if (textContent) apiMessages.push({ role, content: textContent });
 					continue;
 				}
 
 				if (node.parts && Array.isArray(node.parts)) {
 					const textParts = [];
-					const contentBlocks =[];
+					const contentBlocks = [];
 					let hasImages = false;
 
 					for (const part of node.parts) {
@@ -638,10 +578,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 						} else if (part.type === "attachment") {
 							if (part.isImage && part.data) {
 								hasImages = true;
-								contentBlocks.push({
-									type: "image_url",
-									image_url: { url: part.data },
-								});
+								contentBlocks.push({ type: "image_url", image_url: { url: part.data } });
 							} else if (!part.isImage && part.data) {
 								try {
 									const b64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
@@ -653,20 +590,14 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 										const text = new TextDecoder("utf-8").decode(bytes).slice(0, 10000);
 										textParts.push(`\n[File: ${part.name}]\n${text}`);
 									}
-								} catch (e) {
-									console.warn("[ChatPage] Could not decode file attachment:", e);
-								}
+								} catch (e) { console.warn("[ChatPage] Could not decode file attachment:", e); }
 							}
 						}
 					}
 
 					const combinedText = textParts.join("");
-
 					if (hasImages) {
-						// PUSH the text so it appears AFTER the images
-						if (combinedText) {
-							contentBlocks.push({ type: "text", text: combinedText });
-						}
+						if (combinedText) contentBlocks.push({ type: "text", text: combinedText });
 						apiMessages.push({ role, content: contentBlocks });
 					} else if (combinedText) {
 						apiMessages.push({ role, content: combinedText });
@@ -675,7 +606,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					apiMessages.push({ role, content: node.content });
 				}
 			}
-
 			return apiMessages;
 		};
 
@@ -695,15 +625,10 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			const parentNode = getNode(graph, parentUserNodeId);
 			if (parentNode) {
 				const parentContent = buildNodeTextForHistory(parentNode);
-				if (parentContent) {
-					conversationHistory = parentContent;
-				}
+				if (parentContent) conversationHistory = parentContent;
 			}
 		}
-		
-		if (!conversationHistory.trim()) {
-			conversationHistory = "Hello";
-		}
+		if (!conversationHistory.trim()) conversationHistory = "Hello";
 
 		let apiMessages = buildApiMessages(threadIds);
 		if (apiMessages.length === 0 && parentUserNodeId) {
@@ -714,22 +639,19 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const visionMessages = hasVisionContent ? apiMessages : null;
 
 		const estimatedPromptTokens = Math.ceil(conversationHistory.length / 3) + 200;
-
 		if (estimatedPromptTokens + maxTokens > contextLimit) {
 			maxTokens = Math.max(256, contextLimit - estimatedPromptTokens);
 		}
 		
 		let rawStreamText = "";
 		let officialReasoningText = "";
-		let activeToolCalls =[];
+		let activeToolCalls = [];
 		let errorFromStream = null;
 		let isSaved = false;
 
 		const currentSettings = SettingsStore.get() ?? {};
 		let systemPrompt = currentSettings.systemPrompt ?? "";
-		const temperature = (typeof currentSettings.temperature === "number")
-			? currentSettings.temperature
-			: null;
+		const temperature = (typeof currentSettings.temperature === "number") ? currentSettings.temperature : null;
 
 		if (systemPrompt) {
 			const modelLabel = modelSelect?.querySelector(".chat-dropdown-item-label")?.textContent?.trim()
@@ -737,11 +659,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				|| model;
 			systemPrompt = systemPrompt.replaceAll("{model}", modelLabel);
 
-			const TOOL_LABELS = {
-				"web-search": "Web Search",
-				"code-exec":  "Code Execution",
-				"file-read":  "File Reading",
-			};
+			const TOOL_LABELS = { "web-search": "Web Search", "code-exec": "Code Execution", "file-read": "File Reading" };
 			const enabledToolValues = JSON.parse(localStorage.getItem(TOOLS_KEY) || "[]");
 			const toolNames = enabledToolValues.map(v => TOOL_LABELS[v] ?? v);
 			const toolsString = toolNames.length > 0 ? toolNames.join(", ") : "none";
@@ -763,27 +681,15 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 			while (true) {
 				let startIdx = currentStr.indexOf("<think>");
-				if (startIdx === -1) {
-					parsedContent += currentStr;
-					break;
-				}
-				
+				if (startIdx === -1) { parsedContent += currentStr; break; }
 				parsedContent += currentStr.substring(0, startIdx);
 				let endIdx = currentStr.indexOf("</think>", startIdx + 7);
-                
-				if (endIdx === -1) {
-					parsedReasoning += currentStr.substring(startIdx + 7);
-					break;
-				} else {
-					parsedReasoning += currentStr.substring(startIdx + 7, endIdx) + "\n\n";
-					currentStr = currentStr.substring(endIdx + 8);
-				}
+				if (endIdx === -1) { parsedReasoning += currentStr.substring(startIdx + 7); break; }
+				else { parsedReasoning += currentStr.substring(startIdx + 7, endIdx) + "\n\n"; currentStr = currentStr.substring(endIdx + 8); }
 			}
 
 			let displayReasoning = officialReasoningText;
-			if (parsedReasoning) {
-				displayReasoning += (displayReasoning ? "\n\n" : "") + parsedReasoning.trim();
-			}
+			if (parsedReasoning) displayReasoning += (displayReasoning ? "\n\n" : "") + parsedReasoning.trim();
 
 			let finalContent = parsedContent.trim();
 			let finalReasoning = displayReasoning.trim();
@@ -834,13 +740,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 					if (chunk.choices && chunk.choices[0] && chunk.choices[0].delta) {
 						const delta = chunk.choices[0].delta;
-						
-						if (delta.reasoning) {
-							officialReasoningText += delta.reasoning;
-						}
-						if (delta.content) {
-							rawStreamText += delta.content;
-						}
+						if (delta.reasoning) officialReasoningText += delta.reasoning;
+						if (delta.content)   rawStreamText       += delta.content;
 					}
 
 					uiState.liveGeneratingNode = {
@@ -858,27 +759,15 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 						while (true) {
 							let startIdx = currentStr.indexOf("<think>");
-							if (startIdx === -1) {
-								parsedContent += currentStr;
-								break;
-							}
-							
+							if (startIdx === -1) { parsedContent += currentStr; break; }
 							parsedContent += currentStr.substring(0, startIdx);
 							let endIdx = currentStr.indexOf("</think>", startIdx + 7);
-							
-							if (endIdx === -1) {
-								parsedReasoning += currentStr.substring(startIdx + 7);
-								break;
-							} else {
-								parsedReasoning += currentStr.substring(startIdx + 7, endIdx) + "\n\n";
-								currentStr = currentStr.substring(endIdx + 8);
-							}
+							if (endIdx === -1) { parsedReasoning += currentStr.substring(startIdx + 7); break; }
+							else { parsedReasoning += currentStr.substring(startIdx + 7, endIdx) + "\n\n"; currentStr = currentStr.substring(endIdx + 8); }
 						}
 
 						let displayReasoning = officialReasoningText;
-						if (parsedReasoning) {
-							displayReasoning += (displayReasoning ? "\n\n" : "") + parsedReasoning.trim();
-						}
+						if (parsedReasoning) displayReasoning += (displayReasoning ? "\n\n" : "") + parsedReasoning.trim();
 
 						if (!uiState.typingEl.querySelector(".chat-message-content")) {
 							uiState.typingEl.innerHTML = '';
@@ -910,9 +799,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 							for (let i = existingToolCallEls.length; i < activeToolCalls.length; i++) {
 								const tcEl = buildToolCallElement(activeToolCalls[i]);
 								const textWrapper = msgContent.querySelector('.chat-message-text');
-								textWrapper
-									? msgContent.insertBefore(tcEl, textWrapper)
-									: msgContent.appendChild(tcEl);
+								textWrapper ? msgContent.insertBefore(tcEl, textWrapper) : msgContent.appendChild(tcEl);
 							}
 						}
 
@@ -945,16 +832,9 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				visionMessages,
 			);
 			
-			if (errorFromStream) {
-				throw new Error(errorFromStream);
-			}
+			if (errorFromStream) throw new Error(errorFromStream);
+			if (!rawStreamText && !officialReasoningText && activeToolCalls.length === 0) throw new Error("Empty response from AI");
 
-			if (!rawStreamText && !officialReasoningText && activeToolCalls.length === 0) {
-				throw new Error("Empty response from AI");
-			}
-
-			// FIX: Close the live thinking box before teardown so the open state doesn't
-			// persist across the microtask gap between stopTyping() and rerender().
 			closeTypingReasoning();
 			stopTyping();
 			rerender();
@@ -962,7 +842,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			
 		} catch (err) {
 			console.error("[ChatPage] Stream error:", err);
-			// FIX: Same close-before-teardown on the error path.
 			closeTypingReasoning();
 			stopTyping();
 			
@@ -993,11 +872,10 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			const editEl = messages.querySelector(".chat-edit-input");
 			if (editEl) {
 				editEl.focus();
-				// Place cursor at end of content
 				const range = document.createRange();
 				const sel = window.getSelection();
 				range.selectNodeContents(editEl);
-				range.collapse(false); // false = collapse to end
+				range.collapse(false);
 				sel?.removeAllRanges();
 				sel?.addRange(range);
 			}
@@ -1052,13 +930,9 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				uiState.editingDraft = textToEdit;
 				uiState.editingSaveMode = null;
 
-				// Patch only this message in-place — avoids tearing down and
-				// rebuilding the whole thread, which causes Chromium to paint an
-				// intermediate empty-container state that squishes other messages.
 				const patched = patchMessageEditState(messages, graph, node, true, textToEdit);
 				if (!patched) { rerender(); return; }
 
-				// Focus + place cursor at end
 				const editEl = messages.querySelector('.chat-edit-input');
 				if (editEl) {
 					editEl.focus({ preventScroll: true });
@@ -1077,17 +951,14 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				uiState.editingDraft = "";
 				uiState.editingSaveMode = null;
 				const cancelNode = cancelNodeId ? getNode(graph, cancelNodeId) : null;
-				const patched = cancelNode
-					? patchMessageEditState(messages, graph, cancelNode, false, null)
-					: false;
-				if (!patched) rerender();
-				else updateLiveContext();
+				const patched = cancelNode ? patchMessageEditState(messages, graph, cancelNode, false, null) : false;
+				if (!patched) rerender(); else updateLiveContext();
 			},
 			save: () => {
 				const editEl = msgEl.querySelector(".chat-edit-input");
 				const next = editEl ? (editEl.innerText ?? "").trimEnd() : uiState.editingDraft;
 				
-				const oldText = node.parts 
+				const oldText = node.parts
 					? node.parts.filter(p => p.type === "text").map(p => p.content).join("")
 					: String(node.content || "");
 				
@@ -1100,17 +971,13 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				}
 
 				stopTyping();
-
 				const saveMode = uiState.editingSaveMode ?? "reset";
 
 				if (saveMode === "preserve") {
 					if (node.parts) {
 						let textSet = false;
 						node.parts = node.parts.map(p => {
-							if (p.type === "text" && !textSet) {
-								textSet = true;
-								return { ...p, content: next };
-							}
+							if (p.type === "text" && !textSet) { textSet = true; return { ...p, content: next }; }
 							return p;
 						});
 						if (!textSet) node.parts.unshift({ type: "text", content: next });
@@ -1132,10 +999,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					if (sibling.parts) {
 						let textSet = false;
 						sibling.parts = sibling.parts.map(p => {
-							if (p.type === "text" && !textSet) {
-								textSet = true;
-								return { ...p, content: next };
-							}
+							if (p.type === "text" && !textSet) { textSet = true; return { ...p, content: next }; }
 							return p;
 						});
 						if (!textSet) sibling.parts.unshift({ type: "text", content: next });
@@ -1189,13 +1053,9 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 				const childrenToDelete = [...(userNode.children || [])];
 				childrenToDelete.forEach((childId) => deleteSubtree(graph, childId));
-
 				delete graph.selections[userNodeId];
 
-				if (userNode.parentId) {
-					setSelectedChildId(graph, userNode.parentId, userNodeId);
-				}
-
+				if (userNode.parentId) setSelectedChildId(graph, userNode.parentId, userNodeId);
 				recomputeLeafId(graph);
 				
 				chat.updatedAt = Date.now();
@@ -1211,7 +1071,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				startReply(userNodeId);
 			},
 			copy: async () => {
-				let textToCopy = node.parts 
+				let textToCopy = node.parts
 					? node.parts.filter(p => p.type === "text").map(p => p.content).join("")
 					: String(node.content || "");
 				
@@ -1219,9 +1079,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					await navigator.clipboard.writeText(textToCopy);
 					const oldHTML = btn.innerHTML;
 					btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
-					setTimeout(() => {
-						if (btn) btn.innerHTML = oldHTML;
-					}, 2000);
+					setTimeout(() => { if (btn) btn.innerHTML = oldHTML; }, 2000);
 				} catch (err) {
 					console.error("Failed to copy text: ", err);
 				}
@@ -1256,33 +1114,20 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (!nodeId) return;
 
 		if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-			// Ctrl/Cmd+Enter: save the edit
 			e.preventDefault();
 			uiState.editingSaveMode = e.shiftKey ? "preserve" : "reset";
 			msgEl.querySelector('button[data-action="save"]')?.click();
 		} else if (e.key === "Enter") {
-			// Plain Enter: insert a literal newline character.
-			// If we allow the default, browsers insert a <div> or <br> element
-			// which corrupts the plain-text content we read back via innerText.
 			e.preventDefault();
-			// execCommand('insertText') is the most cross-browser reliable way to
-			// insert text at the caret, handling selection replacement automatically.
-			// It is deprecated in spec but supported in every current browser and
-			// triggers the 'input' event so our draft-sync handler fires normally.
 			document.execCommand("insertText", false, "\n");
 		} else if (e.key === "Escape" || e.key === "Esc") {
-			// Belt-and-suspenders: fires on Chrome/Safari where keydown works fine
-			// (the document capture handler above handles it first, making editingNodeId
-			// null so this becomes a no-op). On Firefox the keyup handler is primary.
 			e.preventDefault();
 			const escNodeId = uiState.editingNodeId;
 			uiState.editingNodeId = null;
 			uiState.editingDraft = "";
 			uiState.editingSaveMode = null;
 			const escNode = escNodeId ? getNode(graph, escNodeId) : null;
-			const patched = escNode
-				? patchMessageEditState(messages, graph, escNode, false, null)
-				: false;
+			const patched = escNode ? patchMessageEditState(messages, graph, escNode, false, null) : false;
 			if (!patched) rerender();
 		}
 	}, { signal });
@@ -1293,10 +1138,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const msgEl = editEl.closest(".chat-message");
 		const nodeId = msgEl?.dataset.nodeId;
 		if (nodeId && uiState.editingNodeId === nodeId) {
-			// innerText reflects what the user sees, including \n for line breaks.
-			// A lone <br> inserted by some browsers into an empty contenteditable
-			// reads as "\n" via innerText — we strip a single trailing newline here
-			// so the draft doesn't accumulate phantom whitespace.
 			uiState.editingDraft = (editEl.innerText ?? "").replace(/\n$/, "");
 			updateLiveContext();
 		}
@@ -1314,9 +1155,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 		const nodeRawText = (node) => {
 			if (!node) return "";
-			if (node.parts && Array.isArray(node.parts)) {
-				return node.parts.filter(p => p.type === "text").map(p => p.content).join("");
-			}
+			if (node.parts && Array.isArray(node.parts)) return node.parts.filter(p => p.type === "text").map(p => p.content).join("");
 			return String(node.content || "");
 		};
 
@@ -1324,9 +1163,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const selectedMsgEls = allMsgEls.filter(el => range.intersectsNode(el));
 
 		let plainPayload = "";
-
 		if (graph && selectedMsgEls.length > 0) {
-			const parts =[];
+			const parts = [];
 			for (const msgEl of selectedMsgEls) {
 				const node = getNode(graph, msgEl.dataset.nodeId);
 				const raw = nodeRawText(node);
@@ -1340,15 +1178,11 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const container = document.createElement("div");
 		container.appendChild(range.cloneContents());
 
-		container
-			.querySelectorAll(".chat-message-menu, .md-code-header, .chat-typing, .chat-message-inline-attachment, .latex-preamble")
-			.forEach(el => el.remove());
-
+		container.querySelectorAll(".chat-message-menu, .md-code-header, .chat-typing, .chat-message-inline-attachment, .latex-preamble").forEach(el => el.remove());
 		container.querySelectorAll(".message-tool-call").forEach(el => {
 			const summary = el.querySelector("summary");
 			el.replaceWith(document.createTextNode(summary ? summary.textContent.trim() : ""));
 		});
-
 		container.querySelectorAll(".katex-display").forEach(el => {
 			const src = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim();
 			if (src) el.replaceWith(document.createTextNode(`$$${src}$$`));
@@ -1359,14 +1193,10 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		});
 
 		const htmlPayload = `<!DOCTYPE html><html><body>${container.innerHTML}</body></html>`;
-
 		e.preventDefault();
 		if (!e.clipboardData) return;
 		e.clipboardData.setData("text/plain", plainPayload);
-		try {
-			e.clipboardData.setData("text/html", htmlPayload);
-		} catch {
-		}
+		try { e.clipboardData.setData("text/html", htmlPayload); } catch {}
 	}, { signal });
 
 	form.addEventListener("submit", (e) => {

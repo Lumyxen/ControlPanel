@@ -1,37 +1,50 @@
-#!/bin/bash
-set -e
-cd "$(dirname "$0")/.."
+#!/usr/bin/env bash
+# backend/scripts/build.sh
+#
+# Builds the ctrlpanel binary ONLY.
+#
+# The binary has zero link-time dependency on llama.cpp. GPU backends are
+# separate shared libraries in data/libs/ that are built on-demand — either
+# manually via build_backend.sh or through the in-app prompt that appears
+# on first launch when the server detects usable GPU hardware.
+#
+# To force a clean rebuild: ./build.sh --clean
 
-echo "=== Building all targets ==="
+set -euo pipefail
+cd "$(dirname "$0")/.."   # cd into backend/
 
-# Clean and configure
-rm -rf build
-cmake -B build \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DENABLE_LLAMACPP=ON \
-    -DENABLE_LLAMACPP_VISION=ON
+for arg in "$@"; do
+    if [[ "${arg}" == "--clean" ]]; then
+        echo "=== --clean: removing build directory ==="
+        rm -rf build build-arm
+    fi
+done
 
-# Build x86 Linux + Windows targets
-cmake --build build --target ctrlpanel -j$(nproc)
-cmake --build build --target ctrlpanel_exe -j$(nproc)
+# ── Main binary ───────────────────────────────────────────────────────────────
+echo "=== Building ctrlpanel ==="
+mkdir -p build
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target ctrlpanel     -j"$(nproc)"
+cmake --build build --target ctrlpanel_exe -j"$(nproc)"
 
-# ARM — needs separate build dir with toolchain, then copy result into build/
-rm -rf build-arm
-cmake -B build-arm \
-    -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DENABLE_LLAMACPP=ON \
-    -DENABLE_LLAMACPP_VISION=ON
-cmake --build build-arm --target ctrlpanel_arm -j$(nproc)
-
-# Copy ARM binary into the main build dir
-cp build-arm/ctrlpanel_arm build/ctrlpanel_arm
-
-# Clean up ARM build dir
-rm -rf build-arm
+# ── ARM cross-compile (optional — requires aarch64-linux-gnu-g++) ─────────────
+if command -v aarch64-linux-gnu-g++ &>/dev/null; then
+    echo ""
+    echo "=== Building ARM64 target ==="
+    mkdir -p build-arm
+    cmake -B build-arm \
+        -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake \
+        -DCMAKE_BUILD_TYPE=Release
+    cmake --build build-arm --target ctrlpanel_arm -j"$(nproc)"
+    cp build-arm/ctrlpanel_arm build/ctrlpanel_arm
+    rm -rf build-arm
+fi
 
 echo ""
 echo "=== Done ==="
-echo "  build/ctrlpanel        (x86 Linux)"
-echo "  build/ctrlpanel.exe    (Windows)"
-echo "  build/ctrlpanel_arm    (ARM64)"
+echo "  build/ctrlpanel      (Linux x86)"
+echo "  build/ctrlpanel.exe  (Windows)"
+[[ -f "build/ctrlpanel_arm" ]] && echo "  build/ctrlpanel_arm  (ARM64)"
+echo ""
+echo "Run the binary and open http://localhost:8080 in your browser."
+echo "Use Settings → Hardware Backend to build a llama.cpp backend for local inference."

@@ -14,19 +14,10 @@
     <section class="card" aria-labelledby="lmstudio-title">
         <h2 class="card-title" id="lmstudio-title">LM Studio</h2>
         <p class="card-desc">Connect to a local LM Studio server to use locally-running models.</p>
-
         <div class="option-row">
             <label for="lmstudio-url-input">Server URL</label>
             <div class="input-group">
-                <input
-                    id="lmstudio-url-input"
-                    class="text-input"
-                    type="text"
-                    placeholder="http://localhost:1234"
-                    autocomplete="off"
-                    spellcheck="false"
-                    style="flex: 1;"
-                />
+                <input id="lmstudio-url-input" class="text-input" type="text" placeholder="http://localhost:1234" autocomplete="off" spellcheck="false" style="flex: 1;" />
                 <span id="lmstudio-status" class="badge" style="flex-shrink: 0;">—</span>
                 <button type="button" id="refresh-lmstudio-status" class="btn">Test</button>
             </div>
@@ -37,264 +28,193 @@
     <section class="card" aria-labelledby="ai-behaviour-title">
         <h2 class="card-title" id="ai-behaviour-title">AI Behaviour</h2>
         <p class="card-desc">Configure how the AI responds across all conversations.</p>
-
         <div class="option-row">
             <label for="default-model-input">Default Model</label>
-            <input
-                id="default-model-input"
-                class="text-input"
-                type="text"
-                placeholder="e.g. lmstudio::llama-3-8b-instruct"
-                autocomplete="off"
-                spellcheck="false"
-            />
-            <p class="option-hint">Model ID pre-selected when opening a new chat. Must exactly match an LM Studio model ID prefixed with <code>lmstudio::</code>.</p>
+            <input id="default-model-input" class="text-input" type="text" placeholder="e.g. lmstudio::llama-3-8b-instruct" autocomplete="off" spellcheck="false" />
+            <p class="option-hint">Model ID pre-selected when opening a new chat.</p>
         </div>
-
         <div class="option-row">
             <label for="temperature-input">Temperature</label>
             <div class="input-group" style="gap: 0.75rem; align-items: center;">
-                <input
-                    id="temperature-slider"
-                    type="range"
-                    min="0"
-                    max="2"
-                    step="0.01"
-                    value="0.7"
-                    style="flex: 1; min-width: 0;"
-                />
-                <input
-                    id="temperature-input"
-                    type="number"
-                    min="0"
-                    max="2"
-                    step="0.01"
-                    value="0.7"
-                    style="flex: none; width: 5rem;"
-                />
+                <input id="temperature-slider" type="range" min="0" max="2" step="0.01" value="0.7" style="flex: 1; min-width: 0;" />
+                <input id="temperature-input" type="number" min="0" max="2" step="0.01" value="0.7" style="flex: none; width: 5rem;" />
             </div>
-            <p class="option-hint">Sampling temperature sent with every request (0 = deterministic, 2 = very creative). Default: 0.7.</p>
+            <p class="option-hint">Sampling temperature (0 = deterministic, 2 = very creative). Default: 0.7.</p>
         </div>
-
         <div class="option-row">
             <label for="max-tokens-input">Max Output Tokens (fallback)</label>
-            <input
-                id="max-tokens-input"
-                type="number"
-                min="256"
-                max="131072"
-                step="256"
-                value="8192"
-                style="width: 8rem;"
-            />
+            <input id="max-tokens-input" type="number" min="256" max="131072" step="256" value="8192" style="width: 8rem;" />
             <p class="option-hint">Used when a model does not report its own output-token limit via the API.</p>
         </div>
-
         <div class="option-row">
             <label for="system-prompt-input">System Prompt</label>
-            <textarea
-                id="system-prompt-input"
-                class="system-prompt-input"
-                rows="6"
-                placeholder="Enter a system prompt to send to every AI model (e.g. &quot;You are a helpful assistant that always responds concisely.&quot;)&#10;&#10;Leave empty for no system prompt."
-            ></textarea>
-            <p class="option-hint">Sent as the system role before every request. Stored on the backend. Supports placeholders: <code>{model}</code> (currently selected model name) and <code>{tools}</code> (comma-separated list of enabled tools, or "none").</p>
+            <textarea id="system-prompt-input" class="system-prompt-input" rows="6"
+                placeholder="Enter a system prompt…"></textarea>
+            <p class="option-hint">Sent as the system role before every request. Supports <code>{model}</code> and <code>{tools}</code> placeholders.</p>
         </div>
-
         <div class="input-group" style="margin-top: 0.75rem;">
             <button type="button" id="save-ai-settings" class="btn btn-primary">Save</button>
             <span id="ai-settings-status" class="option-hint" style="margin-left: 0.5rem;"></span>
         </div>
     </section>
 
+    <!-- ════════════════════════════════════════════════════════════════════════
+         Hardware Backend
+         ════════════════════════════════════════════════════════════════════════ -->
+    <section class="card" aria-labelledby="llamacpp-backend-title">
+        <h2 class="card-title" id="llamacpp-backend-title">Hardware Backend</h2>
+        <p class="card-desc">
+            Select which GPU or CPU backend to use for local inference.
+            Backends are shared libraries in <code>data/libs/</code> — the CPU one is always present,
+            GPU ones can be built. <strong>Hot-swap applies immediately</strong> without restarting the server.
+        </p>
+
+        <!-- Status row -->
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:6px;border:1px solid var(--border);background:color-mix(in srgb,var(--panel) 80%,transparent);font-size:0.88rem;">
+            <span style="color:var(--muted);">Active:</span>
+            <span id="llamacpp-active-backend-label" style="font-family:ui-monospace,monospace;color:var(--accent);font-weight:600;">—</span>
+            <span id="llamacpp-backend-status-extra" style="color:var(--muted);font-size:0.8rem;"></span>
+        </div>
+
+        <div class="option-row">
+            <label id="backend-selector-label">Preference</label>
+            <div id="llamacpp-backend-selector"
+                 role="radiogroup"
+                 aria-labelledby="backend-selector-label"
+                 style="display:flex;flex-direction:column;gap:8px;">
+                <span id="llamacpp-backend-loading" style="color:var(--muted);font-size:0.85rem;">Loading…</span>
+            </div>
+            <p class="option-hint">
+                All backends must be built before they can be used. CPU is the simplest (no GPU toolchain needed).
+                Click <strong>Build</strong> next to any backend to compile it now.
+            </p>
+        </div>
+
+        <div class="option-row">
+            <label for="llamacpp-tag-input">llama.cpp version tag</label>
+            <div class="input-group" style="gap:8px;align-items:center;">
+                <input id="llamacpp-tag-input" class="text-input" type="text" value="b8337"
+                       placeholder="e.g. b8337" autocomplete="off" spellcheck="false"
+                       style="width:9rem;" />
+                <span id="llamacpp-tag-status" style="font-size:0.8rem;color:var(--muted);">
+                    Changes only apply to newly built backends.
+                </span>
+            </div>
+            <p class="option-hint">
+                Git tag from the <a href="https://github.com/ggml-org/llama.cpp/releases" target="_blank" rel="noopener">llama.cpp releases</a> page.
+                Updating the tag and clicking <strong>Build</strong> will recompile that backend against the new version.
+            </p>
+        </div>
+
+        <div class="input-group" style="margin-top:0.75rem;">
+            <button type="button" id="save-llamacpp-backend" class="btn btn-primary">Apply (hot-swap)</button>
+            <span id="llamacpp-backend-save-status" class="option-hint" style="margin-left:0.5rem;"></span>
+        </div>
+
+        <!-- Build progress area — hidden until a build is in progress -->
+        <div id="llamacpp-build-progress" hidden style="margin-top:1rem;border:1px solid var(--border);padding:12px;background:color-mix(in srgb,var(--panel) 60%,transparent);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span id="llamacpp-build-progress-label" style="font-size:0.88rem;color:var(--muted);flex:1;">Building…</span>
+                <span id="llamacpp-build-progress-pct" style="font-size:0.8rem;color:var(--accent);font-family:ui-monospace,monospace;flex-shrink:0;"></span>
+            </div>
+            <div style="height:6px;background:color-mix(in srgb,var(--border) 60%,transparent);overflow:hidden;">
+                <div id="llamacpp-build-progress-bar" style="height:100%;width:0%;background:var(--accent);transition:width 0.4s ease;"></div>
+            </div>
+            <div id="llamacpp-build-log-tail" style="
+                margin-top:8px;
+                font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+                font-size:0.74rem;
+                color:var(--muted);
+                max-height:120px;
+                overflow-y:auto;
+                white-space:pre-wrap;
+                word-break:break-all;
+                line-height:1.4;
+            "></div>
+        </div>
+    </section>
+
     <section class="card" aria-labelledby="llamacpp-title">
         <h2 class="card-title" id="llamacpp-title">llama.cpp</h2>
-        <p class="card-desc">Settings for the built-in local inference engine. Model-load settings (marked ↻) require a backend restart to take effect. Sampler settings apply immediately.</p>
+        <p class="card-desc">Settings for the built-in local inference engine. Model-load settings (marked ↻) require reloading the model to take effect.</p>
 
         <div class="option-row">
             <label for="llamacpp-flash-attn">Flash Attention ↻</label>
-            <div class="input-group" style="align-items: center; gap: 0.5rem;">
-                <input
-                    id="llamacpp-flash-attn"
-                    type="checkbox"
-                    checked
-                />
-                <span class="option-hint" style="margin: 0;">Enable Flash Attention for faster inference and lower memory usage on compatible hardware.</span>
+            <div class="input-group" style="align-items:center;gap:0.5rem;">
+                <input id="llamacpp-flash-attn" type="checkbox" checked />
+                <span class="option-hint" style="margin:0;">Enable Flash Attention for faster inference on compatible hardware.</span>
             </div>
         </div>
-
         <div class="option-row">
             <label for="llamacpp-eval-batch-size">Eval Batch Size ↻</label>
-            <input
-                id="llamacpp-eval-batch-size"
-                type="number"
-                min="64"
-                max="16384"
-                step="64"
-                value="2048"
-                style="width: 8rem;"
-            />
-            <p class="option-hint">Number of tokens processed in parallel during the prefill phase. Higher values increase throughput but use more memory. Default: 2048.</p>
+            <input id="llamacpp-eval-batch-size" type="number" min="64" max="16384" step="64" value="2048" style="width:8rem;" />
+            <p class="option-hint">Tokens processed per decode step during prefill. Default: 2048.</p>
         </div>
-
         <div class="option-row">
             <label for="llamacpp-ctx-size">Context Size Override ↻</label>
-            <input
-                id="llamacpp-ctx-size"
-                type="number"
-                min="0"
-                max="524288"
-                step="512"
-                value="0"
-                style="width: 8rem;"
-            />
-            <p class="option-hint">Override the model's native context window size in tokens. Set to <code>0</code> to use the model's trained context size (auto, capped at 65536 to prevent OOMs). Default: 0 (auto).</p>
+            <input id="llamacpp-ctx-size" type="number" min="0" max="524288" step="512" value="0" style="width:8rem;" />
+            <p class="option-hint">Set to <code>0</code> to use the model's native context size. Default: 0 (auto).</p>
         </div>
-
         <div class="option-row">
             <label for="llamacpp-gpu-layers">GPU Layers ↻</label>
-            <input
-                id="llamacpp-gpu-layers"
-                type="number"
-                min="0"
-                max="999"
-                step="1"
-                value="0"
-                style="width: 8rem;"
-            />
-            <p class="option-hint">Number of model layers to offload to the GPU. Set to <code>0</code> for CPU-only inference. Set to a very large number (e.g. <code>999</code>) to offload all layers. Default: 0.</p>
+            <input id="llamacpp-gpu-layers" type="number" min="0" max="999" step="1" value="0" style="width:8rem;" />
+            <p class="option-hint">Layers to offload to GPU. <code>0</code> = auto (full offload when a GPU backend is active). <code>999</code> = explicit full offload. Default: 0.</p>
         </div>
-
         <div class="option-row">
             <label>CPU Threads ↻</label>
-            <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+            <div style="display:flex;gap:1.5rem;flex-wrap:wrap;">
                 <div>
-                    <label for="llamacpp-threads" style="font-size: 0.8rem; opacity: 0.75;">Generation</label>
-                    <div>
-                        <input
-                            id="llamacpp-threads"
-                            type="number"
-                            min="0"
-                            max="256"
-                            step="1"
-                            value="0"
-                            style="width: 6rem;"
-                        />
-                    </div>
+                    <label for="llamacpp-threads" style="font-size:0.8rem;opacity:0.75;">Generation</label>
+                    <div><input id="llamacpp-threads" type="number" min="0" max="256" step="1" value="0" style="width:6rem;" /></div>
                 </div>
                 <div>
-                    <label for="llamacpp-threads-batch" style="font-size: 0.8rem; opacity: 0.75;">Batch / Prefill</label>
-                    <div>
-                        <input
-                            id="llamacpp-threads-batch"
-                            type="number"
-                            min="0"
-                            max="256"
-                            step="1"
-                            value="0"
-                            style="width: 6rem;"
-                        />
-                    </div>
+                    <label for="llamacpp-threads-batch" style="font-size:0.8rem;opacity:0.75;">Batch / Prefill</label>
+                    <div><input id="llamacpp-threads-batch" type="number" min="0" max="256" step="1" value="0" style="width:6rem;" /></div>
                 </div>
             </div>
-            <p class="option-hint">CPU thread counts for token generation and batch prefill respectively. Set to <code>0</code> to auto-detect (generation = physical cores, prefill = all logical threads). Default: 0 (auto).</p>
+            <p class="option-hint">Set to <code>0</code> to auto-detect. Default: 0.</p>
         </div>
-
         <div class="option-row">
             <label for="llamacpp-top-p">Top-P</label>
-            <div class="input-group" style="gap: 0.75rem; align-items: center;">
-                <input
-                    id="llamacpp-top-p-slider"
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value="0.9"
-                    style="flex: 1; min-width: 0;"
-                />
-                <input
-                    id="llamacpp-top-p"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value="0.9"
-                    style="flex: none; width: 5rem;"
-                />
+            <div class="input-group" style="gap:0.75rem;align-items:center;">
+                <input id="llamacpp-top-p-slider" type="range" min="0" max="1" step="0.01" value="0.9" style="flex:1;min-width:0;" />
+                <input id="llamacpp-top-p" type="number" min="0" max="1" step="0.01" value="0.9" style="flex:none;width:5rem;" />
             </div>
-            <p class="option-hint">Nucleus sampling threshold. Only tokens whose cumulative probability exceeds this value are considered. Default: 0.9.</p>
+            <p class="option-hint">Nucleus sampling threshold. Default: 0.9.</p>
         </div>
-
         <div class="option-row">
             <label for="llamacpp-min-p">Min-P</label>
-            <div class="input-group" style="gap: 0.75rem; align-items: center;">
-                <input
-                    id="llamacpp-min-p-slider"
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value="0.05"
-                    style="flex: 1; min-width: 0;"
-                />
-                <input
-                    id="llamacpp-min-p"
-                    type="number"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value="0.05"
-                    style="flex: none; width: 5rem;"
-                />
+            <div class="input-group" style="gap:0.75rem;align-items:center;">
+                <input id="llamacpp-min-p-slider" type="range" min="0" max="1" step="0.01" value="0.05" style="flex:1;min-width:0;" />
+                <input id="llamacpp-min-p" type="number" min="0" max="1" step="0.01" value="0.05" style="flex:none;width:5rem;" />
             </div>
-            <p class="option-hint">Minimum probability threshold relative to the top token. Filters out very unlikely tokens. Default: 0.05.</p>
+            <p class="option-hint">Minimum probability relative to the top token. Default: 0.05.</p>
         </div>
-
         <div class="option-row">
             <label for="llamacpp-repeat-penalty">Repetition Penalty</label>
-            <div class="input-group" style="gap: 0.75rem; align-items: center;">
-                <input
-                    id="llamacpp-repeat-penalty-slider"
-                    type="range"
-                    min="1"
-                    max="2"
-                    step="0.01"
-                    value="1.15"
-                    style="flex: 1; min-width: 0;"
-                />
-                <input
-                    id="llamacpp-repeat-penalty"
-                    type="number"
-                    min="1"
-                    max="2"
-                    step="0.01"
-                    value="1.15"
-                    style="flex: none; width: 5rem;"
-                />
+            <div class="input-group" style="gap:0.75rem;align-items:center;">
+                <input id="llamacpp-repeat-penalty-slider" type="range" min="1" max="2" step="0.01" value="1.15" style="flex:1;min-width:0;" />
+                <input id="llamacpp-repeat-penalty" type="number" min="1" max="2" step="0.01" value="1.15" style="flex:none;width:5rem;" />
             </div>
-            <p class="option-hint">Penalises recently-used tokens to reduce repetition. 1.0 = no penalty, higher = more aggressive. Default: 1.15.</p>
+            <p class="option-hint">Penalises repetition. 1.0 = off. Default: 1.15.</p>
         </div>
-
-        <div class="input-group" style="margin-top: 0.75rem;">
+        <div class="input-group" style="margin-top:0.75rem;">
             <button type="button" id="save-llamacpp-settings" class="btn btn-primary">Save</button>
-            <span id="llamacpp-settings-status" class="option-hint" style="margin-left: 0.5rem;"></span>
+            <span id="llamacpp-settings-status" class="option-hint" style="margin-left:0.5rem;"></span>
         </div>
     </section>
 
     <section class="card" aria-labelledby="theme-title">
         <h2 class="card-title" id="theme-title">Theme</h2>
         <p class="card-desc">Choose a palette, variant, and accent colour.</p>
-
         <div class="option-row">
             <label id="palette-label">Palette</label>
             <div class="palette-list" data-palette-list role="radiogroup" aria-labelledby="palette-label"></div>
         </div>
-
         <div class="option-row">
             <label id="flavour-label">Variant</label>
             <div class="flavour-list" data-flavour-list role="radiogroup" aria-labelledby="flavour-label"></div>
         </div>
-
         <div class="option-row">
             <label id="accent-label">Accent</label>
             <div class="accent-grid" data-accent-grid role="radiogroup" aria-labelledby="accent-label"></div>

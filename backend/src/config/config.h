@@ -17,15 +17,24 @@ private:
     std::string lmStudioUrl;
 
     // ── llama.cpp settings ────────────────────────────────────────────────────
-    bool        llamacppFlashAttn;      // Flash Attention (requires restart)
-    int         llamacppEvalBatchSize;  // Eval batch size (requires restart)
-    int         llamacppCtxSize;        // Context size override; 0 = auto from model (requires restart)
-    int         llamacppGpuLayers;      // GPU offload layers; 0 = CPU only (requires restart)
-    int         llamacppThreads;        // CPU threads for generation; 0 = auto (requires restart)
-    int         llamacppThreadsBatch;   // CPU threads for batch/prefill; 0 = auto (requires restart)
-    double      llamacppTopP;           // Top-P sampler value
-    double      llamacppMinP;           // Min-P sampler value
-    double      llamacppRepeatPenalty;  // Repetition penalty
+    bool        llamacppFlashAttn;
+    int         llamacppEvalBatchSize;
+    int         llamacppCtxSize;
+    int         llamacppGpuLayers;
+    int         llamacppThreads;
+    int         llamacppThreadsBatch;
+    double      llamacppTopP;
+    double      llamacppMinP;
+    double      llamacppRepeatPenalty;
+
+    // ── Backend preference ────────────────────────────────────────────────────
+    std::string llamacppBackend;
+
+    // llama.cpp git tag used when building backend .so files via BackendBuilder.
+    std::string llamacppTag;
+
+    // ── UI dismiss state ──────────────────────────────────────────────────────
+    bool        backendSuggestionDismissed;
 
     std::string settingsPath;
     std::mutex  mutex;
@@ -71,7 +80,7 @@ Utilize the interface's full rendering suite:
 2. **Retrieve:** For technical tasks, use {tools} immediately. 
 3. **Analyze:** Evaluate the user's input for bias or errors. Dismantle flaws bluntly.
 4. **Deliver:** Present results using rich Markdown and LaTeX. 
-5. **Admit:** If the answer is unavailable, state "I don't know" without apology.)SYS"), 
+5. **Admit:** If the answer is unavailable, state "I don't know" without apology.)SYS"),
           lmStudioUrl("http://localhost:1234"),
           llamacppFlashAttn(true),
           llamacppEvalBatchSize(2048),
@@ -82,15 +91,15 @@ Utilize the interface's full rendering suite:
           llamacppTopP(0.9),
           llamacppMinP(0.05),
           llamacppRepeatPenalty(1.15),
+          llamacppBackend("auto"),
+          llamacppTag("b8337"),
+          backendSuggestionDismissed(false),
           settingsPath(path) {}
-
-    // ── Persistence ───────────────────────────────────────────────────────────
 
     void load() {
         std::lock_guard<std::mutex> lock(mutex);
         std::ifstream file(settingsPath);
         if (!file.is_open()) { saveUnlocked(); return; }
-
         Json::Value cfg;
         try { file >> cfg; } catch (...) { saveUnlocked(); return; }
 
@@ -100,50 +109,63 @@ Utilize the interface's full rendering suite:
         if (cfg.isMember("temperature"))  temperature  = cfg["temperature"].asDouble();
         if (cfg.isMember("systemPrompt")) systemPrompt = cfg["systemPrompt"].asString();
         if (cfg.isMember("lmStudioUrl"))  lmStudioUrl  = cfg["lmStudioUrl"].asString();
+        if (cfg.isMember("fallbackMaxOutputTokens")) fallbackMaxOutputTokens = cfg["fallbackMaxOutputTokens"].asInt();
+        else if (cfg.isMember("maxTokens")) fallbackMaxOutputTokens = cfg["maxTokens"].asInt();
 
-        if (cfg.isMember("fallbackMaxOutputTokens"))
-            fallbackMaxOutputTokens = cfg["fallbackMaxOutputTokens"].asInt();
-        else if (cfg.isMember("maxTokens"))
-            fallbackMaxOutputTokens = cfg["maxTokens"].asInt();
+        if (cfg.isMember("llamacppFlashAttn"))     llamacppFlashAttn     = cfg["llamacppFlashAttn"].asBool();
+        if (cfg.isMember("llamacppEvalBatchSize")) llamacppEvalBatchSize = cfg["llamacppEvalBatchSize"].asInt();
+        if (cfg.isMember("llamacppCtxSize"))       llamacppCtxSize       = cfg["llamacppCtxSize"].asInt();
+        if (cfg.isMember("llamacppGpuLayers"))     llamacppGpuLayers     = cfg["llamacppGpuLayers"].asInt();
+        if (cfg.isMember("llamacppThreads"))       llamacppThreads       = cfg["llamacppThreads"].asInt();
+        if (cfg.isMember("llamacppThreadsBatch"))  llamacppThreadsBatch  = cfg["llamacppThreadsBatch"].asInt();
+        if (cfg.isMember("llamacppTopP"))          llamacppTopP          = cfg["llamacppTopP"].asDouble();
+        if (cfg.isMember("llamacppMinP"))          llamacppMinP          = cfg["llamacppMinP"].asDouble();
+        if (cfg.isMember("llamacppRepeatPenalty")) llamacppRepeatPenalty = cfg["llamacppRepeatPenalty"].asDouble();
 
-        // llama.cpp settings
-        if (cfg.isMember("llamacppFlashAttn"))      llamacppFlashAttn      = cfg["llamacppFlashAttn"].asBool();
-        if (cfg.isMember("llamacppEvalBatchSize"))  llamacppEvalBatchSize  = cfg["llamacppEvalBatchSize"].asInt();
-        if (cfg.isMember("llamacppCtxSize"))        llamacppCtxSize        = cfg["llamacppCtxSize"].asInt();
-        if (cfg.isMember("llamacppGpuLayers"))      llamacppGpuLayers      = cfg["llamacppGpuLayers"].asInt();
-        if (cfg.isMember("llamacppThreads"))        llamacppThreads        = cfg["llamacppThreads"].asInt();
-        if (cfg.isMember("llamacppThreadsBatch"))   llamacppThreadsBatch   = cfg["llamacppThreadsBatch"].asInt();
-        if (cfg.isMember("llamacppTopP"))           llamacppTopP           = cfg["llamacppTopP"].asDouble();
-        if (cfg.isMember("llamacppMinP"))           llamacppMinP           = cfg["llamacppMinP"].asDouble();
-        if (cfg.isMember("llamacppRepeatPenalty"))  llamacppRepeatPenalty  = cfg["llamacppRepeatPenalty"].asDouble();
+        if (cfg.isMember("llamacppBackend")) {
+            const std::string b = cfg["llamacppBackend"].asString();
+            if (b == "auto" || b == "cpu" || b == "cuda" || b == "rocm" || b == "vulkan")
+                llamacppBackend = b;
+        }
+        if (cfg.isMember("llamacppTag") && !cfg["llamacppTag"].asString().empty())
+            llamacppTag = cfg["llamacppTag"].asString();
+        if (cfg.isMember("backendSuggestionDismissed"))
+            backendSuggestionDismissed = cfg["backendSuggestionDismissed"].asBool();
     }
 
-    void save() {
-        std::lock_guard<std::mutex> lock(mutex);
-        saveUnlocked();
-    }
+    void save() { std::lock_guard<std::mutex> lock(mutex); saveUnlocked(); }
 
     void updateFromJson(const Json::Value& root) {
         std::lock_guard<std::mutex> lock(mutex);
-        if (root.isMember("port"))                    port                    = root["port"].asInt();
-        if (root.isMember("host"))                    host                    = root["host"].asString();
-        if (root.isMember("defaultModel"))            defaultModel            = root["defaultModel"].asString();
-        if (root.isMember("temperature"))             temperature             = root["temperature"].asDouble();
-        if (root.isMember("systemPrompt"))            systemPrompt            = root["systemPrompt"].asString();
-        if (root.isMember("lmStudioUrl"))             lmStudioUrl             = root["lmStudioUrl"].asString();
-        if (root.isMember("fallbackMaxOutputTokens")) fallbackMaxOutputTokens = root["fallbackMaxOutputTokens"].asInt();
-        else if (root.isMember("maxTokens"))          fallbackMaxOutputTokens = root["maxTokens"].asInt();
 
-        // llama.cpp settings
-        if (root.isMember("llamacppFlashAttn"))      llamacppFlashAttn      = root["llamacppFlashAttn"].asBool();
-        if (root.isMember("llamacppEvalBatchSize"))  llamacppEvalBatchSize  = root["llamacppEvalBatchSize"].asInt();
-        if (root.isMember("llamacppCtxSize"))        llamacppCtxSize        = root["llamacppCtxSize"].asInt();
-        if (root.isMember("llamacppGpuLayers"))      llamacppGpuLayers      = root["llamacppGpuLayers"].asInt();
-        if (root.isMember("llamacppThreads"))        llamacppThreads        = root["llamacppThreads"].asInt();
-        if (root.isMember("llamacppThreadsBatch"))   llamacppThreadsBatch   = root["llamacppThreadsBatch"].asInt();
-        if (root.isMember("llamacppTopP"))           llamacppTopP           = root["llamacppTopP"].asDouble();
-        if (root.isMember("llamacppMinP"))           llamacppMinP           = root["llamacppMinP"].asDouble();
-        if (root.isMember("llamacppRepeatPenalty"))  llamacppRepeatPenalty  = root["llamacppRepeatPenalty"].asDouble();
+        if (root.isMember("port"))         port         = root["port"].asInt();
+        if (root.isMember("host"))         host         = root["host"].asString();
+        if (root.isMember("defaultModel")) defaultModel = root["defaultModel"].asString();
+        if (root.isMember("temperature"))  temperature  = root["temperature"].asDouble();
+        if (root.isMember("systemPrompt")) systemPrompt = root["systemPrompt"].asString();
+        if (root.isMember("lmStudioUrl"))  lmStudioUrl  = root["lmStudioUrl"].asString();
+        if (root.isMember("fallbackMaxOutputTokens")) fallbackMaxOutputTokens = root["fallbackMaxOutputTokens"].asInt();
+        else if (root.isMember("maxTokens")) fallbackMaxOutputTokens = root["maxTokens"].asInt();
+
+        if (root.isMember("llamacppFlashAttn"))     llamacppFlashAttn     = root["llamacppFlashAttn"].asBool();
+        if (root.isMember("llamacppEvalBatchSize")) llamacppEvalBatchSize = root["llamacppEvalBatchSize"].asInt();
+        if (root.isMember("llamacppCtxSize"))       llamacppCtxSize       = root["llamacppCtxSize"].asInt();
+        if (root.isMember("llamacppGpuLayers"))     llamacppGpuLayers     = root["llamacppGpuLayers"].asInt();
+        if (root.isMember("llamacppThreads"))       llamacppThreads       = root["llamacppThreads"].asInt();
+        if (root.isMember("llamacppThreadsBatch"))  llamacppThreadsBatch  = root["llamacppThreadsBatch"].asInt();
+        if (root.isMember("llamacppTopP"))          llamacppTopP          = root["llamacppTopP"].asDouble();
+        if (root.isMember("llamacppMinP"))          llamacppMinP          = root["llamacppMinP"].asDouble();
+        if (root.isMember("llamacppRepeatPenalty")) llamacppRepeatPenalty = root["llamacppRepeatPenalty"].asDouble();
+
+        if (root.isMember("llamacppBackend")) {
+            const std::string b = root["llamacppBackend"].asString();
+            if (b == "auto" || b == "cpu" || b == "cuda" || b == "rocm" || b == "vulkan")
+                llamacppBackend = b;
+        }
+        if (root.isMember("llamacppTag") && !root["llamacppTag"].asString().empty())
+            llamacppTag = root["llamacppTag"].asString();
+        if (root.isMember("backendSuggestionDismissed"))
+            backendSuggestionDismissed = root["backendSuggestionDismissed"].asBool();
 
         saveUnlocked();
     }
@@ -151,81 +173,81 @@ Utilize the interface's full rendering suite:
     Json::Value toJson() {
         std::lock_guard<std::mutex> lock(mutex);
         Json::Value root;
-        root["host"]                    = host;
-        root["port"]                    = port;
-        root["defaultModel"]            = defaultModel;
-        root["fallbackMaxOutputTokens"] = fallbackMaxOutputTokens;
-        root["temperature"]             = temperature;
-        root["systemPrompt"]            = systemPrompt;
-        root["lmStudioUrl"]             = lmStudioUrl;
-        root["llamacppFlashAttn"]       = llamacppFlashAttn;
-        root["llamacppEvalBatchSize"]   = llamacppEvalBatchSize;
-        root["llamacppCtxSize"]         = llamacppCtxSize;
-        root["llamacppGpuLayers"]       = llamacppGpuLayers;
-        root["llamacppThreads"]         = llamacppThreads;
-        root["llamacppThreadsBatch"]    = llamacppThreadsBatch;
-        root["llamacppTopP"]            = llamacppTopP;
-        root["llamacppMinP"]            = llamacppMinP;
-        root["llamacppRepeatPenalty"]   = llamacppRepeatPenalty;
+        root["host"]                       = host;
+        root["port"]                       = port;
+        root["defaultModel"]               = defaultModel;
+        root["fallbackMaxOutputTokens"]    = fallbackMaxOutputTokens;
+        root["temperature"]                = temperature;
+        root["systemPrompt"]               = systemPrompt;
+        root["lmStudioUrl"]                = lmStudioUrl;
+        root["llamacppFlashAttn"]          = llamacppFlashAttn;
+        root["llamacppEvalBatchSize"]      = llamacppEvalBatchSize;
+        root["llamacppCtxSize"]            = llamacppCtxSize;
+        root["llamacppGpuLayers"]          = llamacppGpuLayers;
+        root["llamacppThreads"]            = llamacppThreads;
+        root["llamacppThreadsBatch"]       = llamacppThreadsBatch;
+        root["llamacppTopP"]               = llamacppTopP;
+        root["llamacppMinP"]               = llamacppMinP;
+        root["llamacppRepeatPenalty"]      = llamacppRepeatPenalty;
+        root["llamacppBackend"]            = llamacppBackend;
+        root["llamacppTag"]                = llamacppTag;
+        root["backendSuggestionDismissed"] = backendSuggestionDismissed;
         return root;
     }
 
-    // ── Getters ───────────────────────────────────────────────────────────────
+    // Getters
+    int         getPort()       { std::lock_guard<std::mutex> l(mutex); return port; }
+    std::string getHost()       { std::lock_guard<std::mutex> l(mutex); return host; }
+    std::string getLmStudioUrl(){ std::lock_guard<std::mutex> l(mutex); return lmStudioUrl; }
+    bool   getLlamacppFlashAttn()     { std::lock_guard<std::mutex> l(mutex); return llamacppFlashAttn; }
+    int    getLlamacppEvalBatchSize() { std::lock_guard<std::mutex> l(mutex); return llamacppEvalBatchSize; }
+    int    getLlamacppCtxSize()       { std::lock_guard<std::mutex> l(mutex); return llamacppCtxSize; }
+    int    getLlamacppGpuLayers()     { std::lock_guard<std::mutex> l(mutex); return llamacppGpuLayers; }
+    int    getLlamacppThreads()       { std::lock_guard<std::mutex> l(mutex); return llamacppThreads; }
+    int    getLlamacppThreadsBatch()  { std::lock_guard<std::mutex> l(mutex); return llamacppThreadsBatch; }
+    double getLlamacppTopP()          { std::lock_guard<std::mutex> l(mutex); return llamacppTopP; }
+    double getLlamacppMinP()          { std::lock_guard<std::mutex> l(mutex); return llamacppMinP; }
+    double getLlamacppRepeatPenalty() { std::lock_guard<std::mutex> l(mutex); return llamacppRepeatPenalty; }
+    std::string getLlamacppBackend()  { std::lock_guard<std::mutex> l(mutex); return llamacppBackend; }
+    std::string getLlamacppTag()      { std::lock_guard<std::mutex> l(mutex); return llamacppTag; }
+    bool   getBackendSuggestionDismissed() { std::lock_guard<std::mutex> l(mutex); return backendSuggestionDismissed; }
 
-    int         getPort()                    { std::lock_guard<std::mutex> l(mutex); return port; }
-    std::string getHost()                    { std::lock_guard<std::mutex> l(mutex); return host; }
-    std::string getLmStudioUrl()             { std::lock_guard<std::mutex> l(mutex); return lmStudioUrl; }
-
-    // llama.cpp getters
-    bool   getLlamacppFlashAttn()      { std::lock_guard<std::mutex> l(mutex); return llamacppFlashAttn; }
-    int    getLlamacppEvalBatchSize()  { std::lock_guard<std::mutex> l(mutex); return llamacppEvalBatchSize; }
-    int    getLlamacppCtxSize()        { std::lock_guard<std::mutex> l(mutex); return llamacppCtxSize; }
-    int    getLlamacppGpuLayers()      { std::lock_guard<std::mutex> l(mutex); return llamacppGpuLayers; }
-    int    getLlamacppThreads()        { std::lock_guard<std::mutex> l(mutex); return llamacppThreads; }
-    int    getLlamacppThreadsBatch()   { std::lock_guard<std::mutex> l(mutex); return llamacppThreadsBatch; }
-    double getLlamacppTopP()           { std::lock_guard<std::mutex> l(mutex); return llamacppTopP; }
-    double getLlamacppMinP()           { std::lock_guard<std::mutex> l(mutex); return llamacppMinP; }
-    double getLlamacppRepeatPenalty()  { std::lock_guard<std::mutex> l(mutex); return llamacppRepeatPenalty; }
-
-    /** Path to the MCP config file (sibling of settings.json, named mcp.json). */
     std::string getMcpConfigPath() const {
-        // Replace "settings.json" suffix with "mcp.json"
         const std::string suffix = "settings.json";
         if (settingsPath.size() >= suffix.size() &&
                 settingsPath.substr(settingsPath.size() - suffix.size()) == suffix)
             return settingsPath.substr(0, settingsPath.size() - suffix.size()) + "mcp.json";
-        // Fallback: same directory
         auto sep = settingsPath.find_last_of("/\\");
-        if (sep != std::string::npos)
-            return settingsPath.substr(0, sep + 1) + "mcp.json";
+        if (sep != std::string::npos) return settingsPath.substr(0, sep + 1) + "mcp.json";
         return "mcp.json";
     }
 
 private:
     void saveUnlocked() {
         Json::Value root;
-        root["host"]                    = host;
-        root["port"]                    = port;
-        root["defaultModel"]            = defaultModel;
-        root["fallbackMaxOutputTokens"] = fallbackMaxOutputTokens;
-        root["temperature"]             = temperature;
-        root["systemPrompt"]            = systemPrompt;
-        root["lmStudioUrl"]             = lmStudioUrl;
-        root["llamacppFlashAttn"]       = llamacppFlashAttn;
-        root["llamacppEvalBatchSize"]   = llamacppEvalBatchSize;
-        root["llamacppCtxSize"]         = llamacppCtxSize;
-        root["llamacppGpuLayers"]       = llamacppGpuLayers;
-        root["llamacppThreads"]         = llamacppThreads;
-        root["llamacppThreadsBatch"]    = llamacppThreadsBatch;
-        root["llamacppTopP"]            = llamacppTopP;
-        root["llamacppMinP"]            = llamacppMinP;
-        root["llamacppRepeatPenalty"]   = llamacppRepeatPenalty;
-
+        root["host"]                       = host;
+        root["port"]                       = port;
+        root["defaultModel"]               = defaultModel;
+        root["fallbackMaxOutputTokens"]    = fallbackMaxOutputTokens;
+        root["temperature"]                = temperature;
+        root["systemPrompt"]               = systemPrompt;
+        root["lmStudioUrl"]                = lmStudioUrl;
+        root["llamacppFlashAttn"]          = llamacppFlashAttn;
+        root["llamacppEvalBatchSize"]      = llamacppEvalBatchSize;
+        root["llamacppCtxSize"]            = llamacppCtxSize;
+        root["llamacppGpuLayers"]          = llamacppGpuLayers;
+        root["llamacppThreads"]            = llamacppThreads;
+        root["llamacppThreadsBatch"]       = llamacppThreadsBatch;
+        root["llamacppTopP"]               = llamacppTopP;
+        root["llamacppMinP"]               = llamacppMinP;
+        root["llamacppRepeatPenalty"]      = llamacppRepeatPenalty;
+        root["llamacppBackend"]            = llamacppBackend;
+        root["llamacppTag"]                = llamacppTag;
+        root["backendSuggestionDismissed"] = backendSuggestionDismissed;
         std::ofstream file(settingsPath);
         if (file.is_open()) {
             Json::StreamWriterBuilder builder;
             builder["indentation"] = "    ";
-            builder["precision"]   = 17;
             std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
             writer->write(root, &file);
         }

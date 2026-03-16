@@ -12,9 +12,7 @@
 
 ## AI Chat-box
 ### Planned Features
-- Switch automatically between llama.cpp builds (CUDA, ROCm, Vulkan, CPU) or RKNN-LLM based on hardware detected
-  - Build with all 5 versions of llama.cpp built-in
-  - Allow user to manually change in settings
+- Allow removal/deletion of llama.cpp builds
 - Tone down llama.cpp max compute usage to allow computer use during generation
   - Ability to return to maximum usage in settings
 - Keep models loaded for 5 minutes after generation completion
@@ -34,6 +32,7 @@
       - Automatically finds the mmproj and vocab for the model.
       - Automatically converts gguf models into .rkllm on NPU build
   - Filters
+- RKNN-LLM support to automatic backend inference software switching
 - Add logprobs
   - Highlight uncertain tokens
 - Speculative Decoding
@@ -65,6 +64,7 @@
   - Allow the AI to switch to using an identifier that links to RAG memories to remember in the context window to remember to do specific tasks
   - Offput large documents (12k+ tokens) to make the AI read in chunks to prevent context overflow and more effectively handle memory
 - Headless browser tool
+- Stop and restart backend options in the front-end, as Windows users likely won't use a terminal to run the app
 ##### Start giving updates to GamingwithNP
 - AI automated research (self-improvement)
   - Choose the best open sourced (actual open source, not open weight) model available
@@ -206,14 +206,22 @@
 #### UI
 ##### Chromium
 - Awkard message editing text field sizing causing unwanted scrolling
+- Removing a selected llama.cpp build in the files keeps the build highlighted despite greying out
+- Inconsistent wording, calling llama.cpp builds models, other times the backend
+- Unwanted and unnecessary descriptors such as specifying hot-swap on the llama.cpp apply button
+- Compiling progress bar not working
 
 #### UX
+- LM Studio API url test incorrectly adds in llama.cpp models
+- Popup suggesting a llama.cpp build sometimes doesn't appear
+- No removal button for llama.cpp builds
 ##### Firefox
 - ESC does not properly cancel message editing, requiring 2 presses of ESC
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
 
 #### Misc Bugs
-- None
+- Error after compiling llama.cpp builds; RPATH: -c: line 10: syntax error: unexpected end of file from `if' command on line 2
+- Unwanted logging happening
 
 
 
@@ -231,7 +239,9 @@
     - Max output tokens fallback
     - Temperature
     - System Prompt
-  - Customisable theme between all Everforest Palette choices and Catppuccin Palette choices
+    - llama.cpp build
+      - CPU, Vulkan, CUDA, ROCm
+  - Customisable theme between all Everforest palette choices and Catppuccin palette choices
 
 ## AI chat-box
 ### General
@@ -244,6 +254,12 @@
 - Multiple API implementations
   - LM Studio Server
   - llama.cpp internal integration
+    - Automatic switching between built llama.cpp builds
+      - Can manually select builds instead
+    - Popup to suggest a build when either none are built or the optimial one isn't built
+      - Non-intrusive, can select to not show again
+    - Settings section to build any type of build you want
+      - Download and build progress indication including a mini console for output
 - New chat button when sidebar is collapsed
 - Message hover menu
   - AI message regeneration

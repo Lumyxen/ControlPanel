@@ -1,6 +1,7 @@
 import { initConnectionUI } from "./connection-ui.js";
 import { initTheme, initSettingsPage } from "./theme.js";
 import * as SettingsStore from "./settings-store.js";
+import { checkAndSuggest } from "./backend-suggest.js";
 import {
 	clearCurrentChatId,
 	getChatById,
@@ -69,13 +70,10 @@ function startNewChat() {
 }
 
 document.addEventListener("click", (e) => {
-	// Ignore clicks on input/textarea elements (e.g., rename input fields)
 	if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
 
 	const a = e.target.closest("a[data-route]");
 	if (!a) return;
-
-	// Ignore clicks on anchors that are in editing mode
 	if (a.classList.contains("editing")) return;
 
 	e.preventDefault();
@@ -119,13 +117,12 @@ if (quickNewChatBtn) {
 	});
 }
 
-// Async startup: load chats from backend before rendering anything
+// Async startup
 (async () => {
 	await loadChats();
 
 	const initial = currentRoute();
 
-	// If the URL references a chat that doesn't exist in our loaded data, clear it
 	if (initial.includes("ai-chat.html")) {
 		const urlParams = new URLSearchParams(location.hash.split("?")[1] || "");
 		const chatIdFromUrl = urlParams.get("chat");
@@ -143,4 +140,8 @@ if (quickNewChatBtn) {
 	} catch (err) {
 		console.error(err);
 	}
+
+	// Check for GPU backend suggestion a short while after startup so it
+	// doesn't compete with page load and feels non-intrusive.
+	setTimeout(() => checkAndSuggest().catch(() => {}), 3000);
 })();
