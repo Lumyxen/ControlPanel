@@ -1,3 +1,10 @@
+
+
+
+Here is the updated `README.md` with the accurate, fully mapped list of all the API endpoints currently implemented in the C++ backend. I've categorised them so they are much easier to read!
+
+### `./README.md`
+```md
 # Control Panel
 A highly personal web interface to give me the information and tools I need all in 1 place
 
@@ -57,19 +64,43 @@ Edit `data/settings.json` with your settings:
     "defaultModel" : "lmstudio::llama-3-8b-instruct",
     "fallbackMaxOutputTokens" : 8192,
     "host" : "0.0.0.0",
-    "port" : 1024,
+    "port" : 8080,
     "systemPrompt" : "",
     "temperature" : 0.69999999999999996
 }
 ```
 
 ## API Endpoints
-- `GET /api/auth/verify` - Verify API key
-- `POST /api/chat` - Send chat message
-- `GET /api/chat/stream` - Streaming chat
-- `GET /api/models` - List available models
-- `GET /api/config/settings` - Get settings
-- `PUT /api/config/settings` - Update settings
+
+**General**
+- `GET /health` - Check backend health status
+
+**Chat & Models**
+- `POST /api/chat` - Send a non-streaming chat message
+- `POST /api/chat/stream` - Send a streaming chat message (SSE)
+- `POST /api/chat/stop` - Stop an active chat stream
+- `GET /api/models` - List available models (LM Studio & local llama.cpp)
+- `GET /api/chats` - Get saved chat history/threads
+- `PUT /api/chats` - Save/Update chat history/threads
+
+**Configuration**
+- `GET /api/config/settings` - Get current control panel settings
+- `PUT /api/config/settings` - Update control panel settings
+
+**llama.cpp Management**
+- `GET /api/llamacpp/backend` - Get backend info (available, hardware, active)
+- `POST /api/llamacpp/backend` - Switch the active llama.cpp backend
+- `POST /api/llamacpp/reload-model` - Unload and reload the model (applies config changes)
+- `POST /api/llamacpp/build` - Start building a new backend shared library
+- `GET /api/llamacpp/build/status` - Get the status of the current build
+- `GET /api/llamacpp/build/log` - Get the latest log lines for the active build
+- `POST /api/llamacpp/backend/dismiss` - Dismiss the GPU backend suggestion
+
+**MCP (Model Context Protocol)**
+- `GET /api/mcp/tools` - List aggregated tools from all live MCP servers
+- `POST /api/mcp/reload` - Reload `mcp.json` configuration
+- `POST /mcp` - Dispatch a JSON-RPC 2.0 request to an MCP server
+- `GET /mcp` - MCP Server-Sent Events (SSE) channel stub
 
 ## AI Usage
 I do use AI heavily on this project to program.
@@ -77,3 +108,4 @@ I do use AI heavily on this project to program.
 This does not mean that design choices are dictated by the AI models. This means I'm the one fine tuning and deciding on the UI aspects. If something with the UI is like that, it's either a bug or because I wanted it like that.
 
 I personally care about the result than the code itself. This does not mean I like unoptimised slop. If something doesn't work, that's bad. If something does work, that's good. If a function is optimised to levels that are good, I do not care if it was or wasn't written by AI, I care that it exists. If it works, it works. If it works well, it works well. This is a personal project. I'm not forcing you to use it.
+```
