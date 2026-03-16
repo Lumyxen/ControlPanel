@@ -6,7 +6,10 @@
 #include <iostream>
 #include <string>
 #include <cstdlib>
+
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -24,6 +27,12 @@ set(GGML_METAL           OFF CACHE BOOL "" FORCE)
 set(GGML_OPENCL          OFF CACHE BOOL "" FORCE)
 set(GGML_SYCL            OFF CACHE BOOL "" FORCE)
 set(GGML_OPENMP          OFF CACHE BOOL "" FORCE)
+
+# Set RPATH natively via CMake and disable versioned SO suffixes (.so.0)
+# This completely prevents needing external tools like patchelf or chrpath.
+set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE CACHE BOOL "" FORCE)
+set(CMAKE_INSTALL_RPATH "$ORIGIN" CACHE STRING "" FORCE)
+set(CMAKE_PLATFORM_NO_VERSIONED_SONAME ON CACHE BOOL "" FORCE)
 
 @BACKEND_FLAGS@
 
@@ -44,29 +53,41 @@ static int runCmd(const std::string& cmd, const std::string& logPath) {
     return system((cmd + " >> \"" + logPath + "\" 2>&1").c_str());
 }
 
+static bool hasCommand(const std::string& cmd) {
+#ifdef _WIN32
+    return system(("where " + cmd + " > NUL 2>&1").c_str()) == 0;
+#else
+    return system(("command -v " + cmd + " > /dev/null 2>&1").c_str()) == 0;
+#endif
+}
+
 std::string BackendBuilder::findRocmClang() {
-    for (const char* c : {"/opt/rocm/llvm/bin/clang", "/opt/rocm/bin/clang"})
+#ifndef _WIN32
+    for (const char* c : {"/opt/rocm/llvm/bin/clang", "/opt/rocm/bin/clang"}) {
         if (access(c, X_OK) == 0) return c;
-    if (system("command -v clang > /dev/null 2>&1") == 0) return "clang";
+    }
+#endif
+    if (hasCommand("clang")) return "clang";
     return "";
 }
 
 std::string BackendBuilder::checkPrerequisites(const std::string& backend) {
-    if (system("command -v cmake > /dev/null 2>&1") != 0)
+    if (!hasCommand("cmake"))
         return "cmake not found";
-    if (system("command -v git > /dev/null 2>&1") != 0)
+    if (!hasCommand("git"))
         return "git not found — required for FetchContent";
     if (backend == "cuda") {
-        if (system("command -v nvcc > /dev/null 2>&1") != 0)
+        if (!hasCommand("nvcc"))
             return "nvcc not found — install the NVIDIA CUDA toolkit";
     } else if (backend == "rocm") {
-        if (system("command -v hipcc > /dev/null 2>&1") != 0)
+#ifndef _WIN32
+        if (!hasCommand("hipcc"))
             return "hipcc not found — install ROCm";
+#endif
         if (findRocmClang().empty())
             return "clang not found — install /opt/rocm/llvm or system clang";
     } else if (backend == "vulkan") {
-        if (system("command -v glslc > /dev/null 2>&1") != 0 &&
-            system("command -v glslangValidator > /dev/null 2>&1") != 0)
+        if (!hasCommand("glslc") && !hasCommand("glslangValidator"))
             return "glslc / glslangValidator not found — install Vulkan SDK";
     } else if (backend != "cpu") {
         return "Unknown backend: " + backend;
@@ -138,8 +159,6 @@ int BackendBuilder::build(const std::string& backend,
     fs::create_directories(srcDir);
     fs::create_directories(outDir);
 
-    // Truncate log so stale cmake % lines from a previous run don't bleed
-    // into fresh polls from the frontend.
     {
         std::ofstream log(logPath, std::ios::trunc);
         log << "==============================\n"
@@ -164,72 +183,61 @@ int BackendBuilder::build(const std::string& backend,
         logPath);
     if (ret != 0) { std::cerr << "[BackendBuilder] cmake configure failed\n"; return ret; }
 
-    // ── cmake build ───────────────────────────────────────────────────────────
-    ret = runCmd("cmake --build \"" + cmakeBin.string() + "\" --target llama -j$(nproc)", logPath);
+    // ── cmake build (Native OS multi-core parallel) ───────────────────────────
+    ret = runCmd("cmake --build \"" + cmakeBin.string() + "\" --target llama --parallel", logPath);
     if (ret != 0) { std::cerr << "[BackendBuilder] cmake build failed\n"; return ret; }
 
-    // ── Copy plain .so files (not versioned .so.0 / .so.0.x.y) ──────────────
-    // -name "*.so" matches only exact .so suffixes — find does NOT match
-    // "libggml.so.0" with -name "*.so" because the name has a trailing ".0".
-    runCmd(
-        "find \"" + cmakeBin.string() + "\""
-        " ! -path \"*/CMakeFiles/*\""
-        " -name \"*.so\""
-        " -exec cp -L {} \"" + outDir.string() + "/\" \\;",
-        logPath);
-
-    // ── Rename libllama.so → libllama_<backend>.so ────────────────────────────
-    const fs::path rawSo     = outDir / "libllama.so";
-    const fs::path renamedSo = outDir / ("libllama_" + backend + ".so");
-
-    if (!fs::exists(rawSo)) {
-        std::ofstream(logPath, std::ios::app) << "[BackendBuilder] ERROR: libllama.so missing\n";
+    // ── Copy libraries natively using C++ filesystem ──────────────────────────
+    try {
+        for (const auto& entry : fs::recursive_directory_iterator(cmakeBin)) {
+            if (entry.is_regular_file() || entry.is_symlink()) {
+                const std::string ext = entry.path().extension().string();
+                if (ext == ".so" || ext == ".dll" || ext == ".dylib") {
+                    // Ignore transient cmake check files
+                    if (entry.path().string().find("CMakeFiles") == std::string::npos) {
+                        fs::copy_file(entry.path(), outDir / entry.path().filename(), fs::copy_options::overwrite_existing);
+                    }
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        std::ofstream(logPath, std::ios::app) << "[BackendBuilder] File copy failed: " << e.what() << "\n";
         return 1;
     }
-    // Remove old build of same backend if present
-    if (fs::exists(renamedSo)) fs::remove(renamedSo);
-    fs::rename(rawSo, renamedSo);
 
-    // ── Fix versioned SONAME dependencies ────────────────────────────────────
-    //
-    // Problem: cmake sets SOVERSION on ggml libs so their internal SONAME is
-    // e.g. "libggml.so.0".  libllama.so is built with NEEDED entries pointing
-    // to those versioned SONAMEs.  When we cp -L libggml.so we get the real
-    // binary but under the plain name; the dynamic linker can't find it because
-    // it's looking for "libggml.so.0".
-    //
-    // Fix: use patchelf --replace-needed to rewrite every versioned NEEDED
-    // entry in libllama_<backend>.so to its plain .so equivalent.
-    // After this change dlopen needs only the plain .so files we already have.
-    //
-    // We also set RPATH=$ORIGIN so the loader finds ggml siblings in the same
-    // flat data/libs/ directory without needing LD_LIBRARY_PATH.
-    const std::string patchScript =
-        "LIB=\"" + renamedSo.string() + "\"\n"
-        "if command -v patchelf > /dev/null 2>&1; then\n"
-        "  for dep in $(patchelf --print-needed \"$LIB\" 2>/dev/null | grep -E '\\.so\\.[0-9]'); do\n"
-        "    plain=$(echo \"$dep\" | sed -E 's/\\.so\\.[0-9].*/\\.so/')\n"
-        "    patchelf --replace-needed \"$dep\" \"$plain\" \"$LIB\" 2>/dev/null\n"
-        "    echo \"[patchelf] replaced NEEDED: $dep -> $plain\"\n"
-        "  done\n"
-        "  patchelf --set-rpath '$ORIGIN' \"$LIB\" 2>/dev/null\n"
-        "  echo '[patchelf] RPATH set to $ORIGIN'\n"
-        "elif command -v chrpath > /dev/null 2>&1; then\n"
-        "  chrpath -r '$ORIGIN' \"$LIB\" 2>/dev/null\n"
-        "else\n"
-        "  echo '[patchelf] WARNING: neither patchelf nor chrpath found — dlopen may fail'\n"
-        "fi\n";
-    runCmd("bash -c '" + patchScript + "'", logPath);
+    // ── Rename libllama library ───────────────────────────────────────────────
+    // This allows multiple backends to exist without overwriting the core llama lib.
+    fs::path rawLib;
+    fs::path renamedLib;
+    
+    for (const char* ext : {".so", ".dll", ".dylib"}) {
+        if (fs::exists(outDir / ("libllama" + std::string(ext)))) {
+            rawLib = outDir / ("libllama" + std::string(ext));
+            renamedLib = outDir / ("libllama_" + backend + ext);
+            break;
+        } else if (fs::exists(outDir / ("llama" + std::string(ext)))) { 
+            // Windows/MSVC sometimes outputs without the 'lib' prefix
+            rawLib = outDir / ("llama" + std::string(ext));
+            renamedLib = outDir / ("libllama_" + backend + ext);
+            break;
+        }
+    }
+
+    if (!rawLib.empty()) {
+        if (fs::exists(renamedLib)) fs::remove(renamedLib);
+        fs::rename(rawLib, renamedLib);
+    } else {
+        std::ofstream(logPath, std::ios::app) << "[BackendBuilder] ERROR: libllama library file missing\n";
+        return 1;
+    }
 
     {
         std::ofstream log(logPath, std::ios::app);
-        log << "[BackendBuilder] Success: " << renamedSo.string() << "\n";
+        log << "[BackendBuilder] Success: " << renamedLib.string() << "\n";
     }
-    std::cout << "[BackendBuilder] Built: " << renamedSo.string() << "\n";
+    std::cout << "[BackendBuilder] Built: " << renamedLib.string() << "\n";
 
-    // ── Delete entire build-cache directory ───────────────────────────────────
-    // Deletes the whole buildCacheDir (not just the backend subdir inside it)
-    // so the directory entry itself is also gone.
+    // ── Clean up build cache ──────────────────────────────────────────────────
     std::cout << "[BackendBuilder] Removing build cache: " << buildCacheDir << "\n";
     try {
         fs::remove_all(fs::path(buildCacheDir));

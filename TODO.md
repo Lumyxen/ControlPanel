@@ -214,13 +214,11 @@
 #### UX
 - LM Studio API url test incorrectly adds in llama.cpp models
 - Popup suggesting a llama.cpp build sometimes doesn't appear
-- No removal button for llama.cpp builds
 ##### Firefox
 - ESC does not properly cancel message editing, requiring 2 presses of ESC
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
 
 #### Misc Bugs
-- Error after compiling llama.cpp builds; RPATH: -c: line 10: syntax error: unexpected end of file from `if' command on line 2
 - Unwanted logging happening
 
 
