@@ -57,13 +57,11 @@
 - Do exact token counting instead of estimation
   - Show small warning under context window usage block when falling back to estimation because model's tokenisation is unknown
 - Text showing model loading and prompt processing percentages and time
-- RAG based memory
-  - Only load or allow models to use 64k tokens max.
-  - Get more aggressive with offputting data into the RAG DB the closer you get to the maximum context window
-  - Stage progression as: Full data -> summary + RAG -> RAG
-  - Strengthen/weight information in the RAG the more it gets used to make it more likely/easy to be recalled in the future
+- RLM-like wrapper implementation for LLMs
+  - Get more aggressive with offputting data into the long term context the closer you get to the maximum context window
+  - Stage progression as: Full data -> summary + long term context -> long term context
+  - Strengthen/weight information in the long term context the more it gets used to make it more likely/easy to be recalled in the future
     - Decay factor in the weighting
-  - Allow the AI to switch to using an identifier that links to RAG memories to remember in the context window to remember to do specific tasks
   - Offput large documents (12k+ tokens) to make the AI read in chunks to prevent context overflow and more effectively handle memory
 - Headless browser tool
 - Stop and restart backend options in the front-end, as Windows users likely won't use a terminal to run the app
