@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# backend/scripts/build.sh
-#
-# Builds the ctrlpanel binary ONLY.
-#
-# The binary has zero link-time dependency on llama.cpp. GPU backends are
-# separate shared libraries in data/libs/ that are built on-demand — either
-# manually via build_backend.sh or through the in-app prompt that appears
-# on first launch when the server detects usable GPU hardware.
-#
 # To force a clean rebuild: ./build.sh --clean
 
 set -euo pipefail
@@ -19,6 +10,20 @@ for arg in "$@"; do
         rm -rf build build-arm
     fi
 done
+
+# ── Ensure httplib is present ─────────────────────────────────────────────────
+if [ ! -f "third_party/httplib/httplib.h" ]; then
+    echo "=== Fetching cpp-httplib (missing from third_party) ==="
+    mkdir -p third_party/httplib
+    if command -v curl &>/dev/null; then
+        curl -sL "https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.38.0/httplib.h" -o "third_party/httplib/httplib.h"
+    elif command -v wget &>/dev/null; then
+        wget -qO "third_party/httplib/httplib.h" "https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.38.0/httplib.h"
+    else
+        echo "ERROR: Neither curl nor wget is available to download httplib.h"
+        exit 1
+    fi
+fi
 
 # ── Main binary ───────────────────────────────────────────────────────────────
 echo "=== Building ctrlpanel ==="

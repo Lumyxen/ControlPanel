@@ -37,6 +37,7 @@ set(CMAKE_PLATFORM_NO_VERSIONED_SONAME ON CACHE BOOL "" FORCE)
 @BACKEND_FLAGS@
 
 FetchContent_Declare(llama_cpp
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     URL https://github.com/ggml-org/llama.cpp/archive/@LLAMA_TAG@.tar.gz)
 FetchContent_MakeAvailable(llama_cpp)
 )CMAKE";

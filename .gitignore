@@ -1,3 +1,6 @@
+# IDE
+.vscode/
+
 # Build dir
 backend/build/
 backend/build-arm/

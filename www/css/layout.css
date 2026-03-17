@@ -1,4 +1,4 @@
-/* ctrlpanel/css/layout.css */
+/* www/css/layout.css */
 body {
 	display: grid;
 	grid-template-columns: var(--sidebar-width) 1fr;

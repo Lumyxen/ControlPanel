@@ -1,4 +1,4 @@
-// ctrlpanel/js/backend-suggest.js
+// www/js/backend-suggest.js
 //
 // Shows a non-intrusive notification card in the top-right corner when the
 // server detects faster GPU hardware with no matching backend built yet.

@@ -1,4 +1,4 @@
-// ctrlpanel/js/chat/inline-attachment.js
+// www/js/chat/inline-attachment.js
 /**
  * InlineAttachmentManager - Handles inline file attachments in contenteditable
  * 

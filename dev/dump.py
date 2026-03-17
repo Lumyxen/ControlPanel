@@ -10,7 +10,7 @@ BLACKLIST_FILES = frozenset([
 ])
 
 BLACKLIST_FOLDERS = frozenset([
-    "dev", ".vscode", ".git", "www", "third_party", "build", "build-arm", "testing"
+    "dev", ".vscode", ".git", "third_party", "build", "build-arm", "testing"
 ])
 
 

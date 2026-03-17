@@ -22,6 +22,7 @@ if(CMAKE_CROSSCOMPILING)
     set(JSONCPP_WITH_TESTS OFF CACHE BOOL "" FORCE)
     set(JSONCPP_WITH_POST_BUILD_UNITTEST OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(jsoncpp 
+        DOWNLOAD_EXTRACT_TIMESTAMP true
         URL https://github.com/open-source-parsers/jsoncpp/archive/1.9.6.tar.gz
     )
     FetchContent_MakeAvailable(jsoncpp)
@@ -42,6 +43,7 @@ if(CMAKE_CROSSCOMPILING)
     set(CURL_CA_BUNDLE "none" CACHE STRING "" FORCE)
     set(CURL_CA_PATH "none" CACHE STRING "" FORCE)
     FetchContent_Declare(curl 
+        DOWNLOAD_EXTRACT_TIMESTAMP true
         URL https://github.com/curl/curl/archive/curl-8_11_0.tar.gz
     )
     FetchContent_MakeAvailable(curl)
@@ -68,6 +70,7 @@ cmake_policy(SET CMP0169 OLD)
 message(STATUS "Downloading llama.cpp headers via HTTP archive...")
 FetchContent_Declare(
     llama_cpp_headers
+    DOWNLOAD_EXTRACT_TIMESTAMP true
     URL https://github.com/ggml-org/llama.cpp/archive/b8391.tar.gz
 )
 FetchContent_GetProperties(llama_cpp_headers)
@@ -83,6 +86,19 @@ set(LLAMA_HEADERS_DIR "${llama_cpp_headers_SOURCE_DIR}")
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
+# Fetch cpp-httplib if the directory is empty/stripped
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/third_party/httplib/httplib.h")
+    message(STATUS "httplib.h not found in third_party, downloading cpp-httplib v0.38.0...")
+    file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/third_party/httplib")
+    file(DOWNLOAD "https://raw.githubusercontent.com/yhirose/cpp-httplib/v0.38.0/httplib.h"
+         "${CMAKE_SOURCE_DIR}/third_party/httplib/httplib.h"
+         STATUS DOWNLOAD_STATUS)
+    list(GET DOWNLOAD_STATUS 0 DOWNLOAD_CODE)
+    if(NOT DOWNLOAD_CODE EQUAL 0)
+        message(FATAL_ERROR "Failed to download httplib.h: ${DOWNLOAD_STATUS}")
+    endif()
+endif()
+
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/src)
 include_directories("${CMAKE_SOURCE_DIR}/third_party/httplib")
@@ -93,12 +109,12 @@ include_directories("${LLAMA_HEADERS_DIR}")
 
 set(EMBED_H   "${CMAKE_BINARY_DIR}/embedded_frontend.h")
 set(EMBED_CPP "${CMAKE_BINARY_DIR}/embedded_frontend.cpp")
-file(GLOB_RECURSE FRONTEND_FILES "${CMAKE_SOURCE_DIR}/../ctrlpanel/*")
+file(GLOB_RECURSE FRONTEND_FILES "${CMAKE_SOURCE_DIR}/../www/*")
 add_custom_command(
     OUTPUT ${EMBED_H} ${EMBED_CPP}
     COMMAND Python3::Interpreter
             "${CMAKE_SOURCE_DIR}/scripts/embed_frontend.py"
-            "${CMAKE_SOURCE_DIR}/../ctrlpanel" "${EMBED_H}" "${EMBED_CPP}"
+            "${CMAKE_SOURCE_DIR}/../www" "${EMBED_H}" "${EMBED_CPP}"
     DEPENDS "${CMAKE_SOURCE_DIR}/scripts/embed_frontend.py" ${FRONTEND_FILES}
     COMMENT "Embedding frontend files...")
 include_directories("${CMAKE_BINARY_DIR}")

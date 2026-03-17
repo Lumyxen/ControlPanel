@@ -1,4 +1,4 @@
-// ctrlpanel/js/chat/context.js
+// www/js/chat/context.js
 import { computeThreadNodeIds, ensureGraph, getNode } from "./graph.js";
 
 // Store for model metadata fetched from API
