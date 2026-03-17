@@ -31,7 +31,7 @@
  *   • Font size commands
  *   • Color: \textcolor, \colorbox, \fcolorbox, \color{...}
  *   • Boxes: \fbox, \mbox, \framebox, \boxed, \parbox, \raisebox
- *   • Spacing: \vspace, \hspace, \medskip, \bigskip, \smallskip, \noindent
+ *   • Spacing: \vspace, \hspace, \\medskip, \bigskip, \smallskip, \noindent
  *   • Typography: \ldots/\dots/\cdots, \textquoteleft/right,
  *     \enquote, \guillemets, ligature replacements (-- / --- / ~)
  *   • Special escaped characters: \& \% \$ \# \_ \{ \}  \^ \~
@@ -42,6 +42,7 @@
  *     \citealt, \nocite
  *   • Natbib & BibLaTeX citation variants
  *   • Glossaries: \gls, \glspl, \Gls, \GLS, \glsentrylong, \acrshort, \acrlong
+ *   • BibTeX support: parsing, citation rendering, bibliography generation
  *   • Misc: \maketitle, \tableofcontents, \listoffigures, \listoftables,
  *     \appendix, \bibliography, \printbibliography, \newpage, \clearpage,
  *     \linebreak, \nolinebreak, \pagebreak, \par, \indent, \centering,
@@ -133,7 +134,7 @@ const CODE_BLOCK_REGEX = /(```[\s\S]*?```|`[^`\n]+`)/g;
  *    \begin{multline(*)}...\end{multline(*)}
  *    \begin{flalign(*)}...\end{flalign(*)}
  *    \begin{alignat(*){n}}...\end{alignat(*)}
- *    \begin{eqnarray(*)}...\end{eqnarray(*)}
+ *    \begin eqnarray(*)}...\end{eqarray(*)}
  *    \begin{subequations}...\end{subequations}
  *    \begin{split}...\end{split}
  *    \begin{(b|p|v|V|B)?matrix}...\end{...matrix}
@@ -181,7 +182,7 @@ const MATH_REGEX = new RegExp(
 	'|\\\\\\([\\s\\S]*?\\\\\\)' +
 	// Inline: $...$ — not $$, not starting/ending with whitespace
 	// Uses negative lookahead/lookbehind to avoid matching $$
-	'|(?<!\\$)\\$(?!\\$)(?:\\\\.|[^\\n$])+?(?<!\\s)\\$(?!\\$)' +
+	'|(?<!\$)\$(?!\$)(?:\\\\.|[^\n$])+?(?<!\s)\$(?!\$)' +
 	// Named environments — backreference ensures matching pairs
 	'|\\\\begin\\{(' + MATH_ENV_NAMES + ')(?:\\{[^}]*\\})?\\}[\\s\\S]*?\\\\end\\{\\1(?:\\*)?\\}',
 	'g'
@@ -194,10 +195,10 @@ const MATH_REGEX = new RegExp(
 function escapeHtml(text) {
 	if (!text) return '';
 	return text
-		.replace(/&/g,  '&amp;')
-		.replace(/</g,  '&lt;')
-		.replace(/>/g,  '&gt;')
-		.replace(/"/g,  '&quot;')
+		.replace(/&/g,  '&')
+		.replace(/</g,  '<')
+		.replace(/>/g,  '>')
+		.replace(/"/g,  '"')
 		.replace(/'/g,  '&#39;');
 }
 
@@ -416,7 +417,7 @@ function applyInlineFormatting(text) {
 		'<sup class="latex-footnote" title="$1">[note]</sup>');
 
 	// Special escaped characters
-	text = text.replace(/\\&/g,    '&amp;');
+	text = text.replace(/\\&/g,    '&');
 	text = text.replace(/\\%/g,    '%');
 	text = text.replace(/\\\$/g,   '$');
 	text = text.replace(/\\#/g,    '#');
@@ -434,14 +435,12 @@ function applyInlineFormatting(text) {
 	text = text.replace(/\\ddots\b/g,               '⋱');
 	text = text.replace(/---/g,                     '—');
 	text = text.replace(/--/g,                      '–');
-	text = text.replace(/``/g,                      '\u201C');
-	text = text.replace(/''/g,                      '\u201D');
-	text = text.replace(/`/g,                       '\u2018');
-	text = text.replace(/\\textquoteleft\b/g,       '\u2018');
-	text = text.replace(/\\textquoteright\b/g,      '\u2019');
-	text = text.replace(/\\textquoteleft{2}/g,      '\u201C');
-	text = text.replace(/\\textquoteright{2}/g,     '\u201D');
-	text = text.replace(/\\enquote\{([^}]+)\}/g,    '\u201C$1\u201D');
+	text = text.replace(/``/g,                      '「');
+	text = text.replace(/''/g,                      '」');
+	text = text.replace(/`/g,                       '『');
+	text = text.replace(/\\textquoteleft\b/g,       '『');
+	text = text.replace(/\\textquoteright\b/g,      '』');
+	text = text.replace(/\\enquote\{([^}]+)\}/g,    '「$1」');
 	text = text.replace(/\\guillemotleft\b/g,       '«');
 	text = text.replace(/\\guillemotright\b/g,      '»');
 	text = text.replace(/\\glqq\b/g,               '„');
@@ -575,7 +574,7 @@ export function preprocessLatexText(text) {
 	const preambleCommands = [
 		'documentclass', 'usepackage', 'newcommand', 'renewcommand',
 		'providecommand', 'newenvironment', 'renewenvironment',
-		'bibliographystyle', 'bibliography', 'addbibresource',
+		// 'bibliographystyle', 'bibliography', 'addbibresource', // Now handled by processBibliography
 		'author', 'title', 'date', 'institute', 'affiliation',
 		'DeclareMathOperator', 'DeclareMathOperator\\*',
 		'newtheorem', 'newtheorem\\*',
@@ -598,7 +597,7 @@ export function preprocessLatexText(text) {
 	p = p.replace(/\\tableofcontents\b/g,   '<div class="latex-toc-placeholder"><em>Table of Contents</em></div>');
 	p = p.replace(/\\listoffigures\b/g,     '<div class="latex-toc-placeholder"><em>List of Figures</em></div>');
 	p = p.replace(/\\listoftables\b/g,      '<div class="latex-toc-placeholder"><em>List of Tables</em></div>');
-	p = p.replace(/\\printbibliography(?:\[.*?\])?\b/g, '\n---\n### References\n');
+	// \printbibliography is now handled by processBibliography() below
 	p = p.replace(/\\appendix\b/g,         '\n---\n### Appendix\n');
 
 	// === Document wrappers ===
@@ -610,7 +609,7 @@ export function preprocessLatexText(text) {
 	// === Theorem-class environments ===
 	// Support optional starred variant and optional title arg: \begin{theorem}[Title]
 	for (const [env, type, icon, title] of THEOREM_ENVS) {
-		// With optional title: \begin{theorem}[Custom Title]
+		// With optional title: \begin{theor em}[Custom Title]
 		p = p.replace(
 			new RegExp(`\\\\begin\\{${env}\\*?\\}(?:\\[([^\\]]+)\\])?(?:\\\\label\\{[^}]+\\})?`, 'g'),
 			(_, customTitle) => makeCallout(type, icon, customTitle ? `${title}: ${customTitle}` : title)
@@ -652,7 +651,7 @@ export function preprocessLatexText(text) {
 		const t = [title, subtitle].filter(Boolean).join(' — ') || 'Slide';
 		return makeCallout('note', '📽️', t);
 	});
-	p = p.replace(/\\frametitle\{([^}]+)\}/g, '**$1**\n');
+	p = p.replace(/\\frame title\{([^}]+)\}/g, '**$1**\n');
 	p = p.replace(/\\framesubtitle\{([^}]+)\}/g, '*$1*\n');
 	p = p.replace(/\\end\{frame\}/g, CALLOUT_END);
 	p = p.replace(/\\begin\{block\}\{([^}]+)\}/g, makeCallout => `\n\n**$1**\n\n`);
@@ -803,8 +802,8 @@ export function preprocessLatexText(text) {
 	// === Font size commands — map to styled spans ===
 	const fontSizes = [
 		['\\\\tiny',         '0.6em'],
-		['\\\\scriptsize',   '0.7em'],
-		['\\\\footnotesize', '0.8em'],
+		['\\\\scriptsiz e',   '0.7em'],
+		['\\\\footnotes ize', '0.8em'],
 		['\\\\small',        '0.9em'],
 		['\\\\normalsize',   '1em'],
 		['\\\\large',        '1.17em'],
@@ -840,7 +839,7 @@ export function preprocessLatexText(text) {
 	p = p.replace(/\\hspace\*?\{[^}]+\}/g,  ' ');
 	p = p.replace(/\\vskip\s*[\d.]+\s*(?:pt|em|ex|cm|mm|in|bp|pc|dd|cc|sp)\b/g, '\n');
 	p = p.replace(/\\hskip\s*[\d.]+\s*(?:pt|em|ex|cm|mm|in|bp|pc|dd|cc|sp)\b/g, ' ');
-	p = p.replace(/\\medskip\b/g,           '\n');
+	p = p.replace(/\\med space\b/g,           '\n');
 	p = p.replace(/\\bigskip\b/g,           '\n\n');
 	p = p.replace(/\\smallskip\b/g,         '\n');
 	p = p.replace(/\\newpage\b/g,           '\n\n---\n\n');
@@ -853,7 +852,7 @@ export function preprocessLatexText(text) {
 	p = p.replace(/\\\\\s*(\[.*?\])?/g,     '  \n');       // \\ = newline in LaTeX
 	p = p.replace(/\\par\b/g,              '\n\n');
 	p = p.replace(/\\indent\b/g,           '');
-	p = p.replace(/\\noindent\b/g,         '');
+	p = p.replace(/\\no indent\b/g,         '');
 
 	// === Rules / lines ===
 	p = p.replace(/\\hrule\b/g,                  '\n---\n');
@@ -866,7 +865,7 @@ export function preprocessLatexText(text) {
 	// Cross-refs — render as styled spans
 	p = p.replace(/\\autoref\{([^}]+)\}/g,        '<span class="latex-ref">ref:$1</span>');
 	p = p.replace(/\\cref\{([^}]+)\}/g,           '<span class="latex-ref">ref:$1</span>');
-	p = p.replace(/\\Cref\{([^}]+)\}/g,           '<span class="latex-ref">Ref:$1</span>');
+	p = p.replace(/\\cref\{([^}]+)\}/g,           '<span class="latex-ref">ref:$1</span>');
 	p = p.replace(/\\nameref\{([^}]+)\}/g,        '<span class="latex-ref">$1</span>');
 	p = p.replace(/\\eqref\{([^}]+)\}/g,          '<span class="latex-ref">($1)</span>');
 	p = p.replace(/\\ref\{([^}]+)\}/g,            '<span class="latex-ref">ref:$1</span>');
@@ -874,22 +873,7 @@ export function preprocessLatexText(text) {
 	// Handle ~ before \ref / \cite (non-breaking space used in source)
 	p = p.replace(/~\\(?:ref|cite|autoref|cref)\b/g, (m) => ' ' + m.slice(1));
 
-	// Natbib
-	p = p.replace(/\\citet\*?\{([^}]+)\}/g,       '<span class="latex-citation">$1</span>');
-	p = p.replace(/\\citep\*?\{([^}]+)\}/g,       '<span class="latex-citation">[$1]</span>');
-	p = p.replace(/\\citealt\*?\{([^}]+)\}/g,     '<span class="latex-citation">$1</span>');
-	p = p.replace(/\\citealp\*?\{([^}]+)\}/g,     '<span class="latex-citation">$1</span>');
-	p = p.replace(/\\citeauthor\*?\{([^}]+)\}/g,  '<span class="latex-citation">$1</span>');
-	p = p.replace(/\\citeyear\*?\{([^}]+)\}/g,    '<span class="latex-citation">$1</span>');
-	p = p.replace(/\\citeyearpar\{([^}]+)\}/g,    '<span class="latex-citation">($1)</span>');
-	// biblatex
-	p = p.replace(/\\textcite\{([^}]+)\}/g,       '<span class="latex-citation">$1</span>');
-	p = p.replace(/\\parencite\{([^}]+)\}/g,      '<span class="latex-citation">[$1]</span>');
-	p = p.replace(/\\footcite\{([^}]+)\}/g,       '<sup class="latex-footnote" title="cite: $1">[cite]</sup>');
-	// Basic \cite (with optional prenote/postnote)
-	p = p.replace(/\\cite(?:\[.*?\])?(?:\[.*?\])?\{([^}]+)\}/g, '<span class="latex-citation">[$1]</span>');
-	// \nocite — silent
-	p = p.replace(/\\nocite\{[^}]+\}/g,           '');
+	// Natbib & biblatex citations - now handled by processBibliography() below
 
 	// Glossaries (acronym package / glossaries)
 	p = p.replace(/\\gls\{([^}]+)\}/g,            '<span class="latex-gls">$1</span>');
@@ -917,7 +901,10 @@ export function preprocessLatexText(text) {
 	// Collapse 3+ blank lines → 2
 	p = p.replace(/\n{3,}/g, '\n\n');
 
-	// ── Step 4: Restore math then code ──────────────────────────────────────
+	// ── Step 4: Process bibliography (BibTeX) ────────────────────────────────
+	p = processBibliography(p);
+
+	// ── Step 5: Restore math then code ──────────────────────────────────────
 	for (const { ph, m } of mathBlocks)  p = p.replace(ph, m);
 	for (const { ph, m } of codeBlocks)  p = p.replace(ph, m);
 
@@ -1177,4 +1164,564 @@ export function normaliseMathDelimiters(text) {
 	t = t.replace(/\u2212/g, '-');
 
 	return t;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BibTeX Parser & Bibliography Database
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Global bibliography database - stores all parsed BibTeX entries.
+ * Keys are citation IDs, values are entry objects with all fields.
+ */
+const bibliographyDatabase = new Map();
+
+/**
+ * Current bibliography style: 'plain', 'ieee', 'alpha', 'authoryear'
+ */
+let bibliographyStyle = 'plain';
+
+/**
+ * Parse a BibTeX entry string and extract all fields.
+ * Handles standard BibTeX format:
+ *   @article{key,
+ *     author = {Author Name},
+ *     title = {Title},
+ *     journal = {Journal},
+ *     year = {2024}
+ *   }
+ */
+function parseBibtexEntry(entryText) {
+	const entry = {};
+	
+	// Match entry type and key: @article{key, ...
+	const typeMatch = entryText.match(/^@(\w+)\s*\{\s*([^,]+)\s*,/);
+	if (!typeMatch) return null;
+	
+	entry.type = typeMatch[1].toLowerCase();
+	entry.id = typeMatch[2].trim();
+	
+	// Find the content between the first { after the key and its matching }
+	const keyIndex = entryText.indexOf(entry.id);
+	const contentStart = entryText.indexOf('{', keyIndex) + 1;
+	const contentEnd = findMatchingBrace(entryText, contentStart - 1);
+	const content = entryText.slice(contentStart, contentEnd);
+	
+	// Extract fields: fieldname = {value} or fieldname = "value" or fieldname = value
+	const fieldRegex = /(\w+)\s*=\s*(?:\{([\s\S]*?)\}|"([^"\\]*(?:\\.[^"\\]*)*)"|(\d+))/g;
+	let fieldMatch;
+	
+	while ((fieldMatch = fieldRegex.exec(content)) !== null) {
+		const fieldName = fieldMatch[1].toLowerCase();
+		let fieldValue = fieldMatch[2] || fieldMatch[3] || fieldMatch[4] || '';
+		
+		// Clean up BibTeX escape sequences
+		fieldValue = fieldValue
+			.replace(/\\&/g, '&')
+			.replace(/\\%/g, '%')
+			.replace(/\\\$/g, '$')
+			.replace(/\\#/g, '#')
+			.replace(/\\_/g, '_')
+			.replace(/\\{/g, '{')
+			.replace(/\\}/g, '}')
+			.replace(/\\~/g, '~')
+			.replace(/\\ /g, ' ')
+			.replace(/\{|\}/g, '')
+			.trim();
+		
+		entry[fieldName] = fieldValue;
+	}
+	
+	return entry;
+}
+
+/**
+ * Find matching closing brace, handling nested braces.
+ */
+function findMatchingBrace(str, startIdx) {
+	let depth = 1;
+	for (let i = startIdx + 1; i < str.length; i++) {
+		if (str[i] === '{') depth++;
+		else if (str[i] === '}') {
+			depth--;
+			if (depth === 0) return i;
+		}
+	}
+	return str.length;
+}
+
+/**
+ * Parse a complete BibTeX file content and populate the database.
+ * @param {string} bibContent - The raw BibTeX file content
+ * @param {string} style - Bibliography style: 'plain', 'ieee', 'alpha', 'authoryear'
+ */
+export function parseBibtex(bibContent, style = 'plain') {
+	bibliographyStyle = style;
+	
+	// Find all @entry{...} blocks - handle nested braces
+	const entries = [];
+	const entryRegex = /@\w+\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
+	let match;
+	
+	while ((match = entryRegex.exec(bibContent)) !== null) {
+		entries.push(match[0]);
+	}
+	
+	for (const entryText of entries) {
+		const entry = parseBibtexEntry(entryText);
+		if (entry && entry.id) {
+			bibliographyDatabase.set(entry.id, entry);
+		}
+	}
+	
+	return bibliographyDatabase.size;
+}
+
+/**
+ * Load a BibTeX file from a URL.
+ * @param {string} url - URL to the .bib file
+ * @param {string} style - Bibliography style
+ * @returns {Promise<number>} - Number of entries loaded
+ */
+export async function loadBibtex(url, style = 'plain') {
+	try {
+		const response = await fetch(url);
+		if (!response.ok) throw new Error('Failed to load BibTeX: ' + response.status);
+		const content = await response.text();
+		return parseBibtex(content, style);
+	} catch (err) {
+		console.error('Error loading BibTeX:', err);
+		return 0;
+	}
+}
+
+/**
+ * Add a single BibTeX entry to the database.
+ * @param {Object} entry - Entry object with type, id, and fields
+ */
+export function addBibtexEntry(entry) {
+	if (entry && entry.id) {
+		bibliographyDatabase.set(entry.id, entry);
+	}
+}
+
+/**
+ * Get a bibliography entry by ID.
+ * @param {string} id - Citation key
+ * @returns {Object|null} - Entry object or null if not found
+ */
+export function getBibtexEntry(id) {
+	return bibliographyDatabase.get(id) || null;
+}
+
+/**
+ * Get all bibliography entries.
+ * @returns {Map} - Map of all entries
+ */
+export function getAllBibtexEntries() {
+	return bibliographyDatabase;
+}
+
+/**
+ * Clear the bibliography database.
+ */
+export function clearBibliography() {
+	bibliographyDatabase.clear();
+}
+
+/**
+ * Format author names for display.
+ * Handles "Last, First" and "First Last" formats.
+ */
+function formatAuthors(authorsStr) {
+	if (!authorsStr) return '';
+	
+	// Split by "and" (BibTeX separator)
+	const authors = authorsStr.split(/\s+and\s+/i);
+	
+	if (authors.length === 1) {
+		return formatSingleAuthor(authors[0]);
+	} else if (authors.length === 2) {
+		return formatSingleAuthor(authors[0]) + ' & ' + formatSingleAuthor(authors[1]);
+	} else {
+		return formatSingleAuthor(authors[0]) + ', et al.';
+	}
+}
+
+/**
+ * Format a single author name.
+ */
+function formatSingleAuthor(author) {
+	author = author.trim();
+	
+	// Check for "Last, First" format
+	if (author.includes(',')) {
+		const parts = author.split(',');
+		const lastName = parts[0].trim();
+		const firstName = parts.slice(1).join(',').trim();
+		return firstName ? firstName + ' ' + lastName : lastName;
+	}
+	
+	return author;
+}
+
+/**
+ * Format a single citation for display.
+ * @param {Object} entry - BibTeX entry
+ * @param {string} style - Citation style: 'author', 'year', 'number', 'full'
+ * @returns {string} - Formatted citation
+ */
+function formatCitation(entry, style) {
+	if (!entry) return '';
+	
+	var authorStr = formatAuthors(entry.author);
+	var year = entry.year || 'n.d.';
+	var title = entry.title || '';
+	
+	switch (style) {
+		case 'author':
+			return authorStr ? authorStr + ' (' + year + ')' : '(' + year + ')';
+		case 'year':
+			return '(' + year + ')';
+		case 'number':
+			return entry.id;
+		case 'full':
+			var full = '';
+			if (authorStr) full += authorStr;
+			if (year) full += (full ? ', ' : '') + year;
+			if (title) full += (full ? '. ' : '') + title;
+			if (entry.journal) full += (full ? '. ' : '') + '<em>' + entry.journal + '</em>';
+			if (entry.volume) full += ', ' + entry.volume;
+			if (entry.pages) full += ', ' + entry.pages;
+			return full;
+		default:
+			return authorStr + ' (' + year + ')';
+	}
+}
+
+/**
+ * Render a bibliography entry in HTML.
+ * @param {Object} entry - BibTeX entry
+ * @param {string} style - Bibliography style
+ * @param {number} index - Entry index for numbering
+ * @returns {string} - HTML representation
+ */
+function renderBibliographyEntry(entry, style, index) {
+	if (!entry) return '';
+	
+	var html = '<div class="latex-bibliography-entry" data-cite-key="' + entry.id + '">';
+	
+	var authors = formatAuthors(entry.author);
+	var year = entry.year || 'n.d.';
+	
+	switch (style) {
+		case 'plain':
+		case 'ieee':
+			// [N] Authors. Title. Journal, Volume(Number), Pages, Year.
+			var numLabel = index + 1;
+			html += '<span class="bib-number">[' + numLabel + ']</span> ';
+			if (authors) html += authors + '. ';
+			if (entry.title) html += '<em>' + entry.title + '</em>. ';
+			if (entry.journal) html += entry.journal;
+			if (entry.volume) html += ', ' + entry.volume;
+			if (entry.number) html += '(' + entry.number + ')';
+			if (entry.pages) html += ', ' + entry.pages;
+			if (entry.year) html += ', ' + year;
+			html += '.';
+			break;
+		
+		case 'alpha':
+			// [Abc94] Authors. Title. Journal, Year.
+			var alphaLabel = generateAlphaLabel(entry);
+			html += '<span class="bib-alpha">[' + alphaLabel + ']</span> ';
+			if (authors) html += authors + '. ';
+			if (entry.title) html += '<em>' + entry.title + '</em>. ';
+			if (entry.journal) html += entry.journal;
+			if (entry.year) html += ', ' + year;
+			html += '.';
+			break;
+		
+		case 'authoryear':
+			// Authors (Year). Title. Journal, Volume(Number), Pages.
+			if (authors) html += authors + ' ';
+			html += '(' + year + '). ';
+			if (entry.title) html += '<em>' + entry.title + '</em>. ';
+			if (entry.journal) html += entry.journal;
+			if (entry.volume) html += ', ' + entry.volume;
+			if (entry.number) html += '(' + entry.number + ')';
+			if (entry.pages) html += ', ' + entry.pages;
+			html += '.';
+			break;
+		
+		default:
+			if (authors) html += authors + '. ';
+			if (entry.title) html += '<em>' + entry.title + '</em>. ';
+			if (entry.year) html += '(' + year + ')';
+	}
+	
+	html += '</div>';
+	return html;
+}
+
+/**
+ * Generate an alpha-style label from entry.
+ */
+function generateAlphaLabel(entry) {
+	var authors = entry.author || '';
+	var year = entry.year || 'nd';
+	
+	// Get first author's last name
+	var firstAuthor = authors.split(/\s+and\s+/i)[0].trim();
+	var lastName = firstAuthor.includes(',') ? 
+		firstAuthor.split(',')[0].trim() : 
+		firstAuthor.split(' ').pop();
+	
+	// Get first 3 letters of last name
+	var prefix = lastName.substring(0, 3).toLowerCase();
+	
+	// Get last 2 digits of year
+	var yearSuffix = year.replace(/\D/g, '').slice(-2);
+	
+	return prefix + yearSuffix;
+}
+
+/**
+ * Generate the full bibliography HTML.
+ * @param {Object} options - Options for bibliography generation
+ * @returns {string} - HTML bibliography
+ */
+export function generateBibliography(options) {
+	var style = (options && options.style) ? options.style : bibliographyStyle;
+	var filter = (options && typeof options.filter === 'function') ? options.filter : null;
+	
+	// Get all entries as array
+	var entries = Array.from(bibliographyDatabase.values());
+	
+	// Apply filter if provided
+	if (filter) {
+		entries = entries.filter(filter);
+	}
+	
+	// Sort entries based on style
+	if (style === 'alpha' || style === 'plain') {
+		entries.sort(function(a, b) {
+			var authorA = (a.author || '').toLowerCase();
+			var authorB = (b.author || '').toLowerCase();
+			return authorA.localeCompare(authorB);
+		});
+	} else if (style === 'ieee') {
+		// IEEE sorts by order of citation - use insertion order
+		entries = Array.from(bibliographyDatabase.values());
+	}
+	
+	// Generate HTML
+	var html = '<div class="latex-bibliography">';
+	
+	entries.forEach(function(entry, idx) {
+		html += renderBibliographyEntry(entry, style, idx);
+	});
+	
+	html += '</div>';
+	
+	return html;
+}
+
+/**
+ * Render a citation command to HTML.
+ * @param {string} citationKeys - Comma-separated citation keys
+ * @param {string} command - Citation command type
+ * @returns {string} - HTML citation
+ */
+function renderCitation(citationKeys, command) {
+	var keys = citationKeys.split(/\s*,\s*/).map(function(k) { return k.trim(); }).filter(function(k) { return k; });
+	if (keys.length === 0) return '';
+	
+	var entries = keys.map(function(key) { return bibliographyDatabase.get(key); });
+	
+	// Check if we have data for any of the keys
+	var hasData = entries.some(function(e) { return e !== null && e !== undefined; });
+	
+	// If no bibliography data, fall back to original placeholder behavior
+	if (!hasData) {
+		return '<span class="latex-citation">[' + citationKeys + ']</span>';
+	}
+	
+	switch (command) {
+		case 'textcite':
+			// Author (Year)
+			return entries.map(function(e) { return e ? formatCitation(e, 'author') : '[' + e + ']'; }).join(', ');
+	
+		case 'parencite':
+		case 'citep':
+		case 'cite':
+			// (Author, Year)
+			var parenCitations = entries.map(function(e) { return e ? formatCitation(e, 'author') : '[' + e + ']'; });
+			return '<span class="latex-citation">(' + parenCitations.join(', ') + ')</span>';
+	
+		case 'citeauthor':
+			return entries.map(function(e) { return e ? formatAuthors(e.author) : '[' + e + ']'; }).join(', ');
+	
+		case 'citeyear':
+			return entries.map(function(e) { return e ? (e.year || 'n.d.') : '[' + e + ']'; }).join(', ');
+	
+		case 'citet':
+			// Author (Year)
+			return entries.map(function(e) { return e ? formatCitation(e, 'author') : '[' + e + ']'; }).join(', ');
+	
+		case 'footcite':
+			var footContent = entries.map(function(e) { return e ? formatCitation(e, 'full') : '[' + e + ']'; }).join(', ');
+			return '<sup class="latex-footnote" title="' + escapeHtml(footContent) + '">[cite]</sup>';
+	
+		case 'nocite':
+			// nocite doesn't display, just registers the citation
+			return '';
+	
+		default:
+			// Default: (Author, Year)
+			var defaultCitations = entries.map(function(e) { return e ? formatCitation(e, 'author') : '[' + e + ']'; });
+			return '<span class="latex-citation">(' + defaultCitations.join(', ') + ')</span>';
+	}
+}
+
+/**
+ * Process bibliography commands in text and replace with rendered HTML.
+ * This should be called after parseBibtex/loadBibtex to populate the database.
+ */
+export function processBibliography(text) {
+	if (!text) return text;
+	
+	var processed = text;
+	
+	// First, detect and parse any raw BibTeX entries in the text
+	// This handles entries like @article{key, ...} that might be pasted inline
+	processed = processed.replace(
+		/(@\w+\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})/g,
+		function(_, entryText) {
+			// Try to parse this as a BibTeX entry
+			const entry = parseBibtexEntry(entryText);
+			if (entry && entry.id) {
+				// Add to database
+				bibliographyDatabase.set(entry.id, entry);
+				// Return empty - we'll show the bibliography separately
+				return '';
+			}
+			return _; // Return as-is if parsing fails
+		}
+	);
+	
+	// Process \bibliography{file} command (traditional BibTeX - specifies .bib file)
+	// This just adds a note since we can't actually load the file without a URL
+	processed = processed.replace(
+		/\\bibliography\{([^}]+)\}/g,
+		function(_, files) {
+			return '<div class="latex-bibliography-note"><em>Bibliography: ' + files + '</em></div>';
+		}
+	);
+	
+	// Process \bibliographystyle{style} command
+	processed = processed.replace(
+		/\\bibliographystyle\{([^}]+)\}/g,
+		function(_, style) {
+			return ''; // Silent - style is set when parsing BibTeX
+		}
+	);
+	
+	// Process \printbibliography with options
+	processed = processed.replace(
+		/\\printbibliography\s*(?:\[([^\]]+)\])?/g,
+		function(_, options) {
+			// Parse options if present
+			var opts = {};
+			if (options) {
+				// Extract style= option
+				var styleMatch = options.match(/style=(\w+)/);
+				if (styleMatch) opts.style = styleMatch[1];
+				
+				// Extract type= option (filter by entry type)
+				var typeMatch = options.match(/type=(\w+)/);
+				if (typeMatch) {
+					var type = typeMatch[1];
+					opts.filter = function(entry) { return entry.type === type; };
+				}
+			}
+			return generateBibliography(opts);
+		}
+	);
+	
+	// Process Natbib citation commands
+	processed = processed.replace(
+		/\\textcite\{([^}]+)\}/g,
+		function(_, keys) { return renderCitation(keys, 'textcite'); }
+	);
+	
+	processed = processed.replace(
+		/\\parencite\{([^}]+)\}/g,
+		function(_, keys) { return renderCitation(keys, 'parencite'); }
+	);
+	
+	processed = processed.replace(
+		/\\footcite\{([^}]+)\}/g,
+		function(_, keys) { return renderCitation(keys, 'footcite'); }
+	);
+	
+	processed = processed.replace(
+		/\\cite(?:t|p)?\*?\{([^}]+)\}/g,
+		function(_, keys) { return renderCitation(keys, 'cite'); }
+	);
+	
+	processed = processed.replace(
+		/\\citet\*?\{([^}]+)\}/g,
+		function(_, keys) { return renderCitation(keys, 'citet'); }
+	);
+	
+	processed = processed.replace(
+		/\\citep\*?\{([^}]+)\}/g,
+		function(_, keys) { return renderCitation(keys, 'citep'); }
+	);
+	
+	processed = processed.replace(
+		/\\citeauthor\*?\{([^}]+)\}/g,
+		function(_, keys) { return renderCitation(keys, 'citeauthor'); }
+	);
+	
+	processed = processed.replace(
+		/\\citeyear\*?\{([^}]+)\}/g,
+		function(_, keys) { return renderCitation(keys, 'citeyear'); }
+	);
+	
+	processed = processed.replace(
+		/\\citeyearpar\{([^}]+)\}/g,
+		function(_, keys) {
+			var entries = keys.split(/\s*,\s*/).map(function(k) { return bibliographyDatabase.get(k.trim()); });
+			var years = entries.map(function(e) { return e ? (e.year || 'n.d.') : ''; }).filter(function(y) { return y; });
+			return years.length ? '(' + years.join(', ') + ')' : '';
+		}
+	);
+	
+	processed = processed.replace(
+		/\\citealt\*?\{([^}]+)\}/g,
+		function(_, keys) { return renderCitation(keys, 'citet'); }
+	);
+	
+	processed = processed.replace(
+		/\\citealp\*?\{([^}]+)\}/g,
+		function(_, keys) {
+			var entries = keys.split(/\s*,\s*/).map(function(k) { return bibliographyDatabase.get(k.trim()); });
+			return entries.map(function(e) { return e ? formatCitation(e, 'author') : ''; }).filter(function(x) { return x; }).join(', ');
+		}
+	);
+	
+	// Handle \nocite{*} (all entries)
+	processed = processed.replace(
+		/\\nocite\{([^}]+)\}/g,
+		function(_, keys) {
+			if (keys.trim() === '*') {
+				// Show all entries
+				return generateBibliography();
+			}
+			return renderCitation(keys, 'nocite');
+		}
+	);
+	
+	return processed;
 }

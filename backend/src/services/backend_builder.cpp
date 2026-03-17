@@ -6,12 +6,90 @@
 #include <iostream>
 #include <string>
 #include <cstdlib>
+#include <cstdint>
 
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
 namespace fs = std::filesystem;
+
+// Get available system memory in MB
+static uint64_t getAvailableMemoryMB() {
+#ifdef _WIN32
+    return 0; // Windows fallback - use default
+#else
+    // Try to read from /proc/meminfo on Linux
+    std::ifstream meminfo("/proc/meminfo");
+    if (meminfo.is_open()) {
+        std::string line;
+        while (std::getline(meminfo, line)) {
+            if (line.rfind("MemAvailable:", 0) == 0) {
+                // Parse the value (in kB)
+                size_t pos = line.find_first_of("0123456789");
+                if (pos != std::string::npos) {
+                    uint64_t kb = std::stoull(line.substr(pos));
+                    return kb / 1024; // Convert to MB
+                }
+            }
+        }
+    }
+    // Fallback: try sysctl on macOS
+    #ifdef __APPLE__
+    int mib[2] = {CTL_HW, HW_MEMSIZE};
+    uint64_t memsize;
+    size_t len = sizeof(memsize);
+    if (sysctl(mib, 2, &memsize, &len, NULL, 0) == 0) {
+        return memsize / (1024 * 1024);
+    }
+    #endif
+    return 0; // Unknown
+#endif
+}
+
+// Get number of CPU cores
+static int getCpuCores() {
+#ifdef _WIN32
+    return 4; // Windows fallback
+#else
+    long n = sysconf(_SC_NPROCESSORS_ONLN);
+    return n > 0 ? static_cast<int>(n) : 4;
+#endif
+}
+
+// Calculate optimal parallel jobs based on memory and CPU cores
+// This prevents OOM crashes while still utilizing available resources
+static int calculateOptimalJobs() {
+    const uint64_t memMB = getAvailableMemoryMB();
+    const int cores = getCpuCores();
+    
+    // Estimate ~1.5GB per parallel compilation job (conservative)
+    // Leave 2GB for system + other needs
+    uint64_t usableMemMB = (memMB > 2048) ? (memMB - 2048) : 0;
+    int memBasedJobs = static_cast<int>(usableMemMB / 1500);
+    
+    // CPU-based: leave 1 core for system, use the rest
+    int cpuBasedJobs = cores - 1;
+    
+    // Use the minimum but cap at a reasonable maximum
+    // For high-end machines (16+ cores, 32GB+ RAM), allow more parallelism
+    int optimal = std::min(memBasedJobs, cpuBasedJobs);
+    
+    // Ensure minimum of 2 jobs for parallel builds
+    if (optimal < 2) optimal = 2;
+    
+    // Cap based on memory: more memory = higher cap
+    // 8GB RAM: cap at 4
+    // 16GB RAM: cap at 8  
+    // 32GB+ RAM: cap at 12
+    int memCap = static_cast<int>(std::min(usableMemMB, static_cast<uint64_t>(32768)) / 2048);
+    if (optimal > memCap) optimal = memCap;
+    
+    // Absolute cap at 16 jobs (too many parallel compiles can hurt I/O)
+    if (optimal > 16) optimal = 16;
+    
+    return optimal;
+}
 
 static const char* CMAKE_TEMPLATE = R"CMAKE(
 cmake_minimum_required(VERSION 3.18)
@@ -179,8 +257,10 @@ int BackendBuilder::build(const std::string& backend,
         logPath);
     if (ret != 0) { std::cerr << "[BackendBuilder] cmake configure failed\n"; return ret; }
 
-    // ── cmake build (Native OS multi-core parallel) ───────────────────────────
-    ret = runCmd("cmake --build \"" + cmakeBin.string() + "\" --target llama --parallel", logPath);
+    // ── cmake build (memory and CPU aware parallel) ────────────────────────
+    const int optimalJobs = calculateOptimalJobs();
+    std::cout << "[BackendBuilder] Building with " << optimalJobs << " parallel jobs\n";
+    ret = runCmd("cmake --build \"" + cmakeBin.string() + "\" --target llama --parallel " + std::to_string(optimalJobs), logPath);
     if (ret != 0) { std::cerr << "[BackendBuilder] cmake build failed\n"; return ret; }
 
     // ── Copy libraries natively using C++ filesystem ──────────────────────────

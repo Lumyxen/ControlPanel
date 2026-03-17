@@ -1,0 +1,63 @@
+/* Bibliography Styles */
+
+/* Main bibliography container */
+.latex-bibliography {
+    margin: 1.5em 0;
+    padding: 1em;
+    background: var(--bg-secondary, #f5f5f5);
+    border-radius: 4px;
+    border-left: 3px solid var(--accent-primary, #4a90d9);
+}
+
+/* Individual bibliography entry */
+.latex-bibliography-entry {
+    padding: 0.5em 0;
+    border-bottom: 1px solid var(--border-color, #e0e0e0);
+    line-height: 1.6;
+}
+
+.latex-bibliography-entry:last-child {
+    border-bottom: none;
+}
+
+/* Numbered label [1], [2], etc. */
+.bib-number {
+    font-weight: bold;
+    color: var(--accent-primary, #4a90d9);
+    margin-right: 0.5em;
+}
+
+/* Alpha label [ABC01], etc. */
+.bib-alpha {
+    font-weight: bold;
+    color: var(--accent-primary, #4a90d9);
+    margin-right: 0.5em;
+}
+
+/* Citation in text */
+.latex-citation {
+    color: var(--accent-primary, #4a90d9);
+    font-weight: 500;
+}
+
+.latex-citation:hover {
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* Bibliography note (for \bibliography{file} command) */
+.latex-bibliography-note {
+    font-style: italic;
+    color: var(--text-secondary, #666);
+    margin: 0.5em 0;
+}
+
+/* Title in bibliography entry */
+.latex-bibliography-entry em {
+    font-style: italic;
+}
+
+/* Make sure titles stand out */
+.latex-bibliography-entry .bib-title {
+    font-style: italic;
+}

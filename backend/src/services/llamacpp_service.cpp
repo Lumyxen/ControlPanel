@@ -108,7 +108,8 @@ std::vector<std::string> LlamaCppService::detectHardwareBackends() {
     if (access("/dev/kfd", F_OK) == 0) {
         // /dev/kfd exists on all AMD systems (both dGPU and iGPU)
         // Only suggest ROCm if we detect a discrete GPU
-        FILE* fp = popen("lspci | grep -i 'VGA.*\[AMD/ATI\]' | grep -iE 'RX|Radeon Pro|Radeon VII|Radeon Vega|Radeon HD 7|Radeon R[5-9]|Radeon Instinct'", "r");
+        // Exclude iGPUs (Radeon Vega Graphics, Radeon RX Vega, etc.) which are NOT ROCm compatible
+        FILE* fp = popen("lspci | grep -i 'VGA.*\\[AMD/ATI\\]' | grep -iE 'RX|Radeon Pro|Radeon VII|Radeon Instinct' | grep -v 'Vega Graphics'", "r");
         if (fp) {
             char buffer[256];
             if (fgets(buffer, sizeof(buffer), fp) != nullptr) {

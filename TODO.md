@@ -12,6 +12,7 @@
 
 ## AI Chat-box
 ### Planned Features
+- Download progress bar on llama.cpp source downloading
 - Allow removal/deletion of llama.cpp builds
 - llama.cpp hardware usage configuration
 - Tone down llama.cpp max compute usage to allow computer use during generation
@@ -206,6 +207,7 @@
 - Removing a selected llama.cpp build in the files keeps the build highlighted despite greying out
 - UI reload after finishing building a llama.cpp version, causing a flicker
 - Checkbox for Flash Attention setting is in an awkward position
+- BibTeX formatting currently awful and not properly working.
 ##### Chromium
 - Awkard message editing text field sizing causing unwanted scrolling
 
@@ -216,7 +218,7 @@
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
 
 #### Misc Bugs
-- None
+- Vulkan not building without developer path flags
 
 
 
@@ -274,6 +276,7 @@
   - LaTeX
     - MathJax
     - KaTeX
+    - BibTeX
 - Model selection dropdown
 - Tool selection dropdown
 - File attachments
