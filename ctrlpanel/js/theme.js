@@ -16,7 +16,7 @@ export const PALETTES = {
 			light: { label: "Light", dark: false },
 			softlight: { label: "Soft Light", dark: false },
 		},
-		accents: ["red", "orange", "yellow", "green", "aqua", "blue", "purple"],
+		accents:["red", "orange", "yellow", "green", "aqua", "blue", "purple"],
 		defaultFlavour: "harddark",
 		defaultAccent: "green",
 		accentVar: "--ef",
@@ -29,7 +29,7 @@ export const PALETTES = {
 			macchiato: { label: "Macchiato", dark: true },
 			mocha: { label: "Mocha", dark: true },
 		},
-		accents: ["rosewater", "flamingo", "pink", "mauve", "red", "maroon", "peach", "yellow", "green", "teal", "sky", "sapphire", "blue", "lavender"],
+		accents:["rosewater", "flamingo", "pink", "mauve", "red", "maroon", "peach", "yellow", "green", "teal", "sky", "sapphire", "blue", "lavender"],
 		defaultFlavour: "mocha",
 		defaultAccent: "green",
 		accentVar: "--ctp",
@@ -168,7 +168,7 @@ function populateLlamaCppFields(root, s) {
 }
 
 function selectBackendRadio(root, value) {
-	const valid = ["auto","cpu","cuda","rocm","vulkan"];
+	const valid =["auto","cpu","cuda","rocm","vulkan"];
 	const v = valid.includes(value) ? value : "auto";
 	root.querySelectorAll('input[name="llamacpp-backend"]').forEach(r => {
 		const ok = r.value === v; r.checked = ok;
@@ -176,15 +176,8 @@ function selectBackendRadio(root, value) {
 	});
 }
 
-// ── Backend labels / descriptions ─────────────────────────────────────────────
+// ── Backend labels ────────────────────────────────────────────────────────────
 const BACKEND_LABELS = { auto: "Auto", cpu: "CPU", cuda: "CUDA", rocm: "ROCm", vulkan: "Vulkan" };
-const BACKEND_DESCS  = {
-	auto:   "Use the best available backend automatically",
-	cpu:    "CPU-only inference — no GPU required",
-	cuda:   "NVIDIA GPU (CUDA)",
-	rocm:   "AMD GPU (ROCm/HIP)",
-	vulkan: "Cross-vendor GPU (Vulkan)",
-};
 
 // ── Build progress driver ─────────────────────────────────────────────────────
 
@@ -271,7 +264,7 @@ async function startBuildInSettings(root, backend, tag, btn) {
 			const lr    = await fetch("/api/llamacpp/build/log?lines=60");
 			const ld    = await lr.json();
 			const pct   = typeof ld.percent === "number" ? ld.percent : -1;
-			const lines = Array.isArray(ld.lines) ? ld.lines : [];
+			const lines = Array.isArray(ld.lines) ? ld.lines :[];
 			const allLog = lines.join("\n");
 
 			// Log tail
@@ -368,7 +361,6 @@ async function startBuildInSettings(root, backend, tag, btn) {
 async function initBackendSelector(root) {
 	const container   = root.querySelector("#llamacpp-backend-selector");
 	const activeLabel = root.querySelector("#llamacpp-active-backend-label");
-	const extraLabel  = root.querySelector("#llamacpp-backend-status-extra");
 	const tagInput    = root.querySelector("#llamacpp-tag-input");
 	if (!container) return;
 
@@ -390,9 +382,9 @@ async function initBackendSelector(root) {
 	}
 	loading.remove();
 
-	const allBackends = Array.isArray(data.all) ? data.all : ["cpu","cuda","rocm","vulkan"];
-	const available   = Array.isArray(data.available) ? data.available : [];
-	const hardware    = Array.isArray(data.hardware)  ? data.hardware  : [];
+	const allBackends = Array.isArray(data.all) ? data.all :["cpu","cuda","rocm","vulkan"];
+	const available   = Array.isArray(data.available) ? data.available :[];
+	const hardware    = Array.isArray(data.hardware)  ? data.hardware  :[];
 	const active      = data.active  || "none";
 	const setting     = data.setting || "auto";
 	const tag         = data.tag     || "b8337";
@@ -400,10 +392,9 @@ async function initBackendSelector(root) {
 	if (tagInput) tagInput.value = tag;
 	if (activeLabel) {
 		activeLabel.textContent = active === "none"
-			? "none (no backend loaded)"
+			? "None"
 			: (BACKEND_LABELS[active] || active.toUpperCase());
 	}
-	if (extraLabel) extraLabel.textContent = "";
 
 	for (const backend of ["auto", ...allBackends]) {
 		const isBuilt    = backend === "auto" || available.includes(backend);
@@ -418,10 +409,8 @@ async function initBackendSelector(root) {
 		tileLabel.setAttribute("aria-checked", "false");
 		if (!isBuilt) {
 			tileLabel.style.opacity = "0.5";
-			tileLabel.title = `${BACKEND_LABELS[backend] || backend}: not yet built — click Build`;
 		} else if (!hasHardware) {
 			tileLabel.style.opacity = "0.45";
-			tileLabel.title = `${BACKEND_LABELS[backend] || backend}: built but no hardware detected`;
 		}
 
 		const radio = document.createElement("input");
@@ -432,9 +421,7 @@ async function initBackendSelector(root) {
 		dot.className = "dot"; dot.setAttribute("aria-hidden", "true");
 
 		const text = document.createElement("span");
-		const desc = BACKEND_DESCS[backend] || "";
-		text.innerHTML = `${BACKEND_LABELS[backend] || backend}` +
-			(desc ? ` <span style="font-size:0.8rem;opacity:0.65;">(${desc})</span>` : "");
+		text.innerHTML = BACKEND_LABELS[backend] || backend;
 
 		tileLabel.append(radio, dot, text);
 		row.appendChild(tileLabel);
@@ -448,7 +435,6 @@ async function initBackendSelector(root) {
 			btn.style.cssText = isRebuild
 				? "font-size:0.75rem;padding:2px 8px;opacity:0.6;"
 				: "font-size:0.78rem;padding:3px 10px;";
-			if (isRebuild) btn.title = "Recompile with current tag";
 
 			btn.addEventListener("click", () => {
 				btn.disabled = true; btn.textContent = "Building…"; btn.style.color = "";
@@ -532,9 +518,9 @@ export function initSettingsPage(root) {
 		if (isValidAccent(palette, btn.dataset.accent)) setTheme(`${palette}-${flavour}-${btn.dataset.accent}`);
 	});
 	accentGrid.addEventListener("keydown", (e) => {
-		const navKeys = ["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"];
+		const navKeys =["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"];
 		if (!navKeys.includes(e.key) && e.key !== " " && e.key !== "Enter") return;
-		const items = [...accentGrid.querySelectorAll('button[data-accent][role="radio"]')];
+		const items =[...accentGrid.querySelectorAll('button[data-accent][role="radio"]')];
 		if (!items.length) return;
 		const cur = items.findIndex(el => el.classList.contains("selected"));
 		if (navKeys.includes(e.key)) {
@@ -557,7 +543,7 @@ export function initSettingsPage(root) {
 			lmStatusEl.textContent = "Testing…"; lmStatusEl.className = "badge";
 			try {
 				const r = await getModels();
-				if (r?.data?.length > 0) { lmStatusEl.textContent = `${r.data.length} model${r.data.length===1?"":"s"} found`; lmStatusEl.className = "badge badge-success"; }
+				if (r?.data?.length > 0) { lmStatusEl.textContent = `${r.data.length} model${r.data.length===1?"":"s"}`; lmStatusEl.className = "badge badge-success"; }
 				else { lmStatusEl.textContent = "Unreachable"; lmStatusEl.className = "badge badge-error"; }
 			} catch { lmStatusEl.textContent = "Unreachable"; lmStatusEl.className = "badge badge-error"; }
 		});
@@ -581,7 +567,7 @@ export function initSettingsPage(root) {
 	initBackendSelector(root).catch(console.warn);
 
 	// ── Live settings subscription ────────────────────────────────────────────
-	const watchedFields = [
+	const watchedFields =[
 		"#default-model-input","#temperature-slider","#temperature-input",
 		"#max-tokens-input","#system-prompt-input","#lmstudio-url-input",
 		"#llamacpp-flash-attn","#llamacpp-eval-batch-size","#llamacpp-ctx-size",
@@ -628,7 +614,7 @@ export function initSettingsPage(root) {
 	if (saveBackendBtn) {
 		saveBackendBtn.addEventListener("click", async () => {
 			saveBackendBtn.disabled = true;
-			if (backendStatus) { backendStatus.textContent = "Switching…"; backendStatus.style.color = ""; }
+			if (backendStatus) { backendStatus.textContent = "Applying…"; backendStatus.style.color = ""; }
 			try {
 				const selected = root.querySelector('input[name="llamacpp-backend"]:checked');
 				const backend  = selected?.value || "auto";
@@ -646,7 +632,7 @@ export function initSettingsPage(root) {
 					const al = root.querySelector("#llamacpp-active-backend-label");
 					if (al && d.active) al.textContent = BACKEND_LABELS[d.active] || d.active;
 					if (backendStatus) {
-						backendStatus.textContent = `Switched to ${BACKEND_LABELS[d.active || backend] || backend}.`;
+						backendStatus.textContent = "Applied.";
 						backendStatus.style.color = "var(--green,green)";
 						setTimeout(() => { backendStatus.textContent = ""; }, 4000);
 					}
@@ -678,17 +664,14 @@ export function initSettingsPage(root) {
 					llamacppRepeatPenalty: parseFloat(root.querySelector("#llamacpp-repeat-penalty")?.value ?? "1.15") || 1.15,
 				});
 
-				// Auto-reload model so settings take effect immediately (#4)
-				if (lcppStatus) { lcppStatus.textContent = "Reloading model…"; lcppStatus.style.color = ""; }
+				if (lcppStatus) { lcppStatus.textContent = "Saving…"; lcppStatus.style.color = ""; }
 				try {
 					const rr = await fetch("/api/llamacpp/reload-model", { method: "POST" });
 					const rd = await rr.json();
 					if (lcppStatus) {
-						lcppStatus.textContent = rd.ready
-							? `Saved & reloaded (${rd.modelId || "no model"}).`
-							: "Saved. No model to reload — place a .gguf in data/models/.";
+						lcppStatus.textContent = "Saved & reloaded.";
 						lcppStatus.style.color = "var(--green,green)";
-						setTimeout(() => { lcppStatus.textContent = ""; }, 6000);
+						setTimeout(() => { lcppStatus.textContent = ""; }, 3000);
 					}
 				} catch {
 					if (lcppStatus) { lcppStatus.textContent = "Saved."; lcppStatus.style.color = "var(--green,green)"; setTimeout(() => { lcppStatus.textContent = ""; }, 3000); }

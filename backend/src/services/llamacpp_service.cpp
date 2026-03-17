@@ -210,6 +210,7 @@ bool LlamaCppService::loadLib(const std::string& backendName) {
 void LlamaCppService::unloadLib() {
     unloadModel();
     if (api_) {
+        if (api_->loaded && api_->log_set) api_->log_set(nullptr, nullptr);
         if (api_->loaded && api_->backend_free) api_->backend_free();
         *api_ = LlamaApi{};
     }
@@ -228,11 +229,7 @@ bool LlamaCppService::switchBackend(const std::string& backendName) {
 
     const std::string prevPath = loadedModelPath_;
 
-    unloadModel();
-    if (api_->loaded && api_->backend_free) api_->backend_free();
-    *api_ = LlamaApi{};
-    if (dlHandle_) { dlclose(dlHandle_); dlHandle_ = nullptr; }
-    activeBackend_.clear();
+    unloadLib();
 
     if (!loadLib(backendName)) {
         std::cerr << "[LlamaCpp] Failed to load '" << backendName << "'\n";
@@ -245,7 +242,6 @@ bool LlamaCppService::switchBackend(const std::string& backendName) {
     if (!api_->loaded) return false;
 
     if (!prevPath.empty()) {
-        lock.unlock();
         return loadModel(prevPath);
     }
     return true;
@@ -270,14 +266,10 @@ bool LlamaCppService::ensureModelLoaded() {
             if (loadModel(entry.path().string())) return true;
         }
     }
-    std::cout << "[LlamaCpp] No .gguf models found in: " << modelsDir_ << "\n";
     return false;
 }
 
 void LlamaCppService::unloadModel() {
-    if (modelLoaded_) {
-        std::cout << "[LlamaCpp] Unloaded model: " << loadedModelId_ << "\n";
-    }
     if (ctx_ && api_->loaded && api_->free) {
         api_->free(static_cast<llama_context*>(ctx_));
         ctx_ = nullptr;
@@ -298,7 +290,6 @@ bool LlamaCppService::loadModel(const std::string& path) {
 
     int gpuLayers = config_.getLlamacppGpuLayers();
     if (activeBackend_ == "cpu" && gpuLayers > 0) {
-        std::cout << "[LlamaCpp] CPU backend — overriding gpu_layers to 0\n";
         gpuLayers = 0;
     }
 
@@ -350,12 +341,6 @@ bool LlamaCppService::loadModel(const std::string& path) {
     loadedModelId_   = modelIdFromPath(path);
     modelLoaded_     = true;
 
-    std::cout << "[LlamaCpp] Model ready: " << loadedModelId_ << "\n"
-              << "  backend=" << activeBackend_
-              << "  ctx=" << n_ctx_ << "  batch=" << n_batch_
-              << "  flash_attn=" << (flashAttn ? "on" : "off")
-              << "  gpu_layers=" << gpuLayers
-              << "  threads=" << n_threads << "/" << n_threads_batch << "\n";
     return true;
 }
 
@@ -617,10 +602,10 @@ void LlamaCppService::streamingChatWithCallback(
     std::function<void(const std::string&)> onError,
     const std::string& systemPrompt, double temperature, int)
 {
+    std::unique_lock<std::mutex> lock(inferMutex_);
     if (!modelLoaded_) {
         if (!ensureModelLoaded()) { onError("No llama.cpp model loaded"); return; }
     }
-    std::unique_lock<std::mutex> lock(inferMutex_);
     doInference(parseMessages(prompt, systemPrompt), maxTokens, temperature, onChunk, onError);
 }
 
@@ -630,6 +615,7 @@ void LlamaCppService::streamingChatWithTools(
     std::function<void(const std::string&)> onError,
     McpRegistry*, double temperature, int)
 {
+    std::unique_lock<std::mutex> lock(inferMutex_);
     if (!modelLoaded_) {
         if (!ensureModelLoaded()) { onError("No llama.cpp model loaded"); return; }
     }
@@ -667,6 +653,5 @@ void LlamaCppService::streamingChatWithTools(
         return;
     }
 
-    std::unique_lock<std::mutex> lock(inferMutex_);
     doInference(textMessages, maxTokens, temperature, onChunk, onError);
 }

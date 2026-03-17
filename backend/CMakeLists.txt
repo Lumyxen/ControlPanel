@@ -21,7 +21,9 @@ if(CMAKE_CROSSCOMPILING)
     set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
     set(JSONCPP_WITH_TESTS OFF CACHE BOOL "" FORCE)
     set(JSONCPP_WITH_POST_BUILD_UNITTEST OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(jsoncpp GIT_REPOSITORY https://github.com/open-source-parsers/jsoncpp.git GIT_TAG 1.9.6)
+    FetchContent_Declare(jsoncpp 
+        URL https://github.com/open-source-parsers/jsoncpp/archive/1.9.6.tar.gz
+    )
     FetchContent_MakeAvailable(jsoncpp)
 
     set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
@@ -39,20 +41,15 @@ if(CMAKE_CROSSCOMPILING)
     set(ENABLE_UNIX_SOCKETS OFF CACHE BOOL "" FORCE)
     set(CURL_CA_BUNDLE "none" CACHE STRING "" FORCE)
     set(CURL_CA_PATH "none" CACHE STRING "" FORCE)
-    FetchContent_Declare(curl GIT_REPOSITORY https://github.com/curl/curl.git GIT_TAG curl-8_11_0)
+    FetchContent_Declare(curl 
+        URL https://github.com/curl/curl/archive/curl-8_11_0.tar.gz
+    )
     FetchContent_MakeAvailable(curl)
 else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(JSONCPP REQUIRED jsoncpp)
     pkg_check_modules(LIBCURL REQUIRED libcurl)
 endif()
-
-# =============================================================================
-# llama.cpp headers only (for type definitions — no linking)
-# =============================================================================
-# We need the llama.h / ggml-backend.h header types so our code can declare
-# llama_model_params, llama_context_params, etc. without linking against the lib.
-# The actual symbols are resolved at runtime via dlopen/dlsym.
 
 # =============================================================================
 # llama.cpp headers only (for type definitions — no linking, no building)
@@ -68,11 +65,10 @@ endif()
 
 cmake_policy(SET CMP0169 OLD)
 
+message(STATUS "Downloading llama.cpp headers via HTTP archive...")
 FetchContent_Declare(
     llama_cpp_headers
-    GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
-    GIT_TAG        b8337
-    GIT_SHALLOW    TRUE
+    URL https://github.com/ggml-org/llama.cpp/archive/b8337.tar.gz
 )
 FetchContent_GetProperties(llama_cpp_headers)
 if(NOT llama_cpp_headers_POPULATED)

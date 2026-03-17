@@ -92,7 +92,7 @@ Utilize the interface's full rendering suite:
           llamacppMinP(0.05),
           llamacppRepeatPenalty(1.15),
           llamacppBackend("auto"),
-          llamacppTag("b8337"),
+          llamacppTag("b8391"),
           backendSuggestionDismissed(false),
           settingsPath(path) {}
 

@@ -125,7 +125,7 @@ function initUpload(root, inputEl, attachmentManager, signal) {
 	uploadBtn.addEventListener("click", () => uploadInput.click(), { signal });
 	
 	uploadInput.addEventListener("change", async () => {
-		const selected = Array.from(uploadInput.files || []);
+		const selected = Array.from(uploadInput.files ||[]);
 		uploadInput.value = "";
 		for (const file of selected) {
 			await attachmentManager.addFile(file);
@@ -367,7 +367,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			if (node) {
 				extraTokens -= estimateNodeTokens(node);
 
-				let draftParts = [];
+				let draftParts =[];
 				if (node.parts) {
 					let textAdded = false;
 					for (const part of node.parts) {
@@ -447,7 +447,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			} else {
 				sendBtn.classList.remove('generating');
 				sendBtn.innerHTML = `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M44.9,23.2l-38-18L6,5A2,2,0,0,0,4,7l6,18L4,43a2,2,0,0,0,2,2l.9-.2,38-18A2,2,0,0,0,44.9,23.2ZM9.5,39.1l4-12.1H24a2,2,0,0,0,0-4H13.5l-4-12.1L39.3,25Z" fill="currentColor"/></svg>`;
-				sendBtn.title = "Send (Ctrl+Enter) • Send without reply (Ctrl+Shift+Enter)";
+				sendBtn.title = "Send";
 				sendBtn.setAttribute("aria-label", "Send message");
 			}
 		}
@@ -507,8 +507,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			let nodeContent = "";
 			
 			if (node.parts && Array.isArray(node.parts)) {
-				const textParts = [];
-				const attachmentInfos = [];
+				const textParts =[];
+				const attachmentInfos =[];
 				
 				for (const part of node.parts) {
 					if (part.type === "text" && part.content) {
@@ -542,7 +542,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			
 			if (node.reasoning) nodeContent = `<think>\n${node.reasoning}\n</think>\n\n` + nodeContent;
 			
-			if (node.toolCalls && Array.isArray(node.toolCalls) && node.toolCalls.length > 0) {
+			if (node.toolCalls && Array.isArray(node.toolCalls && node.toolCalls.length > 0)) {
 				let toolsText = "";
 				for (const tc of node.toolCalls) {
 					const inputStr = typeof tc.input === 'object' ? JSON.stringify(tc.input) : String(tc.input || "");
@@ -555,7 +555,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		};
 
 		const buildApiMessages = (nodeIds) => {
-			const apiMessages = [];
+			const apiMessages =[];
 			for (const nodeId of nodeIds) {
 				const node = getNode(graph, nodeId);
 				if (!node) continue;
@@ -569,7 +569,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 				if (node.parts && Array.isArray(node.parts)) {
 					const textParts = [];
-					const contentBlocks = [];
+					const contentBlocks =[];
 					let hasImages = false;
 
 					for (const part of node.parts) {
@@ -645,7 +645,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		
 		let rawStreamText = "";
 		let officialReasoningText = "";
-		let activeToolCalls = [];
+		let activeToolCalls =[];
 		let errorFromStream = null;
 		let isSaved = false;
 
@@ -1159,12 +1159,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			return String(node.content || "");
 		};
 
-		const allMsgEls = [...messages.querySelectorAll(".chat-message[data-node-id]")];
+		const allMsgEls =[...messages.querySelectorAll(".chat-message[data-node-id]")];
 		const selectedMsgEls = allMsgEls.filter(el => range.intersectsNode(el));
 
 		let plainPayload = "";
 		if (graph && selectedMsgEls.length > 0) {
-			const parts = [];
+			const parts =[];
 			for (const msgEl of selectedMsgEls) {
 				const node = getNode(graph, msgEl.dataset.nodeId);
 				const raw = nodeRawText(node);

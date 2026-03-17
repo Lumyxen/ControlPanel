@@ -37,9 +37,7 @@ set(CMAKE_PLATFORM_NO_VERSIONED_SONAME ON CACHE BOOL "" FORCE)
 @BACKEND_FLAGS@
 
 FetchContent_Declare(llama_cpp
-    GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
-    GIT_TAG        @LLAMA_TAG@
-    GIT_SHALLOW    TRUE)
+    URL https://github.com/ggml-org/llama.cpp/archive/@LLAMA_TAG@.tar.gz)
 FetchContent_MakeAvailable(llama_cpp)
 )CMAKE";
 
@@ -74,8 +72,6 @@ std::string BackendBuilder::findRocmClang() {
 std::string BackendBuilder::checkPrerequisites(const std::string& backend) {
     if (!hasCommand("cmake"))
         return "cmake not found";
-    if (!hasCommand("git"))
-        return "git not found — required for FetchContent";
     if (backend == "cuda") {
         if (!hasCommand("nvcc"))
             return "nvcc not found — install the NVIDIA CUDA toolkit";
@@ -166,7 +162,6 @@ int BackendBuilder::build(const std::string& backend,
             << "[BackendBuilder] Tag      : " << llamaTag << "\n"
             << "==============================\n";
     }
-    std::cout << "[BackendBuilder] Building " << backend << " (tag " << llamaTag << ")\n";
 
     if (writeCMakeLists(srcDir.string(), backend, llamaTag).empty()) {
         std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Failed to write CMakeLists.txt\n";
@@ -195,7 +190,15 @@ int BackendBuilder::build(const std::string& backend,
                 if (ext == ".so" || ext == ".dll" || ext == ".dylib") {
                     // Ignore transient cmake check files
                     if (entry.path().string().find("CMakeFiles") == std::string::npos) {
-                        fs::copy_file(entry.path(), outDir / entry.path().filename(), fs::copy_options::overwrite_existing);
+                        fs::path dest = outDir / entry.path().filename();
+                        
+                        // Explicitly unlink the destination first to prevent 
+                        // segmentations faults if the library is currently dlopen'd.
+                        if (fs::exists(dest)) {
+                            fs::remove(dest);
+                        }
+                        
+                        fs::copy_file(entry.path(), dest, fs::copy_options::overwrite_existing);
                     }
                 }
             }
@@ -235,10 +238,7 @@ int BackendBuilder::build(const std::string& backend,
         std::ofstream log(logPath, std::ios::app);
         log << "[BackendBuilder] Success: " << renamedLib.string() << "\n";
     }
-    std::cout << "[BackendBuilder] Built: " << renamedLib.string() << "\n";
 
-    // ── Clean up build cache ──────────────────────────────────────────────────
-    std::cout << "[BackendBuilder] Removing build cache: " << buildCacheDir << "\n";
     try {
         fs::remove_all(fs::path(buildCacheDir));
     } catch (const std::exception& e) {

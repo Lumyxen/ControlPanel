@@ -205,8 +205,6 @@
 ### To Fix
 #### UI
 - Removing a selected llama.cpp build in the files keeps the build highlighted despite greying out
-- Inconsistent wording, calling llama.cpp builds models, other times the backend
-- Unwanted and unnecessary descriptors such as specifying hot-swap on the llama.cpp apply button
 - Compiling progress bar not working
 - UI reload after finishing building a llama.cpp version, causing a flicker
 ##### Chromium
@@ -220,7 +218,7 @@
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
 
 #### Misc Bugs
-- Unwanted logging happening
+- None
 
 
 
