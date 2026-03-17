@@ -35,6 +35,8 @@ function initPage(url, root) {
 	}
 	if (url.includes("pages/ai-chat.html")) {
 		initChatPage(root, currentRoute, () => setActive(currentRoute(), getCurrentChatId()));
+		// Check for GPU backend suggestion when navigating to chat page
+		checkAndSuggest().catch(() => {});
 	}
 }
 

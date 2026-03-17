@@ -13,6 +13,7 @@
 ## AI Chat-box
 ### Planned Features
 - Allow removal/deletion of llama.cpp builds
+- llama.cpp hardware usage configuration
 - Tone down llama.cpp max compute usage to allow computer use during generation
   - Ability to return to maximum usage in settings
 - Keep models loaded for 5 minutes after generation completion
@@ -206,12 +207,12 @@
 #### UI
 - Removing a selected llama.cpp build in the files keeps the build highlighted despite greying out
 - UI reload after finishing building a llama.cpp version, causing a flicker
+- Checkbox for Flash Attention setting is in an awkward position
 ##### Chromium
 - Awkard message editing text field sizing causing unwanted scrolling
 
 #### UX
 - LM Studio API url test incorrectly adds in llama.cpp models
-- Popup suggesting a llama.cpp build sometimes doesn't appear
 ##### Firefox
 - ESC does not properly cancel message editing, requiring 2 presses of ESC
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
