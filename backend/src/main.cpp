@@ -428,24 +428,27 @@ void runServer(Config& config, LmStudioService& lmstudioService,
         std::ifstream f(logPath);
         std::deque<std::string> window;
         std::string line;
+        int percent = -1;
+        
         while (std::getline(f, line)) {
             window.push_back(line);
             if (static_cast<int>(window.size()) > nLines) window.pop_front();
-        }
 
-        Json::Value lines(Json::arrayValue);
-        int percent = -1;
-        for (const auto& l : window) {
-            lines.append(l);
             // cmake progress: "[  5%] Building CXX..."
-            auto br = l.find('['), pct = l.find('%');
+            auto br = line.find('['), pct = line.find('%');
             if (br != std::string::npos && pct != std::string::npos && pct > br) {
                 try {
-                    int p = std::stoi(l.substr(br + 1, pct - br - 1));
+                    int p = std::stoi(line.substr(br + 1, pct - br - 1));
                     if (p >= 0 && p <= 100) percent = p;
                 } catch (...) {}
             }
         }
+
+        Json::Value lines(Json::arrayValue);
+        for (const auto& l : window) {
+            lines.append(l);
+        }
+        
         result["lines"]   = lines;
         result["percent"] = percent;
 

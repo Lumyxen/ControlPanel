@@ -205,7 +205,6 @@
 ### To Fix
 #### UI
 - Removing a selected llama.cpp build in the files keeps the build highlighted despite greying out
-- Compiling progress bar not working
 - UI reload after finishing building a llama.cpp version, causing a flicker
 ##### Chromium
 - Awkard message editing text field sizing causing unwanted scrolling

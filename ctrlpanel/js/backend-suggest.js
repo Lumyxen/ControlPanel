@@ -60,7 +60,7 @@ function dismissBanner() {
 
 function showBanner(backend, initialData) {
     const label = BACKEND_LABELS[backend] || backend.toUpperCase();
-    const tag   = initialData?.tag || "b8337";
+    const tag   = initialData?.tag || "b8391";
 
     const el = document.createElement("div");
     el.id = BANNER_ID;

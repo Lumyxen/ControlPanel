@@ -68,7 +68,7 @@ cmake_policy(SET CMP0169 OLD)
 message(STATUS "Downloading llama.cpp headers via HTTP archive...")
 FetchContent_Declare(
     llama_cpp_headers
-    URL https://github.com/ggml-org/llama.cpp/archive/b8337.tar.gz
+    URL https://github.com/ggml-org/llama.cpp/archive/b8391.tar.gz
 )
 FetchContent_GetProperties(llama_cpp_headers)
 if(NOT llama_cpp_headers_POPULATED)

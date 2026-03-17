@@ -203,7 +203,7 @@ async function startBuildInSettings(root, backend, tag, btn) {
 	if (barEl) {
 		barEl.style.transition = "none";
 		barEl.style.width      = "0%";
-		barEl.style.background = "";
+		barEl.style.background = "var(--accent)";
 	}
 	if (pctEl)   pctEl.textContent  = "";
 	if (labelEl) labelEl.textContent = `Starting ${BACKEND_LABELS[backend] || backend} build…`;
@@ -273,41 +273,64 @@ async function startBuildInSettings(root, backend, tag, btn) {
 				logTail.scrollTop   = logTail.scrollHeight;
 			}
 
+			let dlPct = -1;
+			if (pct < 0) {
+				for (const line of lines) {
+					const dlMatch = line.match(/\[download\s+(\d+)%\s+complete\]/i);
+					if (dlMatch) {
+						dlPct = parseInt(dlMatch[1], 10);
+					} else {
+						const cloneMatch = line.match(/Receiving objects:\s+(\d+)%/);
+						if (cloneMatch) dlPct = parseInt(cloneMatch[1], 10);
+					}
+				}
+			}
+
+			let activePct = pct >= 0 ? pct : dlPct;
+
 			// Phase + ETA
 			let phase = "";
-			if (allLog.includes("Cloning into") || allLog.includes("git clone"))
-				phase = "Downloading source…";
-			else if (allLog.includes("FetchContent") && pct < 0)
-				phase = "Fetching dependencies…";
-			else if (pct >= 0)
-				phase = "Compiling…";
-			else if (allLog.match(/Building C(?:XX)? object/))
+			if (pct >= 0 || allLog.match(/Building C(?:XX)? object/))
 				phase = "Compiling…";
 			else if (allLog.includes("Configuring done"))
 				phase = "Configuring…";
+			else if (dlPct >= 0 || allLog.includes("Cloning into") || allLog.includes("git clone") || allLog.includes("FetchContent"))
+				phase = "Downloading source…";
 
 			let etaStr = "";
-			if (pct > 0 && pct < 100) {
+			if (activePct > 0 && activePct < 100) {
 				const now = Date.now();
-				if (firstPctTime === null) { firstPctTime = now; firstPctValue = pct; }
-				else if (pct > firstPctValue) {
-					const rate = (pct - firstPctValue) / ((now - firstPctTime) / 1000);
-					etaStr = formatEta((100 - pct) / rate);
+				if (firstPctTime === null || activePct < firstPctValue) { 
+					firstPctTime = now; 
+					firstPctValue = activePct; 
+				} else if (activePct > firstPctValue) {
+					const rate = (activePct - firstPctValue) / ((now - firstPctTime) / 1000);
+					etaStr = formatEta((100 - activePct) / rate);
 				}
+			} else {
+				firstPctTime = null;
+				firstPctValue = null;
 			}
+
 			if (phase && labelEl)
 				labelEl.textContent = etaStr ? `${phase} ${etaStr}` : phase;
 
-			// Progress bar — only update when we have a real cmake %
-			if (pct >= 0) {
-				if (lastPercent < 0) {
+			// Progress bar — only update when we have a real cmake % or download %
+			if (activePct >= 0) {
+				if (_buildPulseRaf) {
 					// Transition from indeterminate to determinate
 					stopBuildPulse();
 					if (barEl) barEl.style.transition = "width 0.4s ease";
 				}
-				lastPercent = pct;
-				if (barEl)  barEl.style.width = Math.max(2, pct) + "%";
-				if (pctEl)  pctEl.textContent  = pct + "%";
+				lastPercent = activePct;
+				if (barEl)  barEl.style.width = Math.max(2, activePct) + "%";
+				if (pctEl)  pctEl.textContent  = activePct + "%";
+			} else if (!_buildPulseRaf && pct < 0) {
+				// Revert to indeterminate
+				lastPercent = -1;
+				if (barEl) barEl.style.transition = "none";
+				if (pctEl) pctEl.textContent = "";
+				_buildPulseRaf = requestAnimationFrame(pulse);
 			}
 
 			// Check completion
@@ -462,7 +485,7 @@ async function initBackendSelector(root) {
 	if (pending) {
 		const { backend: pb, tag: pt } = pending;
 		// Find the row that matches this backend and click its build button
-		const rows = [...container.children];
+		const rows =[...container.children];
 		const matchBtn = rows
 			.map(row => ({ row, radio: row.querySelector(`input[value="${pb}"]`), btn: row.querySelector("button") }))
 			.filter(x => x.radio && x.btn)
