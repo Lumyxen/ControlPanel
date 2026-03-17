@@ -104,8 +104,20 @@ std::vector<std::string> LlamaCppService::detectHardwareBackends() {
         hasCuda = (system("nvidia-smi --query-gpu=name --format=csv,noheader > /dev/null 2>&1") == 0);
     if (hasCuda) out.push_back("cuda");
 
-    if (!hasCuda && access("/dev/kfd", F_OK) == 0)
-        out.push_back("rocm");
+    bool hasAmdDiscreteGpu = false;
+    if (access("/dev/kfd", F_OK) == 0) {
+        // /dev/kfd exists on all AMD systems (both dGPU and iGPU)
+        // Only suggest ROCm if we detect a discrete GPU
+        FILE* fp = popen("lspci | grep -i 'VGA.*\[AMD/ATI\]' | grep -iE 'RX|Radeon Pro|Radeon VII|Radeon Vega|Radeon HD 7|Radeon R[5-9]|Radeon Instinct'", "r");
+        if (fp) {
+            char buffer[256];
+            if (fgets(buffer, sizeof(buffer), fp) != nullptr) {
+                hasAmdDiscreteGpu = true;
+            }
+            pclose(fp);
+        }
+    }
+    if (hasAmdDiscreteGpu) out.push_back("rocm");
 
     {
         void* vk = dlopen("libvulkan.so.1", RTLD_LAZY | RTLD_LOCAL);
