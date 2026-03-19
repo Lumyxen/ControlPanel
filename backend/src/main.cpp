@@ -214,9 +214,10 @@ void runServer(Config& config, LmStudioService& lmstudioService,
     { std::lock_guard<std::mutex> lk(g_serverMutex); g_server = &svr; }
 
     svr.set_logger([](const httplib::Request& req, const httplib::Response& res) {
-        if (req.path == "/health" || 
-            req.path == "/api/llamacpp/build/status" || 
-            req.path == "/api/llamacpp/build/log") {
+        if (req.path == "/health" ||
+            req.path == "/api/llamacpp/build/status" ||
+            req.path == "/api/llamacpp/build/log" ||
+            req.path == "/api/config/settings") {
             return;
         }
         std::cout << "[HTTP] " << req.method << " " << req.path << " - " << res.status << "\n";
@@ -271,6 +272,15 @@ void runServer(Config& config, LmStudioService& lmstudioService,
             }
         }
         result["suggest"] = suggest;
+
+        // For each non-cpu backend, run checkPrerequisites() so the UI can
+        // display a warning before the user even tries to click Build.
+        Json::Value prereqs(Json::objectValue);
+        for (const char* b : {"cuda", "rocm", "vulkan"}) {
+            const std::string err = BackendBuilder::checkPrerequisites(b);
+            if (!err.empty()) prereqs[b] = err;
+        }
+        result["prereqs"] = prereqs;
 
         Json::StreamWriterBuilder wb; wb["indentation"] = "";
         res.set_content(Json::writeString(wb, result), "application/json");

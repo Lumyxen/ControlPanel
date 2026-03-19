@@ -12,6 +12,8 @@
 
 ## AI Chat-box
 ### Planned Features
+- Collapsable/Expandable BibTeX reference list
+  - Closed it by default
 - Download progress bar on llama.cpp source downloading
 - Allow removal/deletion of llama.cpp builds
 - llama.cpp hardware usage configuration
@@ -51,6 +53,7 @@
 - Copy LaTeX image (copies image with transparent background showing the LaTeX formatting)
 - Shift+Click to copy entire message including thinking block and tool calls
 - Custom theme setting (list of variables and hex/rgb values)
+- More animated UI during generation to give more livelihood to the chat-box
 - Web search tool
 - Add calculator tool (replaces code execution reliance for math)
   - WolframAlpha API option
@@ -212,6 +215,7 @@
 - Obsidian.md warnings look unformatted
 - Tool calls only appear after all tool tokens and output are done
 - Markdown table sometimes not appearing
+- Built llama.cpp versions are greyed out
 ##### Chromium
 - Awkard message editing text field sizing causing unwanted scrolling
 
@@ -225,8 +229,7 @@
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
 
 #### Misc Bugs
-- Vulkan not building without developer path flags
-- `[HTTP] GET /api/config/settings - 200` being spammed in the output
+- None
 
 
 

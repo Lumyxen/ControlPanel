@@ -167,6 +167,29 @@ function escapeHtml(text) {
 		.replace(/'/g,  '&#39;');
 }
 
+// Returns true only for absolute http/https URLs — anything else (relative
+// paths, bare anchors, doi: URIs without a protocol, etc.) is considered
+// invalid for opening in a new tab and must NOT be used as an href.
+function isExternalUrl(url) {
+	if (!url || typeof url !== 'string') return false;
+	const t = url.trim();
+	return t.startsWith('https://') || t.startsWith('http://');
+}
+
+// Resolve a raw doi or url field into a full https URL, or null if neither
+// is a valid external link.
+function resolveEntryHref(entry) {
+	if (!entry) return null;
+	const doi = entry.doi || '';
+	if (doi) {
+		const full = doi.startsWith('http') ? doi : 'https://doi.org/' + doi;
+		if (isExternalUrl(full)) return full;
+	}
+	const url = entry.url || '';
+	if (isExternalUrl(url)) return url;
+	return null;
+}
+
 function isDisplayMode(match) {
 	if (match.startsWith('$$'))            return true;
 	if (match.startsWith('\\['))           return true;
@@ -340,8 +363,14 @@ function applyInlineFormatting(text) {
 	text = text.replace(/\\framebox(?:\[.*?\])?\{([^}]+)\}/g, '<span style="border:1px solid currentColor;padding:1px 4px">$1</span>');
 	text = text.replace(/\\raisebox\{[^}]+\}\{([^}]+)\}/g,   '<span style="vertical-align:super;font-size:0.75em">$1</span>');
 
-	text = text.replace(/\\href\{([^}]+)\}\{([^}]+)\}/g,  '<a href="$1" target="_blank" rel="noopener noreferrer">$2</a>');
-	text = text.replace(/\\url\{([^}]+)\}/g,               '<a href="$1" target="_blank" rel="noopener noreferrer" class="latex-url">$1</a>');
+	text = text.replace(/\\href\{([^}]+)\}\{([^}]+)\}/g, (_, url, label) => {
+		if (!isExternalUrl(url)) return escapeHtml(label);
+		return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(label) + '</a>';
+	});
+	text = text.replace(/\\url\{([^}]+)\}/g, (_, url) => {
+		if (!isExternalUrl(url)) return '<code class="latex-url">' + escapeHtml(url) + '</code>';
+		return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer" class="latex-url">' + escapeHtml(url) + '</a>';
+	});
 	text = text.replace(/\\nolinkurl\{([^}]+)\}/g,         '<code class="latex-url">$1</code>');
 
 	text = text.replace(/\\footnote\{([^}]+)\}/g,
@@ -1752,29 +1781,30 @@ function _renderCitation(keys, command, citationNumbers, style, preNote, postNot
 		if (!entry) {
 			return `<span class="latex-citation-missing" title="Citation key \u2018${escapeHtml(key)}\u2019 not found in bibliography">${escapeHtml(key)}\u00A0\u26A0</span>`;
 		}
-		const anchorId  = 'cite-entry-' + key.replace(/[^a-zA-Z0-9_-]/g, '_');
-		// Prefer the paper URL/DOI (opens in new tab); fall back to in-page anchor
-		const _doi   = entry.doi || '';
-		const _url   = entry.url || '';
-		const paperHref = _doi
-			? (_doi.startsWith('http') ? _doi : 'https://doi.org/' + _doi)
-			: (_url || null);
-		const href   = paperHref || ('#' + anchorId);
+		// Resolve a valid external URL/DOI for this entry (may be null).
+		// When null we render a non-navigating <span> so the SPA hash router
+		// is never triggered by a bare '#cite-entry-…' href.
+		const paperHref = resolveEntryHref(entry);
 		const target = paperHref ? ' target="_blank" rel="noopener noreferrer"' : '';
 		const tipHtml   = _tooltipHtml(entry);
 		const tipAttr   = ` data-bib-tooltip="${escapeHtml(tipHtml)}" data-cite-key="${escapeHtml(key)}"`;
 
+		// When there's no valid external link, use a non-navigating <span>
+		const wrapLink = (inner) => paperHref
+			? `<a class="latex-citation-link" href="${escapeHtml(paperHref)}"${target}${tipAttr}>${inner}</a>`
+			: `<span class="latex-citation-link"${tipAttr}>${inner}</span>`;
+
 		if (style === 'alpha') {
-			return `<a class="latex-citation-link" href="${escapeHtml(href)}"${target}${tipAttr}>${escapeHtml(_alphaLabel(entry))}</a>`;
+			return wrapLink(escapeHtml(_alphaLabel(entry)));
 		}
 		if (isNumbered) {
 			const n = citationNumbers.get(key) || '?';
-			return `<a class="latex-citation-link" href="${escapeHtml(href)}"${target}${tipAttr}>${n}</a>`;
+			return wrapLink(String(n));
 		}
 		// Author-year
 		const auth = _authorsShort(entry.author || entry.editor || '');
 		const yr   = entry.year || 'n.d.';
-		return `<a class="latex-citation-link" href="${escapeHtml(href)}"${target}${tipAttr}>${escapeHtml(auth)},\u00A0${escapeHtml(yr)}</a>`;
+		return wrapLink(escapeHtml(auth) + '\u00A0' + escapeHtml(yr));
 	};
 
 	const preStr  = preNote  ? escapeHtml(preNote) + '\u00A0'  : '';
@@ -1788,10 +1818,12 @@ function _renderCitation(keys, command, citationNumbers, style, preNote, postNot
 			if (!e) return `<span class="latex-citation-missing">${escapeHtml(keys[i])}</span>`;
 			const anchorId = 'cite-entry-' + keys[i].replace(/[^a-zA-Z0-9_-]/g, '_');
 			const tipAttr  = ` data-bib-tooltip="${escapeHtml(_tooltipHtml(e))}" data-cite-key="${escapeHtml(keys[i])}"`;
-			const _aD2 = e.doi || ''; const _aU2 = e.url || '';
-			const _aHref2 = _aD2 ? (_aD2.startsWith('http') ? _aD2 : 'https://doi.org/' + _aD2) : (_aU2 || ('#' + anchorId));
-			const _aTgt2  = (_aD2 || _aU2) ? ' target="_blank" rel="noopener noreferrer"' : '';
-			return `<a class="latex-citation-link" href="${escapeHtml(_aHref2)}"${_aTgt2}${tipAttr}>${escapeHtml(_authorsShort(e.author || e.editor || ''))}</a>`;
+			const _aHref2 = resolveEntryHref(e);
+			const _aTgt2  = _aHref2 ? ' target="_blank" rel="noopener noreferrer"' : '';
+			const _aInner2 = escapeHtml(_authorsShort(e.author || e.editor || ''));
+			return _aHref2
+				? `<a class="latex-citation-link" href="${escapeHtml(_aHref2)}"${_aTgt2}${tipAttr}>${_aInner2}</a>`
+				: `<span class="latex-citation-link"${tipAttr}>${_aInner2}</span>`;
 		}).join(', ');
 	}
 
@@ -1800,11 +1832,13 @@ function _renderCitation(keys, command, citationNumbers, style, preNote, postNot
 		const yrs = entries.map((e, i) => {
 			if (!e) return `<span class="latex-citation-missing">${escapeHtml(keys[i])}</span>`;
 			const _yId   = 'cite-entry-' + keys[i].replace(/[^a-zA-Z0-9_-]/g, '_');
-			const _yD    = e.doi || ''; const _yU = e.url || '';
-			const _yHref = _yD ? (_yD.startsWith('http') ? _yD : 'https://doi.org/' + _yD) : (_yU || ('#' + _yId));
-			const _yTgt  = (_yD || _yU) ? ' target="_blank" rel="noopener noreferrer"' : '';
+			const _yHref = resolveEntryHref(e);
+			const _yTgt  = _yHref ? ' target="_blank" rel="noopener noreferrer"' : '';
 			const tipAttr  = ` data-bib-tooltip="${escapeHtml(_tooltipHtml(e))}" data-cite-key="${escapeHtml(keys[i])}"`;
-			return `<a class="latex-citation-link" href="${escapeHtml(_yHref)}"${_yTgt}${tipAttr}>${escapeHtml(e.year || 'n.d.')}</a>`;
+			const _yInner = escapeHtml(e.year || 'n.d.');
+			return _yHref
+				? `<a class="latex-citation-link" href="${escapeHtml(_yHref)}"${_yTgt}${tipAttr}>${_yInner}</a>`
+				: `<span class="latex-citation-link"${tipAttr}>${_yInner}</span>`;
 		});
 		const inner = yrs.join(', ');
 		return cmd === 'citeyearpar' ? `(${inner})` : inner;
@@ -1819,18 +1853,21 @@ function _renderCitation(keys, command, citationNumbers, style, preNote, postNot
 			const auth     = _authorsShort(e.author || e.editor || '');
 			if (isNumbered) {
 				const n = citationNumbers.get(keys[i]) || '?';
-				const _doiT  = e.doi || '';
-				const _urlT  = e.url || '';
-				const _hrefT = _doiT
-					? (_doiT.startsWith('http') ? _doiT : 'https://doi.org/' + _doiT)
-					: (_urlT || ('#' + anchorId));
-				const _tgtT  = (_doiT || _urlT) ? ' target="_blank" rel="noopener noreferrer"' : '';
-				return `${escapeHtml(auth)}\u00A0<a class="latex-citation-link" href="${escapeHtml(_hrefT)}"${_tgtT}${tipAttr}>${n}</a>`;
+				const _hrefT = resolveEntryHref(e);
+				const _tgtT  = _hrefT ? ' target="_blank" rel="noopener noreferrer"' : '';
+				const _nEl   = _hrefT
+					? `<a class="latex-citation-link" href="${escapeHtml(_hrefT)}"${_tgtT}${tipAttr}>${n}</a>`
+					: `<span class="latex-citation-link"${tipAttr}>${n}</span>`;
+				return `${escapeHtml(auth)}\u00A0${_nEl}`;
 			}
-			// author-year: link to paper URL/DOI if available, else anchor
-			const _hrefAY = (e.doi ? (e.doi.startsWith('http') ? e.doi : 'https://doi.org/' + e.doi) : null) || e.url || ('#' + anchorId);
-			const _tgtAY  = (e.doi || e.url) ? ' target="_blank" rel="noopener noreferrer"' : '';
-			return `${escapeHtml(auth)}\u00A0<a class="latex-citation-link" href="${escapeHtml(_hrefAY)}"${_tgtAY}${tipAttr}>(${escapeHtml(e.year || 'n.d.')}${postStr})</a>`;
+			// author-year: link to paper URL/DOI if available, else plain span
+			const _hrefAY = resolveEntryHref(e);
+			const _tgtAY  = _hrefAY ? ' target="_blank" rel="noopener noreferrer"' : '';
+			const _ayInner = `(${escapeHtml(e.year || 'n.d.')}${postStr})`;
+			const _ayEl = _hrefAY
+				? `<a class="latex-citation-link" href="${escapeHtml(_hrefAY)}"${_tgtAY}${tipAttr}>${_ayInner}</a>`
+				: `<span class="latex-citation-link"${tipAttr}>${_ayInner}</span>`;
+			return `${escapeHtml(auth)}\u00A0${_ayEl}`;
 		}).join('; ');
 	}
 

@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <string>
 #include <cstdlib>
 #include <cstdint>
@@ -148,22 +149,194 @@ std::string BackendBuilder::findRocmClang() {
     return "";
 }
 
+// Detect the package manager available on this Linux system.
+static std::string detectPkgManager() {
+    for (const char* pm : {"apt-get", "pacman", "dnf", "yum", "zypper", "emerge", "apk"})
+        if (hasCommand(pm)) return pm;
+    return "";
+}
+
+// Build a human-friendly, distro-aware install hint for a set of package names.
+// packagesByPm maps package-manager name → package list string.
+// Falls back to a generic message when the package manager isn't recognised.
+static std::string installHint(
+    const std::string& what,
+    const std::map<std::string, std::string>& packagesByPm,
+    const std::string& windowsMsg = "")
+{
+#ifdef _WIN32
+    return what + " not found" + (windowsMsg.empty() ? "" : " — " + windowsMsg);
+#else
+    const std::string pm = detectPkgManager();
+    auto it = packagesByPm.find(pm);
+    if (it != packagesByPm.end()) {
+        // Known package manager
+        std::string cmd;
+        if (pm == "apt-get") cmd = "sudo apt install " + it->second;
+        else if (pm == "pacman") cmd = "sudo pacman -S " + it->second;
+        else if (pm == "dnf" || pm == "yum") cmd = "sudo " + pm + " install " + it->second;
+        else if (pm == "zypper") cmd = "sudo zypper install " + it->second;
+        else if (pm == "emerge") cmd = "sudo emerge " + it->second;
+        else if (pm == "apk") cmd = "sudo apk add " + it->second;
+        else cmd = it->second;
+        return what + " not found — run: " + cmd;
+    }
+    // Unknown / no package manager detected — show all options
+    std::string msg = what + " not found. Install it:\n";
+    for (const auto& kv : packagesByPm) {
+        const auto& p = kv.first;
+        std::string cmd;
+        if (p == "apt-get")      cmd = "sudo apt install " + kv.second;
+        else if (p == "pacman")  cmd = "sudo pacman -S " + kv.second;
+        else if (p == "dnf")     cmd = "sudo dnf install " + kv.second;
+        else if (p == "zypper")  cmd = "sudo zypper install " + kv.second;
+        else if (p == "emerge")  cmd = "sudo emerge " + kv.second;
+        else if (p == "apk")     cmd = "sudo apk add " + kv.second;
+        else                     cmd = kv.second;
+        msg += "  " + cmd + "\n";
+    }
+    if (!windowsMsg.empty()) msg += "  Windows: " + windowsMsg + "\n";
+    return msg;
+#endif
+}
+
+// Auto-detect the Vulkan SDK root directory.
+// Returns the SDK root when headers live under a non-standard path that
+// CMake won't find on its own, or an empty string when the system paths
+// are sufficient (e.g. after `sudo apt install libvulkan-dev`).
+static std::string findVulkanSdk() {
+#ifndef _WIN32
+    // 1. Honour the official env var set by the LunarG SDK sourcing script
+    if (const char* sdkEnv = std::getenv("VULKAN_SDK")) {
+        if (sdkEnv[0] != '\0') {
+            fs::path sdk(sdkEnv);
+            if (fs::exists(sdk / "include" / "vulkan" / "vulkan.h"))
+                return sdk.string();
+        }
+    }
+
+    // 2. Standard system paths — if headers are already there CMake's
+    //    find_package(Vulkan) works without any hints.
+    for (const char* inc : {"/usr/include/vulkan/vulkan.h",
+                             "/usr/local/include/vulkan/vulkan.h"}) {
+        if (fs::exists(inc)) return "";
+    }
+
+    // 3. Scan ~/VulkanSDK/<version>/<arch> (LunarG installer default)
+    if (const char* home = std::getenv("HOME")) {
+        fs::path vkHome = fs::path(home) / "VulkanSDK";
+        if (fs::exists(vkHome)) {
+            for (const auto& verEntry : fs::directory_iterator(vkHome)) {
+                if (!verEntry.is_directory()) continue;
+                for (const auto& archEntry : fs::directory_iterator(verEntry.path())) {
+                    if (!archEntry.is_directory()) continue;
+                    if (fs::exists(archEntry.path() / "include" / "vulkan" / "vulkan.h"))
+                        return archEntry.path().string();
+                }
+                if (fs::exists(verEntry.path() / "include" / "vulkan" / "vulkan.h"))
+                    return verEntry.path().string();
+            }
+        }
+    }
+#else
+    // Windows: VK_SDK_PATH or VULKAN_SDK set by the LunarG installer
+    for (const char* var : {"VK_SDK_PATH", "VULKAN_SDK"}) {
+        if (const char* sdkEnv = std::getenv(var)) {
+            if (sdkEnv[0] != '\0') {
+                fs::path sdk(sdkEnv);
+                if (fs::exists(sdk / "Include" / "vulkan" / "vulkan.h"))
+                    return sdk.string();
+            }
+        }
+    }
+#endif
+    return "";
+}
+
 std::string BackendBuilder::checkPrerequisites(const std::string& backend) {
     if (!hasCommand("cmake"))
-        return "cmake not found";
+        return installHint("cmake",
+            {{"apt-get", "cmake"},
+             {"pacman",  "cmake"},
+             {"dnf",     "cmake"},
+             {"zypper",  "cmake"},
+             {"emerge",  "dev-build/cmake"},
+             {"apk",     "cmake"}},
+            "install CMake from https://cmake.org/download/");
+
     if (backend == "cuda") {
         if (!hasCommand("nvcc"))
-            return "nvcc not found — install the NVIDIA CUDA toolkit";
+            return installHint("nvcc (NVIDIA CUDA compiler)",
+                {{"apt-get", "nvidia-cuda-toolkit"},
+                 {"pacman",  "cuda"},
+                 {"dnf",     "cuda-compiler"},
+                 {"zypper",  "cuda"},
+                 {"emerge",  "dev-util/nvidia-cuda-toolkit"},
+                 {"apk",     "cuda"}},
+                "install the NVIDIA CUDA Toolkit from https://developer.nvidia.com/cuda-downloads");
+
     } else if (backend == "rocm") {
 #ifndef _WIN32
         if (!hasCommand("hipcc"))
-            return "hipcc not found — install ROCm";
+            return installHint("hipcc (ROCm HIP compiler)",
+                {{"apt-get", "hip-dev rocm-dev"},
+                 {"pacman",  "rocm-hip-sdk"},
+                 {"dnf",     "rocm-hip-devel"},
+                 {"zypper",  "rocm-hip-devel"},
+                 {"emerge",  "dev-util/hip"},
+                 {"apk",     "rocm-hip"}},
+                "ROCm is Linux-only; see https://rocm.docs.amd.com/en/latest/deploy/linux/index.html");
 #endif
         if (findRocmClang().empty())
-            return "clang not found — install /opt/rocm/llvm or system clang";
+            return installHint("ROCm clang",
+                {{"apt-get", "rocm-llvm-dev"},
+                 {"pacman",  "rocm-llvm"},
+                 {"dnf",     "rocm-llvm-devel"},
+                 {"zypper",  "rocm-llvm-devel"},
+                 {"emerge",  "sys-devel/rocm-llvm"},
+                 {"apk",     "rocm-llvm"}},
+                "ROCm is Linux-only");
+
     } else if (backend == "vulkan") {
+        // ── GLSL compiler ────────────────────────────────────────────────────
         if (!hasCommand("glslc") && !hasCommand("glslangValidator"))
-            return "glslc / glslangValidator not found — install Vulkan SDK";
+            return installHint("GLSL compiler (glslc / glslangValidator)",
+                {{"apt-get", "glslang-tools"},
+                 {"pacman",  "glslang"},
+                 {"dnf",     "glslang"},
+                 {"zypper",  "glslang-devel"},
+                 {"emerge",  "dev-util/glslang"},
+                 {"apk",     "glslang"}},
+                "install the LunarG Vulkan SDK from https://vulkan.lunarg.com/sdk/home");
+
+        // ── Vulkan headers ────────────────────────────────────────────────────
+        bool headersFound = false;
+#ifndef _WIN32
+        for (const char* p : {"/usr/include/vulkan/vulkan.h",
+                               "/usr/local/include/vulkan/vulkan.h"}) {
+            if (fs::exists(p)) { headersFound = true; break; }
+        }
+#endif
+        if (!headersFound) {
+            const std::string sdk = findVulkanSdk();
+            if (!sdk.empty()) {
+                headersFound = fs::exists(fs::path(sdk) / "include" / "vulkan" / "vulkan.h")
+#ifdef _WIN32
+                            || fs::exists(fs::path(sdk) / "Include" / "vulkan" / "vulkan.h")
+#endif
+                            ;
+            }
+        }
+        if (!headersFound)
+            return installHint("Vulkan headers (vulkan/vulkan.h)",
+                {{"apt-get", "libvulkan-dev"},
+                 {"pacman",  "vulkan-headers"},
+                 {"dnf",     "vulkan-headers"},
+                 {"zypper",  "vulkan-devel"},
+                 {"emerge",  "dev-util/vulkan-headers"},
+                 {"apk",     "vulkan-headers"}},
+                "install the LunarG Vulkan SDK from https://vulkan.lunarg.com/sdk/home");
+
     } else if (backend != "cpu") {
         return "Unknown backend: " + backend;
     }
@@ -173,7 +346,33 @@ std::string BackendBuilder::checkPrerequisites(const std::string& backend) {
 std::string BackendBuilder::cmakeArgs(const std::string& backend) {
     if (backend == "cuda")   return "-DGGML_CUDA=ON -DGGML_HIPBLAS=OFF -DGGML_VULKAN=OFF";
     if (backend == "rocm")   return "-DGGML_HIPBLAS=ON -DGGML_CUDA=OFF -DGGML_VULKAN=OFF";
-    if (backend == "vulkan") return "-DGGML_VULKAN=ON -DGGML_CUDA=OFF -DGGML_HIPBLAS=OFF";
+    if (backend == "vulkan") {
+        std::string args = "-DGGML_VULKAN=ON -DGGML_CUDA=OFF -DGGML_HIPBLAS=OFF";
+        // Inject SDK paths only when headers aren't in a standard location
+        // that CMake already searches (findVulkanSdk returns "" in that case).
+        const std::string sdk = findVulkanSdk();
+        if (!sdk.empty()) {
+#ifndef _WIN32
+            const std::string inc = sdk + "/include";
+            std::string lib;
+            for (const char* c : {"lib/libvulkan.so.1", "lib/libvulkan.so",
+                                  "lib64/libvulkan.so.1", "lib64/libvulkan.so"}) {
+                if (fs::exists(fs::path(sdk) / c)) { lib = sdk + "/" + c; break; }
+            }
+            args += " -DVulkan_INCLUDE_DIR=\"" + inc + "\"";
+            if (!lib.empty()) args += " -DVulkan_LIBRARY=\"" + lib + "\"";
+#else
+            const std::string inc = sdk + "/Include";
+            std::string lib;
+            for (const char* c : {"Lib/vulkan-1.lib", "Lib32/vulkan-1.lib"}) {
+                if (fs::exists(fs::path(sdk) / c)) { lib = sdk + "/" + c; break; }
+            }
+            args += " -DVulkan_INCLUDE_DIR=\"" + inc + "\"";
+            if (!lib.empty()) args += " -DVulkan_LIBRARY=\"" + lib + "\"";
+#endif
+        }
+        return args;
+    }
     return "-DGGML_CUDA=OFF -DGGML_HIPBLAS=OFF -DGGML_VULKAN=OFF";
 }
 

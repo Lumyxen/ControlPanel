@@ -408,6 +408,7 @@ async function initBackendSelector(root) {
 	const allBackends = Array.isArray(data.all) ? data.all :["cpu","cuda","rocm","vulkan"];
 	const available   = Array.isArray(data.available) ? data.available :[];
 	const hardware    = Array.isArray(data.hardware)  ? data.hardware  :[];
+	const prereqs     = (data.prereqs && typeof data.prereqs === "object") ? data.prereqs : {};
 	const active      = data.active  || "none";
 	const setting     = data.setting || "auto";
 	const tag         = data.tag     || "b8337";
@@ -465,6 +466,33 @@ async function initBackendSelector(root) {
 					.catch(() => { btn.disabled = false; btn.textContent = btn._origText; });
 			});
 			row.appendChild(btn);
+
+			// ── Prerequisite warning ─────────────────────────────────────────
+			const prereqMsg = prereqs[backend];
+			if (prereqMsg && !isBuilt) {
+				const warn = document.createElement("div");
+				warn.style.cssText = [
+					"width:100%",
+					"margin-top:4px",
+					"padding:6px 10px",
+					"font-size:0.78rem",
+					"line-height:1.5",
+					"color:color-mix(in srgb,var(--text) 85%,transparent)",
+					"background:color-mix(in srgb,var(--accent) 8%,transparent)",
+					"border-left:3px solid color-mix(in srgb,var(--accent) 60%,transparent)",
+					"white-space:pre-wrap",
+					"word-break:break-word",
+					"font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace",
+				].join(";");
+
+				// Turn any https?:// URLs into clickable links
+				const linkedMsg = prereqMsg.replace(
+					/(https?:\/\/[^\s)]+)/g,
+					'<a href="$1" target="_blank" rel="noopener noreferrer" ' +
+					'style="color:var(--accent);text-decoration:underline;">$1</a>'				);
+				warn.innerHTML = "⚠\u202F" + linkedMsg;
+				row.appendChild(warn);
+			}
 		}
 
 		container.appendChild(row);
