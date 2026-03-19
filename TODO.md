@@ -207,16 +207,18 @@
 #### UI
 - Removing a selected llama.cpp build in the files keeps the build highlighted despite greying out
 - UI reload after finishing building a llama.cpp version, causing a flicker
-- Checkbox for Flash Attention setting is in an awkward position
-- Can not copy code blocks and ctrl+c copies entire message instead of selected part of the message
-- Does not allow copying of thinking text
 - Markdown breakline `---` is rendered as an em-dash, not breakline
 - Obsidian.md warnings look unformatted
+- Tool calls only appear after all tool tokens and output are done
+- Token streaming does not work after tool calls
 ##### Chromium
 - Awkard message editing text field sizing causing unwanted scrolling
 
 #### UX
 - LM Studio API url test incorrectly adds in llama.cpp models
+- Can not copy code blocks and ctrl+c copies entire message instead of selected part of the message
+- Does not allow copying of thinking text
+- Checkbox for Flash Attention setting is in an awkward position
 ##### Firefox
 - ESC does not properly cancel message editing, requiring 2 presses of ESC
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
