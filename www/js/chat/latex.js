@@ -1,5 +1,5 @@
 /**
- * Comprehensive LaTeX math & structural renderer (v2)
+ * Comprehensive LaTeX math & structural renderer (v3)
  *
  * Math delimiter support (all common variants models/editors produce):
  *   Inline  : $...$   \(...\)   \begin{math}...\end{math}
@@ -31,7 +31,7 @@
  *   • Font size commands
  *   • Color: \textcolor, \colorbox, \fcolorbox, \color{...}
  *   • Boxes: \fbox, \mbox, \framebox, \boxed, \parbox, \raisebox
- *   • Spacing: \vspace, \hspace, \\medskip, \bigskip, \smallskip, \noindent
+ *   • Spacing: \vspace, \hspace, \medskip, \bigskip, \smallskip, \noindent
  *   • Typography: \ldots/\dots/\cdots, \textquoteleft/right,
  *     \enquote, \guillemets, ligature replacements (-- / --- / ~)
  *   • Special escaped characters: \& \% \$ \# \_ \{ \}  \^ \~
@@ -39,10 +39,14 @@
  *   • Footnotes: \footnote
  *   • Cross-references: \label, \ref, \eqref, \pageref, \nameref, \autoref
  *   • Citations: \cite, \citet, \citep, \citeauthor, \citeyear, \citeyearpar,
- *     \citealt, \nocite
- *   • Natbib & BibLaTeX citation variants
- *   • Glossaries: \gls, \glspl, \Gls, \GLS, \glsentrylong, \acrshort, \acrlong
- *   • BibTeX support: parsing, citation rendering, bibliography generation
+ *     \citealt, \nocite — full natbib & BibLaTeX suite
+ *   • BibTeX support (v3): robust multi-level brace parser, @string/@comment/
+ *     @preamble support, #-concatenation, 18+ entry types with per-type
+ *     academic formatting, multiple styles (plain, ieee, alpha, authoryear,
+ *     apa, chicago, harvard, mla, vancouver), anchor navigation, interactive
+ *     hover tooltips, auto-bibliography generation, ```bibtex code block
+ *     interception, \addbibresource, \bibliographystyle, pre/post notes,
+ *     thebibliography/\bibitem environment, DOI/URL links, type badges
  *   • Misc: \maketitle, \tableofcontents, \listoffigures, \listoftables,
  *     \appendix, \bibliography, \printbibliography, \newpage, \clearpage,
  *     \linebreak, \nolinebreak, \pagebreak, \par, \indent, \centering,
@@ -74,7 +78,6 @@
 		script.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';
 		script.crossOrigin = 'anonymous';
 		script.defer = true;
-		// Also load the auto-render extension so environments render properly
 		script.onload = () => {
 			const ar = document.createElement('script');
 			ar.src = 'https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js';
@@ -86,9 +89,7 @@
 	}
 
 	// ── MathJax 3 (fallback) ───────────────────────────────────────────────
-	// Only load if KaTeX is explicitly absent and MathJax isn't already configured
 	if (!window.MathJax && !document.getElementById('mathjax-script')) {
-		// Configure MathJax before the script loads
 		window.MathJax = {
 			tex: {
 				inlineMath:  [['$', '$'], ['\\(', '\\)']],
@@ -104,7 +105,7 @@
 				processHtmlClass: 'tex2jax_process',
 				ignoreHtmlClass: 'tex2jax_ignore',
 			},
-			startup: { typeset: false }, // We handle typesetting manually
+			startup: { typeset: false },
 		};
 		const mj = document.createElement('script');
 		mj.id = 'mathjax-script';
@@ -121,35 +122,6 @@
 /** Matches fenced code blocks (triple-backtick or single-backtick inline). */
 const CODE_BLOCK_REGEX = /(```[\s\S]*?```|`[^`\n]+`)/g;
 
-/**
- * MATH_REGEX — matches every common math delimiter combination:
- *
- *  Display:
- *    $$...$$
- *    \[...\]
- *    \begin{displaymath}...\end{displaymath}
- *    \begin{equation(*)}...\end{equation(*)}
- *    \begin{align(*)}...\end{align(*)}
- *    \begin{gather(*)}...\end{gather(*)}
- *    \begin{multline(*)}...\end{multline(*)}
- *    \begin{flalign(*)}...\end{flalign(*)}
- *    \begin{alignat(*){n}}...\end{alignat(*)}
- *    \begin eqnarray(*)}...\end{eqarray(*)}
- *    \begin{subequations}...\end{subequations}
- *    \begin{split}...\end{split}
- *    \begin{(b|p|v|V|B)?matrix}...\end{...matrix}
- *    \begin{smallmatrix}...\end{smallmatrix}
- *    \begin{cases}...\end{cases}
- *    \begin{dcases}...\end{dcases}
- *    \begin{rcases}...\end{rcases}
- *
- *  Inline:
- *    $...$   (not $$ and not whitespace-bordered)
- *    \(...\)
- *    \begin{math}...\end{math}
- *
- * Uses backreference \1 so \begin{X}...\end{X} is strictly paired.
- */
 const MATH_ENV_NAMES = [
 	'equation', 'equation\\*',
 	'align', 'align\\*',
@@ -172,18 +144,11 @@ const MATH_ENV_NAMES = [
 	'cases', 'dcases', 'rcases',
 ].join('|');
 
-// Build a single regex with all the variants
 const MATH_REGEX = new RegExp(
-	// Display: $$...$$
 	'\\$\\$[\\s\\S]*?\\$\\$' +
-	// Display: \[...\]
 	'|\\\\\\[[\\s\\S]*?\\\\\\]' +
-	// Inline: \(...\)
 	'|\\\\\\([\\s\\S]*?\\\\\\)' +
-	// Inline: $...$ — not $$, not starting/ending with whitespace
-	// Uses negative lookahead/lookbehind to avoid matching $$
 	'|(?<!\$)\$(?!\$)(?:\\\\.|[^\n$])+?(?<!\s)\$(?!\$)' +
-	// Named environments — backreference ensures matching pairs
 	'|\\\\begin\\{(' + MATH_ENV_NAMES + ')(?:\\{[^}]*\\})?\\}[\\s\\S]*?\\\\end\\{\\1(?:\\*)?\\}',
 	'g'
 );
@@ -194,46 +159,32 @@ const MATH_REGEX = new RegExp(
 
 function escapeHtml(text) {
 	if (!text) return '';
-	return text
-		.replace(/&/g,  '&')
-		.replace(/</g,  '<')
-		.replace(/>/g,  '>')
-		.replace(/"/g,  '"')
+	return String(text)
+		.replace(/&/g,  '&amp;')
+		.replace(/</g,  '&lt;')
+		.replace(/>/g,  '&gt;')
+		.replace(/"/g,  '&quot;')
 		.replace(/'/g,  '&#39;');
 }
 
-/**
- * Determine whether a math match is display-mode or inline.
- * Handles all recognised delimiter prefixes.
- */
 function isDisplayMode(match) {
-	// $$ or \[ or \begin{displaymath} or any of the multi-line environments
-	if (match.startsWith('$$'))             return true;
-	if (match.startsWith('\\['))            return true;
+	if (match.startsWith('$$'))            return true;
+	if (match.startsWith('\\['))           return true;
 	if (/^\\begin\{(?:displaymath|equation|align|gather|multline|flalign|alignat|eqnarray|subequations|split|[bpvVB]?matrix|smallmatrix|cases|dcases|rcases)/.test(match)) return true;
-	// \begin{math}...\end{math} is inline
 	if (match.startsWith('\\begin{math}')) return false;
-	// \(...\) is inline; $...$ is inline
 	return false;
 }
 
-/**
- * Strip outer delimiters to get the raw LaTeX content for KaTeX/MathJax.
- * For named \begin...\end environments we pass the whole string so KaTeX
- * can render the environment natively.
- */
 function extractMathContent(match) {
-	if (match.startsWith('$$'))    return match.slice(2, -2);
-	if (match.startsWith('\\['))   return match.slice(2, -2);
-	if (match.startsWith('\\('))   return match.slice(2, -2);
-	if (match.startsWith('$'))     return match.slice(1, -1);
-	// For all \begin{...}...\end{...} pass verbatim — KaTeX handles them
+	if (match.startsWith('$$'))   return match.slice(2, -2);
+	if (match.startsWith('\\['))  return match.slice(2, -2);
+	if (match.startsWith('\\('))  return match.slice(2, -2);
+	if (match.startsWith('$'))    return match.slice(1, -1);
 	return match;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Algorithm formatter (for \begin{algorithmic}...\end{algorithmic}
-//                       and \begin{algorithm2e}...\end{algorithm2e})
+// Algorithm formatter
 // ─────────────────────────────────────────────────────────────────────────────
 
 function formatAlgorithmic(content) {
@@ -245,14 +196,12 @@ function formatAlgorithmic(content) {
 		let line = raw.trim();
 		if (!line) continue;
 
-		// ── Decrease indent before rendering these ──
 		if (/^\\(EndIf|EndFor|EndWhile|EndFunction|EndProcedure|Until|Else|ElsIf|Elsif|uElse|uElsIf)\b/.test(line)) {
 			indentLevel = Math.max(0, indentLevel - 1);
 		}
 
 		const pad = indentLevel * 20;
 
-		// ── algorithm2e style ──
 		line = line.replace(/\\KwData\s*\{([^}]+)\}/g,    '<span class="alg-keyword">Input:</span> $1');
 		line = line.replace(/\\KwResult\s*\{([^}]+)\}/g,  '<span class="alg-keyword">Output:</span> $1');
 		line = line.replace(/\\KwIn\s*\{([^}]+)\}/g,      '<span class="alg-keyword">Input:</span> $1');
@@ -267,8 +216,6 @@ function formatAlgorithmic(content) {
 		line = line.replace(/\\ForEach\s*\{([^}]+)\}/g,   '<span class="alg-keyword">foreach</span> $1 <span class="alg-keyword">do</span>');
 		line = line.replace(/\\ForAll\s*\{([^}]+)\}/g,    '<span class="alg-keyword">for all</span> $1 <span class="alg-keyword">do</span>');
 		line = line.replace(/\\Repeat\b/g,                 '<span class="alg-keyword">repeat</span>');
-
-		// ── algorithmicx / algpseudocode style ──
 		line = line.replace(/\\State\s*/g,                 '<span class="alg-keyword"></span>');
 		line = line.replace(/\\Statex\s*/g,                '<span class="alg-keyword"></span>');
 		line = line.replace(/\\Require\s*/g,               '<span class="alg-keyword">Require:</span> ');
@@ -291,11 +238,10 @@ function formatAlgorithmic(content) {
 		line = line.replace(/\\EndProcedure\b/g,           '<span class="alg-keyword">end procedure</span>');
 		line = line.replace(/\\Call\s*\{([^}]+)\}\s*\{([^}]*)\}/g, '<span class="alg-function">$1</span>($2)');
 		line = line.replace(/\\Comment\s*\{([^}]+)\}/g,   '<span class="alg-comment">▷ $1</span>');
-		line = line.replace(/\\tcp\*?\{([^}]+)\}/g,        '<span class="alg-comment">// $1</span>');  // algorithm2e style comment
+		line = line.replace(/\\tcp\*?\{([^}]+)\}/g,        '<span class="alg-comment">// $1</span>');
 
 		html += `<div class="alg-line" style="padding-left:${pad}px">${line}</div>`;
 
-		// ── Increase indent after block-opening keywords ──
 		if (/class="alg-keyword">(if|else if|else|for|foreach|for all|while|loop|repeat|function|procedure)\b/.test(line)) {
 			indentLevel++;
 		}
@@ -307,12 +253,9 @@ function formatAlgorithmic(content) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Table formatter
-// Supports: tabular, tabularx, longtable — booktabs rules, \multicolumn,
-// \multirow (with * width), \cline, row-coloring (\rowcolor)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function formatTabular(body, isLong = false) {
-	// Strip booktabs and hline/cline decorators
 	let clean = body
 		.replace(/\\toprule(\[.*?\])?/g,  '')
 		.replace(/\\midrule(\[.*?\])?/g,  '')
@@ -322,9 +265,7 @@ function formatTabular(body, isLong = false) {
 		.replace(/\\cmidrule(\(.*?\))?\{[\d-]+\}/g, '')
 		.replace(/\\specialrule\{.*?\}\{.*?\}\{.*?\}/g, '');
 
-	// Strip \rowcolor{...} (row background — not easily translatable to plain HTML here)
 	clean = clean.replace(/\\rowcolor(\[.*?\])?\{[^}]*\}/g, '');
-	// Strip \cellcolor too
 	clean = clean.replace(/\\cellcolor(\[.*?\])?\{[^}]*\}/g, '');
 
 	const rows = clean.split('\\\\').filter(r => r.trim());
@@ -333,14 +274,12 @@ function formatTabular(body, isLong = false) {
 
 	for (const row of rows) {
 		html += '<tr>';
-		// Split cells on & but not on \& (escaped ampersand)
 		const cells = row.split(/(?<!\\)&/);
 
 		for (let cell of cells) {
 			cell = cell.trim();
 			let colspan = 1, rowspan = 1, align = '';
 
-			// \multicolumn{n}{align}{content}
 			const mcM = cell.match(/^\\multicolumn\{(\d+)\}\{([^}]*)\}\{([\s\S]*)\}$/);
 			if (mcM) {
 				colspan = parseInt(mcM[1], 10);
@@ -348,14 +287,12 @@ function formatTabular(body, isLong = false) {
 				cell    = mcM[3];
 			}
 
-			// \multirow{n}{width}{content} — width can be * or a length
 			const mrM = cell.match(/^\\multirow\{(\d+)\}\{[^}]*\}\{([\s\S]*)\}$/);
 			if (mrM) {
 				rowspan = parseInt(mrM[1], 10);
 				cell    = mrM[2];
 			}
 
-			// Inline formatting inside cells
 			cell = applyInlineFormatting(cell);
 
 			let attrs = '';
@@ -375,11 +312,9 @@ function formatTabular(body, isLong = false) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inline LaTeX formatting helper
-// Handles text-mode commands that can appear inside table cells, captions, etc.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function applyInlineFormatting(text) {
-	// Font weight / style
 	text = text.replace(/\\textbf\{([^}]+)\}/g,      '<strong>$1</strong>');
 	text = text.replace(/\\textit\{([^}]+)\}/g,       '<em>$1</em>');
 	text = text.replace(/\\emph\{([^}]+)\}/g,         '<em>$1</em>');
@@ -392,32 +327,27 @@ function applyInlineFormatting(text) {
 	text = text.replace(/\\textup\{([^}]+)\}/g,       '<span style="font-style:normal">$1</span>');
 	text = text.replace(/\\textnormal\{([^}]+)\}/g,   '$1');
 	text = text.replace(/\\underline\{([^}]+)\}/g,    '<u>$1</u>');
-	text = text.replace(/\\sout\{([^}]+)\}/g,         '<s>$1</s>');    // ulem package
+	text = text.replace(/\\sout\{([^}]+)\}/g,         '<s>$1</s>');
 	text = text.replace(/\\xout\{([^}]+)\}/g,         '<s>$1</s>');
 	text = text.replace(/\\uwave\{([^}]+)\}/g,        '<u style="text-decoration:underline wavy">$1</u>');
 
-	// Color
 	text = text.replace(/\\textcolor\{([^}]+)\}\{([^}]+)\}/g,       '<span style="color:$1">$2</span>');
 	text = text.replace(/\\colorbox\{([^}]+)\}\{([^}]+)\}/g,        '<span style="background:$1;padding:0 2px">$2</span>');
 	text = text.replace(/\\fcolorbox\{([^}]+)\}\{([^}]+)\}\{([^}]+)\}/g, '<span style="border:1px solid $1;background:$2;padding:0 2px">$3</span>');
 
-	// Boxes
 	text = text.replace(/\\fbox\{([^}]+)\}/g,         '<span style="border:1px solid currentColor;padding:1px 4px">$1</span>');
 	text = text.replace(/\\mbox\{([^}]+)\}/g,         '<span style="white-space:nowrap">$1</span>');
 	text = text.replace(/\\framebox(?:\[.*?\])?\{([^}]+)\}/g, '<span style="border:1px solid currentColor;padding:1px 4px">$1</span>');
 	text = text.replace(/\\raisebox\{[^}]+\}\{([^}]+)\}/g,   '<span style="vertical-align:super;font-size:0.75em">$1</span>');
 
-	// Hyperlinks
 	text = text.replace(/\\href\{([^}]+)\}\{([^}]+)\}/g,  '<a href="$1" target="_blank" rel="noopener noreferrer">$2</a>');
 	text = text.replace(/\\url\{([^}]+)\}/g,               '<a href="$1" target="_blank" rel="noopener noreferrer" class="latex-url">$1</a>');
 	text = text.replace(/\\nolinkurl\{([^}]+)\}/g,         '<code class="latex-url">$1</code>');
 
-	// Footnotes (inline rendering as superscript with title)
 	text = text.replace(/\\footnote\{([^}]+)\}/g,
 		'<sup class="latex-footnote" title="$1">[note]</sup>');
 
-	// Special escaped characters
-	text = text.replace(/\\&/g,    '&');
+	text = text.replace(/\\&/g,    '&amp;');
 	text = text.replace(/\\%/g,    '%');
 	text = text.replace(/\\\$/g,   '$');
 	text = text.replace(/\\#/g,    '#');
@@ -427,7 +357,6 @@ function applyInlineFormatting(text) {
 	text = text.replace(/\\\^{}/g, '^');
 	text = text.replace(/\\~{}/g,  '~');
 
-	// Typography / dashes / quotes
 	text = text.replace(/\\ldots\b/g,               '…');
 	text = text.replace(/\\dots\b/g,                '…');
 	text = text.replace(/\\cdots\b/g,               '⋯');
@@ -435,22 +364,21 @@ function applyInlineFormatting(text) {
 	text = text.replace(/\\ddots\b/g,               '⋱');
 	text = text.replace(/---/g,                     '—');
 	text = text.replace(/--/g,                      '–');
-	text = text.replace(/``/g,                      '「');
-	text = text.replace(/''/g,                      '」');
-	text = text.replace(/`/g,                       '『');
-	text = text.replace(/\\textquoteleft\b/g,       '『');
-	text = text.replace(/\\textquoteright\b/g,      '』');
-	text = text.replace(/\\enquote\{([^}]+)\}/g,    '「$1」');
-	text = text.replace(/\\guillemotleft\b/g,       '«');
-	text = text.replace(/\\guillemotright\b/g,      '»');
+	text = text.replace(/``/g,                      '\u201C');
+	text = text.replace(/''/g,                      '\u201D');
+	text = text.replace(/`/g,                       '\u2018');
+	text = text.replace(/\\textquoteleft\b/g,       '\u2018');
+	text = text.replace(/\\textquoteright\b/g,      '\u2019');
+	text = text.replace(/\\enquote\{([^}]+)\}/g,    '\u201C$1\u201D');
+	text = text.replace(/\\guillemotleft\b/g,        '«');
+	text = text.replace(/\\guillemotright\b/g,       '»');
 	text = text.replace(/\\glqq\b/g,               '„');
-	text = text.replace(/\\grqq\b/g,               '"');
+	text = text.replace(/\\grqq\b/g,               '\u201D');
 	text = text.replace(/\\glq\b/g,                '\u201A');
 	text = text.replace(/\\grq\b/g,                '\u2018');
-	text = text.replace(/\\tilde\{([^}]+)\}/g,      '$1̃');
+	text = text.replace(/\\tilde\{([^}]+)\}/g,      '$1\u0303');
 	text = text.replace(/\\today\b/g,               new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }));
 
-	// Misc symbols
 	text = text.replace(/\\textregistered\b/g,  '®');
 	text = text.replace(/\\texttrademark\b/g,   '™');
 	text = text.replace(/\\copyright\b/g,       '©');
@@ -462,24 +390,21 @@ function applyInlineFormatting(text) {
 	text = text.replace(/\\textbar\b/g,         '|');
 	text = text.replace(/\\slash\b/g,           '/');
 
-	// Spacing macros (mostly remove, but add thin space where relevant)
-	text = text.replace(/\\,/g,       '\u2009'); // thin space
-	text = text.replace(/\\;/g,       '\u2002'); // en space
-	text = text.replace(/\\:/g,       '\u205F'); // medium math space
-	text = text.replace(/\\!/g,       '');       // negative thin space
-	text = text.replace(/\\ /g,       '\u00A0'); // non-breaking space
-	text = text.replace(/~(?!\w)/g,   '\u00A0'); // tilde as NBSP (when not followed by word char)
-	text = text.replace(/\\quad\b/g,  '\u2003'); // em space
+	text = text.replace(/\\,/g,       '\u2009');
+	text = text.replace(/\\;/g,       '\u2002');
+	text = text.replace(/\\:/g,       '\u205F');
+	text = text.replace(/\\!/g,       '');
+	text = text.replace(/\\ /g,       '\u00A0');
+	text = text.replace(/~(?!\w)/g,   '\u00A0');
+	text = text.replace(/\\quad\b/g,  '\u2003');
 	text = text.replace(/\\qquad\b/g, '\u2003\u2003');
 
-	// Accents
 	text = text.replace(/\\'([aeiouAEIOU])/g, (_, c) => c.normalize ? (c + '\u0301').normalize('NFC') : c);
 	text = text.replace(/\\`([aeiouAEIOU])/g, (_, c) => (c + '\u0300').normalize('NFC'));
 	text = text.replace(/\\"([aeiouAEIOU])/g, (_, c) => (c + '\u0308').normalize('NFC'));
 	text = text.replace(/\\c\{([cC])\}/g, (_, c) => (c + '\u0327').normalize('NFC'));
 	text = text.replace(/\\v\{([a-zA-Z])\}/g, (_, c) => (c + '\u030C').normalize('NFC'));
 
-	// Clean empty braces left over from macros
 	text = text.replace(/\{\}/g, '');
 
 	return text;
@@ -495,9 +420,7 @@ function makeCallout(type, icon, title) {
 	return `\n\n<div class="md-callout md-callout-${type}"><div class="md-callout-header"><span class="md-callout-icon">${icon}</span><span class="md-callout-title">${escapeHtml(title)}</span></div><div class="md-callout-content">\n\n`;
 }
 
-/** Named theorem-class environments with optional \label{...} on the same line */
 const THEOREM_ENVS = [
-	// [envName,      calloutType,  icon,  displayTitle]
 	['theorem',       'info',       '🏛️',  'Theorem'],
 	['lemma',         'tip',        '💡',  'Lemma'],
 	['corollary',     'tip',        '📌',  'Corollary'],
@@ -537,16 +460,43 @@ const THEOREM_ENVS = [
  * the downstream Markdown parser and KaTeX injection can handle.
  *
  * Processing order is important:
+ *  0. Pre-scan ```bibtex fenced blocks → populate DB before shielding
  *  1. Protect code blocks
  *  2. Protect math blocks
  *  3. Apply text-mode transformations
- *  4. Restore math then code
+ *  4. Process bibliography (BibTeX)
+ *  5. Restore math then code
  */
 export function preprocessLatexText(text) {
 	if (!text) return '';
 
+	// ── Step -1: Rescue citation commands from $...$ math wrapping ──────────
+	// AI models sometimes write  $ \cite{key} $  as a display example.
+	// These are bibliography commands, not math — strip the dollars so they
+	// are processed correctly by processBibliography in Step 4.
+	text = text.replace(
+		/\$\s*(\\(?:cite[a-zA-Z]*|textcite|Textcite|parencite|Parencite|autocite|Autocite|fullcite|footcite|footcitetext|nocite)\*?\s*(?:\[[^\]]*\]\s*){0,2}\{[^}]+\})\s*\$/g,
+		(_, inner) => inner.trim()
+	);
+
 	// Normalise non-standard delimiter variants before anything else
 	text = normaliseMathDelimiters(text);
+
+	// ── Step 0: Pre-scan ALL fenced blocks for BibTeX content ─────────────────
+	// Must happen BEFORE code blocks are shielded so the DB is populated
+	// before citation commands are processed in Step 4.
+	// Catches ```bibtex, ```bib, ```latex, untagged ```, or ANY tag when the
+	// block content itself begins with a BibTeX entry type declaration.
+	{
+		const _bibEntryStartRx = /^\s*@(?:article|book|inproceedings|conference|incollection|phdthesis|mastersthesis|techreport|misc|online|electronic|www|proceedings|inbook|unpublished|manual|booklet|patent|dataset|software|report)\s*[\{(]/im;
+		const bibFenceRx = /^```[^\n]*\r?\n([\s\S]*?)\n```/gim;
+		let _bm;
+		while ((_bm = bibFenceRx.exec(text)) !== null) {
+			if (_bibEntryStartRx.test(_bm[1])) {
+				parseBibtex(_bm[1]);
+			}
+		}
+	}
 
 	// ── Step 1: Shield code blocks ──────────────────────────────────────────
 	const codeBlocks = [];
@@ -574,7 +524,6 @@ export function preprocessLatexText(text) {
 	const preambleCommands = [
 		'documentclass', 'usepackage', 'newcommand', 'renewcommand',
 		'providecommand', 'newenvironment', 'renewenvironment',
-		// 'bibliographystyle', 'bibliography', 'addbibresource', // Now handled by processBibliography
 		'author', 'title', 'date', 'institute', 'affiliation',
 		'DeclareMathOperator', 'DeclareMathOperator\\*',
 		'newtheorem', 'newtheorem\\*',
@@ -597,7 +546,6 @@ export function preprocessLatexText(text) {
 	p = p.replace(/\\tableofcontents\b/g,   '<div class="latex-toc-placeholder"><em>Table of Contents</em></div>');
 	p = p.replace(/\\listoffigures\b/g,     '<div class="latex-toc-placeholder"><em>List of Figures</em></div>');
 	p = p.replace(/\\listoftables\b/g,      '<div class="latex-toc-placeholder"><em>List of Tables</em></div>');
-	// \printbibliography is now handled by processBibliography() below
 	p = p.replace(/\\appendix\b/g,         '\n---\n### Appendix\n');
 
 	// === Document wrappers ===
@@ -607,9 +555,7 @@ export function preprocessLatexText(text) {
 	p = p.replace(/\\end\{abstract\}/g,   CALLOUT_END);
 
 	// === Theorem-class environments ===
-	// Support optional starred variant and optional title arg: \begin{theorem}[Title]
 	for (const [env, type, icon, title] of THEOREM_ENVS) {
-		// With optional title: \begin{theor em}[Custom Title]
 		p = p.replace(
 			new RegExp(`\\\\begin\\{${env}\\*?\\}(?:\\[([^\\]]+)\\])?(?:\\\\label\\{[^}]+\\})?`, 'g'),
 			(_, customTitle) => makeCallout(type, icon, customTitle ? `${title}: ${customTitle}` : title)
@@ -617,13 +563,11 @@ export function preprocessLatexText(text) {
 		p = p.replace(new RegExp(`\\\\end\\{${env}\\*?\\}`, 'g'), CALLOUT_END);
 	}
 
-	// === Proof environment (special: ends with QED box □) ===
+	// === Proof environment ===
 	p = p.replace(/\\begin\{proof\}(?:\[([^\]]+)\])?/g, (_, hint) =>
 		makeCallout('note', '📝', hint ? `Proof (${hint})` : 'Proof')
 	);
 	p = p.replace(/\\end\{proof\}/g, '\n\n<span class="latex-qed">□</span>' + CALLOUT_END);
-
-	// \\qed and \\QED standalone
 	p = p.replace(/\\(?:qed|QED)\b/g, '<span class="latex-qed">□</span>');
 
 	// === Algorithm environments ===
@@ -631,12 +575,8 @@ export function preprocessLatexText(text) {
 		makeCallout('example', '⚙️', title || 'Algorithm')
 	);
 	p = p.replace(/\\end\{algorithm\}/g, CALLOUT_END);
-
-	// algorithm2e
 	p = p.replace(/\\begin\{algorithm2e\}(?:\[.*?\])?/g, makeCallout('example', '⚙️', 'Algorithm'));
 	p = p.replace(/\\end\{algorithm2e\}/g,                CALLOUT_END);
-
-	// \caption inside algorithm (move to title)
 	p = p.replace(
 		/\\begin\{algorithmic\}(?:\[.*?\])?([\s\S]*?)\\end\{algorithmic\}/g,
 		(_, body) => formatAlgorithmic(body)
@@ -651,10 +591,10 @@ export function preprocessLatexText(text) {
 		const t = [title, subtitle].filter(Boolean).join(' — ') || 'Slide';
 		return makeCallout('note', '📽️', t);
 	});
-	p = p.replace(/\\frame title\{([^}]+)\}/g, '**$1**\n');
+	p = p.replace(/\\frametitle\{([^}]+)\}/g, '**$1**\n');
 	p = p.replace(/\\framesubtitle\{([^}]+)\}/g, '*$1*\n');
 	p = p.replace(/\\end\{frame\}/g, CALLOUT_END);
-	p = p.replace(/\\begin\{block\}\{([^}]+)\}/g, makeCallout => `\n\n**$1**\n\n`);
+	p = p.replace(/\\begin\{block\}\{([^}]+)\}/g, () => `\n\n**$1**\n\n`);
 	p = p.replace(/\\end\{block\}/g, '\n');
 	p = p.replace(/\\pause\b/g, '');
 	p = p.replace(/\\only<[^>]+>\{([^}]+)\}/g, '$1');
@@ -689,7 +629,6 @@ export function preprocessLatexText(text) {
 	);
 
 	// === Verbatim environments ===
-	// Handled here so their content isn't touched by inline formatters
 	p = p.replace(
 		/\\begin\{(?:verbatim|Verbatim)\*?\}([\s\S]*?)\\end\{(?:verbatim|Verbatim)\*?\}/g,
 		(_, body) => `\n\`\`\`\n${body.trim()}\n\`\`\`\n`
@@ -702,7 +641,6 @@ export function preprocessLatexText(text) {
 		/\\begin\{minted\}(?:\[.*?\])?\{([^}]+)\}([\s\S]*?)\\end\{minted\}/g,
 		(_, lang, body) => `\n\`\`\`${lang}\n${body.trim()}\n\`\`\`\n`
 	);
-	// \verb|...|  and  \verb!...!  and other single-char delimiters
 	p = p.replace(/\\verb([^a-zA-Z\s])(.*?)\1/g, (_, _d, body) => `\`${body}\``);
 
 	// === Tables ===
@@ -718,7 +656,6 @@ export function preprocessLatexText(text) {
 		/\\begin\{tabular\}\s*(?:\{[^}]*\})?([\s\S]*?)\\end\{tabular\}/g,
 		(_, body) => formatTabular(body)
 	);
-	// Array environment inside math — normally handled by KaTeX, but if it leaks into text mode:
 	p = p.replace(
 		/\\begin\{array\}\s*(?:\{[^}]*\})?([\s\S]*?)\\end\{array\}/g,
 		(_, body) => formatTabular(body)
@@ -736,7 +673,7 @@ export function preprocessLatexText(text) {
 	p = p.replace(/\\captionof\{[^}]+\}\{([^}]+)\}/g, '\n<div class="latex-caption">$1</div>\n');
 	p = p.replace(/\\subcaption\{([^}]+)\}/g,      '<div class="latex-subcaption">$1</div>');
 
-	// === Sectioning — \part through \subparagraph ===
+	// === Sectioning ===
 	p = p.replace(/\\part\*?\{([^}]+)\}/g,          '\n# $1\n');
 	p = p.replace(/\\chapter\*?\{([^}]+)\}/g,       '\n# $1\n');
 	p = p.replace(/\\section\*?\{([^}]+)\}/g,       '\n## $1\n');
@@ -763,17 +700,13 @@ export function preprocessLatexText(text) {
 	);
 
 	// === Lists ===
-	// Simple flat conversion; good enough for typical display usage
-	// Nested lists are a hard problem without a full parser; we indent by detecting depth.
 	function convertList(body, ordered) {
-		// Replace \item[label] and \item
 		let result = body
 			.replace(/\\item\s*\[([^\]]+)\]/g, ordered ? '\n1. **$1** ' : '\n- **$1** ')
 			.replace(/\\item\b/g,              ordered ? '\n1. '         : '\n- ');
 		return result;
 	}
 
-	// We process inner lists first to handle nesting (innermost wins)
 	for (let pass = 0; pass < 4; pass++) {
 		p = p.replace(/\\begin\{itemize\}([\s\S]*?)\\end\{itemize\}/g,
 			(_, body) => convertList(body, false) + '\n');
@@ -785,10 +718,8 @@ export function preprocessLatexText(text) {
 			(_, body) => convertList(body, false) + '\n');
 		p = p.replace(/\\begin\{compactenum\}(?:\[.*?\])?([\s\S]*?)\\end\{compactenum\}/g,
 			(_, body) => convertList(body, true) + '\n');
-		// tasks package  (\task = \item equivalent)
 		p = p.replace(/\\begin\{tasks\}(?:\[.*?\])?(?:\(\d+\))?([\s\S]*?)\\end\{tasks\}/g,
 			(_, body) => body.replace(/\\task\b/g, '\n- ') + '\n');
-		// checklist-style — \checkitem / \uncheckitem
 		p = p.replace(/\\begin\{checklist\}([\s\S]*?)\\end\{checklist\}/g,
 			(_, body) => body
 				.replace(/\\checkitem\b/g, '\n- [x]')
@@ -796,14 +727,14 @@ export function preprocessLatexText(text) {
 		);
 	}
 
-	// === Inline Formatting (non-table context) ===
+	// === Inline Formatting ===
 	p = applyInlineFormatting(p);
 
-	// === Font size commands — map to styled spans ===
+	// === Font size commands ===
 	const fontSizes = [
 		['\\\\tiny',         '0.6em'],
-		['\\\\scriptsiz e',   '0.7em'],
-		['\\\\footnotes ize', '0.8em'],
+		['\\\\scriptsize',   '0.7em'],
+		['\\\\footnotesize', '0.8em'],
 		['\\\\small',        '0.9em'],
 		['\\\\normalsize',   '1em'],
 		['\\\\large',        '1.17em'],
@@ -813,20 +744,17 @@ export function preprocessLatexText(text) {
 		['\\\\Huge',         '2.5em'],
 	];
 	for (const [cmd, size] of fontSizes) {
-		// Brace-grouped: \large{text}
 		p = p.replace(new RegExp(`${cmd}\\{([^}]+)\\}`, 'g'),
 			`<span style="font-size:${size}">$1</span>`);
-		// Declaration form: {\large text} — handled as global scope change with \n\n guards
 		p = p.replace(new RegExp(`(?<=\\{\\s*)${cmd}\\s+([^}]+)(?=\\s*\\})`, 'g'),
 			`<span style="font-size:${size}">$1</span>`);
 	}
 
-	// === Alignment declarations (declaration form, no braces) ===
+	// === Alignment declarations ===
 	p = p.replace(/\\centering\b/g,    '<div style="text-align:center">');
 	p = p.replace(/\\raggedright\b/g,  '<div style="text-align:left">');
 	p = p.replace(/\\raggedleft\b/g,   '<div style="text-align:right">');
 	p = p.replace(/\\justify\b/g,      '<div style="text-align:justify">');
-	// \begin{center} ... \end{center}
 	p = p.replace(/\\begin\{center\}([\s\S]*?)\\end\{center\}/g,
 		'<div style="text-align:center">$1</div>');
 	p = p.replace(/\\begin\{flushleft\}([\s\S]*?)\\end\{flushleft\}/g,
@@ -839,43 +767,36 @@ export function preprocessLatexText(text) {
 	p = p.replace(/\\hspace\*?\{[^}]+\}/g,  ' ');
 	p = p.replace(/\\vskip\s*[\d.]+\s*(?:pt|em|ex|cm|mm|in|bp|pc|dd|cc|sp)\b/g, '\n');
 	p = p.replace(/\\hskip\s*[\d.]+\s*(?:pt|em|ex|cm|mm|in|bp|pc|dd|cc|sp)\b/g, ' ');
-	p = p.replace(/\\med space\b/g,           '\n');
+	p = p.replace(/\\medskip\b/g,           '\n');
 	p = p.replace(/\\bigskip\b/g,           '\n\n');
 	p = p.replace(/\\smallskip\b/g,         '\n');
 	p = p.replace(/\\newpage\b/g,           '\n\n---\n\n');
 	p = p.replace(/\\clearpage\b/g,         '\n\n---\n\n');
 	p = p.replace(/\\cleardoublepage\b/g,   '\n\n---\n\n');
 	p = p.replace(/\\pagebreak(?:\[\d\])?\b/g, '\n\n---\n\n');
-	p = p.replace(/\\linebreak(?:\[\d\])?\b/g, '  \n');   // Markdown hard line break
+	p = p.replace(/\\linebreak(?:\[\d\])?\b/g, '  \n');
 	p = p.replace(/\\nolinebreak(?:\[\d\])?\b/g, '');
 	p = p.replace(/\\newline\b/g,           '  \n');
-	p = p.replace(/\\\\\s*(\[.*?\])?/g,     '  \n');       // \\ = newline in LaTeX
+	p = p.replace(/\\\\\s*(\[.*?\])?/g,     '  \n');
 	p = p.replace(/\\par\b/g,              '\n\n');
 	p = p.replace(/\\indent\b/g,           '');
-	p = p.replace(/\\no indent\b/g,         '');
+	p = p.replace(/\\noindent\b/g,         '');
 
 	// === Rules / lines ===
 	p = p.replace(/\\hrule\b/g,                  '\n---\n');
 	p = p.replace(/\\rule\{[^}]+\}\{[^}]+\}/g,   '<hr>');
 
-	// === Refs & Citations (full natbib + biblatex coverage) ===
-	// Labels — strip silently (they have no visual output)
+	// === Labels / Cross-refs ===
 	p = p.replace(/\\label\{([^}]+)\}/g,         '');
-
-	// Cross-refs — render as styled spans
 	p = p.replace(/\\autoref\{([^}]+)\}/g,        '<span class="latex-ref">ref:$1</span>');
-	p = p.replace(/\\cref\{([^}]+)\}/g,           '<span class="latex-ref">ref:$1</span>');
 	p = p.replace(/\\cref\{([^}]+)\}/g,           '<span class="latex-ref">ref:$1</span>');
 	p = p.replace(/\\nameref\{([^}]+)\}/g,        '<span class="latex-ref">$1</span>');
 	p = p.replace(/\\eqref\{([^}]+)\}/g,          '<span class="latex-ref">($1)</span>');
 	p = p.replace(/\\ref\{([^}]+)\}/g,            '<span class="latex-ref">ref:$1</span>');
 	p = p.replace(/\\pageref\{([^}]+)\}/g,        '<span class="latex-ref">p.$1</span>');
-	// Handle ~ before \ref / \cite (non-breaking space used in source)
 	p = p.replace(/~\\(?:ref|cite|autoref|cref)\b/g, (m) => ' ' + m.slice(1));
 
-	// Natbib & biblatex citations - now handled by processBibliography() below
-
-	// Glossaries (acronym package / glossaries)
+	// === Glossaries ===
 	p = p.replace(/\\gls\{([^}]+)\}/g,            '<span class="latex-gls">$1</span>');
 	p = p.replace(/\\glspl\{([^}]+)\}/g,          '<span class="latex-gls">$1s</span>');
 	p = p.replace(/\\Gls\{([^}]+)\}/g,            (_, k) => `<span class="latex-gls">${k.charAt(0).toUpperCase()+k.slice(1)}</span>`);
@@ -887,16 +808,11 @@ export function preprocessLatexText(text) {
 	p = p.replace(/\\acrfull\{([^}]+)\}/g,        '<span class="latex-acr-full">$1</span>');
 
 	// === Miscellaneous cleanup ===
-	// Remove remaining \color{...} declarations (no closing brace, scope-based)
 	p = p.replace(/\\color\{[^}]+\}/g, '');
-	// Remove \selectfont, \normalfont etc.
 	p = p.replace(/\\(?:selectfont|normalfont|usefont\{[^}]+\}\{[^}]+\}\{[^}]+\}\{[^}]+\})\b/g, '');
-	// Remove \protect (transparent in HTML)
 	p = p.replace(/\\protect\b/g, '');
-	// Remove \phantom{...}, \hphantom, \vphantom
 	p = p.replace(/\\(?:h|v)?phantom\{[^}]+\}/g, '');
-	// \ensuremath — strip wrapper, content may be math (will be caught by MATH_REGEX earlier)
-	p = p.replace(/\\ensuremath\{([^}]+)\}/g, '$$$1$$'); // re-wrap as inline math
+	p = p.replace(/\\ensuremath\{([^}]+)\}/g, '$$$1$$');
 
 	// Collapse 3+ blank lines → 2
 	p = p.replace(/\n{3,}/g, '\n\n');
@@ -915,26 +831,11 @@ export function preprocessLatexText(text) {
 // extractMath — shield all math from the Markdown parser
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Scans `text` for all math delimiters (see MATH_REGEX) and replaces each
- * with a unique placeholder.  Also temporarily removes code blocks so they
- * are never mistakenly matched as math.
- *
- * Returns { text, mathBlocks } where each mathBlock is:
- *   { placeholder, content, isBlock, rawMatch }
- *
- *  - `content`  — the inner LaTeX (delimiters stripped for $, \(, \[, $$;
- *                 verbatim for \begin{...} envs so KaTeX can render them natively)
- *  - `isBlock`  — true for display-mode environments
- *  - `rawMatch` — original matched string for fallback rendering
- */
 export function extractMath(text) {
 	if (!text) return { text: '', mathBlocks: [] };
 
-	// Normalise non-standard delimiter variants before anything else
 	text = normaliseMathDelimiters(text);
 
-	// Shield code blocks first
 	const codeBlocks = [];
 	let ci = 0;
 	let safe = text.replace(CODE_BLOCK_REGEX, (m) => {
@@ -956,7 +857,6 @@ export function extractMath(text) {
 		return ph;
 	});
 
-	// Restore code blocks
 	for (const { ph, m } of codeBlocks) safe = safe.replace(ph, m);
 
 	return { text: safe, mathBlocks };
@@ -966,29 +866,11 @@ export function extractMath(text) {
 // injectMath — replace placeholders with rendered HTML
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Replaces each ⚿MATHBLOCKn⚿ placeholder in `html` with the rendered
- * math output.  Rendering priority:
- *   1. window.katex.renderToString (synchronous, preferred)
- *   2. window.MathJax.tex2svgPromise / tex2svg (async capable)
- *   3. Escaped plain-text fallback in a styled <span>
- *
- * KaTeX options used:
- *   • displayMode    — mirrors isBlock
- *   • throwOnError   — false (we handle errors manually)
- *   • trust          — true (allows \htmlClass etc.)
- *   • strict         — false (lenient on unknown macros)
- *   • macros         — common user-defined shorthand
- *   • output         — 'htmlAndMathml' for best accessibility
- *   • leqno          — false
- *   • fleqn          — false
- */
 export function injectMath(html, mathBlocks) {
 	if (!mathBlocks || mathBlocks.length === 0) return html;
 
 	let result = html;
 
-	// Common KaTeX macros that models/users frequently rely on
 	const katexMacros = {
 		'\\R':    '\\mathbb{R}',
 		'\\N':    '\\mathbb{N}',
@@ -1000,19 +882,19 @@ export function injectMath(html, mathBlocks) {
 		'\\E':    '\\mathbb{E}',
 		'\\eps':  '\\varepsilon',
 		'\\ph':   '\\varphi',
-		'\\T':    '^{\\top}',           // transpose
+		'\\T':    '^{\\top}',
 		'\\inv':  '^{-1}',
 		'\\abs':  '\\left|#1\\right|',
 		'\\norm': '\\left\\|#1\\right\\|',
 		'\\set':  '\\left\\{#1\\right\\}',
 		'\\ceil': '\\left\\lceil#1\\right\\rceil',
 		'\\floor':'\\left\\lfloor#1\\right\\rfloor',
-		'\\d':    '\\,\\mathrm{d}',     // differential d
+		'\\d':    '\\,\\mathrm{d}',
 		'\\diff': '\\frac{\\mathrm{d}#1}{\\mathrm{d}#2}',
 		'\\pdiff':'\\frac{\\partial #1}{\\partial #2}',
-		'\\tfrac':'\\frac{#1}{#2}',     // already in KaTeX but just in case
+		'\\tfrac':'\\frac{#1}{#2}',
 		'\\bm':  '\\boldsymbol',
-		'\\1':    '\\mathbf{1}',        // indicator function
+		'\\1':    '\\mathbf{1}',
 		'\\tr':   '\\operatorname{tr}',
 		'\\rank': '\\operatorname{rank}',
 		'\\diag': '\\operatorname{diag}',
@@ -1041,21 +923,17 @@ export function injectMath(html, mathBlocks) {
 					macros:       { ...katexMacros },
 				});
 			} else if (window.MathJax && window.MathJax.tex2svg) {
-				// MathJax 3 synchronous path (when startup is complete)
 				const node = window.MathJax.tex2svg(content, { display: isBlock });
 				rendered = node.outerHTML || escapeHtml(rawMatch || content);
 			} else {
-				// Plain fallback — wrap in styled span so the raw source is at least visible
 				const cls = isBlock ? 'latex-block latex-pending' : 'latex-inline latex-pending';
 				rendered = `<span class="${cls}" data-latex="${escapeHtml(content)}">${escapeHtml(rawMatch || content)}</span>`;
 			}
 		} catch (err) {
-			// KaTeX can still throw for very broken input even with throwOnError:false
 			const cls = isBlock ? 'latex-block latex-error' : 'latex-inline latex-error';
 			rendered = `<span class="${cls}" title="${escapeHtml(err.message)}">${escapeHtml(rawMatch || content)}</span>`;
 		}
 
-		// Wrap display-mode output in a scrollable container for overflow safety
 		if (isBlock && rendered) {
 			rendered = `<div class="latex-display-wrapper">${rendered}</div>`;
 		}
@@ -1067,9 +945,7 @@ export function injectMath(html, mathBlocks) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Async MathJax retry — called after the page has fully loaded if KaTeX was
-// unavailable at injection time.  Finds all .latex-pending spans and
-// re-renders them with MathJax once it's ready.
+// Async MathJax retry
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function retryPendingMath(containerEl = document.body) {
@@ -1077,14 +953,13 @@ export async function retryPendingMath(containerEl = document.body) {
 	const pending = Array.from(containerEl.querySelectorAll('.latex-pending[data-latex]'));
 	if (pending.length === 0) return;
 
-	// Wait up to 5 s for MathJax to become ready
 	let waited = 0;
 	while ((!window.MathJax || !window.MathJax.tex2svg) && waited < 5000) {
 		await new Promise(r => setTimeout(r, 200));
 		waited += 200;
 	}
 
-	if (!window.MathJax || !window.MathJax.tex2svg) return; // gave up
+	if (!window.MathJax || !window.MathJax.tex2svg) return;
 
 	for (const el of pending) {
 		const src    = el.dataset.latex || '';
@@ -1097,22 +972,7 @@ export async function retryPendingMath(containerEl = document.body) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Quick delimiter normaliser
-// Some LLM outputs use non-standard forms; this normalises them before the
-// main pipeline runs so nothing slips through MATH_REGEX.
-//
-//  Model quirks handled:
-//    • Lone $ on its own line wrapping multi-line content  →  $$...$$
-//        Several models (Claude, GPT-4o, etc.) emit display math as:
-//            $
-//            \begin{aligned}...\end{aligned}
-//            $
-//        instead of the standard $$...$$.
-//    • Lone $ on its own line wrapping a single line     →  $$..$$
-//    • $$ ... $$ with leading/trailing blank lines inside
-//    • \[ ... \] or \( ... \) with stray newlines right inside the bracket
-//    • Unicode prime ′ (U+2032) → ASCII apostrophe '
-//    • Unicode minus − (U+2212) → ASCII hyphen-minus -
+// normaliseMathDelimiters
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function normaliseMathDelimiters(text) {
@@ -1120,608 +980,1150 @@ export function normaliseMathDelimiters(text) {
 
 	let t = text;
 
-	// ── 1. Lone $ on its own line  →  $$ (multi-line content) ──────────────
-	// Handles the pattern some models emit:
-	//   $
-	//   \begin{aligned}...\end{aligned}
-	//   $
-	// Matches a $ that is the only non-whitespace character on a line,
-	// followed by at least one newline of content (2+ lines), closed by
-	// another lone $, and rewrites to proper $$ delimiters.
-	// The guard ensures we don't corrupt already-correct $$ blocks.
+	// ── 0. Rescue citation commands from $...$ wrapping (same as preprocessLatexText step -1)
+	// extractMath calls normaliseMathDelimiters directly, so we need this here too.
+	t = t.replace(
+		/\$\s*(\\(?:cite[a-zA-Z]*|textcite|Textcite|parencite|Parencite|autocite|Autocite|fullcite|footcite|footcitetext|nocite)\*?\s*(?:\[[^\]]*\]\s*){0,2}\{[^}]+\})\s*\$/g,
+		(_, inner) => inner.trim()
+	);
+
 	t = t.replace(
 		/(^|\n)([ \t]*)\$[ \t]*\n([\s\S]+?)\n([ \t]*)\$[ \t]*(?=\n|$)/g,
 		(full, pre, _indent, inner, _indent2) => {
-			// Already $$ — leave alone
 			if (/^\$/.test(inner.trimStart()) || /\$$/.test(inner.trimEnd())) return full;
 			return `${pre}\n$$\n${inner}\n$$`;
 		}
 	);
 
-	// ── 2. Lone $ wrapping a single line of content ─────────────────────────
-	// e.g.  "$\n x = y \n$"  on three lines
 	t = t.replace(/(^|\n)[ \t]*\$[ \t]*\n([^\n$]+)\n[ \t]*\$[ \t]*(?=\n|$)/g,
 		(_, pre, inner) => `${pre}\n$$${inner.trim()}$$`
 	);
 
-	// ── 3. Trim blank lines inside existing $$ blocks ───────────────────────
 	t = t.replace(/\$\$[ \t]*\n([\s\S]*?)[ \t]*\n[ \t]*\$\$/g,
 		(_, inner) => `$$\n${inner.trim()}\n$$`
 	);
 
-	// ── 4. \[ with stray spaces/newlines just inside the bracket ────────────
 	t = t.replace(/\\\[\s*\n/g, '\\[\n');
 	t = t.replace(/\n\s*\\\]/g, '\n\\]');
-
-	// ── 5. \( with stray spaces/newlines just inside ─────────────────────────
 	t = t.replace(/\\\(\s*\n/g, '\\(');
 	t = t.replace(/\n\s*\\\)/g, '\\)');
-
-	// ── 6. Unicode prime → ASCII apostrophe (valid in TeX math mode) ────────
 	t = t.replace(/\u2032/g, "'");
-
-	// ── 7. Unicode minus sign → ASCII hyphen-minus ──────────────────────────
 	t = t.replace(/\u2212/g, '-');
 
 	return t;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BibTeX Parser & Bibliography Database
+// BibTeX Parser & Bibliography Database (v3)
+//
+//  Key improvements over v1/v2:
+//   • Depth-aware brace parser handles arbitrarily nested braces and values
+//   • Full @string / @comment / @preamble support
+//   • # concatenation in field values
+//   • All 18 standard entry types with per-type academic formatting
+//   • Multiple bibliography styles: plain, ieee, alpha, authoryear,
+//     apa, chicago, harvard, mla, vancouver
+//   • Per-message citation numbering (correct for IEEE ordering)
+//   • Anchor navigation: clicking [N] scrolls to the reference entry
+//   • Hover tooltip cards (initialised in initBibTooltips below)
+//   • \addbibresource / \bibliographystyle silently consumed
+//   • \printbibliography[style=…,type=…] option parsing
+//   • thebibliography / \bibitem environment
+//   • Auto-bibliography: appended if citations exist but no \printbibliography
+//   • ```bibtex code blocks are pre-scanned (Step 0 of preprocessLatexText)
+//     and also intercepted by the markdown renderer in markdown.js
+//   • DOI / URL rendered as clickable links
+//   • Entry-type badges (Article / Book / Conf. etc.)
+//   • Missing-key citations rendered with a distinct warning style
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── Built-in month string macros (also populated from @string entries) ────────
+const _bibStringMacros = new Map([
+	['jan','January'],  ['feb','February'], ['mar','March'],
+	['apr','April'],    ['may','May'],       ['jun','June'],
+	['jul','July'],     ['aug','August'],    ['sep','September'],
+	['oct','October'],  ['nov','November'],  ['dec','December'],
+	['january','January'],   ['february','February'],  ['march','March'],
+	['april','April'],       ['june','June'],           ['july','July'],
+	['august','August'],     ['september','September'], ['october','October'],
+	['november','November'], ['december','December'],
+]);
+
 /**
- * Global bibliography database - stores all parsed BibTeX entries.
- * Keys are citation IDs, values are entry objects with all fields.
+ * Global bibliography database — accumulates across messages in the conversation.
+ * Keys are citation keys (strings), values are entry objects.
  */
 const bibliographyDatabase = new Map();
 
-/**
- * Current bibliography style: 'plain', 'ieee', 'alpha', 'authoryear'
- */
+/** Current default style — changed by \bibliographystyle{} or parseBibtex(src, style) */
 let bibliographyStyle = 'plain';
 
+// ── Low-level brace parser ────────────────────────────────────────────────────
+
 /**
- * Parse a BibTeX entry string and extract all fields.
- * Handles standard BibTeX format:
- *   @article{key,
- *     author = {Author Name},
- *     title = {Title},
- *     journal = {Journal},
- *     year = {2024}
- *   }
+ * Find the index of the closing brace that matches the opening brace at startIdx.
+ * Skips escaped characters and handles nesting.
+ */
+function _findMatchingBrace(str, startIdx) {
+	let depth = 1;
+	for (let i = startIdx + 1; i < str.length; i++) {
+		const ch = str[i];
+		if (ch === '\\') { i++; continue; } // skip escaped char
+		if (ch === '{') depth++;
+		else if (ch === '}') { depth--; if (depth === 0) return i; }
+	}
+	return str.length - 1;
+}
+
+/**
+ * Parse a BibTeX field value starting right after the '=' character.
+ * Handles {brace groups}, "quoted strings", bare numbers/macro names,
+ * and # concatenation.
+ * Returns { value: string, endIdx: number }
+ */
+function _parseBibtexFieldValue(str, startIdx) {
+	let i = startIdx;
+	while (i < str.length && /[ \t\r\n]/.test(str[i])) i++;
+	if (i >= str.length) return { value: '', endIdx: i };
+
+	const parts = [];
+
+	const readSegment = () => {
+		while (i < str.length && /[ \t\r\n]/.test(str[i])) i++;
+		if (i >= str.length) return false;
+
+		if (str[i] === '{') {
+			const close = _findMatchingBrace(str, i);
+			parts.push(str.slice(i + 1, close));
+			i = close + 1;
+			return true;
+		}
+
+		if (str[i] === '"') {
+			let j = i + 1;
+			while (j < str.length) {
+				if (str[j] === '"' && str[j - 1] !== '\\') break;
+				j++;
+			}
+			parts.push(str.slice(i + 1, j));
+			i = j + 1;
+			return true;
+		}
+
+		// Bare token: number or @string macro name
+		let j = i;
+		while (j < str.length && /[^\s,}#]/.test(str[j])) j++;
+		const token = str.slice(i, j).trim();
+		if (token) {
+			const expanded = _bibStringMacros.get(token.toLowerCase());
+			parts.push(expanded !== undefined ? expanded : token);
+		}
+		i = j;
+		return token.length > 0;
+	};
+
+	readSegment();
+	while (i < str.length) {
+		while (i < str.length && /[ \t\r\n]/.test(str[i])) i++;
+		if (str[i] === '#') { i++; readSegment(); }
+		else break;
+	}
+
+	return { value: parts.join(''), endIdx: i };
+}
+
+/** Strip LaTeX accent commands and braces from a field value string */
+function _cleanBibtexValue(val) {
+	if (!val) return '';
+	return val
+		.replace(/\\&/g, '&').replace(/\\%/g, '%').replace(/\\\$/g, '$')
+		.replace(/\\#/g, '#').replace(/\\_/g, '_')
+		.replace(/\\{/g, '{').replace(/\\}/g, '}')
+		.replace(/\\~/g, '~').replace(/\\ /g, ' ')
+		.replace(/\\'([a-zA-Z])/g, (_, c) => (c + '\u0301').normalize('NFC'))
+		.replace(/\\`([a-zA-Z])/g,  (_, c) => (c + '\u0300').normalize('NFC'))
+		.replace(/\\"([a-zA-Z])/g,  (_, c) => (c + '\u0308').normalize('NFC'))
+		.replace(/\\c\{([cCsStT])\}/g, (_, c) => (c + '\u0327').normalize('NFC'))
+		.replace(/\\v\{([a-zA-Z])\}/g,  (_, c) => (c + '\u030C').normalize('NFC'))
+		.replace(/\\ss\b/g, 'ß')
+		.replace(/\\ae\b/gi, (m) => m[1] === 'A' ? 'Æ' : 'æ')
+		.replace(/\\oe\b/gi, (m) => m[1] === 'O' ? 'Œ' : 'œ')
+		.replace(/\\o\b/gi,  (m) => m[1] === 'O' ? 'Ø' : 'ø')
+		.replace(/\\l\b/gi,  (m) => m[1] === 'L' ? 'Ł' : 'ł')
+		.replace(/\\(?:emph|textit|textbf|textrm|texttt|textsf|textsc|textmd|textup)\{([^}]+)\}/g, '$1')
+		.replace(/\{([^{}]*)\}/g, '$1')   // unwrap remaining simple brace groups
+		.replace(/^\s+|\s+$/g, '')
+		.replace(/\s{2,}/g, ' ');
+}
+
+/**
+ * Parse one complete @TYPE{key, field=value, ...} block string into an entry object.
+ * Returns null if parsing fails.
  */
 function parseBibtexEntry(entryText) {
+	if (!entryText) return null;
 	const entry = {};
-	
-	// Match entry type and key: @article{key, ...
-	const typeMatch = entryText.match(/^@(\w+)\s*\{\s*([^,]+)\s*,/);
+
+	const typeMatch = entryText.match(/^@(\w+)\s*[\{(]\s*/);
 	if (!typeMatch) return null;
-	
 	entry.type = typeMatch[1].toLowerCase();
-	entry.id = typeMatch[2].trim();
-	
-	// Find the content between the first { after the key and its matching }
-	const keyIndex = entryText.indexOf(entry.id);
-	const contentStart = entryText.indexOf('{', keyIndex) + 1;
-	const contentEnd = findMatchingBrace(entryText, contentStart - 1);
-	const content = entryText.slice(contentStart, contentEnd);
-	
-	// Extract fields: fieldname = {value} or fieldname = "value" or fieldname = value
-	const fieldRegex = /(\w+)\s*=\s*(?:\{([\s\S]*?)\}|"([^"\\]*(?:\\.[^"\\]*)*)"|(\d+))/g;
-	let fieldMatch;
-	
-	while ((fieldMatch = fieldRegex.exec(content)) !== null) {
-		const fieldName = fieldMatch[1].toLowerCase();
-		let fieldValue = fieldMatch[2] || fieldMatch[3] || fieldMatch[4] || '';
-		
-		// Clean up BibTeX escape sequences
-		fieldValue = fieldValue
-			.replace(/\\&/g, '&')
-			.replace(/\\%/g, '%')
-			.replace(/\\\$/g, '$')
-			.replace(/\\#/g, '#')
-			.replace(/\\_/g, '_')
-			.replace(/\\{/g, '{')
-			.replace(/\\}/g, '}')
-			.replace(/\\~/g, '~')
-			.replace(/\\ /g, ' ')
-			.replace(/\{|\}/g, '')
-			.trim();
-		
-		entry[fieldName] = fieldValue;
+	let i = typeMatch[0].length;
+
+	// Citation key: everything up to the first comma or closing delimiter
+	let keyEnd = i;
+	while (keyEnd < entryText.length && entryText[keyEnd] !== ',' && entryText[keyEnd] !== '}' && entryText[keyEnd] !== ')') keyEnd++;
+	entry.id = entryText.slice(i, keyEnd).trim();
+	if (!entry.id) return null;
+	i = keyEnd;
+	if (i < entryText.length && (entryText[i] === ',' || entryText[i] === ' ')) i++;
+
+	// Field loop
+	while (i < entryText.length) {
+		// Skip whitespace / commas
+		while (i < entryText.length && /[\s,]/.test(entryText[i])) i++;
+		if (i >= entryText.length || entryText[i] === '}' || entryText[i] === ')') break;
+
+		// Field name
+		let nameEnd = i;
+		while (nameEnd < entryText.length && /[a-zA-Z_\-]/.test(entryText[nameEnd])) nameEnd++;
+		if (nameEnd === i) { i++; continue; }
+		const fieldName = entryText.slice(i, nameEnd).toLowerCase();
+		i = nameEnd;
+
+		// Skip to '='
+		while (i < entryText.length && /\s/.test(entryText[i])) i++;
+		if (i >= entryText.length || entryText[i] !== '=') continue;
+		i++; // consume '='
+
+		const { value, endIdx } = _parseBibtexFieldValue(entryText, i);
+		entry[fieldName] = _cleanBibtexValue(value);
+		i = endIdx;
 	}
-	
+
 	return entry;
 }
 
 /**
- * Find matching closing brace, handling nested braces.
+ * Parse a full BibTeX source string (file content or inline block).
+ * Processes @string, @comment, @preamble, and all entry types.
+ * Results are merged into the global bibliographyDatabase.
+ *
+ * @param {string} bibContent - Raw BibTeX source
+ * @param {string} [style]    - Bibliography style name
+ * @returns {number} Total number of entries in database
  */
-function findMatchingBrace(str, startIdx) {
-	let depth = 1;
-	for (let i = startIdx + 1; i < str.length; i++) {
-		if (str[i] === '{') depth++;
-		else if (str[i] === '}') {
-			depth--;
-			if (depth === 0) return i;
-		}
-	}
-	return str.length;
-}
+export function parseBibtex(bibContent, style) {
+	if (style) bibliographyStyle = style;
+	if (!bibContent || !bibContent.trim()) return bibliographyDatabase.size;
 
-/**
- * Parse a complete BibTeX file content and populate the database.
- * @param {string} bibContent - The raw BibTeX file content
- * @param {string} style - Bibliography style: 'plain', 'ieee', 'alpha', 'authoryear'
- */
-export function parseBibtex(bibContent, style = 'plain') {
-	bibliographyStyle = style;
-	
-	// Find all @entry{...} blocks - handle nested braces
-	const entries = [];
-	const entryRegex = /@\w+\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
-	let match;
-	
-	while ((match = entryRegex.exec(bibContent)) !== null) {
-		entries.push(match[0]);
+	// ── @comment{...} — remove wholesale ────────────────────────────────────
+	// Use a depth-aware approach
+	let src = bibContent;
+	src = src.replace(/@comment\s*\{/gi, (m, offset) => {
+		// Just mark; we'll strip below
+		return m;
+	});
+	// Simple regex is sufficient since @comment blocks don't typically nest
+	src = src.replace(/@comment\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/gi, '');
+	src = src.replace(/@comment[^\n]*/gi, '');
+
+	// ── @string{name = {value}} — register macros ────────────────────────────
+	const strRx = /@string\s*[\{(]\s*(\w+)\s*=\s*/gi;
+	let sm;
+	while ((sm = strRx.exec(src)) !== null) {
+		const { value } = _parseBibtexFieldValue(src, strRx.lastIndex);
+		_bibStringMacros.set(sm[1].toLowerCase(), _cleanBibtexValue(value));
 	}
-	
-	for (const entryText of entries) {
+
+	// ── All other @TYPE entries — depth-aware scan ───────────────────────────
+	const atRx = /@(\w+)\s*[\{(]/g;
+	let atM;
+	while ((atM = atRx.exec(src)) !== null) {
+		const typeLower = atM[1].toLowerCase();
+		if (typeLower === 'string' || typeLower === 'preamble' || typeLower === 'comment') continue;
+
+		// Find the open delimiter position (last char of match)
+		const openIdx = atM.index + atM[0].length - 1;
+		let closeIdx;
+		if (src[openIdx] === '{') {
+			closeIdx = _findMatchingBrace(src, openIdx);
+		} else {
+			// Parenthesised form @type(...) — find matching )
+			let depth = 1;
+			let j = openIdx + 1;
+			while (j < src.length && depth > 0) {
+				if (src[j] === '(') depth++;
+				else if (src[j] === ')') depth--;
+				j++;
+			}
+			closeIdx = j - 1;
+		}
+
+		const entryText = src.slice(atM.index, closeIdx + 1);
 		const entry = parseBibtexEntry(entryText);
-		if (entry && entry.id) {
+		if (entry && entry.id && entry.type !== 'string' && entry.type !== 'preamble') {
 			bibliographyDatabase.set(entry.id, entry);
 		}
 	}
-	
+
 	return bibliographyDatabase.size;
 }
 
-/**
- * Load a BibTeX file from a URL.
- * @param {string} url - URL to the .bib file
- * @param {string} style - Bibliography style
- * @returns {Promise<number>} - Number of entries loaded
- */
-export async function loadBibtex(url, style = 'plain') {
-	try {
-		const response = await fetch(url);
-		if (!response.ok) throw new Error('Failed to load BibTeX: ' + response.status);
-		const content = await response.text();
-		return parseBibtex(content, style);
-	} catch (err) {
-		console.error('Error loading BibTeX:', err);
-		return 0;
-	}
-}
+// ── Exported utility API ──────────────────────────────────────────────────────
 
-/**
- * Add a single BibTeX entry to the database.
- * @param {Object} entry - Entry object with type, id, and fields
- */
+/** Add or overwrite a single entry by object */
 export function addBibtexEntry(entry) {
-	if (entry && entry.id) {
-		bibliographyDatabase.set(entry.id, entry);
-	}
+	if (entry && entry.id) bibliographyDatabase.set(entry.id, entry);
 }
 
-/**
- * Get a bibliography entry by ID.
- * @param {string} id - Citation key
- * @returns {Object|null} - Entry object or null if not found
- */
+/** Retrieve one entry by citation key, or null */
 export function getBibtexEntry(id) {
 	return bibliographyDatabase.get(id) || null;
 }
 
-/**
- * Get all bibliography entries.
- * @returns {Map} - Map of all entries
- */
+/** Return the full database Map */
 export function getAllBibtexEntries() {
 	return bibliographyDatabase;
 }
 
-/**
- * Clear the bibliography database.
- */
+/** Clear the entire database */
 export function clearBibliography() {
 	bibliographyDatabase.clear();
 }
 
+// ── Author name helpers ───────────────────────────────────────────────────────
+
 /**
- * Format author names for display.
- * Handles "Last, First" and "First Last" formats.
+ * Split an author/editor string on " and " (case-insensitive).
+ * Returns an array of individual author strings.
  */
-function formatAuthors(authorsStr) {
-	if (!authorsStr) return '';
-	
-	// Split by "and" (BibTeX separator)
-	const authors = authorsStr.split(/\s+and\s+/i);
-	
+function _splitAuthors(str) {
+	if (!str) return [];
+	return str.split(/\s+and\s+/i).map(a => a.trim()).filter(Boolean);
+}
+
+/**
+ * Convert a single BibTeX author string to display form.
+ * Handles both "Last, First" and "First Last" formats.
+ */
+function _formatOneAuthor(raw) {
+	raw = (raw || '').trim();
+	if (!raw) return '';
+	if (raw.toLowerCase() === 'others') return 'et al.';
+	if (raw.includes(',')) {
+		const [last, ...rest] = raw.split(',');
+		const first = rest.join(',').trim();
+		return first ? first + ' ' + last.trim() : last.trim();
+	}
+	return raw;
+}
+
+/**
+ * Extract just the last name from a BibTeX author token.
+ */
+function _lastNameOf(raw) {
+	raw = (raw || '').trim();
+	if (raw.includes(',')) return raw.split(',')[0].trim();
+	const parts = raw.split(/\s+/);
+	return parts[parts.length - 1] || raw;
+}
+
+/**
+ * Short author string for inline citations.
+ * "Smith", "Smith & Jones", "Smith et al."
+ */
+function _authorsShort(authorsStr) {
+	const authors = _splitAuthors(authorsStr);
+	if (!authors.length) return '';
+	if (authors[0].toLowerCase().trim() === 'others' || authors[0].trim() === '') return 'et al.';
+	const ln0 = _lastNameOf(authors[0]);
+	if (authors.length === 1) return ln0;
+	if (authors.length === 2 && authors[1].toLowerCase().trim() !== 'others') {
+		return ln0 + ' & ' + _lastNameOf(authors[1]);
+	}
+	return ln0 + ' et al.';
+}
+
+/**
+ * Full author string for bibliography entries (up to 6 before et al.).
+ */
+function _authorsLong(authorsStr, maxFull = 6) {
+	const authors = _splitAuthors(authorsStr);
+	if (!authors.length) return '';
+	const formatted = authors.map(_formatOneAuthor);
+	// Handle explicit "others"
+	const hasOthers = formatted[formatted.length - 1] === 'et al.';
+	if (hasOthers) {
+		const main = formatted.slice(0, -1);
+		return main.join(', ') + ', et al.';
+	}
+	if (formatted.length <= maxFull) {
+		if (formatted.length === 1) return formatted[0];
+		return formatted.slice(0, -1).join(', ') + ' & ' + formatted[formatted.length - 1];
+	}
+	return formatted.slice(0, 3).join(', ') + ', et al.';
+}
+
+// ── Alpha label generator ─────────────────────────────────────────────────────
+
+function _alphaLabel(entry) {
+	const authors = _splitAuthors(entry.author || entry.editor || '');
+	const year2 = (entry.year || '??').replace(/\D/g, '').slice(-2);
+
+	if (!authors.length) {
+		return (entry.id || 'anon').slice(0, 4) + year2;
+	}
 	if (authors.length === 1) {
-		return formatSingleAuthor(authors[0]);
-	} else if (authors.length === 2) {
-		return formatSingleAuthor(authors[0]) + ' & ' + formatSingleAuthor(authors[1]);
-	} else {
-		return formatSingleAuthor(authors[0]) + ', et al.';
+		const ln = _lastNameOf(authors[0]);
+		return ln.slice(0, 3) + year2;
 	}
+	// Multiple: first letter of each last name, up to 3
+	const initials = authors
+		.slice(0, 3)
+		.map(a => (_lastNameOf(a)[0] || '?').toUpperCase())
+		.join('');
+	return initials + year2;
 }
 
-/**
- * Format a single author name.
- */
-function formatSingleAuthor(author) {
-	author = author.trim();
-	
-	// Check for "Last, First" format
-	if (author.includes(',')) {
-		const parts = author.split(',');
-		const lastName = parts[0].trim();
-		const firstName = parts.slice(1).join(',').trim();
-		return firstName ? firstName + ' ' + lastName : lastName;
-	}
-	
-	return author;
+// ── Entry-type badge ──────────────────────────────────────────────────────────
+
+const _TYPE_LABELS = {
+	article:         'Article',
+	book:            'Book',
+	inproceedings:   'Conf.',
+	conference:      'Conf.',
+	proceedings:     'Proceedings',
+	incollection:    'Book Ch.',
+	inbook:          'Book Ch.',
+	phdthesis:       'PhD Thesis',
+	mastersthesis:   "Master's",
+	techreport:      'Tech Rep.',
+	report:          'Report',
+	misc:            'Misc',
+	online:          'Online',
+	electronic:      'Online',
+	www:             'Online',
+	software:        'Software',
+	dataset:         'Dataset',
+	unpublished:     'Unpub.',
+	manual:          'Manual',
+	booklet:         'Booklet',
+	patent:          'Patent',
+};
+
+function _typeBadge(type) {
+	const label = _TYPE_LABELS[type] || type;
+	// CSS class uses the type name directly (see bibliography.css)
+	return `<span class="bib-type-badge bib-type-${escapeHtml(type)}">${escapeHtml(label)}</span>`;
 }
 
+// ── Link helpers ──────────────────────────────────────────────────────────────
+
+function _doiLink(doi) {
+	if (!doi) return '';
+	const href = /^https?:\/\//i.test(doi) ? doi : 'https://doi.org/' + doi;
+	const label = doi.replace(/^https?:\/\/doi\.org\//i, '');
+	return ` <a href="${escapeHtml(href)}" class="bib-doi-link" target="_blank" rel="noopener noreferrer">doi:${escapeHtml(label)}</a>`;
+}
+
+function _urlLink(url, label) {
+	if (!url) return '';
+	return ` <a href="${escapeHtml(url)}" class="bib-url-link" target="_blank" rel="noopener noreferrer">${escapeHtml(label || url)}</a>`;
+}
+
+// ── Per-type entry content renderer ──────────────────────────────────────────
+
 /**
- * Format a single citation for display.
- * @param {Object} entry - BibTeX entry
- * @param {string} style - Citation style: 'author', 'year', 'number', 'full'
- * @returns {string} - Formatted citation
+ * Renders the text body of a bibliography entry (everything after the label).
+ * Returns an HTML string.
  */
-function formatCitation(entry, style) {
-	if (!entry) return '';
-	
-	var authorStr = formatAuthors(entry.author);
-	var year = entry.year || 'n.d.';
-	var title = entry.title || '';
-	
-	switch (style) {
-		case 'author':
-			return authorStr ? authorStr + ' (' + year + ')' : '(' + year + ')';
-		case 'year':
-			return '(' + year + ')';
-		case 'number':
-			return entry.id;
-		case 'full':
-			var full = '';
-			if (authorStr) full += authorStr;
-			if (year) full += (full ? ', ' : '') + year;
-			if (title) full += (full ? '. ' : '') + title;
-			if (entry.journal) full += (full ? '. ' : '') + '<em>' + entry.journal + '</em>';
-			if (entry.volume) full += ', ' + entry.volume;
-			if (entry.pages) full += ', ' + entry.pages;
-			return full;
+function _renderEntryBody(entry) {
+	const eh = escapeHtml; // shorthand
+
+	const authors    = _authorsLong(entry.author);
+	const editors    = _authorsLong(entry.editor);
+	const title      = entry.title      || '';
+	const year       = entry.year       || 'n.d.';
+	const journal    = entry.journal    || '';
+	const booktitle  = entry.booktitle  || '';
+	const publisher  = entry.publisher  || '';
+	const address    = entry.address    || '';
+	const volume     = entry.volume     || '';
+	const number     = entry.number     || '';
+	const pages      = entry.pages      || '';
+	const chapter    = entry.chapter    || '';
+	const school     = entry.school || entry.institution || '';
+	const institution= entry.institution || '';
+	const howpub     = entry.howpublished || '';
+	const edition    = entry.edition    || '';
+	const series     = entry.series     || '';
+	const note       = entry.note       || '';
+	const doi        = entry.doi        || '';
+	const url        = entry.url        || '';
+	const version    = entry.version    || '';
+	const urldate    = entry.urldate || entry.visited || '';
+
+	// Build publisher+address string
+	const pubStr = [publisher, address].filter(Boolean).join(', ');
+
+	// Common HTML fragments
+	const A   = authors ? `<span class="bib-authors">${eh(authors)}.</span> ` : '';
+	const Ed  = editors ? `<span class="bib-authors">${eh(editors)}, ${editors.includes('&') ? 'Eds.' : 'Ed.'}</span> ` : '';
+	const Y   = ` <span class="bib-year">(${eh(year)})</span>.`;
+	const T   = title ? ` \u201C<span class="bib-title">${eh(title)}</span>.\u201D` : '';
+	const TI  = title ? ` <em class="bib-title">${eh(title)}</em>.` : '';   // italic (for books)
+	const V   = volume ? `, <strong>${eh(volume)}</strong>` : '';
+	const NN  = number ? `(${eh(number)})` : '';
+	const PP  = pages  ? (journal ? ':' + eh(pages) : ` pp.\u00A0${eh(pages)}`) : '';
+	const DOI = _doiLink(doi);
+	const URL = !doi && url ? _urlLink(url) : '';
+	const NOTE= note ? ` <span style="color:var(--bib-text-dim)">${eh(note)}.</span>` : '';
+	const PUB = pubStr ? ` ${eh(pubStr)}.` : '';
+	const SER = series ? ` <em>${eh(series)}</em>.` : '';
+
+	switch (entry.type) {
+		case 'article':
+			return A + Y + T +
+				(journal ? ` <em class="bib-venue">${eh(journal)}</em>` : '') +
+				V + NN + PP + '.' + DOI + URL + NOTE;
+
+		case 'book':
+			return (authors ? A : Ed) + Y + TI +
+				(edition ? ` ${eh(edition)}\u00A0ed.` : '') +
+				SER + PUB + DOI + URL + NOTE;
+
+		case 'inproceedings':
+		case 'conference':
+			return A + Y + T +
+				(booktitle ? ` In <em class="bib-venue">${eh(booktitle)}</em>.` : '') +
+				(editors   ? ` Ed.\u00A0${eh(_authorsLong(entry.editor))}.` : '') +
+				(pages     ? ` pp.\u00A0${eh(pages)}.` : '') +
+				PUB + DOI + URL + NOTE;
+
+		case 'proceedings':
+			return (authors ? A : Ed) + Y + TI + SER + PUB + DOI + URL + NOTE;
+
+		case 'incollection':
+			return A + Y + T +
+				(booktitle ? ` In <em class="bib-venue">${eh(booktitle)}</em>` : '') +
+				(editors   ? `, ed.\u00A0${eh(_authorsLong(entry.editor))}` : '') +
+				(pages     ? `, pp.\u00A0${eh(pages)}` : '') + '.' +
+				PUB + DOI + URL + NOTE;
+
+		case 'inbook':
+			return A + Y + TI +
+				(chapter   ? ` Ch.\u00A0${eh(chapter)}.` : '') +
+				(pages     ? ` pp.\u00A0${eh(pages)}.` : '') +
+				PUB + DOI + URL + NOTE;
+
+		case 'phdthesis':
+			return A + Y + TI +
+				' PhD thesis' + (school ? `, ${eh(school)}` : '') + '.' + URL + NOTE;
+
+		case 'mastersthesis':
+			return A + Y + TI +
+				" Master\u2019s thesis" + (school ? `, ${eh(school)}` : '') + '.' + URL + NOTE;
+
+		case 'techreport':
+		case 'report':
+			return A + Y + TI +
+				' Technical Report' +
+				(entry.number ? `\u00A0${eh(entry.number)}` : '') +
+				(institution  ? `, ${eh(institution)}`        : '') + '.' +
+				URL + NOTE;
+
+		case 'manual':
+			return (authors
+				? A
+				: (entry.organization ? `<span class="bib-authors">${eh(entry.organization)}.</span> ` : '')) +
+				Y + TI +
+				(entry.organization && authors ? ` ${eh(entry.organization)}.` : '') +
+				(edition ? ` ${eh(edition)}\u00A0ed.` : '') +
+				URL + NOTE;
+
+		case 'booklet':
+			return A + Y + TI + (howpub ? ` ${eh(howpub)}.` : '') + URL + NOTE;
+
+		case 'unpublished':
+			return A + Y + T + ' Unpublished manuscript.' + NOTE;
+
+		case 'patent':
+			return A + Y + T +
+				(entry.number ? ` Patent\u00A0${eh(entry.number)}.` : '') + NOTE;
+
+		case 'misc':
+		case 'online':
+		case 'electronic':
+		case 'www':
+		case 'software':
+		case 'dataset': {
+			let out = (authors ? A : '') + Y;
+			if (title)   out += T;
+			if (version) out += ` v${eh(version)}.`;
+			if (howpub)  out += ` ${eh(howpub)}.`;
+			if (doi)     out += DOI;
+			else if (url) out += _urlLink(url);
+			if (urldate) out += ` [Accessed: ${eh(urldate)}].`;
+			if (note)    out += NOTE;
+			return out;
+		}
+
 		default:
-			return authorStr + ' (' + year + ')';
+			return (authors ? A : '') + Y + T +
+				(journal    ? ` <em>${eh(journal)}</em>.`    : '') +
+				(booktitle  ? ` <em>${eh(booktitle)}</em>.`  : '') +
+				PUB + DOI + URL + NOTE;
 	}
 }
 
+// ── Inline source card renderer ─────────────────────────────────────────────
+
 /**
- * Render a bibliography entry in HTML.
- * @param {Object} entry - BibTeX entry
- * @param {string} style - Bibliography style
- * @param {number} index - Entry index for numbering
- * @returns {string} - HTML representation
+ * Render a single parsed BibTeX entry as a .bib-source-card HTML string.
+ * Used when the AI pastes a bare @TYPE{...} block outside a code fence.
  */
-function renderBibliographyEntry(entry, style, index) {
-	if (!entry) return '';
-	
-	var html = '<div class="latex-bibliography-entry" data-cite-key="' + entry.id + '">';
-	
-	var authors = formatAuthors(entry.author);
-	var year = entry.year || 'n.d.';
-	
-	switch (style) {
-		case 'plain':
-		case 'ieee':
-			// [N] Authors. Title. Journal, Volume(Number), Pages, Year.
-			var numLabel = index + 1;
-			html += '<span class="bib-number">[' + numLabel + ']</span> ';
-			if (authors) html += authors + '. ';
-			if (entry.title) html += '<em>' + entry.title + '</em>. ';
-			if (entry.journal) html += entry.journal;
-			if (entry.volume) html += ', ' + entry.volume;
-			if (entry.number) html += '(' + entry.number + ')';
-			if (entry.pages) html += ', ' + entry.pages;
-			if (entry.year) html += ', ' + year;
-			html += '.';
-			break;
-		
-		case 'alpha':
-			// [Abc94] Authors. Title. Journal, Year.
-			var alphaLabel = generateAlphaLabel(entry);
-			html += '<span class="bib-alpha">[' + alphaLabel + ']</span> ';
-			if (authors) html += authors + '. ';
-			if (entry.title) html += '<em>' + entry.title + '</em>. ';
-			if (entry.journal) html += entry.journal;
-			if (entry.year) html += ', ' + year;
-			html += '.';
-			break;
-		
-		case 'authoryear':
-			// Authors (Year). Title. Journal, Volume(Number), Pages.
-			if (authors) html += authors + ' ';
-			html += '(' + year + '). ';
-			if (entry.title) html += '<em>' + entry.title + '</em>. ';
-			if (entry.journal) html += entry.journal;
-			if (entry.volume) html += ', ' + entry.volume;
-			if (entry.number) html += '(' + entry.number + ')';
-			if (entry.pages) html += ', ' + entry.pages;
-			html += '.';
-			break;
-		
-		default:
-			if (authors) html += authors + '. ';
-			if (entry.title) html += '<em>' + entry.title + '</em>. ';
-			if (entry.year) html += '(' + year + ')';
+function _renderInlineSourceCard(entry, rawText) {
+	const key    = entry.id || '';
+	const type   = entry.type || '';
+	const firstAuthorRaw = (entry.author || entry.editor || '').split(/\s+and\s+/i)[0] || '';
+	const authorShort = firstAuthorRaw.includes(',')
+		? firstAuthorRaw.split(',')[0].trim()
+		: firstAuthorRaw.split(/\s+/).pop() || '';
+	const titleShort = entry.title
+		? escapeHtml(entry.title.slice(0, 72) + (entry.title.length > 72 ? '\u2026' : ''))
+		: '';
+	const infoParts = [
+		authorShort ? escapeHtml(authorShort) : null,
+		titleShort  ? `<em>${titleShort}</em>` : null,
+		entry.year  ? escapeHtml(entry.year) : null,
+	].filter(Boolean);
+
+	const entryRow =
+		`<div class="bib-source-entry">` +
+		`<span class="bib-source-entry-key">${escapeHtml(key)}</span>` +
+		`<span class="bib-source-entry-info">${infoParts.join(', ')}</span>` +
+		`</div>`;
+
+	const rawEscaped = escapeHtml(rawText);
+
+	return (
+		`<details class="bib-source-card">` +
+		`<summary>` +
+		`<span class="bib-source-icon">\uD83D\uDCDA</span>` +
+		`<span class="bib-source-title">Bibliography Source</span>` +
+		`<span class="bib-source-count">1 entry</span>` +
+		`<span class="bib-source-chevron">\u25BC</span>` +
+		`</summary>` +
+		`<div class="bib-source-entries">${entryRow}</div>` +
+		`<div class="bib-source-raw">${rawEscaped}</div>` +
+		`</details>`
+	);
+}
+
+
+// ── Tooltip HTML builder ──────────────────────────────────────────────────────
+
+function _tooltipHtml(entry) {
+	const authors = _authorsShort(entry.author || entry.editor || '');
+	const title   = entry.title  || '';
+	const year    = entry.year   || 'n.d.';
+	const venue   = entry.journal || entry.booktitle || entry.school ||
+	                entry.institution || entry.howpublished || '';
+	let html = `<div class="bib-tooltip-key">${escapeHtml(entry.id)}</div>`;
+	if (authors) html += `<div class="bib-tooltip-authors">${escapeHtml(authors)}</div>`;
+	if (title)   html += `<div class="bib-tooltip-title">${escapeHtml(title.slice(0, 120) + (title.length > 120 ? '…' : ''))}</div>`;
+	if (venue || year) {
+		html += `<div class="bib-tooltip-venue">`;
+		if (venue) html += escapeHtml(venue.slice(0, 80) + (venue.length > 80 ? '…' : ''));
+		if (venue && year) html += ', ';
+		if (year) html += `<span class="bib-tooltip-year">${escapeHtml(year)}</span>`;
+		html += `</div>`;
 	}
-	
-	html += '</div>';
 	return html;
 }
 
-/**
- * Generate an alpha-style label from entry.
- */
-function generateAlphaLabel(entry) {
-	var authors = entry.author || '';
-	var year = entry.year || 'nd';
-	
-	// Get first author's last name
-	var firstAuthor = authors.split(/\s+and\s+/i)[0].trim();
-	var lastName = firstAuthor.includes(',') ? 
-		firstAuthor.split(',')[0].trim() : 
-		firstAuthor.split(' ').pop();
-	
-	// Get first 3 letters of last name
-	var prefix = lastName.substring(0, 3).toLowerCase();
-	
-	// Get last 2 digits of year
-	var yearSuffix = year.replace(/\D/g, '').slice(-2);
-	
-	return prefix + yearSuffix;
-}
+// ── Bibliography generator ────────────────────────────────────────────────────
 
 /**
- * Generate the full bibliography HTML.
- * @param {Object} options - Options for bibliography generation
- * @returns {string} - HTML bibliography
+ * Generate the complete bibliography HTML for all (or filtered) database entries.
+ *
+ * @param {object} opts - { style?: string, filter?: (entry) => boolean }
+ * @param {Map}    citationNumbers - key → citation number (mutable; determines sort/labels for ieee)
+ * @returns {string} HTML string
  */
-export function generateBibliography(options) {
-	var style = (options && options.style) ? options.style : bibliographyStyle;
-	var filter = (options && typeof options.filter === 'function') ? options.filter : null;
-	
-	// Get all entries as array
-	var entries = Array.from(bibliographyDatabase.values());
-	
-	// Apply filter if provided
-	if (filter) {
-		entries = entries.filter(filter);
-	}
-	
-	// Sort entries based on style
-	if (style === 'alpha' || style === 'plain') {
-		entries.sort(function(a, b) {
-			var authorA = (a.author || '').toLowerCase();
-			var authorB = (b.author || '').toLowerCase();
-			return authorA.localeCompare(authorB);
+export function generateBibliography(opts, citationNumbers) {
+	const style  = (opts && opts.style)  ? opts.style  : bibliographyStyle;
+	const filter = (opts && opts.filter) ? opts.filter : null;
+	const cn     = citationNumbers instanceof Map ? citationNumbers : new Map();
+
+	let entries = Array.from(bibliographyDatabase.values());
+	if (filter) entries = entries.filter(filter);
+	if (!entries.length) return '';
+
+	// ── Sort ──────────────────────────────────────────────────────────────────
+	if (style === 'ieee' || style === 'vancouver') {
+		// Order of first citation; uncited entries go to the end alphabetically
+		entries.sort((a, b) => {
+			const na = cn.has(a.id) ? cn.get(a.id) : Infinity;
+			const nb = cn.has(b.id) ? cn.get(b.id) : Infinity;
+			if (na !== nb) return na - nb;
+			return a.id.localeCompare(b.id);
 		});
-	} else if (style === 'ieee') {
-		// IEEE sorts by order of citation - use insertion order
-		entries = Array.from(bibliographyDatabase.values());
+	} else if (style === 'alpha') {
+		entries.sort((a, b) => _alphaLabel(a).localeCompare(_alphaLabel(b)));
+	} else {
+		// All other styles: alphabetical by first author surname, then year
+		entries.sort((a, b) => {
+			const la = _authorsShort(a.author || a.editor || '').toLowerCase();
+			const lb = _authorsShort(b.author || b.editor || '').toLowerCase();
+			const cmp = la.localeCompare(lb);
+			if (cmp !== 0) return cmp;
+			return (a.year || '').localeCompare(b.year || '');
+		});
 	}
-	
-	// Generate HTML
-	var html = '<div class="latex-bibliography">';
-	
-	entries.forEach(function(entry, idx) {
-		html += renderBibliographyEntry(entry, style, idx);
+
+	const count = entries.length;
+	const isAuthorYear = ['authoryear','apa','chicago','harvard','mla'].includes(style);
+
+	let html = `<div class="latex-bibliography style-${escapeHtml(style)}">` +
+		`<div class="latex-bibliography-header">` +
+		`<span class="latex-bibliography-header-icon">📚</span>` +
+		`<span>References</span>` +
+		`<span class="latex-bibliography-header-count">${count} entr${count === 1 ? 'y' : 'ies'}</span>` +
+		`</div>`;
+
+	entries.forEach((entry, idx) => {
+		let label;
+		if (style === 'alpha') {
+			label = '[' + _alphaLabel(entry) + ']';
+		} else if (isAuthorYear) {
+			label = '';
+		} else {
+			// Numbered: use citation-order number when available, else sequential
+			const n = cn.has(entry.id) ? cn.get(entry.id) : idx + 1;
+			label = '[' + n + ']';
+		}
+
+		const anchorId = 'cite-entry-' + entry.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+		html += `<div class="latex-bibliography-entry" id="${anchorId}" data-cite-key="${escapeHtml(entry.id)}">`;
+		if (!isAuthorYear) {
+			html += `<div class="bib-label-col"><span class="bib-number">${escapeHtml(label)}</span></div>`;
+		}
+		html += `<div class="bib-content-col">${_renderEntryBody(entry)}${_typeBadge(entry.type)}</div>`;
+		html += `</div>`;
 	});
-	
+
 	html += '</div>';
-	
 	return html;
 }
 
-/**
- * Render a citation command to HTML.
- * @param {string} citationKeys - Comma-separated citation keys
- * @param {string} command - Citation command type
- * @returns {string} - HTML citation
- */
-function renderCitation(citationKeys, command) {
-	var keys = citationKeys.split(/\s*,\s*/).map(function(k) { return k.trim(); }).filter(function(k) { return k; });
-	if (keys.length === 0) return '';
-	
-	var entries = keys.map(function(key) { return bibliographyDatabase.get(key); });
-	
-	// Check if we have data for any of the keys
-	var hasData = entries.some(function(e) { return e !== null && e !== undefined; });
-	
-	// If no bibliography data, fall back to original placeholder behavior
-	if (!hasData) {
-		return '<span class="latex-citation">[' + citationKeys + ']</span>';
-	}
-	
-	switch (command) {
-		case 'textcite':
-			// Author (Year)
-			return entries.map(function(e) { return e ? formatCitation(e, 'author') : '[' + e + ']'; }).join(', ');
-	
-		case 'parencite':
-		case 'citep':
-		case 'cite':
-			// (Author, Year)
-			var parenCitations = entries.map(function(e) { return e ? formatCitation(e, 'author') : '[' + e + ']'; });
-			return '<span class="latex-citation">(' + parenCitations.join(', ') + ')</span>';
-	
-		case 'citeauthor':
-			return entries.map(function(e) { return e ? formatAuthors(e.author) : '[' + e + ']'; }).join(', ');
-	
-		case 'citeyear':
-			return entries.map(function(e) { return e ? (e.year || 'n.d.') : '[' + e + ']'; }).join(', ');
-	
-		case 'citet':
-			// Author (Year)
-			return entries.map(function(e) { return e ? formatCitation(e, 'author') : '[' + e + ']'; }).join(', ');
-	
-		case 'footcite':
-			var footContent = entries.map(function(e) { return e ? formatCitation(e, 'full') : '[' + e + ']'; }).join(', ');
-			return '<sup class="latex-footnote" title="' + escapeHtml(footContent) + '">[cite]</sup>';
-	
-		case 'nocite':
-			// nocite doesn't display, just registers the citation
-			return '';
-	
-		default:
-			// Default: (Author, Year)
-			var defaultCitations = entries.map(function(e) { return e ? formatCitation(e, 'author') : '[' + e + ']'; });
-			return '<span class="latex-citation">(' + defaultCitations.join(', ') + ')</span>';
-	}
-}
+// ── Citation inline renderer ──────────────────────────────────────────────────
 
 /**
- * Process bibliography commands in text and replace with rendered HTML.
- * This should be called after parseBibtex/loadBibtex to populate the database.
+ * Render a set of citation keys to HTML according to the command and style.
+ *
+ * @param {string[]} keys           - Citation keys
+ * @param {string}   command        - Cite command (e.g. 'cite', 'citet', 'citeauthor')
+ * @param {Map}      citationNumbers - Per-render citation numbering map (mutable)
+ * @param {string}   style          - Bibliography style
+ * @param {string}   [preNote]      - Optional prenote text
+ * @param {string}   [postNote]     - Optional postnote text
+ * @returns {string} HTML string
+ */
+function _renderCitation(keys, command, citationNumbers, style, preNote, postNote) {
+	if (!keys.length) return '';
+
+	const isNumbered = !['authoryear','apa','harvard','chicago','mla'].includes(style);
+
+	// Assign citation numbers for numbered styles in order of first appearance
+	if (isNumbered) {
+		keys.forEach(key => {
+			if (!citationNumbers.has(key)) {
+				citationNumbers.set(key, citationNumbers.size + 1);
+			}
+		});
+	}
+
+	const entries = keys.map(k => bibliographyDatabase.get(k) || null);
+
+	// Build a single cited label for one entry
+	const makeLabel = (entry, key) => {
+		if (!entry) {
+			return `<span class="latex-citation-missing" title="Citation key \u2018${escapeHtml(key)}\u2019 not found in bibliography">${escapeHtml(key)}\u00A0\u26A0</span>`;
+		}
+		const anchorId  = 'cite-entry-' + key.replace(/[^a-zA-Z0-9_-]/g, '_');
+		// Prefer the paper URL/DOI (opens in new tab); fall back to in-page anchor
+		const _doi   = entry.doi || '';
+		const _url   = entry.url || '';
+		const paperHref = _doi
+			? (_doi.startsWith('http') ? _doi : 'https://doi.org/' + _doi)
+			: (_url || null);
+		const href   = paperHref || ('#' + anchorId);
+		const target = paperHref ? ' target="_blank" rel="noopener noreferrer"' : '';
+		const tipHtml   = _tooltipHtml(entry);
+		const tipAttr   = ` data-bib-tooltip="${escapeHtml(tipHtml)}" data-cite-key="${escapeHtml(key)}"`;
+
+		if (style === 'alpha') {
+			return `<a class="latex-citation-link" href="${escapeHtml(href)}"${target}${tipAttr}>${escapeHtml(_alphaLabel(entry))}</a>`;
+		}
+		if (isNumbered) {
+			const n = citationNumbers.get(key) || '?';
+			return `<a class="latex-citation-link" href="${escapeHtml(href)}"${target}${tipAttr}>${n}</a>`;
+		}
+		// Author-year
+		const auth = _authorsShort(entry.author || entry.editor || '');
+		const yr   = entry.year || 'n.d.';
+		return `<a class="latex-citation-link" href="${escapeHtml(href)}"${target}${tipAttr}>${escapeHtml(auth)},\u00A0${escapeHtml(yr)}</a>`;
+	};
+
+	const preStr  = preNote  ? escapeHtml(preNote) + '\u00A0'  : '';
+	const postStr = postNote ? ',\u00A0' + escapeHtml(postNote) : '';
+
+	const cmd = command.toLowerCase();
+
+	// ── \citeauthor / \Citeauthor ───────────────────────────────────────────
+	if (cmd === 'citeauthor') {
+		return entries.map((e, i) => {
+			if (!e) return `<span class="latex-citation-missing">${escapeHtml(keys[i])}</span>`;
+			const anchorId = 'cite-entry-' + keys[i].replace(/[^a-zA-Z0-9_-]/g, '_');
+			const tipAttr  = ` data-bib-tooltip="${escapeHtml(_tooltipHtml(e))}" data-cite-key="${escapeHtml(keys[i])}"`;
+			const _aD2 = e.doi || ''; const _aU2 = e.url || '';
+			const _aHref2 = _aD2 ? (_aD2.startsWith('http') ? _aD2 : 'https://doi.org/' + _aD2) : (_aU2 || ('#' + anchorId));
+			const _aTgt2  = (_aD2 || _aU2) ? ' target="_blank" rel="noopener noreferrer"' : '';
+			return `<a class="latex-citation-link" href="${escapeHtml(_aHref2)}"${_aTgt2}${tipAttr}>${escapeHtml(_authorsShort(e.author || e.editor || ''))}</a>`;
+		}).join(', ');
+	}
+
+	// ── \citeyear / \citeyearpar ─────────────────────────────────────────────
+	if (cmd === 'citeyear' || cmd === 'citeyearpar') {
+		const yrs = entries.map((e, i) => {
+			if (!e) return `<span class="latex-citation-missing">${escapeHtml(keys[i])}</span>`;
+			const _yId   = 'cite-entry-' + keys[i].replace(/[^a-zA-Z0-9_-]/g, '_');
+			const _yD    = e.doi || ''; const _yU = e.url || '';
+			const _yHref = _yD ? (_yD.startsWith('http') ? _yD : 'https://doi.org/' + _yD) : (_yU || ('#' + _yId));
+			const _yTgt  = (_yD || _yU) ? ' target="_blank" rel="noopener noreferrer"' : '';
+			const tipAttr  = ` data-bib-tooltip="${escapeHtml(_tooltipHtml(e))}" data-cite-key="${escapeHtml(keys[i])}"`;
+			return `<a class="latex-citation-link" href="${escapeHtml(_yHref)}"${_yTgt}${tipAttr}>${escapeHtml(e.year || 'n.d.')}</a>`;
+		});
+		const inner = yrs.join(', ');
+		return cmd === 'citeyearpar' ? `(${inner})` : inner;
+	}
+
+	// ── \citet / \textcite — "Author [N]" or "Author (Year)" ────────────────
+	if (cmd === 'citet' || cmd === 'textcite' || cmd === 'citet*' || cmd === 'textcite*') {
+		return entries.map((e, i) => {
+			if (!e) return `<span class="latex-citation-missing">${escapeHtml(keys[i])}</span>`;
+			const anchorId = 'cite-entry-' + keys[i].replace(/[^a-zA-Z0-9_-]/g, '_');
+			const tipAttr  = ` data-bib-tooltip="${escapeHtml(_tooltipHtml(e))}" data-cite-key="${escapeHtml(keys[i])}"`;
+			const auth     = _authorsShort(e.author || e.editor || '');
+			if (isNumbered) {
+				const n = citationNumbers.get(keys[i]) || '?';
+				const _doiT  = e.doi || '';
+				const _urlT  = e.url || '';
+				const _hrefT = _doiT
+					? (_doiT.startsWith('http') ? _doiT : 'https://doi.org/' + _doiT)
+					: (_urlT || ('#' + anchorId));
+				const _tgtT  = (_doiT || _urlT) ? ' target="_blank" rel="noopener noreferrer"' : '';
+				return `${escapeHtml(auth)}\u00A0<a class="latex-citation-link" href="${escapeHtml(_hrefT)}"${_tgtT}${tipAttr}>${n}</a>`;
+			}
+			// author-year: link to paper URL/DOI if available, else anchor
+			const _hrefAY = (e.doi ? (e.doi.startsWith('http') ? e.doi : 'https://doi.org/' + e.doi) : null) || e.url || ('#' + anchorId);
+			const _tgtAY  = (e.doi || e.url) ? ' target="_blank" rel="noopener noreferrer"' : '';
+			return `${escapeHtml(auth)}\u00A0<a class="latex-citation-link" href="${escapeHtml(_hrefAY)}"${_tgtAY}${tipAttr}>(${escapeHtml(e.year || 'n.d.')}${postStr})</a>`;
+		}).join('; ');
+	}
+
+	// ── \footcite / \footcitetext ─────────────────────────────────────────────
+	if (cmd === 'footcite' || cmd === 'footcitetext') {
+		const full = entries.map((e, i) => e
+			? _authorsShort(e.author || e.editor || '') + (e.year ? ' (' + e.year + ')' : '') + (e.title ? '. ' + e.title : '')
+			: keys[i]
+		).join('; ');
+		return `<sup class="latex-footnote-cite" title="${escapeHtml(full)}">[note]</sup>`;
+	}
+
+	// ── \fullcite ─────────────────────────────────────────────────────────────
+	if (cmd === 'fullcite') {
+		return entries.map((e, i) => e
+			? `<span class="latex-citation" style="display:block;margin:0.25em 0">${_renderEntryBody(e)}</span>`
+			: `<span class="latex-citation-missing">${escapeHtml(keys[i])}</span>`
+		).join('');
+	}
+
+	// ── \nocite ───────────────────────────────────────────────────────────────
+	if (cmd === 'nocite') return '';
+
+	// ── Default: \cite, \citep, \parencite, \autocite, etc. ──────────────────
+	const labels = keys.map((k, i) => makeLabel(entries[i], k));
+	if (isNumbered || style === 'alpha') {
+		// CSS badge box provides visual enclosure; no literal [ ] needed
+		return `${preStr}${labels.join(', ')}${postStr}`;
+	}
+	return `(${preStr}${labels.join('; ')}${postStr})`;
+}
+
+// ── thebibliography / \bibitem environment ────────────────────────────────────
+
+function _processThebibliography(text) {
+	return text.replace(
+		/\\begin\{thebibliography\}\s*\{[^}]*\}([\s\S]*?)\\end\{thebibliography\}/g,
+		(_, body) => {
+			const items = [];
+			const itemRx = /\\bibitem\s*(?:\[([^\]]*)\])?\s*\{([^}]+)\}([\s\S]*?)(?=\\bibitem|$)/g;
+			let m;
+			while ((m = itemRx.exec(body)) !== null) {
+				items.push({
+					label:   m[1] || '',
+					key:     m[2].trim(),
+					content: m[3].trim(),
+				});
+			}
+			if (!items.length) return body;
+
+			const count = items.length;
+			let html = `<div class="latex-thebibliography">` +
+				`<div class="latex-bibliography-header">` +
+				`<span class="latex-bibliography-header-icon">📚</span>` +
+				`<span>References</span>` +
+				`<span class="latex-bibliography-header-count">${count} entr${count === 1 ? 'y' : 'ies'}</span>` +
+				`</div>`;
+
+			items.forEach((item, idx) => {
+				const anchorId = 'cite-entry-' + item.key.replace(/[^a-zA-Z0-9_-]/g, '_');
+				const labelStr = item.label || String(idx + 1);
+				html += `<div class="latex-bibitem" id="${anchorId}" data-cite-key="${escapeHtml(item.key)}">` +
+					`<span class="latex-bibitem-label">[${escapeHtml(labelStr)}]</span>` +
+					`<span class="latex-bibitem-content">${item.content}</span>` +
+					`</div>`;
+			});
+
+			return html + '</div>';
+		}
+	);
+}
+
+// ── Main bibliography processor ───────────────────────────────────────────────
+
+/**
+ * Process all BibTeX-related commands in a preprocessed text string.
+ * Called at Step 4 of preprocessLatexText.
+ *
+ * Creates a fresh per-render citationNumbers Map so each message starts its
+ * own citation ordering — this is correct for numbered styles.
+ *
+ * Returns the processed text with all bibliography commands replaced by HTML.
  */
 export function processBibliography(text) {
 	if (!text) return text;
-	
-	var processed = text;
-	
-	// First, detect and parse any raw BibTeX entries in the text
-	// This handles entries like @article{key, ...} that might be pasted inline
-	processed = processed.replace(
-		/(@\w+\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})/g,
-		function(_, entryText) {
-			// Try to parse this as a BibTeX entry
-			const entry = parseBibtexEntry(entryText);
-			if (entry && entry.id) {
-				// Add to database
-				bibliographyDatabase.set(entry.id, entry);
-				// Return empty - we'll show the bibliography separately
-				return '';
+
+	// Per-render state
+	const citationNumbers = new Map();
+	const style = bibliographyStyle;
+	let hasPrintBib = false;
+
+	let p = text;
+
+	// ── 1. thebibliography environment ──────────────────────────────────────
+	p = _processThebibliography(p);
+
+	// ── 2. Inline raw @TYPE{...} entries ────────────────────────────────────────────────
+	// Depth-aware single-pass scan: finds @TYPENAME{...} blocks anywhere in text,
+	// parses them into the DB, and replaces them with rendered source cards.
+	// This covers entries pasted bare in plain text (outside any code fence).
+	{
+		const _ENTRY_TYPES = 'article|book|inproceedings|conference|incollection|phdthesis|mastersthesis|techreport|misc|online|electronic|www|manual|booklet|proceedings|inbook|unpublished|patent|dataset|software|report';
+		const _inlineRx = new RegExp('@(?:' + _ENTRY_TYPES + ')\\s*[\\{(]', 'gi');
+		let _em2, _out2 = '', _last2 = 0;
+		_inlineRx.lastIndex = 0;
+		while ((_em2 = _inlineRx.exec(p)) !== null) {
+			const _startIdx = _em2.index;
+			const _openCh   = _em2[0].slice(-1); // '{' or '('
+			const _openIdx  = _startIdx + _em2[0].length - 1;
+			// Find matching close delimiter (depth-aware)
+			let _depth2 = 1, _closeIdx2 = -1;
+			for (let _ci = _openIdx + 1; _ci < p.length; _ci++) {
+				const _ch = p[_ci];
+				if (_ch === '\\') { _ci++; continue; } // skip escaped
+				if (_openCh === '{' && _ch === '{') _depth2++;
+				else if (_openCh === '{' && _ch === '}') { _depth2--; if (_depth2 === 0) { _closeIdx2 = _ci; break; } }
+				else if (_openCh === '(' && _ch === '(') _depth2++;
+				else if (_openCh === '(' && _ch === ')') { _depth2--; if (_depth2 === 0) { _closeIdx2 = _ci; break; } }
 			}
-			return _; // Return as-is if parsing fails
+			if (_closeIdx2 === -1) continue; // unmatched — skip
+			const _entryText2 = p.slice(_startIdx, _closeIdx2 + 1);
+			const _entry2 = parseBibtexEntry(_entryText2);
+			if (_entry2 && _entry2.id) {
+				bibliographyDatabase.set(_entry2.id, _entry2);
+				_out2 += p.slice(_last2, _startIdx);
+				_out2 += _renderInlineSourceCard(_entry2, _entryText2);
+				_last2 = _closeIdx2 + 1;
+				_inlineRx.lastIndex = _last2; // skip past what we consumed
+			}
 		}
-	);
-	
-	// Process \bibliography{file} command (traditional BibTeX - specifies .bib file)
-	// This just adds a note since we can't actually load the file without a URL
-	processed = processed.replace(
-		/\\bibliography\{([^}]+)\}/g,
-		function(_, files) {
-			return '<div class="latex-bibliography-note"><em>Bibliography: ' + files + '</em></div>';
+		p = _out2 + p.slice(_last2);
+	}
+
+		// ── 3. Silently consume resource / style declarations ────────────────────
+	p = p.replace(/\\addbibresource\s*\{[^}]+\}/g, '');
+	p = p.replace(/\\bibliographystyle\s*\{([^}]+)\}/g, (_, s) => {
+		bibliographyStyle = s.toLowerCase();
+		return '';
+	});
+
+	// ── 4. \bibliography{file} ───────────────────────────────────────────────
+	p = p.replace(/\\bibliography\s*\{([^}]+)\}/g, (_, files) => {
+		hasPrintBib = true;
+		if (bibliographyDatabase.size > 0) {
+			return generateBibliography({}, citationNumbers);
 		}
-	);
-	
-	// Process \bibliographystyle{style} command
-	processed = processed.replace(
-		/\\bibliographystyle\{([^}]+)\}/g,
-		function(_, style) {
-			return ''; // Silent - style is set when parsing BibTeX
-		}
-	);
-	
-	// Process \printbibliography with options
-	processed = processed.replace(
-		/\\printbibliography\s*(?:\[([^\]]+)\])?/g,
-		function(_, options) {
-			// Parse options if present
-			var opts = {};
-			if (options) {
-				// Extract style= option
-				var styleMatch = options.match(/style=(\w+)/);
-				if (styleMatch) opts.style = styleMatch[1];
-				
-				// Extract type= option (filter by entry type)
-				var typeMatch = options.match(/type=(\w+)/);
-				if (typeMatch) {
-					var type = typeMatch[1];
-					opts.filter = function(entry) { return entry.type === type; };
+		return `<div class="latex-bibliography-note"><em>Bibliography source: ${escapeHtml(files)}</em></div>`;
+	});
+
+	// ── 5. All citation commands ─────────────────────────────────────────────
+	//
+	// Unified regex covering all natbib, BibLaTeX, and custom cite commands.
+	// Handles:
+	//   \cmd{keys}
+	//   \cmd[postnote]{keys}
+	//   \cmd[prenote][postnote]{keys}
+	//   \cmd*{...}  (starred variants)
+	//   Multiple keys: \cite{key1,key2,key3}
+	//
+	const CITE_RX = /\\(cite[a-zA-Z]*|textcite|Textcite|parencite|Parencite|autocite|Autocite|footcite|footcitetext|fullcite|supercite|volcite|Volcite|notecite|Notecite|pnotecite|Pnotecite|fnotecite|Fnotecite)\*?\s*(?:\[([^\]]*)\])?\s*(?:\[([^\]]*)\])?\s*\{([^}]+)\}/g;
+
+	p = p.replace(CITE_RX, (_, cmd, bracketA, bracketB, keysRaw) => {
+		const keys     = keysRaw.split(/\s*,\s*/).map(k => k.trim()).filter(Boolean);
+		// Two optional brackets: [prenote][postnote]; one: [postnote]
+		const preNote  = bracketB !== undefined ? (bracketA || '') : '';
+		const postNote = bracketB !== undefined ? (bracketB || '') : (bracketA || '');
+		return _renderCitation(keys, cmd, citationNumbers, style, preNote, postNote);
+	});
+
+	// ── 6. \printbibliography ────────────────────────────────────────────────
+	p = p.replace(
+		/\\printbibliography\s*(?:\[([^\]]*)\])?/g,
+		(_, optStr) => {
+			hasPrintBib = true;
+			const opts = {};
+			if (optStr) {
+				const sm = optStr.match(/style\s*=\s*(\w+)/);
+				if (sm) opts.style = sm[1].toLowerCase();
+				const tm = optStr.match(/type\s*=\s*(\w+)/);
+				if (tm) opts.filter = e => e.type === tm[1].toLowerCase();
+				const km = optStr.match(/keyword\s*=\s*(\w+)/);
+				if (km) {
+					const kw = km[1].toLowerCase();
+					opts.filter = e => (e.keywords || '').toLowerCase().includes(kw);
 				}
+				// nottype= filter
+				const ntm = optStr.match(/nottype\s*=\s*(\w+)/);
+				if (ntm) opts.filter = e => e.type !== ntm[1].toLowerCase();
 			}
-			return generateBibliography(opts);
+			return generateBibliography(opts, citationNumbers);
 		}
 	);
-	
-	// Process Natbib citation commands
-	processed = processed.replace(
-		/\\textcite\{([^}]+)\}/g,
-		function(_, keys) { return renderCitation(keys, 'textcite'); }
-	);
-	
-	processed = processed.replace(
-		/\\parencite\{([^}]+)\}/g,
-		function(_, keys) { return renderCitation(keys, 'parencite'); }
-	);
-	
-	processed = processed.replace(
-		/\\footcite\{([^}]+)\}/g,
-		function(_, keys) { return renderCitation(keys, 'footcite'); }
-	);
-	
-	processed = processed.replace(
-		/\\cite(?:t|p)?\*?\{([^}]+)\}/g,
-		function(_, keys) { return renderCitation(keys, 'cite'); }
-	);
-	
-	processed = processed.replace(
-		/\\citet\*?\{([^}]+)\}/g,
-		function(_, keys) { return renderCitation(keys, 'citet'); }
-	);
-	
-	processed = processed.replace(
-		/\\citep\*?\{([^}]+)\}/g,
-		function(_, keys) { return renderCitation(keys, 'citep'); }
-	);
-	
-	processed = processed.replace(
-		/\\citeauthor\*?\{([^}]+)\}/g,
-		function(_, keys) { return renderCitation(keys, 'citeauthor'); }
-	);
-	
-	processed = processed.replace(
-		/\\citeyear\*?\{([^}]+)\}/g,
-		function(_, keys) { return renderCitation(keys, 'citeyear'); }
-	);
-	
-	processed = processed.replace(
-		/\\citeyearpar\{([^}]+)\}/g,
-		function(_, keys) {
-			var entries = keys.split(/\s*,\s*/).map(function(k) { return bibliographyDatabase.get(k.trim()); });
-			var years = entries.map(function(e) { return e ? (e.year || 'n.d.') : ''; }).filter(function(y) { return y; });
-			return years.length ? '(' + years.join(', ') + ')' : '';
+
+	// ── 7. Auto-bibliography ─────────────────────────────────────────────────
+	// If citations were made but no \printbibliography / \bibliography command
+	// appeared, automatically append a bibliography section.
+	if (citationNumbers.size > 0 && !hasPrintBib && bibliographyDatabase.size > 0) {
+		p += '\n\n' + generateBibliography({}, citationNumbers);
+	}
+
+	return p;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Citation hover tooltip initialiser
+//
+// Call once after the chat page DOM is ready (e.g. from chat-page.js).
+// The tooltip element is appended to <body> and positioned via JS on
+// mouseover of any [data-bib-tooltip] element.
+// Also exported so callers can re-init if needed (e.g. after a full
+// page re-render).
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _tooltipEl = null;
+
+export function initBibTooltips() {
+	if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+	// Create tooltip element (only once)
+	if (!_tooltipEl) {
+		_tooltipEl = document.createElement('div');
+		_tooltipEl.className = 'bib-tooltip';
+		_tooltipEl.setAttribute('aria-hidden', 'true');
+		_tooltipEl.setAttribute('role', 'tooltip');
+		document.body.appendChild(_tooltipEl);
+	}
+
+	let _hideTimer = null;
+
+	const show = (e) => {
+		const target = e.target && e.target.closest
+			? e.target.closest('[data-bib-tooltip]')
+			: null;
+		if (!target) return;
+		clearTimeout(_hideTimer);
+		_tooltipEl.innerHTML = target.dataset.bibTooltip || '';
+		_tooltipEl.classList.add('visible');
+		_positionTooltip(e.clientX, e.clientY);
+	};
+
+	const move = (e) => {
+		if (_tooltipEl.classList.contains('visible')) {
+			_positionTooltip(e.clientX, e.clientY);
 		}
-	);
-	
-	processed = processed.replace(
-		/\\citealt\*?\{([^}]+)\}/g,
-		function(_, keys) { return renderCitation(keys, 'citet'); }
-	);
-	
-	processed = processed.replace(
-		/\\citealp\*?\{([^}]+)\}/g,
-		function(_, keys) {
-			var entries = keys.split(/\s*,\s*/).map(function(k) { return bibliographyDatabase.get(k.trim()); });
-			return entries.map(function(e) { return e ? formatCitation(e, 'author') : ''; }).filter(function(x) { return x; }).join(', ');
-		}
-	);
-	
-	// Handle \nocite{*} (all entries)
-	processed = processed.replace(
-		/\\nocite\{([^}]+)\}/g,
-		function(_, keys) {
-			if (keys.trim() === '*') {
-				// Show all entries
-				return generateBibliography();
-			}
-			return renderCitation(keys, 'nocite');
-		}
-	);
-	
-	return processed;
+	};
+
+	const hide = (e) => {
+		if (!e.target || !e.target.closest || !e.target.closest('[data-bib-tooltip]')) return;
+		_hideTimer = setTimeout(() => {
+			_tooltipEl && _tooltipEl.classList.remove('visible');
+		}, 150);
+	};
+
+	// Remove previous listeners by using capture-phase identifiers
+	document.removeEventListener('mouseover', _bibTooltipOver,  true);
+	document.removeEventListener('mousemove', _bibTooltipMove,  true);
+	document.removeEventListener('mouseout',  _bibTooltipOut,   true);
+
+	_bibTooltipOver = show;
+	_bibTooltipMove = move;
+	_bibTooltipOut  = hide;
+
+	document.addEventListener('mouseover', _bibTooltipOver, true);
+	document.addEventListener('mousemove', _bibTooltipMove, true);
+	document.addEventListener('mouseout',  _bibTooltipOut,  true);
+}
+
+// Module-level references to allow cleanup/re-init
+let _bibTooltipOver = null;
+let _bibTooltipMove = null;
+let _bibTooltipOut  = null;
+
+function _positionTooltip(cx, cy) {
+	if (!_tooltipEl) return;
+	const margin = 14;
+	const tw = _tooltipEl.offsetWidth  || 320;
+	const th = _tooltipEl.offsetHeight || 80;
+	let x = cx + margin;
+	let y = cy + margin;
+	const vw = window.innerWidth  || document.documentElement.clientWidth  || 800;
+	const vh = window.innerHeight || document.documentElement.clientHeight || 600;
+	if (x + tw > vw - 8) x = Math.max(4, cx - tw - margin);
+	if (y + th > vh - 8) y = Math.max(4, cy - th - margin);
+	_tooltipEl.style.left = x + 'px';
+	_tooltipEl.style.top  = y + 'px';
+}
+
+// Auto-init when the DOM is ready
+if (typeof document !== 'undefined') {
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', initBibTooltips);
+	} else {
+		// DOM already ready (module loaded late)
+		initBibTooltips();
+	}
 }

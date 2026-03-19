@@ -6,7 +6,11 @@
  * - Obsidian-style: WikiLinks [[...]], highlights ==text==, callouts/admonitions
  * - Discord-style: Spoilers ||text||, mentions, timestamps
  * - Syntax highlighting for code blocks
+ * - BibTeX: ```bibtex code blocks are intercepted, parsed into the DB,
+ *   and rendered as collapsible source cards instead of raw code
  */
+
+import { parseBibtex, getAllBibtexEntries } from './latex.js';
 
 const markedModule = (function () {
 	'use strict';
@@ -19,7 +23,7 @@ const markedModule = (function () {
 
 	function escapeHtml(html) {
 		if (!html) return '';
-		return html
+		return String(html)
 			.replace(/&/g, '&amp;')
 			.replace(/</g, '&lt;')
 			.replace(/>/g, '&gt;')
@@ -33,11 +37,87 @@ const markedModule = (function () {
 		}
 
 		code(code, infostring) {
-			const lang = (infostring || '').match(/\S*/)[0];
+			const lang = ((infostring || '').match(/\S*/)[0] || '').toLowerCase();
+
+			// ── Intercept ```bibtex / ```bib blocks, AND unlabeled blocks whose
+			//    content starts with a BibTeX entry type  ──────────────────────
+			const BIBTEX_ENTRY_RX = /^\s*@(?:article|book|inproceedings|conference|incollection|phdthesis|mastersthesis|techreport|misc|online|electronic|www|proceedings|inbook|unpublished|manual|booklet|patent|dataset|software|report)\s*[\{(]/i;
+			// Match explicit bibtex/bib tags, OR any block (regardless of label)
+			// whose content opens with a BibTeX entry type — covers untagged
+			// blocks and blocks labelled 'latex', 'text', 'tex', etc.
+			const isBibtex = lang === 'bibtex' || lang === 'bib' ||
+				BIBTEX_ENTRY_RX.test(code);
+
+			if (isBibtex) {
+				// Parse into the shared bibliography database.
+				// parseBibtex is idempotent — re-parsing the same keys just overwrites them.
+				parseBibtex(code);
+				const db = getAllBibtexEntries();
+
+				// Collect the keys defined in this specific block (in order)
+				const blockKeys = [];
+				const entryRx = /@\w+\s*[\{(]\s*([^,\s\}(]+)/g;
+				let em;
+				while ((em = entryRx.exec(code)) !== null) {
+					const key = em[1].trim();
+					if (key && !['string','preamble','comment'].includes(key.toLowerCase())) {
+						blockKeys.push(key);
+					}
+				}
+
+				const count = blockKeys.length;
+				const countLabel = count === 1 ? '1 entry' : `${count} entries`;
+
+				// Build the entry preview rows
+				let entryRows = '';
+				for (const key of blockKeys) {
+					const e = db.get(key);
+					if (!e) continue;
+
+					// First author last name only
+					const firstAuthorRaw = (e.author || e.editor || '').split(/\s+and\s+/i)[0] || '';
+					const authorShort = firstAuthorRaw.includes(',')
+						? firstAuthorRaw.split(',')[0].trim()
+						: firstAuthorRaw.split(/\s+/).pop() || '';
+
+					const titleShort = e.title
+						? escapeHtml(e.title.slice(0, 72) + (e.title.length > 72 ? '…' : ''))
+						: '';
+
+					const infoParts = [
+						authorShort ? escapeHtml(authorShort) : null,
+						titleShort  ? `<em>${titleShort}</em>` : null,
+						e.year      ? escapeHtml(e.year) : null,
+					].filter(Boolean);
+
+					entryRows +=
+						`<div class="bib-source-entry">` +
+						`<span class="bib-source-entry-key">${escapeHtml(key)}</span>` +
+						`<span class="bib-source-entry-info">${infoParts.join(', ')}</span>` +
+						`</div>`;
+				}
+
+				const rawEscaped = escapeHtml(code);
+
+				return (
+					`<details class="bib-source-card">` +
+					`<summary>` +
+					`<span class="bib-source-icon">📚</span>` +
+					`<span class="bib-source-title">Bibliography Source</span>` +
+					`<span class="bib-source-count">${escapeHtml(countLabel)}</span>` +
+					`<span class="bib-source-chevron">▼</span>` +
+					`</summary>` +
+					(entryRows ? `<div class="bib-source-entries">${entryRows}</div>` : '') +
+					`<div class="bib-source-raw">${rawEscaped}</div>` +
+					`</details>\n`
+				);
+			}
+
+			// ── Normal code block rendering ───────────────────────────────────
 			const displayLang = lang || 'text';
 			const className = lang ? ` class="${this.options.langPrefix}${escapeHtml(lang)}"` : '';
 			const highlighted = lang ? highlightCode(code, lang) : escapeHtml(code);
-			
+
 			return `<div class="md-code-wrapper">
 <div class="md-code-header" title="Click to collapse/expand">
 <span class="md-code-lang">${escapeHtml(displayLang)}</span>
@@ -327,7 +407,7 @@ const markedModule = (function () {
 		}
 
 		tokenize(src) {
-			const tokens =[];
+			const tokens = [];
 
 			while (src) {
 				let match;
@@ -370,7 +450,7 @@ const markedModule = (function () {
 							const trimmed = row.replace(/^ {0,3}\|?|\|$/g, '');
 							return trimmed.split(/(?<!\\)\|/).map(s => s.trim().replace(/\\\|/g, '|'));
 						};
-						
+
 						const header = splitCells(headerLine);
 						const alignRaw = splitCells(alignLine);
 						const align = alignRaw.map(s => {
@@ -379,9 +459,9 @@ const markedModule = (function () {
 							if (/^-+:$/.test(s)) return 'right';
 							return null;
 						});
-						
+
 						const cells = rows.map(splitCells);
-						
+
 						tokens.push({ type: 'table', header, align, cells });
 						src = src.substring(tableMatch[0].length);
 						if (src.startsWith('\n')) src = src.substring(1);
@@ -415,13 +495,11 @@ const markedModule = (function () {
 					const ordered = /^\d/.test(bull);
 					const start = ordered ? parseInt(bull, 10) : 1;
 
-					// Find items belonging strictly to this exact list depth
 					const itemRegex = new RegExp(`^( {0,3})([-*+]|\\d+\\.)[ \\t]+`, 'gm');
 					let itemRegexMatch;
-					const itemMatches =[];
+					const itemMatches = [];
 
 					while ((itemRegexMatch = itemRegex.exec(rawList)) !== null) {
-                        // Tolerate a small shift, but deeper indents are nested items belonging to the previous match
 						if (itemRegexMatch[1].length <= baseIndent + 1) {
 							itemMatches.push(itemRegexMatch);
 						}
@@ -431,15 +509,15 @@ const markedModule = (function () {
 						itemMatches.push({ index: 0, 0: listMatch[1] + listMatch[2] + ' ', 1: listMatch[1] });
 					}
 
-					const items =[];
+					const items = [];
 					for (let i = 0; i < itemMatches.length; i++) {
 						const startObj = itemMatches[i];
-						const endIdx = (i + 1 < itemMatches.length) ? itemMatches[i+1].index : rawList.length;
+						const endIdx = (i + 1 < itemMatches.length) ? itemMatches[i + 1].index : rawList.length;
 						let itemRaw = rawList.substring(startObj.index, endIdx);
-						
+
 						// Strip the bullet marker itself
 						itemRaw = itemRaw.substring(startObj[0].length);
-						
+
 						let task = false;
 						let checked = false;
 						if (/^\[[ xX]\][ \t]/.test(itemRaw)) {
@@ -448,7 +526,6 @@ const markedModule = (function () {
 							itemRaw = itemRaw.substring(4);
 						}
 
-						// Remove the indentation footprint from multi-line structures so they can cascade
 						const indentToRemove = startObj[0].length;
 						const unindented = itemRaw.split('\n').map((line, index) => {
 							if (index === 0) return line;
@@ -510,12 +587,13 @@ const markedModule = (function () {
 					return this.renderer.html(token.text);
 				case 'hr':
 					return this.renderer.hr();
-				case 'list':
+				case 'list': {
 					let body = '';
 					for (const item of token.items) {
 						body += this.renderer.listitem(this.parseItem(item.text), item.task, item.checked);
 					}
 					return this.renderer.list(body, token.ordered, token.start);
+				}
 				case 'table': {
 					let header = '';
 					let tbody = '';
@@ -555,27 +633,25 @@ function highlightCode(code, language) {
 
 	const lang = language.toLowerCase();
 	let src = code;
-	
+
 	const placeholders = {
 		strings: [],
-		comments:[]
+		comments: []
 	};
 
-	// 1. Extract Comments (Hide them first so keywords inside comments are ignored)
+	// 1. Extract Comments
 	if (['javascript', 'typescript', 'java', 'cpp', 'c', 'go', 'rust', 'css'].includes(lang)) {
-		// Block comments
 		src = src.replace(/(\/\*[\s\S]*?\*\/)/g, (match) => {
 			const id = `__COM${placeholders.comments.length}__`;
 			placeholders.comments.push(match);
 			return id;
 		});
-		// Line comments
 		src = src.replace(/(\/\/.*$)/gm, (match) => {
 			const id = `__COM${placeholders.comments.length}__`;
 			placeholders.comments.push(match);
 			return id;
 		});
-	} else if (['python', 'bash', 'shell'].includes(lang)) {
+	} else if (['python', 'bash', 'shell', 'sh'].includes(lang)) {
 		src = src.replace(/(#.*$)/gm, (match) => {
 			const id = `__COM${placeholders.comments.length}__`;
 			placeholders.comments.push(match);
@@ -595,36 +671,35 @@ function highlightCode(code, language) {
 		});
 	}
 
-	// 2. Extract Strings (Hide them so keywords inside aren't highlighted, and string regex doesn't match keyword HTML tags)
-	// General string regex for "..." and '...' and `...`
+	// 2. Extract Strings
 	src = src.replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g, (match) => {
 		const id = `__STR${placeholders.strings.length}__`;
 		placeholders.strings.push(match);
 		return id;
 	});
 
-	// 3. Escape the skeleton (the code without strings/comments)
-	// This prevents HTML tags generated later from being escaped, while escaping code operators like < and >.
+	// 3. Escape the skeleton
 	src = escapeHtml(src);
 
 	// 4. Highlight Keywords
 	const keywords = {
-		javascript:['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default'],
-		typescript:['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'implements', 'interface', 'type', 'enum', 'namespace', 'module', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default', 'string', 'number', 'boolean', 'any', 'unknown', 'never', 'void', 'null', 'undefined', 'object', 'symbol', 'bigint', 'as', 'satisfies', 'infer', 'keyof', 'readonly', 'abstract', 'private', 'protected', 'public', 'static', 'get', 'set', 'declare'],
-		python:['def', 'class', 'if', 'elif', 'else', 'for', 'while', 'return', 'yield', 'lambda', 'import', 'from', 'as', 'try', 'except', 'finally', 'raise', 'with', 'pass', 'break', 'continue', 'del', 'assert', 'global', 'nonlocal', 'True', 'False', 'None', 'and', 'or', 'not', 'in', 'is', 'async', 'await', 'match', 'case'],
-		java:['public', 'private', 'protected', 'static', 'final', 'abstract', 'class', 'interface', 'extends', 'implements', 'return', 'void', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'default', 'try', 'catch', 'finally', 'throw', 'throws', 'new', 'this', 'super', 'true', 'false', 'null', 'import', 'package', 'instanceof', 'synchronized', 'volatile', 'transient', 'native', 'strictfp', 'const', 'goto'],
-		cpp:['int', 'float', 'double', 'char', 'void', 'bool', 'auto', 'const', 'static', 'volatile', 'extern', 'inline', 'virtual', 'explicit', 'mutable', 'constexpr', 'consteval', 'constinit', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'goto', 'try', 'catch', 'throw', 'class', 'struct', 'union', 'enum', 'typedef', 'typename', 'template', 'namespace', 'using', 'public', 'private', 'protected', 'friend', 'operator', 'new', 'delete', 'sizeof', 'typeid', 'decltype', 'nullptr', 'true', 'false', 'this', 'override', 'final', 'noexcept', 'concept', 'requires', 'co_await', 'co_return', 'co_yield'],
-		c:['int', 'float', 'double', 'char', 'void', 'short', 'long', 'signed', 'unsigned', 'const', 'static', 'volatile', 'extern', 'auto', 'register', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'goto', 'struct', 'union', 'enum', 'typedef', 'sizeof', 'inline', 'restrict'],
-		go:['package', 'import', 'func', 'var', 'const', 'type', 'struct', 'interface', 'map', 'chan', 'if', 'else', 'for', 'range', 'switch', 'case', 'default', 'break', 'continue', 'fallthrough', 'return', 'goto', 'defer', 'go', 'select', 'make', 'new', 'len', 'cap', 'append', 'copy', 'close', 'delete', 'panic', 'recover', 'nil', 'true', 'false', 'iota'],
-		rust:['fn', 'let', 'mut', 'const', 'static', 'type', 'struct', 'enum', 'trait', 'impl', 'pub', 'use', 'mod', 'crate', 'super', 'self', 'if', 'else', 'match', 'while', 'loop', 'for', 'in', 'break', 'continue', 'return', 'async', 'await', 'move', 'ref', 'where', 'unsafe', 'extern', 'as', 'dyn', 'yield', 'macro', 'union', 'typeof'],
-		json:['true', 'false', 'null'],
-		html:['DOCTYPE', 'html', 'head', 'body', 'title', 'meta', 'link', 'script', 'style', 'div', 'span', 'p', 'a', 'img', 'br', 'hr', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'form', 'input', 'button', 'select', 'option', 'textarea', 'label', 'nav', 'header', 'footer', 'main', 'section', 'article', 'aside'],
-		css:['import', 'media', 'keyframes', 'font-face', 'supports', 'charset', 'important', 'color', 'background', 'border', 'margin', 'padding', 'width', 'height', 'display', 'position', 'top', 'left', 'right', 'bottom', 'float', 'clear', 'font', 'text', 'align', 'content', 'overflow', 'visibility', 'opacity', 'transform', 'transition', 'animation', 'flex', 'grid', 'min', 'max', 'calc', 'var'],
-		sql:['SELECT', 'FROM', 'WHERE', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TABLE', 'INDEX', 'VIEW', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'FULL', 'CROSS', 'ON', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'ALL', 'DISTINCT', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'BETWEEN', 'LIKE', 'EXISTS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'IF', 'CAST', 'CONVERT', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'VALUES', 'INTO', 'SET'],
-		bash:['if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'for', 'while', 'until', 'do', 'done', 'in', 'function', 'return', 'break', 'continue', 'shift', 'exit', 'export', 'local', 'readonly', 'unset', 'declare', 'typeset', 'source', 'alias', 'unalias', 'trap', 'wait', 'exec', 'eval', 'echo', 'printf', 'read', 'test', 'true', 'false', 'cd', 'pwd', 'ls', 'cat', 'grep', 'awk', 'sed', 'cut', 'sort', 'uniq', 'head', 'tail', 'chmod', 'chown', 'mkdir', 'rm', 'cp', 'mv', 'tar', 'gzip', 'gunzip', 'find', 'xargs', 'curl', 'wget', 'ssh', 'scp', 'sudo', 'su', 'ps', 'kill', 'top', 'df', 'du', 'free', 'uptime', 'date', 'time', 'sleep', 'jobs', 'fg', 'bg', 'disown', 'nohup', 'env', 'set', 'shopt', 'getopts', 'command', 'builtin', 'type', 'hash', 'ulimit', 'umask', 'caller', 'logout', 'exit']
+		javascript: ['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default'],
+		typescript: ['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'implements', 'interface', 'type', 'enum', 'namespace', 'module', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default', 'string', 'number', 'boolean', 'any', 'unknown', 'never', 'object', 'symbol', 'bigint', 'as', 'satisfies', 'infer', 'keyof', 'readonly', 'abstract', 'private', 'protected', 'public', 'static', 'get', 'set', 'declare'],
+		python: ['def', 'class', 'if', 'elif', 'else', 'for', 'while', 'return', 'yield', 'lambda', 'import', 'from', 'as', 'try', 'except', 'finally', 'raise', 'with', 'pass', 'break', 'continue', 'del', 'assert', 'global', 'nonlocal', 'True', 'False', 'None', 'and', 'or', 'not', 'in', 'is', 'async', 'await', 'match', 'case'],
+		java: ['public', 'private', 'protected', 'static', 'final', 'abstract', 'class', 'interface', 'extends', 'implements', 'return', 'void', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'default', 'try', 'catch', 'finally', 'throw', 'throws', 'new', 'this', 'super', 'true', 'false', 'null', 'import', 'package', 'instanceof', 'synchronized', 'volatile', 'transient', 'native', 'strictfp', 'const', 'goto'],
+		cpp: ['int', 'float', 'double', 'char', 'void', 'bool', 'auto', 'const', 'static', 'volatile', 'extern', 'inline', 'virtual', 'explicit', 'mutable', 'constexpr', 'consteval', 'constinit', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'goto', 'try', 'catch', 'throw', 'class', 'struct', 'union', 'enum', 'typedef', 'typename', 'template', 'namespace', 'using', 'public', 'private', 'protected', 'friend', 'operator', 'new', 'delete', 'sizeof', 'typeid', 'decltype', 'nullptr', 'true', 'false', 'this', 'override', 'final', 'noexcept', 'concept', 'requires', 'co_await', 'co_return', 'co_yield'],
+		c: ['int', 'float', 'double', 'char', 'void', 'short', 'long', 'signed', 'unsigned', 'const', 'static', 'volatile', 'extern', 'auto', 'register', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'goto', 'struct', 'union', 'enum', 'typedef', 'sizeof', 'inline', 'restrict'],
+		go: ['package', 'import', 'func', 'var', 'const', 'type', 'struct', 'interface', 'map', 'chan', 'if', 'else', 'for', 'range', 'switch', 'case', 'default', 'break', 'continue', 'fallthrough', 'return', 'goto', 'defer', 'go', 'select', 'make', 'new', 'len', 'cap', 'append', 'copy', 'close', 'delete', 'panic', 'recover', 'nil', 'true', 'false', 'iota'],
+		rust: ['fn', 'let', 'mut', 'const', 'static', 'type', 'struct', 'enum', 'trait', 'impl', 'pub', 'use', 'mod', 'crate', 'super', 'self', 'if', 'else', 'match', 'while', 'loop', 'for', 'in', 'break', 'continue', 'return', 'async', 'await', 'move', 'ref', 'where', 'unsafe', 'extern', 'as', 'dyn', 'yield', 'macro', 'union', 'typeof'],
+		json: ['true', 'false', 'null'],
+		html: ['DOCTYPE', 'html', 'head', 'body', 'title', 'meta', 'link', 'script', 'style', 'div', 'span', 'p', 'a', 'img', 'br', 'hr', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'form', 'input', 'button', 'select', 'option', 'textarea', 'label', 'nav', 'header', 'footer', 'main', 'section', 'article', 'aside'],
+		css: ['import', 'media', 'keyframes', 'font-face', 'supports', 'charset', 'important', 'color', 'background', 'border', 'margin', 'padding', 'width', 'height', 'display', 'position', 'top', 'left', 'right', 'bottom', 'float', 'clear', 'font', 'text', 'align', 'content', 'overflow', 'visibility', 'opacity', 'transform', 'transition', 'animation', 'flex', 'grid', 'min', 'max', 'calc', 'var'],
+		sql: ['SELECT', 'FROM', 'WHERE', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TABLE', 'INDEX', 'VIEW', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'FULL', 'CROSS', 'ON', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'ALL', 'DISTINCT', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'BETWEEN', 'LIKE', 'EXISTS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'IF', 'CAST', 'CONVERT', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'VALUES', 'INTO', 'SET'],
+		bash: ['if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'for', 'while', 'until', 'do', 'done', 'in', 'function', 'return', 'break', 'continue', 'shift', 'exit', 'export', 'local', 'readonly', 'unset', 'declare', 'typeset', 'source', 'alias', 'unalias', 'trap', 'wait', 'exec', 'eval', 'echo', 'printf', 'read', 'test', 'true', 'false', 'cd', 'pwd', 'ls', 'cat', 'grep', 'awk', 'sed', 'cut', 'sort', 'uniq', 'head', 'tail', 'chmod', 'chown', 'mkdir', 'rm', 'cp', 'mv', 'tar', 'gzip', 'gunzip', 'find', 'xargs', 'curl', 'wget', 'ssh', 'scp', 'sudo', 'su', 'ps', 'kill', 'top', 'df', 'du', 'free', 'uptime', 'date', 'time', 'sleep', 'jobs', 'fg', 'bg', 'disown', 'nohup', 'env', 'set', 'shopt', 'getopts', 'command', 'builtin', 'type', 'hash', 'ulimit', 'umask', 'caller', 'logout', 'exit'],
+		sh: ['if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'for', 'while', 'until', 'do', 'done', 'in', 'function', 'return', 'break', 'continue', 'exit', 'export', 'local', 'echo', 'printf', 'read', 'cd', 'ls', 'cat', 'grep', 'awk', 'sed', 'true', 'false'],
 	};
 
-	const langKeywords = keywords[lang] ||[];
+	const langKeywords = keywords[lang] || [];
 	if (langKeywords.length > 0) {
 		const keywordRegex = new RegExp('\\b(' + langKeywords.join('|') + ')\\b', 'g');
 		src = src.replace(keywordRegex, '<span class="md-keyword">$1</span>');
@@ -633,24 +708,22 @@ function highlightCode(code, language) {
 	// 5. Highlight Numbers
 	src = src.replace(/\b(0[xX][0-9a-fA-F]+|0[oO]?[0-7]+|0[bB][01]+|\d+\.?\d*(?:[eE][+-]?\d+)?)\b/g, '<span class="md-number">$1</span>');
 
-	// 6. Restore Strings (escape content + wrap)
+	// 6. Restore Strings
 	placeholders.strings.forEach((str, i) => {
 		const id = `__STR${i}__`;
 		const escaped = escapeHtml(str);
 		src = src.replace(id, `<span class="md-string">${escaped}</span>`);
 	});
 
-	// 7. Restore Comments (escape content + wrap)
+	// 7. Restore Comments
 	placeholders.comments.forEach((com, i) => {
 		const id = `__COM${i}__`;
 		const escaped = escapeHtml(com);
 		src = src.replace(id, `<span class="md-comment">${escaped}</span>`);
 	});
 
-	// HTML tags (special case: minimal highlighting for tag names if lang is html)
-	// Since we escaped everything in step 3, we look for &lt;tagname
+	// HTML tag highlighting
 	if (lang === 'html') {
-		// Only highlight the tag name, e.g., &lt;div
 		src = src.replace(/(&lt;\/?)([a-zA-Z][\w-]*)/g, '$1<span class="md-keyword">$2</span>');
 	}
 
@@ -659,7 +732,7 @@ function highlightCode(code, language) {
 
 function escapeHtml(text) {
 	if (!text) return '';
-	return text
+	return String(text)
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;')
@@ -668,10 +741,11 @@ function escapeHtml(text) {
 }
 
 /**
- * Pre-process markdown to handle custom extensions
+ * Pre-process markdown to handle custom extensions:
  * - WikiLinks: [[Page Title]] or [[Page Title|Display Text]]
  * - Highlights: ==text==
  * - Spoilers: ||text||
+ * - Discord mentions and timestamps
  */
 function preprocessMarkdown(text) {
 	if (!text) return '';
@@ -689,7 +763,7 @@ function preprocessMarkdown(text) {
 	result = result.replace(/==([^=]+)==/g, '<mark class="md-highlight">$1</mark>');
 
 	// Spoilers
-	result = result.replace(/\|\|([^|]+)\|\|/g, '<span class="md-spoiler" onclick="this.classList.add(' + "'" + 'revealed' + "'" + ')">$1</span>');
+	result = result.replace(/\|\|([^|]+)\|\|/g, '<span class="md-spoiler" onclick="this.classList.add(\'revealed\')">$1</span>');
 
 	// Discord mentions
 	result = result.replace(/<@!?(&?\d+)>/g, '<span class="md-mention">@user</span>');
@@ -726,43 +800,85 @@ function formatRelativeTime(date) {
 }
 
 /**
- * Post-process HTML to handle callouts/admonitions
+ * Post-process HTML to handle callouts/admonitions.
+ *
+ * Handles two forms models produce:
+ *
+ *   1. Obsidian blockquote form (Obsidian spec):
+ *        > [!warning] Title
+ *        > Body text
+ *      Marked parses this as a <blockquote> whose first <p> starts with [!type].
+ *
+ *   2. Standalone paragraph form (no leading '>'):
+ *        [!warning] Deprecated/Legacy Method — body text here
+ *      Marked parses this as a plain <p> starting with [!type].
+ *      Models frequently emit this form — we now render it identically.
+ *
+ * Both forms produce the same styled callout card.
  */
 function postprocessCallouts(html) {
-	return html.replace(/<blockquote class="md-blockquote">\s*<p class="md-paragraph">\[!([\w]+)\]\s*(.*?)<\/p>/g, (match, type, title) => {
-		const calloutType = type.toLowerCase();
+	const iconMap = {
+		'note':      'ℹ️',
+		'info':      'ℹ️',
+		'tip':       '💡',
+		'hint':      '💡',
+		'important': '❗',
+		'warning':   '⚠️',
+		'caution':   '⚠️',
+		'danger':    '🔥',
+		'error':     '❌',
+		'success':   '✅',
+		'check':     '✅',
+		'done':      '✅',
+		'question':  '❓',
+		'help':      '❓',
+		'faq':       '❓',
+		'example':   '📝',
+		'quote':     '\u201C',
+		'cite':      '\u201C',
+	};
+ 
+	const openCallout = (type, title) => {
+		const calloutType  = type.toLowerCase();
 		const calloutTitle = title.trim() || calloutType.charAt(0).toUpperCase() + calloutType.slice(1);
-
-		const iconMap = {
-			'note': 'ℹ️',
-			'info': 'ℹ️',
-			'tip': '💡',
-			'hint': '💡',
-			'important': '❗',
-			'warning': '⚠️',
-			'caution': '⚠️',
-			'danger': '🔥',
-			'error': '❌',
-			'success': '✅',
-			'check': '✅',
-			'done': '✅',
-			'question': '❓',
-			'help': '❓',
-			'faq': '❓',
-			'example': '📝',
-			'quote': '"',
-			'cite': '"'
-		};
-
-		const icon = iconMap[calloutType] || 'ℹ️';
-		return '<div class="md-callout md-callout-' + calloutType + '"><div class="md-callout-header"><span class="md-callout-icon">' + icon + '</span><span class="md-callout-title">' + calloutTitle + '</span></div><div class="md-callout-content">';
-	}).replace(/<\/blockquote>/g, (match, offset, string) => {
-		const precedingText = string.substring(0, offset);
-		if (precedingText.includes('md-callout')) {
-			return '</div></div>';
+		const icon         = iconMap[calloutType] || 'ℹ️';
+		return (
+			'<div class="md-callout md-callout-' + calloutType + '">' +
+			'<div class="md-callout-header">' +
+			'<span class="md-callout-icon">' + icon + '</span>' +
+			'<span class="md-callout-title">' + calloutTitle + '</span>' +
+			'</div>' +
+			'<div class="md-callout-content">'
+		);
+	};
+ 
+	// 1. Blockquote form — captures body paragraphs that follow the header too
+	let result = html.replace(
+		/<blockquote class="md-blockquote">\s*<p class="md-paragraph">\[!([\w]+)\]\s*(.*?)<\/p>([\s\S]*?)<\/blockquote>/g,
+		(match, type, title, body) => openCallout(type, title) + body + '</div></div>'
+	);
+ 
+	// 2. Standalone paragraph form — [!type] Title — body or [!type] body
+	result = result.replace(
+		/<p class="md-paragraph">\[!([\w]+)\]\s*([\s\S]*?)<\/p>/g,
+		(match, type, content) => {
+			// Attempt to split "Short Title — longer body text" at an em-dash,
+			// en-dash, or plain dash cluster.  Cap title at 60 chars.
+			const split = content.match(/^(.{1,60}?)\s*(?:[—–]|-{2,})\s*([\s\S]+)$/);
+			let title, body;
+			if (split) {
+				title = split[1].trim();
+				body  = split[2].trim() ? '<p class="md-paragraph">' + split[2].trim() + '</p>' : '';
+			} else {
+				// No dash separator — use the callout type as title, all text as body
+				title = '';
+				body  = content.trim() ? '<p class="md-paragraph">' + content.trim() + '</p>' : '';
+			}
+			return openCallout(type, title) + body + '</div></div>';
 		}
-		return match;
-	});
+	);
+ 
+	return result;
 }
 
 /**

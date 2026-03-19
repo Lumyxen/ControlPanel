@@ -1,63 +1,542 @@
-/* Bibliography Styles */
+/* ============================================================================
+   bibliography.css — BibTeX & Citation Styles (v3)
 
-/* Main bibliography container */
-.latex-bibliography {
-    margin: 1.5em 0;
-    padding: 1em;
-    background: var(--bg-secondary, #f5f5f5);
-    border-radius: 4px;
-    border-left: 3px solid var(--accent-primary, #4a90d9);
+   Uses the project's actual CSS custom properties:
+     --bg       page/root background
+     --panel    card/panel background
+     --border   border colour
+     --text     primary text
+     --muted    secondary/muted text
+     --accent   accent colour
+     --ctp-mantle  Catppuccin mantle (slightly elevated surface)
+
+   Covers:
+     • In-text citation badges  (.latex-citation-link, .latex-citation-missing)
+     • Hover tooltip cards      (.bib-tooltip)
+     • Bibliography section     (.latex-bibliography + children)
+     • BibTeX source cards      (.bib-source-card) — from ```bibtex blocks
+     • thebibliography env      (.latex-thebibliography, .latex-bibitem)
+     • Entry-type colour badges (.bib-type-badge)
+     • DOI / URL links
+     • Responsive tweaks
+   ============================================================================ */
+
+/* ── In-text citation link (clickable [1] / [Smi20] / (Author, Year)) ─────── */
+
+a.latex-citation-link {
+    display: inline-block;
+    padding: 0 4px;
+    font-size: 0.85em;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    border-radius: var(--radius-none, 0);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    vertical-align: 1px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+    position: relative;
 }
 
-/* Individual bibliography entry */
+a.latex-citation-link:hover {
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    text-decoration: none;
+}
+
+/* Missing key — red warning badge */
+.latex-citation-missing {
+    display: inline-block;
+    padding: 0 4px;
+    font-size: 0.85em;
+    color: var(--ctp-red, #e67e80);
+    background: color-mix(in srgb, var(--ctp-red, #e67e80) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ctp-red, #e67e80) 35%, transparent);
+    border-bottom-style: dashed;
+    border-radius: var(--radius-none, 0);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    vertical-align: 1px;
+    cursor: help;
+}
+
+/* Footnote citation superscript */
+.latex-footnote-cite {
+    display: inline-block;
+    vertical-align: super;
+    font-size: 0.75em;
+    color: var(--accent);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    cursor: help;
+    padding: 0 2px;
+}
+
+/* ── Hover tooltip ──────────────────────────────────────────────────────────── */
+
+.bib-tooltip {
+    position: fixed;
+    z-index: 9999;
+    max-width: 380px;
+    min-width: 200px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 10px 13px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    font-size: 0.82em;
+    line-height: 1.5;
+    color: var(--text);
+    word-break: break-word;
+}
+
+.bib-tooltip.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.bib-tooltip-key {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.82em;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+
+.bib-tooltip-authors {
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+}
+
+.bib-tooltip-title {
+    font-style: italic;
+    color: var(--text);
+    margin-bottom: 2px;
+}
+
+.bib-tooltip-venue {
+    color: var(--muted);
+    font-size: 0.92em;
+}
+
+.bib-tooltip-year {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* ── Bibliography section (.latex-bibliography) ─────────────────────────────── */
+
+.latex-bibliography {
+    margin: 1.5em 0 1em;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--panel) 85%, transparent);
+    overflow: hidden;
+}
+
+/* "References  N entries" header bar */
+.latex-bibliography-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: var(--ctp-mantle);
+    border-bottom: 1px solid var(--border);
+    font-weight: 700;
+    font-size: 0.88em;
+    letter-spacing: 0.02em;
+    color: var(--text);
+}
+
+.latex-bibliography-header-icon {
+    font-size: 1em;
+}
+
+.latex-bibliography-header-count {
+    margin-left: auto;
+    font-size: 0.8em;
+    font-weight: 400;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+    padding: 1px 8px;
+}
+
+/* Individual entry row */
 .latex-bibliography-entry {
-    padding: 0.5em 0;
-    border-bottom: 1px solid var(--border-color, #e0e0e0);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
     line-height: 1.6;
+    color: var(--text);
+    font-size: 0.875em;
+    transition: background 0.1s;
+    scroll-margin-top: 72px;
 }
 
 .latex-bibliography-entry:last-child {
     border-bottom: none;
 }
 
-/* Numbered label [1], [2], etc. */
-.bib-number {
-    font-weight: bold;
-    color: var(--accent-primary, #4a90d9);
-    margin-right: 0.5em;
+.latex-bibliography-entry:hover {
+    background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
 }
 
-/* Alpha label [ABC01], etc. */
+/* Highlight the entry that was jumped to via anchor */
+.latex-bibliography-entry:target {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-left: 3px solid var(--accent);
+    padding-left: 11px;
+}
+
+/* [N] / [Abc94] label column */
+.bib-label-col {
+    flex-shrink: 0;
+    min-width: 36px;
+    text-align: right;
+    padding-top: 1px;
+}
+
+.bib-number,
 .bib-alpha {
-    font-weight: bold;
-    color: var(--accent-primary, #4a90d9);
-    margin-right: 0.5em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-weight: 700;
+    color: var(--accent);
+    font-size: 0.88em;
 }
 
-/* Citation in text */
-.latex-citation {
-    color: var(--accent-primary, #4a90d9);
-    font-weight: 500;
+/* Content column */
+.bib-content-col {
+    flex: 1;
+    min-width: 0;
 }
 
-.latex-citation:hover {
+.bib-authors { font-weight: 600; }
+.bib-title   { font-style: italic; }
+.bib-year    { color: var(--accent); font-weight: 600; }
+
+/* DOI and URL links inside entries */
+.bib-doi-link,
+.bib-url-link {
+    color: var(--accent);
+    text-decoration: none;
+    word-break: break-all;
+    font-size: 0.87em;
+}
+
+.bib-doi-link:hover,
+.bib-url-link:hover {
     text-decoration: underline;
-    cursor: pointer;
+    text-underline-offset: 2px;
 }
 
-/* Bibliography note (for \bibliography{file} command) */
+/* Entry-type badge */
+.bib-type-badge {
+    display: inline-block;
+    font-size: 0.68em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1px 5px;
+    vertical-align: middle;
+    margin-left: 5px;
+    border: 1px solid currentColor;
+    opacity: 0.75;
+}
+
+/* Colour-code entry types to match Catppuccin palette */
+.bib-type-article {
+    color: var(--ctp-green, #a6e3a1);
+    border-color: color-mix(in srgb, var(--ctp-green, #a6e3a1) 40%, transparent);
+    background:   color-mix(in srgb, var(--ctp-green, #a6e3a1) 10%, transparent);
+}
+.bib-type-book {
+    color: var(--ctp-yellow, #f9e2af);
+    border-color: color-mix(in srgb, var(--ctp-yellow, #f9e2af) 40%, transparent);
+    background:   color-mix(in srgb, var(--ctp-yellow, #f9e2af) 10%, transparent);
+}
+.bib-type-inproceedings,
+.bib-type-conference,
+.bib-type-proceedings {
+    color: var(--ctp-mauve, #cba6f7);
+    border-color: color-mix(in srgb, var(--ctp-mauve, #cba6f7) 40%, transparent);
+    background:   color-mix(in srgb, var(--ctp-mauve, #cba6f7) 10%, transparent);
+}
+.bib-type-phdthesis,
+.bib-type-mastersthesis {
+    color: var(--ctp-red, #f38ba8);
+    border-color: color-mix(in srgb, var(--ctp-red, #f38ba8) 40%, transparent);
+    background:   color-mix(in srgb, var(--ctp-red, #f38ba8) 10%, transparent);
+}
+.bib-type-techreport,
+.bib-type-report {
+    color: var(--ctp-sky, #89dceb);
+    border-color: color-mix(in srgb, var(--ctp-sky, #89dceb) 40%, transparent);
+    background:   color-mix(in srgb, var(--ctp-sky, #89dceb) 10%, transparent);
+}
+.bib-type-misc,
+.bib-type-online,
+.bib-type-electronic,
+.bib-type-www,
+.bib-type-software,
+.bib-type-dataset {
+    color: var(--ctp-teal, #94e2d5);
+    border-color: color-mix(in srgb, var(--ctp-teal, #94e2d5) 40%, transparent);
+    background:   color-mix(in srgb, var(--ctp-teal, #94e2d5) 10%, transparent);
+}
+.bib-type-incollection,
+.bib-type-inbook {
+    color: var(--ctp-peach, #fab387);
+    border-color: color-mix(in srgb, var(--ctp-peach, #fab387) 40%, transparent);
+    background:   color-mix(in srgb, var(--ctp-peach, #fab387) 10%, transparent);
+}
+
+/* Author-year style has no label column */
+.latex-bibliography.style-authoryear .bib-label-col,
+.latex-bibliography.style-apa        .bib-label-col,
+.latex-bibliography.style-chicago    .bib-label-col,
+.latex-bibliography.style-harvard    .bib-label-col,
+.latex-bibliography.style-mla        .bib-label-col {
+    display: none;
+}
+
+/* ── BibTeX source card (from ```bibtex or auto-detected blocks) ─────────────
+   Styled to match the existing .message-tool-call / .latex-preamble pattern   */
+
+.bib-source-card {
+    margin: 0.75em 0;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--ctp-mantle) 50%, transparent);
+    overflow: hidden;
+}
+
+.bib-source-card summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    font-size: 0.83em;
+    font-weight: 600;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--ctp-mantle) 70%, transparent);
+    border-bottom: 1px solid transparent;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.bib-source-card summary::-webkit-details-marker { display: none; }
+.bib-source-card summary::marker               { display: none; }
+
+.bib-source-card summary:hover {
+    color: var(--text);
+    background: color-mix(in srgb, var(--ctp-mantle) 90%, transparent);
+}
+
+.bib-source-card[open] summary {
+    color: var(--text);
+    border-bottom-color: var(--border);
+}
+
+.bib-source-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    color: var(--accent);
+    font-style: normal;
+}
+
+.bib-source-title {
+    flex: 1;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.82em;
+}
+
+.bib-source-count {
+    font-size: 0.75em;
+    font-weight: 400;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+    padding: 1px 7px;
+}
+
+.bib-source-chevron {
+    font-size: 0.65em;
+    color: var(--muted);
+    transition: transform 0.15s;
+    margin-left: 4px;
+}
+
+.bib-source-card[open] .bib-source-chevron {
+    transform: rotate(180deg);
+}
+
+/* Entry preview rows inside the card */
+.bib-source-entries {
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.bib-source-entry {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 5px 12px;
+    font-size: 0.8em;
+    line-height: 1.4;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+    color: var(--text);
+}
+
+.bib-source-entry:last-child {
+    border-bottom: none;
+}
+
+.bib-source-entry-key {
+    flex-shrink: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.9em;
+    color: var(--accent);
+    font-weight: 600;
+    min-width: 80px;
+}
+
+.bib-source-entry-info {
+    flex: 1;
+    min-width: 0;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.bib-source-entry-info em {
+    font-style: italic;
+    color: var(--text);
+}
+
+/* Raw BibTeX source — matches .tool-call-code styling */
+.bib-source-raw {
+    padding: 8px 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.8em;
+    color: var(--text);
+    background: var(--ctp-mantle);
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    max-height: 280px;
+    overflow-y: auto;
+    line-height: 1.5;
+}
+
+/* ── thebibliography / \bibitem environment ─────────────────────────────────── */
+
+.latex-thebibliography {
+    margin: 1.5em 0 1em;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--panel) 85%, transparent);
+    overflow: hidden;
+}
+
+.latex-bibitem {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875em;
+    line-height: 1.6;
+    color: var(--text);
+    transition: background 0.1s;
+    scroll-margin-top: 72px;
+}
+
+.latex-bibitem:last-child {
+    border-bottom: none;
+}
+
+.latex-bibitem:hover {
+    background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
+}
+
+.latex-bibitem:target {
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    border-left: 3px solid var(--accent);
+    padding-left: 11px;
+}
+
+.latex-bibitem-label {
+    flex-shrink: 0;
+    min-width: 36px;
+    text-align: right;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-weight: 700;
+    color: var(--accent);
+    font-size: 0.88em;
+    padding-top: 1px;
+}
+
+.latex-bibitem-content {
+    flex: 1;
+}
+
+/* ── Legacy .latex-bibliography-note (backward compat) ───────────────────── */
+
 .latex-bibliography-note {
     font-style: italic;
-    color: var(--text-secondary, #666);
+    color: var(--muted);
+    padding: 6px 12px;
+    border-left: 3px solid var(--border);
+    font-size: 0.87em;
     margin: 0.5em 0;
 }
 
-/* Title in bibliography entry */
-.latex-bibliography-entry em {
-    font-style: italic;
+/* ── Scrollbar styling for bib-source-raw ────────────────────────────────── */
+
+.bib-source-raw::-webkit-scrollbar,
+.bib-source-entries::-webkit-scrollbar {
+    width: 4px;
 }
 
-/* Make sure titles stand out */
-.latex-bibliography-entry .bib-title {
-    font-style: italic;
+.bib-source-raw::-webkit-scrollbar-track,
+.bib-source-entries::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.bib-source-raw::-webkit-scrollbar-thumb,
+.bib-source-entries::-webkit-scrollbar-thumb {
+    background: var(--border);
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+    .bib-tooltip {
+        max-width: calc(100vw - 24px);
+    }
+
+    .latex-bibliography-entry,
+    .latex-bibitem {
+        gap: 8px;
+        padding: 8px 10px;
+        font-size: 0.83em;
+    }
+
+    .bib-label-col {
+        min-width: 26px;
+    }
+
+    .bib-type-badge {
+        display: none;
+    }
 }

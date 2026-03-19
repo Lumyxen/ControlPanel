@@ -1,3 +1,4 @@
+// backend/src/controllers/lmstudio_controller.cpp
 #include "controllers/lmstudio_controller.h"
 #include "services/mcp_registry.h"
 #include <json/json.h>
@@ -154,10 +155,8 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
             ? body["tools"]
             : Json::Value(Json::arrayValue);
 
-        // Inject MCP tools (lmstudio only — llama.cpp tool support is pending)
-        const bool isLlamaCpp = model.rfind("llamacpp::", 0) == 0;
-
-        if (!isLlamaCpp && registry && registry->liveCount() > 0) {
+        // Inject MCP tools for all backends (llama.cpp and LM Studio)
+        if (registry && registry->liveCount() > 0) {
             Json::Value mcpTools = registry->getAggregatedTools();
             for (const auto& t : mcpTools)
                 tools.append(t);
@@ -176,6 +175,8 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
             g_active_streams[stream_id] = ctx;
         }
 
+        const bool isLlamaCpp = model.rfind("llamacpp::", 0) == 0;
+
         if (isLlamaCpp) {
             // ── llama.cpp path ────────────────────────────────────────────────
             if (!llamaCppService) {
@@ -184,9 +185,15 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                 return;
             }
 
-            std::thread([ctx, llamaCppService, model, prompt, maxTokens,
-                         systemPrompt, temperature, contextWindow,
-                         hasPrebuiltMessages, prebuiltMessages]() mutable {
+            // Always use streamingChatWithTools so that MCP tools and vision
+            // messages are handled uniformly.  When tools is empty and there
+            // are no prebuilt messages the service falls back to plain inference.
+            Json::Value llamaMessages = hasPrebuiltMessages
+                ? prebuiltMessages
+                : llamaCppService->buildMessages(prompt, systemPrompt);
+
+            std::thread([ctx, llamaCppService, model, llamaMessages, tools,
+                         maxTokens, temperature, contextWindow, registry]() mutable {
                 auto onChunk = [ctx](const std::string& chunk) -> bool {
                     if (ctx->cancelled.load()) return false;
                     if (!chunk.empty()) {
@@ -202,21 +209,10 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                     ctx->done  = true;
                 };
 
-                if (hasPrebuiltMessages) {
-                    // Vision request: route through streamingChatWithTools so the
-                    // service receives the full structured messages array (including
-                    // image_url content blocks) instead of the flat prompt string.
-                    // Tools are not yet supported for llama.cpp, so an empty array
-                    // is passed and the registry pointer is null.
-                    llamaCppService->streamingChatWithTools(
-                        model, prebuiltMessages, Json::Value(Json::arrayValue),
-                        maxTokens, onChunk, onError, nullptr,
-                        temperature, contextWindow);
-                } else {
-                    llamaCppService->streamingChatWithCallback(
-                        model, prompt, maxTokens, onChunk, onError,
-                        systemPrompt, temperature, contextWindow);
-                }
+                llamaCppService->streamingChatWithTools(
+                    model, llamaMessages, tools,
+                    maxTokens, onChunk, onError, registry,
+                    temperature, contextWindow);
 
                 std::lock_guard<std::mutex> lock(ctx->mutex);
                 ctx->done = true;

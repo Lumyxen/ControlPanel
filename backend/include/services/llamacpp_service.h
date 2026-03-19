@@ -118,6 +118,22 @@ private:
         std::function<void(const std::string&)> onError
     ) const;
 
+    /**
+     * Like doInference but collects and returns the full generated text
+     * instead of streaming it.  Used by the tool-call loop so we can inspect
+     * the model's output before deciding whether to forward it to the client.
+     *
+     * @param cancelCheck  Optional predicate polled each token; return true to abort.
+     * @param onError      Called once on hard errors.
+     * @return             The full generated text (decoded from tokens).
+     */
+    std::string doInferenceCollect(
+        const std::vector<std::pair<std::string, std::string>>& messages,
+        int maxTokens, double temperature,
+        std::function<bool()> cancelCheck,
+        std::function<void(const std::string&)> onError
+    ) const;
+
     static std::string makeContentChunk(const std::string& text);
     static std::vector<uint8_t> decodeBase64Image(const std::string& dataUrl);
 };

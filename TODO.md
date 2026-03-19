@@ -17,6 +17,7 @@
 - llama.cpp hardware usage configuration
 - Tone down llama.cpp max compute usage to allow computer use during generation
   - Ability to return to maximum usage in settings
+- Ollama support
 - Keep models loaded for 5 minutes after generation completion
   - Setting to change time to unload after generation completion, down to immediate (step before 1 minute), up to infinite (step after 30 minutes)
 - KV cache reuse
@@ -207,7 +208,10 @@
 - Removing a selected llama.cpp build in the files keeps the build highlighted despite greying out
 - UI reload after finishing building a llama.cpp version, causing a flicker
 - Checkbox for Flash Attention setting is in an awkward position
-- BibTeX formatting currently awful and not properly working.
+- Can not copy code blocks and ctrl+c copies entire message instead of selected part of the message
+- Does not allow copying of thinking text
+- Markdown breakline `---` is rendered as an em-dash, not breakline
+- Obsidian.md warnings look unformatted
 ##### Chromium
 - Awkard message editing text field sizing causing unwanted scrolling
 
@@ -219,6 +223,7 @@
 
 #### Misc Bugs
 - Vulkan not building without developer path flags
+- `[HTTP] GET /api/config/settings - 200` being spammed in the output
 
 
 

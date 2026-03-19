@@ -44,12 +44,11 @@ static std::string modelIdFromPath(const std::string& path) {
 }
 
 fs::path LlamaCppService::libPath(const std::string& name) const {
-    // Flat directory: data/libs/libllama_<backend>.so
     return fs::path(libsDir_) / ("libllama_" + name + ".so");
 }
 
 // =============================================================================
-// isReady — defined here so LlamaApi is complete (forward-declared in header)
+// isReady
 // =============================================================================
 
 bool LlamaCppService::isReady() const {
@@ -106,9 +105,6 @@ std::vector<std::string> LlamaCppService::detectHardwareBackends() {
 
     bool hasAmdDiscreteGpu = false;
     if (access("/dev/kfd", F_OK) == 0) {
-        // /dev/kfd exists on all AMD systems (both dGPU and iGPU)
-        // Only suggest ROCm if we detect a discrete GPU
-        // Exclude iGPUs (Radeon Vega Graphics, Radeon RX Vega, etc.) which are NOT ROCm compatible
         FILE* fp = popen("lspci | grep -i 'VGA.*\\[AMD/ATI\\]' | grep -iE 'RX|Radeon Pro|Radeon VII|Radeon Instinct' | grep -v 'Vega Graphics'", "r");
         if (fp) {
             char buffer[256];
@@ -293,7 +289,6 @@ void LlamaCppService::unloadModel() {
     }
     modelLoaded_ = false;
     loadedModelId_.clear();
-    // Keep loadedModelPath_ so switchBackend can reload it.
 }
 
 bool LlamaCppService::loadModel(const std::string& path) {
@@ -406,40 +401,47 @@ LlamaCppService::parseMessages(const std::string& prompt,
 
     std::istringstream stream(prompt);
     std::string line, current;
+    std::string currentRole;
 
     auto flush = [&]() {
         if (current.empty()) return;
         size_t s = current.find_first_not_of(" \t\n\r");
         if (s != std::string::npos) current = current.substr(s);
-        if (current.find("User:") == 0) {
-            std::string c = current.substr(5);
-            size_t cs = c.find_first_not_of(" \t");
-            result.push_back({"user", cs != std::string::npos ? c.substr(cs) : c});
-        } else if (current.find("Assistant:") == 0) {
-            std::string c = current.substr(10);
-            size_t cs = c.find_first_not_of(" \t");
-            result.push_back({"assistant", cs != std::string::npos ? c.substr(cs) : c});
-        } else if (!current.empty()) {
-            result.push_back({"user", current});
-        }
+        size_t e = current.find_last_not_of(" \t\n\r");
+        if (e != std::string::npos) current = current.substr(0, e + 1);
+        if (!current.empty() && !currentRole.empty())
+            result.push_back({currentRole, current});
         current.clear();
+        currentRole.clear();
     };
 
     while (std::getline(stream, line)) {
-        if ((line.find("User:") == 0 || line.find("Assistant:") == 0) && !current.empty()) {
-            flush(); current = line;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.find("User:") == 0) {
+            flush();
+            currentRole = "user";
+            current = line.substr(5);
+        } else if (line.find("Assistant:") == 0) {
+            flush();
+            currentRole = "assistant";
+            current = line.substr(10);
         } else {
-            if (!current.empty()) current += "\n";
-            current += line;
+            if (!currentRole.empty()) current += "\n" + line;
         }
     }
     flush();
-    if (result.empty() && !prompt.empty()) result.push_back({"user", prompt});
+
+    if (result.empty() && !prompt.empty()) {
+        std::string trimmed = prompt;
+        size_t s = trimmed.find_first_not_of(" \t\n\r");
+        if (s != std::string::npos) trimmed = trimmed.substr(s);
+        if (!trimmed.empty()) result.push_back({"user", trimmed});
+    }
     return result;
 }
 
 // =============================================================================
-// makeContentChunk / decodeBase64Image
+// Chunk helpers
 // =============================================================================
 
 std::string LlamaCppService::makeContentChunk(const std::string& text) {
@@ -476,6 +478,85 @@ std::vector<uint8_t> LlamaCppService::decodeBase64Image(const std::string& dataU
         if (bits >= 8) { bits -= 8; out.push_back(uint8_t((buf >> bits) & 0xFF)); }
     }
     return out;
+}
+
+// =============================================================================
+// Tool-call helpers
+// =============================================================================
+
+static std::string buildToolSystemPromptAppendix(const Json::Value& tools) {
+    if (!tools.isArray() || tools.empty()) return "";
+
+    std::string out;
+    out += "\n\n## Available Tools\n\n";
+    out += "You have access to the following tools. To call a tool, respond with a "
+           "JSON object on its own line in this exact format:\n"
+           "{\"tool_call\": {\"name\": \"<tool_name>\", \"arguments\": {<args>}}}\n\n"
+           "After you emit a tool_call JSON object, stop generating. "
+           "The tool result will be provided and you can continue.\n\n"
+           "### Tool Definitions\n\n";
+
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+
+    for (const auto& tool : tools) {
+        if (!tool.isMember("function")) continue;
+        const Json::Value& fn = tool["function"];
+        out += "- **" + fn.get("name", "").asString() + "**: "
+             + fn.get("description", "").asString() + "\n";
+        if (fn.isMember("parameters")) {
+            out += "  Parameters: " + Json::writeString(wb, fn["parameters"]) + "\n";
+        }
+        out += "\n";
+    }
+    return out;
+}
+
+static bool extractToolCall(const std::string& text,
+                             std::string& nameOut,
+                             std::string& argsJsonOut) {
+    const std::string marker = "\"tool_call\"";
+    size_t pos = text.find(marker);
+    while (pos != std::string::npos) {
+        size_t braceStart = text.rfind('{', pos);
+        if (braceStart == std::string::npos) {
+            pos = text.find(marker, pos + 1);
+            continue;
+        }
+        int depth = 0;
+        size_t braceEnd = std::string::npos;
+        for (size_t i = braceStart; i < text.size(); ++i) {
+            if (text[i] == '{') ++depth;
+            else if (text[i] == '}') {
+                --depth;
+                if (depth == 0) { braceEnd = i; break; }
+            }
+        }
+        if (braceEnd == std::string::npos) {
+            pos = text.find(marker, pos + 1);
+            continue;
+        }
+
+        std::string candidate = text.substr(braceStart, braceEnd - braceStart + 1);
+        Json::Value parsed;
+        Json::CharReaderBuilder rb;
+        std::string errs;
+        std::istringstream ss(candidate);
+        if (Json::parseFromStream(rb, ss, &parsed, &errs) && parsed.isMember("tool_call")) {
+            const Json::Value& tc = parsed["tool_call"];
+            nameOut = tc.get("name", "").asString();
+            if (!nameOut.empty()) {
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
+                argsJsonOut = tc.isMember("arguments")
+                    ? Json::writeString(wb, tc["arguments"])
+                    : "{}";
+                return true;
+            }
+        }
+        pos = text.find(marker, pos + 1);
+    }
+    return false;
 }
 
 // =============================================================================
@@ -606,6 +687,48 @@ void LlamaCppService::doInference(
 }
 
 // =============================================================================
+// doInferenceCollect — runs inference and returns the full generated text.
+// Used ONLY for intermediate tool-detection rounds, never the final round.
+// =============================================================================
+
+std::string LlamaCppService::doInferenceCollect(
+    const std::vector<std::pair<std::string, std::string>>& messages,
+    int maxTokens, double temperature,
+    std::function<bool()> cancelCheck,
+    std::function<void(const std::string&)> onError
+) const {
+    std::string collected;
+
+    auto onChunk = [&](const std::string& chunk) -> bool {
+        if (cancelCheck && cancelCheck()) return false;
+        if (!chunk.empty() && chunk != "data: [DONE]\n\n") {
+            const std::string prefix = "data: ";
+            if (chunk.size() > prefix.size() && chunk.substr(0, prefix.size()) == prefix) {
+                std::string jsonStr = chunk.substr(prefix.size());
+                while (!jsonStr.empty() && (jsonStr.back() == '\n' || jsonStr.back() == '\r'))
+                    jsonStr.pop_back();
+                Json::Value parsed;
+                Json::CharReaderBuilder rb;
+                std::string errs;
+                std::istringstream ss(jsonStr);
+                if (Json::parseFromStream(rb, ss, &parsed, &errs)) {
+                    if (parsed.isMember("choices") && parsed["choices"].isArray()
+                            && !parsed["choices"].empty()) {
+                        const auto& delta = parsed["choices"][0]["delta"];
+                        if (delta.isMember("content") && delta["content"].isString())
+                            collected += delta["content"].asString();
+                    }
+                }
+            }
+        }
+        return true;
+    };
+
+    doInference(messages, maxTokens, temperature, onChunk, onError);
+    return collected;
+}
+
+// =============================================================================
 // Public streaming entry points
 // =============================================================================
 
@@ -622,49 +745,212 @@ void LlamaCppService::streamingChatWithCallback(
     doInference(parseMessages(prompt, systemPrompt), maxTokens, temperature, onChunk, onError);
 }
 
+// =============================================================================
+// streamingChatWithTools — MCP tool-call loop for llama.cpp
+//
+// Key design principle for streaming correctness:
+//   • Only INTERMEDIATE rounds (where a tool call was detected) use
+//     doInferenceCollect — the output is never forwarded to the client,
+//     only tool-execution events and reasoning annotations are sent.
+//   • The FINAL round (when no tool call is detected, or no tools exist)
+//     always calls doInference directly so every token is streamed live
+//     to the client as it is generated. No buffering, no re-emission.
+//
+// This means the client always sees real token-by-token streaming on the
+// response the user actually reads.
+// =============================================================================
+
 void LlamaCppService::streamingChatWithTools(
     const std::string&, Json::Value messages, const Json::Value& tools, int maxTokens,
     std::function<bool(const std::string&)> onChunk,
     std::function<void(const std::string&)> onError,
-    McpRegistry*, double temperature, int)
+    McpRegistry* registry, double temperature, int)
 {
     std::unique_lock<std::mutex> lock(inferMutex_);
     if (!modelLoaded_) {
         if (!ensureModelLoaded()) { onError("No llama.cpp model loaded"); return; }
     }
-    if (tools.isArray() && !tools.empty())
-        std::cout << "[LlamaCpp] Tool calls not yet supported — running without tools\n";
 
-    std::vector<std::pair<std::string,std::string>> textMessages;
-    textMessages.reserve(static_cast<size_t>(messages.size()));
-    std::vector<std::vector<uint8_t>> allImageData;
+    const bool hasTools = tools.isArray() && !tools.empty() && registry;
 
-    for (const auto& msg : messages) {
-        const std::string role = msg.get("role", "user").asString();
-        std::string text;
-        const Json::Value& cv = msg["content"];
-        if (cv.isString()) {
-            text = cv.asString();
-        } else if (cv.isArray()) {
-            for (const auto& part : cv) {
-                const std::string type = part.get("type","").asString();
-                if (type == "text") { text += part.get("text","").asString(); }
-                else if (type == "image_url") {
-                    const std::string url = part["image_url"].get("url","").asString();
-                    if (!url.empty()) {
-                        auto bytes = decodeBase64Image(url);
-                        if (!bytes.empty()) { allImageData.push_back(std::move(bytes)); text += "<image>\n"; }
+    // ── Convert OpenAI messages JSON array to (role, content) pairs ──────────
+    // chat_apply_template only understands simple role+content pairs, so:
+    //   • "tool" role messages are re-labelled as "user" with a result prefix.
+    //   • Multi-part content arrays are concatenated to a single string.
+    auto buildPairs = [](const Json::Value& msgs) {
+        std::vector<std::pair<std::string, std::string>> pairs;
+        for (const auto& msg : msgs) {
+            const std::string role = msg.get("role", "user").asString();
+            std::string text;
+            const Json::Value& cv = msg["content"];
+            if (cv.isString()) {
+                text = cv.asString();
+            } else if (cv.isArray()) {
+                for (const auto& part : cv) {
+                    if (part.get("type", "").asString() == "text")
+                        text += part.get("text", "").asString();
+                }
+            }
+            if (role == "tool") {
+                if (!text.empty())
+                    pairs.push_back({"user", "[Tool result]\n" + text});
+            } else {
+                pairs.push_back({role, text});
+            }
+        }
+        return pairs;
+    };
+
+    // ── No tools (or no registry): stream directly, live ─────────────────────
+    if (!hasTools) {
+        std::vector<std::pair<std::string,std::string>> textMessages;
+        std::vector<std::vector<uint8_t>> allImageData;
+
+        for (const auto& msg : messages) {
+            const std::string role = msg.get("role", "user").asString();
+            std::string text;
+            const Json::Value& cv = msg["content"];
+            if (cv.isString()) {
+                text = cv.asString();
+            } else if (cv.isArray()) {
+                for (const auto& part : cv) {
+                    const std::string type = part.get("type","").asString();
+                    if (type == "text") { text += part.get("text","").asString(); }
+                    else if (type == "image_url") {
+                        const std::string url = part["image_url"].get("url","").asString();
+                        if (!url.empty()) {
+                            auto bytes = decodeBase64Image(url);
+                            if (!bytes.empty()) { allImageData.push_back(std::move(bytes)); text += "<image>\n"; }
+                        }
                     }
                 }
             }
+            textMessages.push_back({role, text});
         }
-        textMessages.push_back({role, text});
-    }
 
-    if (!allImageData.empty()) {
-        onError("Image content received but vision support is not available in the dlopen backend.");
+        if (!allImageData.empty()) {
+            onError("Image content received but vision support is not available in the dlopen backend.");
+            return;
+        }
+
+        doInference(textMessages, maxTokens, temperature, onChunk, onError);
         return;
     }
 
-    doInference(textMessages, maxTokens, temperature, onChunk, onError);
+    // ── Augment system prompt with tool schemas ───────────────────────────────
+    const std::string toolAppendix = buildToolSystemPromptAppendix(tools);
+
+    Json::Value augmentedMessages = messages;
+    bool foundSystem = false;
+    for (auto& msg : augmentedMessages) {
+        if (msg.get("role", "").asString() == "system") {
+            msg["content"] = msg.get("content", "").asString() + toolAppendix;
+            foundSystem = true;
+            break;
+        }
+    }
+    if (!foundSystem) {
+        Json::Value sysMsg;
+        sysMsg["role"]    = "system";
+        sysMsg["content"] = "You are a helpful assistant." + toolAppendix;
+        Json::Value newMessages(Json::arrayValue);
+        newMessages.append(sysMsg);
+        for (const auto& m : augmentedMessages)
+            newMessages.append(m);
+        augmentedMessages = newMessages;
+    }
+
+    // ── Tool-call loop ────────────────────────────────────────────────────────
+    static constexpr int kMaxToolRounds = 10;
+
+    for (int round = 0; round < kMaxToolRounds; ++round) {
+        auto pairs = buildPairs(augmentedMessages);
+
+        // Collect this round's output so we can inspect for a tool call.
+        // The collected text is NOT forwarded to the client here.
+        std::string errorMsg;
+        std::string response = doInferenceCollect(
+            pairs, maxTokens, temperature, nullptr,
+            [&](const std::string& err) { errorMsg = err; });
+
+        if (!errorMsg.empty()) { onError(errorMsg); return; }
+
+        std::string toolName, toolArgsJson;
+        if (extractToolCall(response, toolName, toolArgsJson)) {
+            // ── Tool call: execute, emit events, loop ─────────────────────────
+            std::cout << "[LlamaCpp] Tool call detected: " << toolName << "\n";
+
+            // Reasoning annotation visible in the UI
+            if (onChunk) {
+                Json::Value fakeChoice;
+                fakeChoice["delta"]["reasoning"] = "\n*Executing tool: " + toolName + "*\n";
+                Json::Value fakeJson;
+                fakeJson["choices"].append(fakeChoice);
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
+                if (!onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n")) return;
+            }
+
+            // Parse arguments
+            Json::Value args(Json::objectValue);
+            if (!toolArgsJson.empty()) {
+                Json::CharReaderBuilder rb;
+                std::string errs;
+                std::istringstream ss(toolArgsJson);
+                Json::parseFromStream(rb, ss, &args, &errs);
+            }
+
+            // Execute
+            Json::Value result = registry->callTool(toolName, args);
+            std::string resultStr;
+            if (result.isArray()) {
+                for (const auto& item : result) {
+                    if (item.get("type", "").asString() == "text")
+                        resultStr += item.get("text", "").asString();
+                }
+            } else {
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
+                resultStr = Json::writeString(wb, result);
+            }
+
+            // tool_execution event for the UI
+            if (onChunk) {
+                Json::Value toolEvent;
+                toolEvent["type"] = "tool_execution";
+                toolEvent["tool_call"]["id"]        = "llamacpp_" + std::to_string(round);
+                toolEvent["tool_call"]["name"]      = toolName;
+                toolEvent["tool_call"]["arguments"] = toolArgsJson;
+                toolEvent["tool_call"]["output"]    = resultStr;
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
+                if (!onChunk("data: " + Json::writeString(wb, toolEvent) + "\n\n")) return;
+            }
+
+            // Append assistant + tool result, then loop
+            Json::Value assistantMsg;
+            assistantMsg["role"]    = "assistant";
+            assistantMsg["content"] = response;
+            augmentedMessages.append(assistantMsg);
+
+            Json::Value toolResultMsg;
+            toolResultMsg["role"]         = "tool";
+            toolResultMsg["tool_call_id"] = "llamacpp_" + std::to_string(round);
+            toolResultMsg["content"]      = resultStr;
+            augmentedMessages.append(toolResultMsg);
+
+            continue; // next round
+        }
+
+        // ── No tool call found: stream this answer LIVE ───────────────────────
+        // We discard the collected text and re-run doInference so every token
+        // flows directly to the client in real time. The KV cache is cleared at
+        // the start of each doInference call, so this is a clean re-run.
+        std::cout << "[LlamaCpp] No tool call — streaming final response live\n";
+        doInference(pairs, maxTokens, temperature, onChunk, onError);
+        return;
+    }
+
+    // Safety: max rounds hit — stream one last live pass
+    doInference(buildPairs(augmentedMessages), maxTokens, temperature, onChunk, onError);
 }
