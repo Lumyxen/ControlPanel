@@ -44,6 +44,7 @@
 - Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
 - AI generated chat title
 - Tool calls inline in the text instead of being shoved at the top
+  - Allow inlining inside of reasoning
 - Rework settings page to have tabs
 - Rating blocks (like claude.ai's rating blocks)
 - Markdown formatting inside of thinking block
@@ -210,7 +211,7 @@
 - Markdown breakline `---` is rendered as an em-dash, not breakline
 - Obsidian.md warnings look unformatted
 - Tool calls only appear after all tool tokens and output are done
-- Token streaming does not work after tool calls
+- Markdown table sometimes not appearing
 ##### Chromium
 - Awkard message editing text field sizing causing unwanted scrolling
 
