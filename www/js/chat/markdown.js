@@ -10,7 +10,7 @@
  *   and rendered as collapsible source cards instead of raw code
  */
 
-import { parseBibtex, getAllBibtexEntries } from './latex.js';
+import { parseBibtex, getAllBibtexEntries } from './latex/index.js';
 
 const markedModule = (function () {
 	'use strict';
@@ -428,7 +428,7 @@ const markedModule = (function () {
 				}
 
 				// Heading
-				match = src.match(/^ {0,3}(#{1,6})\s+(.+?)(?:\n+|$)/);
+				match = src.match(/^ {0,3}(#{1,6})\s+(.+?)(?:\s*\n+|$)/);
 				if (match) {
 					tokens.push({ type: 'heading', depth: match[1].length, text: match[2].trim() });
 					src = src.substring(match[0].length);
@@ -470,7 +470,7 @@ const markedModule = (function () {
 				}
 
 				// HR
-				match = src.match(/^ {0,3}([-]{3,}|[_]{3,}|[*]{3,})(?:\n+|$)/);
+				match = src.match(/^ {0,3}([*_-])(?:[ ]*\1){2,}[ ]*(?:\n+|$)/);
 				if (match) {
 					tokens.push({ type: 'hr' });
 					src = src.substring(match[0].length);
@@ -594,22 +594,23 @@ const markedModule = (function () {
 					}
 					return this.renderer.list(body, token.ordered, token.start);
 				}
-				case 'table': {
-					let header = '';
-					let tbody = '';
-					for (let i = 0; i < token.header.length; i++) {
-						header += this.renderer.tablecell(this.inlineParser.parse(token.header[i]), { header: true, align: token.align[i] });
-					}
-					header = this.renderer.tablerow(header);
-					for (const row of token.cells) {
-						let cells = '';
-						for (let i = 0; i < row.length; i++) {
-							cells += this.renderer.tablecell(this.inlineParser.parse(row[i] || ''), { header: false, align: token.align[i] });
-						}
-						tbody += this.renderer.tablerow(cells);
-					}
-					return this.renderer.table(header, tbody);
+		case 'table': {
+			let header = '';
+			let tbody = '';
+			for (let i = 0; i < token.header.length; i++) {
+				header += this.renderer.tablecell(this.inlineParser.parse(token.header[i]), { header: true, align: token.align[i] });
+			}
+			header = this.renderer.tablerow(header);
+			for (const row of token.cells) {
+				let cells = '';
+				for (let i = 0; i < row.length; i++) {
+					const align = token.align && i < token.align.length ? token.align[i] : null;
+					cells += this.renderer.tablecell(this.inlineParser.parse(row[i] || ''), { header: false, align });
 				}
+				tbody += this.renderer.tablerow(cells);
+			}
+			return this.renderer.table(header, tbody);
+		}
 				case 'paragraph':
 					return this.renderer.paragraph(this.inlineParser.parse(token.text));
 				default:

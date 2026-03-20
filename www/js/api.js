@@ -1,19 +1,14 @@
-// API service for backend communication
+// www/js/api.js
+// HTTP client for all backend communication.
+// SSE stream handling is intentionally quiet — verbose debug logging removed.
+
 const API_BASE = "/api";
 
 async function makeRequest(endpoint, options = {}) {
     const url = `${API_BASE}${endpoint}`;
-    const headers = {
-        "Content-Type": "application/json",
-        ...options.headers,
-    };
-
+    const headers = { "Content-Type": "application/json", ...options.headers };
     try {
-        const response = await fetch(url, {
-            ...options,
-            headers,
-        });
-
+        const response = await fetch(url, { ...options, headers });
         if (!response.ok) {
             const error = await response.json().catch(() => ({}));
             const errMsg = typeof error.error === 'object' && error.error !== null
@@ -21,7 +16,6 @@ async function makeRequest(endpoint, options = {}) {
                 : error.error;
             throw new Error(errMsg || `HTTP ${response.status}`);
         }
-
         return await response.json();
     } catch (err) {
         console.error("API request failed:", err);
@@ -36,81 +30,43 @@ export async function getModels() {
 /**
  * Stream a chat message.
  *
- * @param {string}   model
- * @param {string}   prompt           - Full conversation history string (used as fallback when messages is null)
- * @param {number}   maxTokens
- * @param {function} onChunk          - Called with each parsed SSE chunk
- * @param {AbortSignal|null} signal
- * @param {string}   systemPrompt     - System prompt to prepend (sent to backend)
- * @param {number|null} temperature   - Sampling temperature (null = use backend default)
- * @param {number|null} contextWindow - Context window size to request (used by LM Studio via num_ctx)
- * @param {string|null} streamId      - Identifier mapping to backend for immediate explicit halt
- * @param {Array|null} messages       - Structured OpenAI-format messages array (enables vision/multimodal).
- *                                      When provided, takes precedence over prompt for the API call.
- *                                      Each message: { role, content } where content may be a string
- *                                      or an array of { type: "text"|"image_url", ... } parts.
+ * @param {string}      model
+ * @param {string}      prompt        - Full conversation history string (fallback when messages is null)
+ * @param {number}      maxTokens
+ * @param {function}    onChunk       - Called with each parsed SSE chunk
+ * @param {AbortSignal} signal
+ * @param {string}      systemPrompt
+ * @param {number|null} temperature   - Sampling temperature (null = backend default)
+ * @param {number|null} contextWindow - Context window size (used by LM Studio via num_ctx)
+ * @param {string|null} streamId      - Identifier for explicit halt via /chat/stop
+ * @param {Array|null}  messages      - Structured OpenAI-format messages (enables vision/multimodal).
+ *                                      When provided, takes precedence over prompt.
  */
 export async function streamChatMessage(
-    model,
-    prompt,
-    maxTokens = 8192,
-    onChunk,
-    signal = null,
-    systemPrompt = "",
-    temperature = null,
-    contextWindow = null,
-    streamId = null,
-    messages = null,
+    model, prompt, maxTokens = 8192, onChunk,
+    signal = null, systemPrompt = "", temperature = null,
+    contextWindow = null, streamId = null, messages = null,
 ) {
     const url = new URL(`${window.location.origin}${API_BASE}/chat/stream`);
+    const payload = { model, max_tokens: maxTokens, prompt };
 
-    const headers = {
-        "Content-Type": "application/json",
-    };
-
-    // Build request body – only include optional fields when they carry a value.
-    // When a structured messages array is provided (e.g. containing image content blocks
-    // for vision models) send it instead of the flat prompt string. The backend will
-    // use messages directly, bypassing its internal prompt-string parser.
-    const requestPayload = {
-        model,
-        max_tokens: maxTokens,
-    };
-
-    // Always send the flat prompt string — llama.cpp and text-only LM Studio
-    // paths rely on it. Also attach the structured messages array when it is
-    // provided (i.e. the thread contains image content blocks for vision models).
-    requestPayload.prompt = prompt;
-    if (messages && messages.length > 0) {
-        requestPayload.messages = messages;
-    }
-
-    if (systemPrompt) {
-        requestPayload.system_prompt = systemPrompt;
-    }
-    if (temperature !== null && temperature !== undefined) {
-        requestPayload.temperature = temperature;
-    }
-    if (contextWindow !== null && contextWindow > 0) {
-        requestPayload.context_window = contextWindow;
-    }
-    if (streamId) {
-        requestPayload.stream_id = streamId;
-    }
+    if (messages && messages.length > 0)  payload.messages       = messages;
+    if (systemPrompt)                      payload.system_prompt  = systemPrompt;
+    if (temperature !== null && temperature !== undefined) payload.temperature = temperature;
+    if (contextWindow !== null && contextWindow > 0)       payload.context_window = contextWindow;
+    if (streamId)                          payload.stream_id      = streamId;
 
     try {
         const response = await fetch(url.toString(), {
             method: "POST",
-            headers,
-            body: JSON.stringify(requestPayload),
-            signal
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal,
         });
 
         if (!response.ok) {
             let error = {};
-            try {
-                error = await response.json();
-            } catch (e) {}
+            try { error = await response.json(); } catch {}
             const errMsg = typeof error.error === 'object' && error.error !== null
                 ? (error.error.message || JSON.stringify(error.error))
                 : error.error;
@@ -118,9 +74,7 @@ export async function streamChatMessage(
         }
 
         const reader = response.body?.getReader();
-        if (!reader) {
-            throw new Error("Response body is not readable");
-        }
+        if (!reader) throw new Error("Response body is not readable");
 
         const decoder = new TextDecoder();
         let buffer = "";
@@ -130,96 +84,43 @@ export async function streamChatMessage(
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
-            console.debug("[API] Received chunk:", chunk);
-            buffer += chunk;
+            buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n");
             buffer = lines.pop() || "";
 
-            let streamFinished = false; // Flag to instantly kill the stream
-
+            let streamFinished = false;
             for (const line of lines) {
-                console.debug("[API] Processing line:", line);
-                if (line.startsWith("data: ")) {
-                    const data = line.slice(6);
-                    console.debug("[API] SSE data:", data);
-                    
-                    // Stop waiting for the server to close the socket
-                    if (data === "[DONE]") {
-                        streamFinished = true;
-                        break; 
+                if (!line.startsWith("data: ")) continue;
+                const data = line.slice(6);
+                if (data === "[DONE]") { streamFinished = true; break; }
+                try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.error) {
+                        const msg = typeof parsed.error === 'object' && parsed.error !== null
+                            ? (parsed.error.message || JSON.stringify(parsed.error))
+                            : String(parsed.error);
+                        streamError = new Error(msg);
                     }
-                    
-                    try {
-                        const parsed = JSON.parse(data);
-                        console.debug("[API] Parsed JSON:", parsed);
-                        // Check for error in the stream
-                        if (parsed.error) {
-                            const errorMsg = typeof parsed.error === 'object' && parsed.error !== null
-                                ? (parsed.error.message || JSON.stringify(parsed.error))
-                                : String(parsed.error);
-                            console.debug("[API] Error detected in stream:", errorMsg);
-                            streamError = new Error(errorMsg);
-                        }
-                        if (onChunk) onChunk(parsed);
-                    } catch (e) {
-                        console.debug("[API] Failed to parse JSON:", e, "Data was:", data);
-                    }
-                }
+                    if (onChunk) onChunk(parsed);
+                } catch { /* ignore malformed SSE frames */ }
             }
-            if (streamFinished) break; // Break the while loop
+            if (streamFinished) break;
         }
 
-        // If we encountered an error in the stream, throw it after processing
-        if (streamError) {
-            throw streamError;
-        }
+        if (streamError) throw streamError;
     } catch (err) {
-        if (err.name === 'AbortError') throw err; // Re-throw to be handled gracefully
+        if (err.name === 'AbortError') throw err;
         console.error("Streaming request failed:", err);
         throw err;
     }
 }
 
-/**
- * Explicity tells the backend to cancel a running stream, overcoming TCP/OS layer networking cache delays.
- * @param {string} streamId - Identical to the generation stream
- */
+/** Explicitly cancel a running stream (overcomes TCP/OS layer cache delays). */
 export async function stopChatMessage(streamId) {
-    return makeRequest("/chat/stop", {
-        method: "POST",
-        body: JSON.stringify({ stream_id: streamId })
-    });
+    return makeRequest("/chat/stop", { method: "POST", body: JSON.stringify({ stream_id: streamId }) });
 }
 
-export async function getSettings() {
-    return makeRequest("/config/settings");
-}
-
-export async function updateSettings(settings) {
-    return makeRequest("/config/settings", {
-        method: "PUT",
-        body: JSON.stringify(settings),
-    });
-}
-
-// ── Chat persistence (backend storage) ───────────────────────────────────────
-
-/**
- * Fetch the full chat state from the backend.
- * Returns { chats, currentChatId, pins }.
- */
-export async function getChatsData() {
-    return makeRequest("/chats");
-}
-
-/**
- * Persist the full chat state to the backend.
- * @param {{ chats: Array, currentChatId: string, pins: Array }} data
- */
-export async function saveChatsData(data) {
-    return makeRequest("/chats", {
-        method: "PUT",
-        body: JSON.stringify(data),
-    });
-}
+export async function getSettings()          { return makeRequest("/config/settings"); }
+export async function updateSettings(s)      { return makeRequest("/config/settings", { method: "PUT", body: JSON.stringify(s) }); }
+export async function getChatsData()         { return makeRequest("/chats"); }
+export async function saveChatsData(data)    { return makeRequest("/chats", { method: "PUT", body: JSON.stringify(data) }); }

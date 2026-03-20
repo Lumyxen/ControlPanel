@@ -1,5 +1,10 @@
+// www/js/app.js
+// Entry point and router.
+// initSettingsPage is now imported from settings/page.js (not theme.js).
+
 import { initConnectionUI } from "./connection-ui.js";
-import { initTheme, initSettingsPage } from "./theme.js";
+import { initTheme } from "./theme.js";
+import { initSettingsPage } from "./settings/page.js";
 import * as SettingsStore from "./settings-store.js";
 import { checkAndSuggest } from "./backend-suggest.js";
 import {
@@ -35,7 +40,6 @@ function initPage(url, root) {
 	}
 	if (url.includes("pages/ai-chat.html")) {
 		initChatPage(root, currentRoute, () => setActive(currentRoute(), getCurrentChatId()));
-		// Check for GPU backend suggestion when navigating to chat page
 		checkAndSuggest().catch(() => {});
 	}
 }
@@ -73,22 +77,14 @@ function startNewChat() {
 
 document.addEventListener("click", (e) => {
 	if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
-
 	const a = e.target.closest("a[data-route]");
 	if (!a) return;
 	if (a.classList.contains("editing")) return;
-
 	e.preventDefault();
 	const href = a.getAttribute("href");
 	const url = (href?.startsWith("#") ? href.slice(1) : href) || "pages/home.html";
-	if (a.hasAttribute("data-new-chat")) {
-		clearCurrentChatId();
-		saveChats();
-	}
-	if (a.dataset.chatId) {
-		setCurrentChatId(a.dataset.chatId);
-		saveChats();
-	}
+	if (a.hasAttribute("data-new-chat")) { clearCurrentChatId(); saveChats(); }
+	if (a.dataset.chatId) { setCurrentChatId(a.dataset.chatId); saveChats(); }
 	if ("#" + url !== location.hash) {
 		location.hash = url;
 	} else if (url.includes("ai-chat.html")) {
@@ -99,8 +95,7 @@ document.addEventListener("click", (e) => {
 document.addEventListener("pointerover", (e) => {
 	const a = e.target.closest("a[data-route]");
 	if (!a) return;
-	const url = (a.getAttribute("href")?.replace(/^#\/?/, "")) || "pages/home.html";
-	prefetch(url);
+	prefetch((a.getAttribute("href")?.replace(/^#\/?/, "")) || "pages/home.html");
 }, { passive: true });
 
 window.addEventListener("hashchange", () => {
@@ -119,19 +114,14 @@ if (quickNewChatBtn) {
 	});
 }
 
-// Async startup
 (async () => {
 	await loadChats();
 
 	const initial = currentRoute();
-
 	if (initial.includes("ai-chat.html")) {
 		const urlParams = new URLSearchParams(location.hash.split("?")[1] || "");
 		const chatIdFromUrl = urlParams.get("chat");
-		if (chatIdFromUrl && !getChatById(chatIdFromUrl)) {
-			clearCurrentChatId();
-			saveChats();
-		}
+		if (chatIdFromUrl && !getChatById(chatIdFromUrl)) { clearCurrentChatId(); saveChats(); }
 	}
 
 	renderChatList(() => refreshChatUIIfOpen());
@@ -143,7 +133,5 @@ if (quickNewChatBtn) {
 		console.error(err);
 	}
 
-	// Check for GPU backend suggestion a short while after startup so it
-	// doesn't compete with page load and feels non-intrusive.
 	setTimeout(() => checkAndSuggest().catch(() => {}), 3000);
 })();
