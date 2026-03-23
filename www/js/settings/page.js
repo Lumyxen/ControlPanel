@@ -172,7 +172,22 @@ async function startBuildInSettings(root, backend, tag, btn) {
 					const totalStr = totalSec < 60 ? `${totalSec}s` : `${Math.floor(totalSec/60)}m ${totalSec%60}s`;
 					if (labelEl) labelEl.textContent = `Built ${BACKEND_LABELS[backend] || backend} in ${totalStr}. Backend activated.`;
 					if (btn) { btn.textContent = 'Done'; btn.style.color = 'var(--green,green)'; setTimeout(() => { btn.disabled = false; btn.textContent = 'Rebuild'; btn.style.color = ''; }, 4000); }
-					setTimeout(() => initBackendSelector(root).catch(()=>{}), 1500);
+					// Update the backend selector in place instead of reloading to avoid flicker
+					const container = root.querySelector('#llamacpp-backend-selector');
+					if (container) {
+						const radio = container.querySelector(`input[value="${backend}"]`);
+						if (radio) {
+							radio.disabled = false;
+							const tile = radio.closest('.flavour-tile');
+							if (tile) {
+								tile.style.opacity = '';
+								tile.classList.add('selected');
+								tile.setAttribute('aria-checked', 'true');
+							}
+						}
+					}
+					const activeLabel = root.querySelector('#llamacpp-active-backend-label');
+					if (activeLabel) activeLabel.textContent = BACKEND_LABELS[backend] || backend.toUpperCase();
 				} else {
 					if (barEl) { barEl.style.background = 'var(--red,red)'; barEl.style.width = '100%'; }
 					if (labelEl) labelEl.textContent = `Build failed. Check data/logs/build_${backend}.log`;
@@ -224,8 +239,11 @@ async function initBackendSelector(root) {
 		const tileLabel = document.createElement('label');
 		tileLabel.className = 'flavour-tile'; tileLabel.style.width = 'fit-content';
 		tileLabel.setAttribute('aria-checked', 'false');
-		if (!isBuilt) tileLabel.style.opacity = '0.5';
-		else if (!hasHardware) tileLabel.style.opacity = '0.45';
+		// Only grey out versions that are not built, and remove selected state
+		if (!isBuilt) {
+			tileLabel.style.opacity = '0.5';
+			tileLabel.classList.remove('selected');
+		}
 		const radio = document.createElement('input');
 		radio.type = 'radio'; radio.name = 'llamacpp-backend'; radio.value = backend; radio.disabled = !isBuilt;
 		const dot = document.createElement('span'); dot.className = 'dot'; dot.setAttribute('aria-hidden', 'true');

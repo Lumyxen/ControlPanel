@@ -180,7 +180,7 @@ function applyInlineFormatting(text) {
 		.replace(/\\\^{}/g, '^').replace(/\\~{}/g, '~')
 		.replace(/\\ldots\b/g, '…').replace(/\\dots\b/g, '…')
 		.replace(/\\cdots\b/g, '⋯').replace(/\\vdots\b/g, '⋮').replace(/\\ddots\b/g, '⋱')
-		.replace(/---/g, '—').replace(/--/g, '–')
+		.replace(/(?<!\n)---(?!\n)/g, '—').replace(/(?<!\n)--(?!\n)/g, '–')
 		.replace(/``/g, '\u201C').replace(/''/g, '\u201D')
 		.replace(/`/g, '\u2018')
 		.replace(/\\textquoteleft\b/g, '\u2018').replace(/\\textquoteright\b/g, '\u2019')

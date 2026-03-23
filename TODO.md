@@ -120,6 +120,7 @@
 - Add GitHub repo viewer tool
 - Add personal per-chat notes tool for the AI to use
   - Capability for easy planning for the AI
+- Add TODO list tool for the AI (similar but not the same to the notes tool)
 - Different agents/personalities /w ability to customise things like system prompt
 - Small governing AI to make sure it doesn't get malicious, call out possible hallucinations, call out yes-manning, and call out repetition glitching and auto-stop and regenerate the response (where the AI gets stuck in an infinite loop)
 - Agent swarm tool (Democratic (models work together to form 1 final product) and Leadership (1 main orchestrating AI) versions)
@@ -210,14 +211,12 @@
 ### To Fix
 #### UI
 - Removing a selected llama.cpp build in the files keeps the build highlighted despite greying out
-- UI reload after finishing building a llama.cpp version, causing a flicker
-- Markdown breakline `---` is rendered as an em-dash, not breakline
-- Obsidian.md warnings look unformatted
+  - User seems to still be able to do inference despite removed libraries. It should reload libraries on model loading instead of keeping them loaded in memory
+  - Persists even after backend restart plus hard refresh
+  - Persists for a couple seconds after building a new llama.cpp build with that being auto-selected, causing dual selection visually
+- Obsidian.md warnings look unformatted (doesn't have their own unique formatting)
 - Tool calls only appear after all tool tokens and output are done
-- Markdown table sometimes not appearing
-- Built llama.cpp versions are greyed out
-##### Chromium
-- Awkard message editing text field sizing causing unwanted scrolling
+- Markdown tables not working
 
 #### UX
 - LM Studio API url test incorrectly adds in llama.cpp models

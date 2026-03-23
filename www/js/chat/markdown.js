@@ -436,7 +436,7 @@ const markedModule = (function () {
 				}
 
 				// Table (GFM) - Robust to tables missing leading/trailing pipes
-				const tableHeaderRegex = /^ {0,3}\|?([^\n]+)\|[^\n]*\n {0,3}\|?([ \t\-:|]+)\|[ \t\-:|]*(?:\n|$)/;
+				const tableHeaderRegex = /^ {0,3}\|?([^\n]+)\|[^\n]*\n {0,3}\|?([ \t\-:|]+)(?:\|[ \t\-:|]*)?(?:\n|$)/;
 				if (src.match(tableHeaderRegex)) {
 					const tableBlockRegex = /^(?: {0,3}\|?[^\n]+\|[^\n]*(?:\n|$))+/;
 					const tableMatch = src.match(tableBlockRegex);
@@ -854,18 +854,21 @@ function postprocessCallouts(html) {
 	};
  
 	// 1. Blockquote form — captures body paragraphs that follow the header too
+	// Handle both <p class="md-paragraph"> and <p> (in case class is missing)
 	let result = html.replace(
-		/<blockquote class="md-blockquote">\s*<p class="md-paragraph">\[!([\w]+)\]\s*(.*?)<\/p>([\s\S]*?)<\/blockquote>/g,
+		/<blockquote class="md-blockquote">\s*<p(?:\s+class="md-paragraph")?>\[!([\w]+)\]\s*(.*?)<\/p>([\s\S]*?)<\/blockquote>/g,
 		(match, type, title, body) => openCallout(type, title) + body + '</div></div>'
 	);
  
 	// 2. Standalone paragraph form — [!type] Title — body or [!type] body
+	// Handle both <p class="md-paragraph"> and <p> (in case class is missing)
 	result = result.replace(
-		/<p class="md-paragraph">\[!([\w]+)\]\s*([\s\S]*?)<\/p>/g,
+		/<p(?:\s+class="md-paragraph")?>\[!([\w]+)\]\s*([\s\S]*?)<\/p>/g,
 		(match, type, content) => {
 			// Attempt to split "Short Title — longer body text" at an em-dash,
 			// en-dash, or plain dash cluster.  Cap title at 60 chars.
-			const split = content.match(/^(.{1,60}?)\s*(?:[—–]|-{2,})\s*([\s\S]+)$/);
+			// Exclude --- (horizontal rule) from being treated as a separator
+			const split = content.match(/^(.{1,60}?)\s*(?:[—–]|-{2,}(?!-)\s)\s*([\s\S]+)$/);
 			let title, body;
 			if (split) {
 				title = split[1].trim();

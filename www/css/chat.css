@@ -183,7 +183,7 @@
     box-sizing: border-box;
     min-height: 24px;
     max-height: 300px;
-    overflow-y: auto;
+    overflow-y: hidden;
     overflow-wrap: anywhere;
     word-break: break-word;
     display: block;
