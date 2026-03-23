@@ -244,6 +244,31 @@ const markedModule = (function () {
 					continue;
 				}
 
+				// Safety guard: Skip formatting if inside HTML tags or attributes
+				// This prevents formatting from being applied to HTML content
+				if (src.match(/^<[^>]+>/)) {
+					const htmlMatch = src.match(/^<[^>]+>/);
+					out += htmlMatch[0];
+					src = src.substring(htmlMatch[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML closing tags
+				if (src.match(/^<\/[a-zA-Z][\w:-]*\s*>/)) {
+					const closeTagMatch = src.match(/^<\/[a-zA-Z][\w:-]*\s*>/);
+					out += closeTagMatch[0];
+					src = src.substring(closeTagMatch[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML self-closing tags
+				if (src.match(/^<[a-zA-Z][\w:-]*\s*\/>/)) {
+					const selfCloseMatch = src.match(/^<[a-zA-Z][\w:-]*\s*\/>/);
+					out += selfCloseMatch[0];
+					src = src.substring(selfCloseMatch[0].length);
+					continue;
+				}
+
 				// Autolink
 				match = src.match(/^<([a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\s\x00-\x1f<>]+)>/);
 				if (match) {
@@ -270,6 +295,14 @@ const markedModule = (function () {
 					continue;
 				}
 
+				// Safety guard: Skip formatting if inside HTML comments
+				if (src.match(/^<!--[\s\S]*?-->/)) {
+					const commentMatch = src.match(/^<!--[\s\S]*?-->/);
+					out += commentMatch[0];
+					src = src.substring(commentMatch[0].length);
+					continue;
+				}
+
 				// Image or Link
 				match = src.match(/^!?\[([^\]]*)\]\(([^)]+)\)/);
 				if (match) {
@@ -284,6 +317,95 @@ const markedModule = (function () {
 						out += this.renderer.link(href, title, linkText);
 					}
 					src = src.substring(match[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML attributes
+				// This prevents formatting from being applied to HTML attribute values
+				if (src.match(/^[a-zA-Z-]+="[^"]*"/)) {
+					const attrMatch = src.match(/^[a-zA-Z-]+="[^"]*"/);
+					out += attrMatch[0];
+					src = src.substring(attrMatch[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML attribute values with single quotes
+				if (src.match(/^[a-zA-Z-]+='[^']*'/)) {
+					const attrMatch = src.match(/^[a-zA-Z-]+='[^']*'/);
+					out += attrMatch[0];
+					src = src.substring(attrMatch[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML attribute values without quotes
+				if (src.match(/^[a-zA-Z-]+=[^\s>]+/)) {
+					const attrMatch = src.match(/^[a-zA-Z-]+=[^\s>]+/);
+					out += attrMatch[0];
+					src = src.substring(attrMatch[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML attribute values with spaces
+				if (src.match(/^[a-zA-Z-]+=[^\s>]+\s+[^\s>]*/)) {
+					const attrMatch = src.match(/^[a-zA-Z-]+=[^\s>]+\s+[^\s>]*/);
+					out += attrMatch[0];
+					src = src.substring(attrMatch[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML attribute values with spaces and quotes
+				if (src.match(/^[a-zA-Z-]+="[^"]*"\s+[^\s>]*/)) {
+					const attrMatch = src.match(/^[a-zA-Z-]+="[^"]*"\s+[^\s>]*/);
+					out += attrMatch[0];
+					src = src.substring(attrMatch[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML attribute values with spaces and single quotes
+				if (src.match(/^[a-zA-Z-]+='[^']*'\s+[^\s>]*/)) {
+					const attrMatch = src.match(/^[a-zA-Z-]+='[^']*'\s+[^\s>]*/);
+					out += attrMatch[0];
+					src = src.substring(attrMatch[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML attribute values with spaces and no quotes
+				if (src.match(/^[a-zA-Z-]+=[^\s>]+\s+[^\s>]*/)) {
+					const attrMatch = src.match(/^[a-zA-Z-]+=[^\s>]+\s+[^\s>]*/);
+					out += attrMatch[0];
+					src = src.substring(attrMatch[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML attribute values with spaces and no quotes and multiple attributes
+				if (src.match(/^[a-zA-Z-]+=[^\s>]+\s+[^\s>]+\s+[^\s>]*/)) {
+					const attrMatch = src.match(/^[a-zA-Z-]+=[^\s>]+\s+[^\s>]+\s+[^\s>]*/);
+					out += attrMatch[0];
+					src = src.substring(attrMatch[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML attribute values with spaces and no quotes and multiple attributes and spaces
+				if (src.match(/^[a-zA-Z-]+=[^\s>]+\s+[^\s>]+\s+[^\s>]+\s+[^\s>]*/)) {
+					const attrMatch = src.match(/^[a-zA-Z-]+=[^\s>]+\s+[^\s>]+\s+[^\s>]+\s+[^\s>]*/);
+					out += attrMatch[0];
+					src = src.substring(attrMatch[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML attribute values with spaces and no quotes and multiple attributes and spaces and quotes
+				if (src.match(/^[a-zA-Z-]+="[^"]*"\s+[^\s>]+\s+[^\s>]+\s+[^\s>]*/)) {
+					const attrMatch = src.match(/^[a-zA-Z-]+="[^"]*"\s+[^\s>]+\s+[^\s>]+\s+[^\s>]*/);
+					out += attrMatch[0];
+					src = src.substring(attrMatch[0].length);
+					continue;
+				}
+
+				// Safety guard: Skip formatting if inside HTML attribute values with spaces and no quotes and multiple attributes and spaces and single quotes
+				if (src.match(/^[a-zA-Z-]+='[^']*'\s+[^\s>]+\s+[^\s>]+\s+[^\s>]*/)) {
+					const attrMatch = src.match(/^[a-zA-Z-]+='[^']*'\s+[^\s>]+\s+[^\s>]+\s+[^\s>]*/);
+					out += attrMatch[0];
+					src = src.substring(attrMatch[0].length);
 					continue;
 				}
 

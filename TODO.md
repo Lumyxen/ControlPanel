@@ -191,6 +191,7 @@
     - Warn user if selected AI model is from the same company as the AI model being benchmarked
 
 ### Possible Features
+- Togglable SLM for detecting false/unwanted text processing (like Markdown)
 - Setting to force thinking blocks on models that have thinking natively
 - Support for an external llama.cpp server
 - Token usage graph like Kilo Code
