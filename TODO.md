@@ -3,8 +3,20 @@
 # TODO
 ## Main Control Panel
 ### Planned Features
+- Encryption with required login on visit
+  - Store key in sessionStorage to add a lot of convenience for only a small security price
+- Photos page
+  - APK for mobile auto-backup
+    - GUI to customise stuff like end point and folders to back up
+  - Executable files for desktop auto-backup
+    - GUI to customise stuff like end point and folders to back up
+  - Setting to change between full list and organised (split between selected folders)
+  - Sorting stuff
+- Cloud storage page
 - Search bar functionality and UI with AI chat-box
 - GitHub/GitLab/Codeberg/Directory LoC display
+
+
 
 ### To Fix
 #### UX
@@ -12,6 +24,7 @@
 
 ## AI Chat-box
 ### Planned Features
+- Replace emojis with proper SVGs
 - Collapsable/Expandable BibTeX reference list
   - Closed it by default
 - Download progress bar on llama.cpp source downloading
@@ -86,6 +99,7 @@
   - Do NOT let the initial Qwen 3.5 35B A3B model OR the trained AI to not be in this harness, as to give it up-most capabilities
   - Small model to keep watch unknowingly to the developer AI to kill the development loop as soon as any sort of malicious intent is detected
   - NOT meant to be computationally reasonable yet. It's for a preparation for when it does become reasonable, which is entirely unknown and could be tomorrow, or even 2 years from now.
+- Obsidian.md warning, danger, and check custom formatting
 - Mobile UI support
 - Add chat importing (from T3.chat & Google AI Studio)
 - Add chat exporting (T3.chat format, custom format as default)
@@ -215,9 +229,8 @@
   - User seems to still be able to do inference despite removed libraries. It should reload libraries on model loading instead of keeping them loaded in memory
   - Persists even after backend restart plus hard refresh
   - Persists for a couple seconds after building a new llama.cpp build with that being auto-selected, causing dual selection visually
-- Obsidian.md warnings look unformatted (doesn't have their own unique formatting)
-- Tool calls only appear after all tool tokens and output are done
 - Markdown tables not working
+- LaTeX processing not working inside of latex type codeblocks
 
 #### UX
 - LM Studio API url test incorrectly adds in llama.cpp models
@@ -231,7 +244,19 @@
 #### Misc Bugs
 - None
 
+## Password Manager
+### Planned Features
+- None
 
+### To Fix
+#### UI
+- None
+
+#### UX
+- None
+
+#### Misc
+- None
 
 # Done
 ## Control Panel
