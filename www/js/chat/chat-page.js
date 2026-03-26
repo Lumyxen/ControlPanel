@@ -281,12 +281,38 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 						if (rc) rc.textContent = displayReasoning;
 					}
 
+					// Update or add tool call elements
 					const existingTCs = mc.querySelectorAll('.message-tool-call');
-					if (activeToolCalls.length > existingTCs.length) {
-						for (let i = existingTCs.length; i < activeToolCalls.length; i++) {
-							const tcEl = buildToolCallElement(activeToolCalls[i]);
+					for (let i = 0; i < activeToolCalls.length; i++) {
+						const tc = activeToolCalls[i];
+						let tcEl = null;
+						
+						// Find existing element by ID
+						for (const el of existingTCs) {
+							if (el.dataset.toolCallId === tc.id) {
+								tcEl = el;
+								break;
+							}
+						}
+						
+						if (!tcEl) {
+							// Create new tool call element
+							tcEl = buildToolCallElement(tc);
+							tcEl.dataset.toolCallId = tc.id;
 							const tw = mc.querySelector('.chat-message-text');
 							tw ? mc.insertBefore(tcEl, tw) : mc.appendChild(tcEl);
+						} else {
+							// Update existing tool call element with output
+							const body = tcEl.querySelector('.tool-call-body');
+							if (body && tc.output) {
+								const outputSection = body.querySelector('.tool-call-section-label:last-of-type');
+								if (outputSection) {
+									const outputCode = outputSection.nextElementSibling;
+									if (outputCode && outputCode.classList.contains('tool-call-code')) {
+										outputCode.textContent = tc.output;
+									}
+								}
+							}
 						}
 					}
 

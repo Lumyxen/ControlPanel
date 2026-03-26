@@ -22,6 +22,7 @@
 #include "controllers/config_controller.h"
 #include "controllers/mcp_controller.h"
 #include "controllers/chat_controller.h"
+#include "controllers/auth_controller.h"
 #include "embedded_frontend.h"
 
 #ifndef _WIN32
@@ -516,6 +517,7 @@ void runServer(Config& config, LmStudioService& lmstudioService,
     });
 
     ChatStore chatStore((fs::path(dataDir) / "chats.json").string());
+    AuthStore authStore((fs::path(dataDir) / "auth.json").string());
     svr.Get("/api/chats", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleGetChats(req, res, chatStore);
@@ -523,6 +525,15 @@ void runServer(Config& config, LmStudioService& lmstudioService,
     svr.Put("/api/chats", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleSaveChats(req, res, chatStore);
+    });
+    // ── Auth (password salt + sentinel — stored server-side) ─────────────────
+    svr.Get("/api/auth", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        handleGetAuth(req, res, authStore);
+    });
+    svr.Post("/api/auth", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        handleSetAuth(req, res, authStore);
     });
 
     svr.Post("/mcp", [&](const httplib::Request& req, httplib::Response& res) {

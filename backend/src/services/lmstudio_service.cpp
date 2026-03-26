@@ -379,61 +379,75 @@ void LmStudioService::streamingChatWithTools(
         messages.append(assistantMsg);
 
         for (const auto& tc : toolCalls) {
-            if (onChunk) {
-                Json::Value fakeChoice;
-                fakeChoice["delta"]["reasoning"] = "\n*Executing tool: " + tc.name + "*\n";
-                Json::Value fakeJson;
-                fakeJson["choices"].append(fakeChoice);
-                Json::StreamWriterBuilder wb;
-                wb["indentation"] = "";
-                if (!onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n")) return;
-            }
-
-            std::string resultStr;
-
-            if (registry) {
-                Json::Value args(Json::objectValue);
-                if (!tc.argumentsJson.empty()) {
-                    Json::CharReaderBuilder rb;
-                    std::string errs;
-                    std::istringstream ss(tc.argumentsJson);
-                    Json::parseFromStream(rb, ss, &args, &errs);
-                }
-
-                Json::Value result = registry->callTool(tc.name, args);
-
-                if (result.isArray()) {
-                    for (const auto& item : result) {
-                        if (item.get("type", "").asString() == "text")
-                            resultStr += item.get("text", "").asString();
-                    }
-                } else {
-                    Json::StreamWriterBuilder wb;
-                    wb["indentation"] = "";
-                    resultStr = Json::writeString(wb, result);
-                }
-            } else {
-                resultStr = "{\"error\": \"No MCP registry available\"}";
-            }
-
-            Json::Value toolResultMsg;
-            toolResultMsg["role"]         = "tool";
-            toolResultMsg["tool_call_id"] = tc.id;
-            toolResultMsg["content"]      = resultStr;
-            messages.append(toolResultMsg);
-
-            if (onChunk) {
-                Json::Value toolEvent;
-                toolEvent["type"] = "tool_execution";
-                toolEvent["tool_call"]["id"] = tc.id;
-                toolEvent["tool_call"]["name"] = tc.name;
-                toolEvent["tool_call"]["arguments"] = tc.argumentsJson;
-                toolEvent["tool_call"]["output"] = resultStr;
-
-                Json::StreamWriterBuilder wb;
-                wb["indentation"] = "";
-                if (!onChunk("data: " + Json::writeString(wb, toolEvent) + "\n\n")) return;
-            }
+        	if (onChunk) {
+        		Json::Value fakeChoice;
+        		fakeChoice["delta"]["reasoning"] = "\n*Executing tool: " + tc.name + "*\n";
+        		Json::Value fakeJson;
+        		fakeJson["choices"].append(fakeChoice);
+        		Json::StreamWriterBuilder wb;
+        		wb["indentation"] = "";
+        		if (!onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n")) return;
+        	}
+      
+        	// Send tool call event to UI immediately (before execution)
+        	if (onChunk) {
+        		Json::Value toolCallEvent;
+        		toolCallEvent["type"] = "tool_execution";
+        		toolCallEvent["tool_call"]["id"] = tc.id;
+        		toolCallEvent["tool_call"]["name"] = tc.name;
+        		toolCallEvent["tool_call"]["arguments"] = tc.argumentsJson;
+        		toolCallEvent["tool_call"]["output"] = ""; // Empty output initially
+        		Json::StreamWriterBuilder wb;
+        		wb["indentation"] = "";
+        		if (!onChunk("data: " + Json::writeString(wb, toolCallEvent) + "\n\n")) return;
+        	}
+      
+        	std::string resultStr;
+      
+        	if (registry) {
+        		Json::Value args(Json::objectValue);
+        		if (!tc.argumentsJson.empty()) {
+        			Json::CharReaderBuilder rb;
+        			std::string errs;
+        			std::istringstream ss(tc.argumentsJson);
+        			Json::parseFromStream(rb, ss, &args, &errs);
+        		}
+      
+        		Json::Value result = registry->callTool(tc.name, args);
+      
+        		if (result.isArray()) {
+        			for (const auto& item : result) {
+        				if (item.get("type", "").asString() == "text")
+        					resultStr += item.get("text", "").asString();
+        			}
+        		} else {
+        			Json::StreamWriterBuilder wb;
+        			wb["indentation"] = "";
+        			resultStr = Json::writeString(wb, result);
+        		}
+        	} else {
+        		resultStr = "{\"error\": \"No MCP registry available\"}";
+        	}
+      
+        	Json::Value toolResultMsg;
+        	toolResultMsg["role"]         = "tool";
+        	toolResultMsg["tool_call_id"] = tc.id;
+        	toolResultMsg["content"]      = resultStr;
+        	messages.append(toolResultMsg);
+      
+        	// Update tool_execution event with output for the UI
+        	if (onChunk) {
+        		Json::Value toolEvent;
+        		toolEvent["type"] = "tool_execution";
+        		toolEvent["tool_call"]["id"] = tc.id;
+        		toolEvent["tool_call"]["name"] = tc.name;
+        		toolEvent["tool_call"]["arguments"] = tc.argumentsJson;
+        		toolEvent["tool_call"]["output"] = resultStr;
+      
+        		Json::StreamWriterBuilder wb;
+        		wb["indentation"] = "";
+        		if (!onChunk("data: " + Json::writeString(wb, toolEvent) + "\n\n")) return;
+        	}
         }
     }
 

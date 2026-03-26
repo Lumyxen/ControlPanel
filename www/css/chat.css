@@ -1575,10 +1575,29 @@
     overflow: hidden;
     background: var(--panel);
 }
-.md-callout-header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent); border-bottom: 1px solid var(--border); font-weight: 600; }
-.md-callout-icon { font-size: 1.1em; line-height: 1; }
-.md-callout-title { color: var(--text); }
-.md-callout-content { padding: 12px; color: var(--text); }
+.md-callout-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: color-mix(in srgb, var(--ctp-mantle) 60%, transparent);
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+}
+.md-callout-icon {
+    font-size: 1.1em;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.md-callout-title {
+    color: var(--text);
+    flex: 1;
+    min-width: 0;
+}
+.md-callout-content {
+    padding: 12px;
+    color: var(--text);
+}
 .md-callout-content > *:first-child { margin-top: 0; }
 .md-callout-content > *:last-child { margin-bottom: 0; }
 

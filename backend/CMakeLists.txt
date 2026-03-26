@@ -130,6 +130,7 @@ set(SOURCES
     src/services/mcp_registry.cpp
     src/controllers/lmstudio_controller.cpp
     src/controllers/config_controller.cpp
+    src/controllers/auth_controller.cpp
     src/controllers/chat_controller.cpp
     src/controllers/mcp_controller.cpp
     ${EMBED_CPP}

@@ -1,9 +1,9 @@
 import { createEmptyGraph, ensureGraph } from "./graph.js";
 import { generateId } from "./util.js";
 import { getChatsData, saveChatsData } from "../api.js";
+import { encryptPayload, decryptPayload } from "../auth.js";
 
 // localStorage key for the user's last explicitly-chosen model.
-// This is a per-browser preference (not synced to backend).
 const LAST_MODEL_KEY = "ctrlpanel:lastModel";
 
 let chats = [];
@@ -14,15 +14,17 @@ let pins = []; // array of chat ID strings
 
 export async function loadChats() {
 	try {
-		const data = await getChatsData();
-		chats = Array.isArray(data?.chats) ? data.chats : [];
+		const rawData = await getChatsData();
+		// decryptPayload is a pass-through for unencrypted data (migration compat)
+		const data    = await decryptPayload(rawData);
+		chats         = Array.isArray(data?.chats) ? data.chats : [];
 		currentChatId = data?.currentChatId || null;
-		pins = Array.isArray(data?.pins) ? data.pins.map(String) : [];
+		pins          = Array.isArray(data?.pins) ? data.pins.map(String) : [];
 	} catch (err) {
 		console.warn("[Store] Failed to load chats from backend, starting empty:", err);
-		chats = [];
+		chats         = [];
 		currentChatId = null;
-		pins = [];
+		pins          = [];
 	}
 	chats.forEach((c) => ensureGraph(c));
 }
@@ -37,20 +39,24 @@ function buildSavePayload() {
 
 /**
  * Fire-and-forget save to backend.
- * Callers do not need to await this – it mirrors the old synchronous localStorage pattern.
+ * Encrypts the payload with the session AES-256-GCM key before sending.
  */
 export function saveChats() {
-	saveChatsData(buildSavePayload()).catch((err) => {
+	(async () => {
+		const payload   = buildSavePayload();
+		const encrypted = await encryptPayload(payload);
+		await saveChatsData(encrypted);
+	})().catch((err) => {
 		console.error("[Store] Failed to save chats:", err);
 	});
 }
 
 // ── Basic accessors ───────────────────────────────────────────────────────────
 
-export function getChats() { return chats; }
-export function getChatById(id) { return chats.find((c) => c.id === id); }
-export function getCurrentChatId() { return currentChatId; }
-export function setCurrentChatId(id) { currentChatId = id; }
+export function getChats()          { return chats; }
+export function getChatById(id)     { return chats.find((c) => c.id === id); }
+export function getCurrentChatId()  { return currentChatId; }
+export function setCurrentChatId(id){ currentChatId = id; }
 
 export function clearCurrentChatId() {
 	currentChatId = null;
@@ -61,11 +67,11 @@ export function clearCurrentChatId() {
 
 export function createNewChat() {
 	const chat = {
-		id: generateId(),
-		title: "New Chat",
+		id:        generateId(),
+		title:     "New Chat",
 		createdAt: Date.now(),
 		updatedAt: Date.now(),
-		graph: createEmptyGraph(),
+		graph:     createEmptyGraph(),
 	};
 	chats.unshift(chat);
 	currentChatId = chat.id;
@@ -76,7 +82,7 @@ export function createNewChat() {
 export function updateChatTitle(chatId, firstMessage) {
 	const chat = getChatById(chatId);
 	if (chat && chat.title === "New Chat" && firstMessage) {
-		chat.title = firstMessage.slice(0, 30) + (firstMessage.length > 30 ? "..." : "");
+		chat.title     = firstMessage.slice(0, 30) + (firstMessage.length > 30 ? "..." : "");
 		chat.updatedAt = Date.now();
 		saveChats();
 	}
@@ -85,7 +91,7 @@ export function updateChatTitle(chatId, firstMessage) {
 export function renameChat(chatId, newTitle) {
 	const chat = getChatById(chatId);
 	if (chat && typeof newTitle === "string" && newTitle.trim()) {
-		chat.title = newTitle.trim();
+		chat.title     = newTitle.trim();
 		chat.updatedAt = Date.now();
 		saveChats();
 		return true;
@@ -98,7 +104,6 @@ export function deleteChat(chatId) {
 	if (!id) return;
 	chats = chats.filter((c) => c.id !== id);
 	if (currentChatId === id) currentChatId = chats.length ? chats[0].id : null;
-	// Remove from pins
 	const pinIdx = pins.indexOf(id);
 	if (pinIdx !== -1) pins.splice(pinIdx, 1);
 	saveChats();
@@ -121,20 +126,10 @@ export function togglePinChat(chatId) {
 
 // ── Per-chat model ────────────────────────────────────────────────────────────
 
-/**
- * Return the model saved for a specific chat, or null if none was set.
- * @param {string} chatId
- * @returns {string|null}
- */
 export function getChatModel(chatId) {
 	return getChatById(chatId)?.model || null;
 }
 
-/**
- * Persist the selected model on a specific chat object.
- * @param {string} chatId
- * @param {string|null} model
- */
 export function setChatModel(chatId, model) {
 	const chat = getChatById(chatId);
 	if (!chat) return;
@@ -145,19 +140,10 @@ export function setChatModel(chatId, model) {
 
 // ── Last explicitly-selected model (localStorage, browser-local) ──────────────
 
-/**
- * The last model the user manually chose from the dropdown.
- * Not tied to any specific chat – used as the default when no chat model is saved.
- * @returns {string|null}
- */
 export function getLastSelectedModel() {
 	try { return localStorage.getItem(LAST_MODEL_KEY) || null; } catch { return null; }
 }
 
-/**
- * Remember the model the user just picked.
- * @param {string|null} model
- */
 export function setLastSelectedModel(model) {
 	try {
 		if (model) localStorage.setItem(LAST_MODEL_KEY, model);
@@ -171,10 +157,10 @@ export function addMessageToChat(chatId, role, content, attachments = null, part
 	const chat = getChatById(chatId);
 	if (!chat) return null;
 	const graph = ensureGraph(chat);
-	
+
 	const parentId = graph.leafId || graph.rootId;
 	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts });
-	
+
 	chat.updatedAt = Date.now();
 	if (computeThreadNodeIds(graph).length === 1 && role === "user") {
 		const titleText = parts
@@ -196,5 +182,4 @@ export function addChildMessageToChat(chatId, parentId, role, content, attachmen
 	return node;
 }
 
-// Re-imported here to avoid circular dependency issues at module load time
 import { appendNode, computeThreadNodeIds } from "./graph.js";

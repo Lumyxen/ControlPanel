@@ -558,9 +558,9 @@ const markedModule = (function () {
 				}
 
 				// Table (GFM) - Robust to tables missing leading/trailing pipes
-				const tableHeaderRegex = /^ {0,3}\|?([^\n]+)\|[^\n]*\n {0,3}\|?([ \t\-:|]+)(?:\|[ \t\-:|]*)?(?:\n|$)/;
+				const tableHeaderRegex = /^ {0,3}\|?(.+)\|[^\n]*\n {0,3}\|?([ \t\-:|]+)(?:\|[ \t\-:|]*)?(?:\n|$)/;
 				if (src.match(tableHeaderRegex)) {
-					const tableBlockRegex = /^(?: {0,3}\|?[^\n]+\|[^\n]*(?:\n|$))+/;
+					const tableBlockRegex = /^(?: {0,3}\|?.+\|[^\n]*(?:\n|$))+/;
 					const tableMatch = src.match(tableBlockRegex);
 					if (tableMatch) {
 						const lines = tableMatch[0].trim().split('\n');

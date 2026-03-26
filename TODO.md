@@ -3,8 +3,7 @@
 # TODO
 ## Main Control Panel
 ### Planned Features
-- Encryption with required login on visit
-  - Store key in sessionStorage to add a lot of convenience for only a small security price
+- Advanced starry background for login page
 - Photos page
   - APK for mobile auto-backup
     - GUI to customise stuff like end point and folders to back up
@@ -16,10 +15,17 @@
 - Search bar functionality and UI with AI chat-box
 - GitHub/GitLab/Codeberg/Directory LoC display
 
-
+### Possible Features
+- Post quantum encryption and hashing
 
 ### To Fix
+#### UI
+- None
+
 #### UX
+- None
+
+#### Misc
 - None
 
 ## AI Chat-box
@@ -67,7 +73,7 @@
 - Shift+Click to copy entire message including thinking block and tool calls
 - Custom theme setting (list of variables and hex/rgb values)
 - More animated UI during generation to give more livelihood to the chat-box
-- Web search tool
+- Web search tool (custom made scraper)
 - Add calculator tool (replaces code execution reliance for math)
   - WolframAlpha API option
 - Turn the response into a back-and-forth for the AI.
@@ -153,7 +159,7 @@
 - UI for tools instead of dropdown
 - Smooth fade-in text streaming instead of sharp blocky streaming
 - Smooth buttery typing and cursor (like monkeytype)
-- Add message timestamps to history
+- Add message timestamps (visible to AI and user)
 - Chat referencing (forwards/references entire chat)
 - Cross-chat and same-chat message forwarding (forwards response and prompt)
 - Allow editing of the model's thinking

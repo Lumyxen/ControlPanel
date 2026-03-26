@@ -154,6 +154,7 @@ function applyInlineFormatting(text) {
 		.replace(/\\textmd\{([^}]+)\}/g,       '<span style="font-weight:normal">$1</span>')
 		.replace(/\\textup\{([^}]+)\}/g,       '<span style="font-style:normal">$1</span>')
 		.replace(/\\textnormal\{([^}]+)\}/g,   '$1')
+		.replace(/\\text\{([^}]+)\}/g,         '$1')  // Preserve \text command for math rendering
 		.replace(/\\underline\{([^}]+)\}/g,    '<u>$1</u>')
 		.replace(/\\sout\{([^}]+)\}/g,         '<s>$1</s>')
 		.replace(/\\xout\{([^}]+)\}/g,         '<s>$1</s>')
@@ -182,6 +183,13 @@ function applyInlineFormatting(text) {
 		.replace(/\\cdots\b/g, '⋯').replace(/\\vdots\b/g, '⋮').replace(/\\ddots\b/g, '⋱')
 		.replace(/(?<!\n)---(?!\n)/g, '—').replace(/(?<!\n)--(?!\n)/g, '–')
 		.replace(/``/g, '\u201C').replace(/''/g, '\u201D')
+		// Restore table alignment dashes that were converted to em/en dashes
+		.replace(/\|—\|/g, '|---|').replace(/\|–\|/g, '|--|')
+		.replace(/\|:—\|/g, '|:---|').replace(/\|—:\|/g, '|---:|')
+		.replace(/\|:—:\|/g, '|:---:|')
+		.replace(/\|—\|/g, '|---|').replace(/\|–\|/g, '|--|')
+		.replace(/\|:—\|/g, '|:---|').replace(/\|—:\|/g, '|---:|')
+		.replace(/\|:—:\|/g, '|:---:|')
 		.replace(/`/g, '\u2018')
 		.replace(/\\textquoteleft\b/g, '\u2018').replace(/\\textquoteright\b/g, '\u2019')
 		.replace(/\\enquote\{([^}]+)\}/g, '\u201C$1\u201D')

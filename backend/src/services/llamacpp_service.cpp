@@ -877,55 +877,68 @@ void LlamaCppService::streamingChatWithTools(
 
         std::string toolName, toolArgsJson;
         if (extractToolCall(response, toolName, toolArgsJson)) {
-            // ── Tool call: execute, emit events, loop ─────────────────────────
-            std::cout << "[LlamaCpp] Tool call detected: " << toolName << "\n";
-
-            // Reasoning annotation visible in the UI
-            if (onChunk) {
-                Json::Value fakeChoice;
-                fakeChoice["delta"]["reasoning"] = "\n*Executing tool: " + toolName + "*\n";
-                Json::Value fakeJson;
-                fakeJson["choices"].append(fakeChoice);
-                Json::StreamWriterBuilder wb;
-                wb["indentation"] = "";
-                if (!onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n")) return;
-            }
-
-            // Parse arguments
-            Json::Value args(Json::objectValue);
-            if (!toolArgsJson.empty()) {
-                Json::CharReaderBuilder rb;
-                std::string errs;
-                std::istringstream ss(toolArgsJson);
-                Json::parseFromStream(rb, ss, &args, &errs);
-            }
-
-            // Execute
-            Json::Value result = registry->callTool(toolName, args);
-            std::string resultStr;
-            if (result.isArray()) {
-                for (const auto& item : result) {
-                    if (item.get("type", "").asString() == "text")
-                        resultStr += item.get("text", "").asString();
-                }
-            } else {
-                Json::StreamWriterBuilder wb;
-                wb["indentation"] = "";
-                resultStr = Json::writeString(wb, result);
-            }
-
-            // tool_execution event for the UI
-            if (onChunk) {
-                Json::Value toolEvent;
-                toolEvent["type"] = "tool_execution";
-                toolEvent["tool_call"]["id"]        = "llamacpp_" + std::to_string(round);
-                toolEvent["tool_call"]["name"]      = toolName;
-                toolEvent["tool_call"]["arguments"] = toolArgsJson;
-                toolEvent["tool_call"]["output"]    = resultStr;
-                Json::StreamWriterBuilder wb;
-                wb["indentation"] = "";
-                if (!onChunk("data: " + Json::writeString(wb, toolEvent) + "\n\n")) return;
-            }
+        	// ── Tool call: execute, emit events, loop ─────────────────────────
+        	std::cout << "[LlamaCpp] Tool call detected: " << toolName << "\n";
+      
+        	// Reasoning annotation visible in the UI
+        	if (onChunk) {
+        		Json::Value fakeChoice;
+        		fakeChoice["delta"]["reasoning"] = "\n*Executing tool: " + toolName + "*\n";
+        		Json::Value fakeJson;
+        		fakeJson["choices"].append(fakeChoice);
+        		Json::StreamWriterBuilder wb;
+        		wb["indentation"] = "";
+        		if (!onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n")) return;
+        	}
+      
+        	// Send tool call event to UI immediately (before execution)
+        	if (onChunk) {
+        		Json::Value toolCallEvent;
+        		toolCallEvent["type"] = "tool_execution";
+        		toolCallEvent["tool_call"]["id"]        = "llamacpp_" + std::to_string(round);
+        		toolCallEvent["tool_call"]["name"]      = toolName;
+        		toolCallEvent["tool_call"]["arguments"] = toolArgsJson;
+        		toolCallEvent["tool_call"]["output"]    = ""; // Empty output initially
+        		Json::StreamWriterBuilder wb;
+        		wb["indentation"] = "";
+        		if (!onChunk("data: " + Json::writeString(wb, toolCallEvent) + "\n\n")) return;
+        	}
+      
+        	// Parse arguments
+        	Json::Value args(Json::objectValue);
+        	if (!toolArgsJson.empty()) {
+        		Json::CharReaderBuilder rb;
+        		std::string errs;
+        		std::istringstream ss(toolArgsJson);
+        		Json::parseFromStream(rb, ss, &args, &errs);
+        	}
+      
+        	// Execute
+        	Json::Value result = registry->callTool(toolName, args);
+        	std::string resultStr;
+        	if (result.isArray()) {
+        		for (const auto& item : result) {
+        			if (item.get("type", "").asString() == "text")
+        				resultStr += item.get("text", "").asString();
+        		}
+        	} else {
+        		Json::StreamWriterBuilder wb;
+        		wb["indentation"] = "";
+        		resultStr = Json::writeString(wb, result);
+        	}
+      
+        	// Update tool_execution event with output for the UI
+        	if (onChunk) {
+        		Json::Value toolEvent;
+        		toolEvent["type"] = "tool_execution";
+        		toolEvent["tool_call"]["id"]        = "llamacpp_" + std::to_string(round);
+        		toolEvent["tool_call"]["name"]      = toolName;
+        		toolEvent["tool_call"]["arguments"] = toolArgsJson;
+        		toolEvent["tool_call"]["output"]    = resultStr;
+        		Json::StreamWriterBuilder wb;
+        		wb["indentation"] = "";
+        		if (!onChunk("data: " + Json::writeString(wb, toolEvent) + "\n\n")) return;
+        	}
 
             // Append assistant + tool result, then loop
             Json::Value assistantMsg;

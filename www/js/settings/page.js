@@ -243,6 +243,7 @@ async function initBackendSelector(root) {
 		if (!isBuilt) {
 			tileLabel.style.opacity = '0.5';
 			tileLabel.classList.remove('selected');
+			tileLabel.setAttribute('aria-checked', 'false');
 		}
 		const radio = document.createElement('input');
 		radio.type = 'radio'; radio.name = 'llamacpp-backend'; radio.value = backend; radio.disabled = !isBuilt;
