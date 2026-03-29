@@ -31,6 +31,8 @@
 ## AI Chat-box
 ### Planned Features
 - Replace emojis with proper SVGs
+- Display colours in a special formatted block with a preview of the colour
+  - Detect using `rgb(rrr, ggg, bbb)` and `#rrggbb` and `#rrggbbaa` (apply alpha against white)
 - Collapsable/Expandable BibTeX reference list
   - Closed it by default
 - Download progress bar on llama.cpp source downloading
