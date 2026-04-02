@@ -30,8 +30,6 @@
 
 ## AI Chat-box
 ### Planned Features
-- On-theme llama.cpp build remove button
-- UI for build removal confirmation
 - Replace emojis with proper SVGs
 - Display colours in a special formatted block with a preview of the colour
   - Detect using `rgb(rrr, ggg, bbb)` and `#rrggbb` and `#rrggbbaa` (apply alpha against white)
