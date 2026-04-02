@@ -341,6 +341,22 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// handleLmStudioModels  — returns ONLY LM Studio models (for URL testing)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void handleLmStudioModels(const httplib::Request& /*req*/, httplib::Response& res,
+                          LmStudioService& service) {
+    try {
+        Json::Value models = service.getModels();
+        res.status = 200;
+        res.set_content(models.toStyledString(), "application/json");
+    } catch (const std::exception& e) {
+        res.status = 500;
+        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // handleModels  — merges LM Studio + llama.cpp model lists
 // ─────────────────────────────────────────────────────────────────────────────
 

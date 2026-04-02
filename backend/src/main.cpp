@@ -492,6 +492,14 @@ void runServer(Config& config, LmStudioService& lmstudioService,
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleModels(req, res, lmstudioService, svc);
     });
+    svr.Get("/api/lmstudio/models", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        handleLmStudioModels(req, res, lmstudioService);
+    });
+    svr.Get("/api/lmstudio/models", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        handleLmStudioModels(req, res, lmstudioService);
+    });
     svr.Get("/api/config/settings", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleGetSettings(req, res, config);

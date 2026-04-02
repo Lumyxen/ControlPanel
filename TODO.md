@@ -64,6 +64,8 @@
 - Speculative Decoding
   - Setting to enable/disable this
   - Setting to change both small and large models
+- Speculative Speculative Decoding
+  - Setting to enable/disable this
 - Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
 - AI generated chat title
 - Tool calls inline in the text instead of being shoved at the top
@@ -241,7 +243,7 @@
 - LaTeX processing not working inside of latex type codeblocks
 
 #### UX
-- LM Studio API url test incorrectly adds in llama.cpp models
+- LM Studio API url test incorrectly includes llama.cpp models
 - Can not copy code blocks and ctrl+c copies entire message instead of selected part of the message
 - Does not allow copying of thinking text
 - Checkbox for Flash Attention setting is in an awkward position
@@ -269,6 +271,7 @@
 # Done
 ## Control Panel
 ### General
+- AES-256-GCM encryption on all stored data (other than settings) with 310.000 iteration key hashing
 - Side bar
   - Collapsable
   - AI chat list (collapsable)

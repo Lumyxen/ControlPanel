@@ -344,8 +344,9 @@ export function initSettingsPage(root) {
 		lmTestBtn.addEventListener('click', async () => {
 			lmStatusEl.textContent = 'Testing...'; lmStatusEl.className = 'badge';
 			try {
-				const r = await getModels();
-				if (r?.data?.length > 0) { lmStatusEl.textContent = `${r.data.length} model${r.data.length===1?'':'s'}`; lmStatusEl.className = 'badge badge-success'; }
+				const r = await fetch('/api/lmstudio/models');
+				const d = await r.json();
+				if (r.ok && d?.data?.length > 0) { lmStatusEl.textContent = `${d.data.length} model${d.data.length===1?'':'s'}`; lmStatusEl.className = 'badge badge-success'; }
 				else { lmStatusEl.textContent = 'Unreachable'; lmStatusEl.className = 'badge badge-error'; }
 			} catch { lmStatusEl.textContent = 'Unreachable'; lmStatusEl.className = 'badge badge-error'; }
 		});
