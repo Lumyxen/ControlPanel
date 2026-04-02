@@ -131,6 +131,7 @@
 - Add a sandboxed CLI tool
 - Require user approval for if AI tries touchy commands (like `rm`)
 - Add file reading tool
+- Add searching agent tool
 - Add sandboxed file editing tool
   - Restrained to set workspace directory
   - Remote editing, so for example, it could work on a project on duyfken despite running on skidbladnir
@@ -140,7 +141,7 @@
 - Context message pinning (permanently remains in context window)
 - Add a tool for the AI to call for another AI that would specialise in fact checking
 - Add a tool for the AI to see the structure of the directory active directory (like tree but only shows current folder and path)
-- Ability to manually send a message into RAG memory storage
+- Ability to manually send a message into RLM memory storage
 - Add GitHub repo viewer tool
 - Add personal per-chat notes tool for the AI to use
   - Capability for easy planning for the AI
@@ -163,6 +164,7 @@
 - UI for tools instead of dropdown
 - Smooth fade-in text streaming instead of sharp blocky streaming
 - Smooth buttery typing and cursor (like monkeytype)
+- Favicon
 - Add message timestamps (visible to AI and user)
 - Chat referencing (forwards/references entire chat)
 - Cross-chat and same-chat message forwarding (forwards response and prompt)
@@ -198,6 +200,9 @@
 - VS Code like qualities in text (alt+up/down arrow to move line of text up/down text field lines)
 - Message staring per-chat and global
 - Chat folders
+- Always-On mode, asking a set AI model if there is anything worth doing every set amount of time, and then have it do such thing.
+  - Log to keep track of what it noticed, what it decided, and what it did
+  - Have it use git to be able to more directly target bad changes
 - Automatic and local AI model benchmarking
   - Tool calling benchmark (tests how well it does tool calling when needed)
   - Factual information accuracy benchmark (tests the accuracy of information it provides)
@@ -221,7 +226,7 @@
 - Token usage graph like Kilo Code
 - Markdown and LaTeX processing in the input text field
 - Detachment from browser (sepparate app)
-- RAG memory 3d visualiser
+- RLM memory 3d visualiser
 - Negative Prompting (text field for AI to not do; e.g. "Do not apologize")
 - Prompt A/B testing
 - Browser Navigation (would need a small but capable vision model)
@@ -243,10 +248,7 @@
 - LaTeX processing not working inside of latex type codeblocks
 
 #### UX
-- LM Studio API url test incorrectly includes llama.cpp models
-- Can not copy code blocks and ctrl+c copies entire message instead of selected part of the message
-- Does not allow copying of thinking text
-- Checkbox for Flash Attention setting is in an awkward position
+- None
 ##### Firefox
 - ESC does not properly cancel message editing, requiring 2 presses of ESC
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field

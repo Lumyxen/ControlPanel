@@ -252,7 +252,7 @@ export class InlineAttachmentManager {
 			const lines = text.split(/\r\n|\r|\n/);
 			const frag  = document.createDocumentFragment();
 			for (let i = 0; i < lines.length; i++) {
-				if (lines[i]) frag.appendChild(document.createTextNode(lines[i].replace(/ /g, '\u00A0')));
+				if (lines[i]) frag.appendChild(document.createTextNode(lines[i]));
 				if (i < lines.length - 1) frag.appendChild(document.createElement('br'));
 			}
 			frag.appendChild(document.createTextNode(''));
@@ -512,7 +512,7 @@ export class InlineAttachmentManager {
 	}
 
 	hasContent() {
-		return this.attachments.size > 0 || (this.el.textContent || '').trim().length > 0;
+		return this.attachments.size > 0 || (this.el.textContent || '').length > 0;
 	}
 
 	updateEmptyState() {

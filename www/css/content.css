@@ -410,3 +410,62 @@ input[type=range]:focus::-moz-range-thumb {
 .option-hint a {
     color: var(--accent);
 }
+
+/* Settings Toggle Switch (sharp corners to match theme) */
+.toggle-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    height: 24px;
+}
+
+.toggle-switch input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.toggle-track {
+    width: 44px;
+    height: 22px;
+    background: var(--border);
+    position: relative;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+
+.toggle-track::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    background: var(--text);
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.toggle-switch input:checked + .toggle-track {
+    background: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-track::after {
+    transform: translateX(22px);
+    background: var(--bg);
+}
+
+.toggle-switch input:focus-visible + .toggle-track {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.toggle-switch:hover .toggle-track {
+    background: color-mix(in srgb, var(--border) 80%, var(--accent));
+}
+
+.toggle-switch:hover input:checked + .toggle-track {
+    background: color-mix(in srgb, var(--accent) 85%, white);
+}

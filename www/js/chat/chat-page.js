@@ -25,6 +25,66 @@ import { buildNodeTextForHistory, buildApiMessages, parseStreamReasoning } from 
 
 let chatPageAbort = null;
 
+// Convert rendered HTML back to markdown for partial selections
+function htmlToMarkdown(el) {
+	let text = '';
+	const walk = (node) => {
+		if (node.nodeType === 3) { text += node.textContent; return; }
+		if (node.nodeType !== 1) return;
+		const tag = node.tagName.toLowerCase();
+		if (tag === 'br') { text += '\n'; return; }
+		if (tag === 'p') { text += '\n'; [...node.childNodes].forEach(walk); text += '\n'; return; }
+		if (tag === 'div') {
+			// Only add newlines for structural divs, not wrapper divs
+			const cls = node.className || '';
+			if (cls.includes('chat-message-text') || cls.includes('chat-message-content')) {
+				[...node.childNodes].forEach(walk);
+				return;
+			}
+			text += '\n';
+			[...node.childNodes].forEach(walk);
+			text += '\n';
+			return;
+		}
+		if (tag === 'strong' || tag === 'b') { text += '**'; [...node.childNodes].forEach(walk); text += '**'; return; }
+		if (tag === 'em' || tag === 'i') { text += '*'; [...node.childNodes].forEach(walk); text += '*'; return; }
+		if (tag === 'code') {
+			// Check if inside a pre block — skip, pre handles it
+			if (node.parentElement && node.parentElement.tagName.toLowerCase() === 'pre') return;
+			text += '`'; [...node.childNodes].forEach(walk); text += '`'; return;
+		}
+		if (tag === 'pre') {
+			const code = node.querySelector('code');
+			if (code) { text += '```\n' + code.textContent + '\n```'; }
+			else { text += '```\n' + node.textContent + '\n```'; }
+			return;
+		}
+		if (tag === 'a') { const href = node.getAttribute('href'); const inner = [...node.childNodes].map(n => n.textContent).join(''); text += href ? `[${inner}](${href})` : inner; return; }
+		if (tag === 'li') { text += '- '; [...node.childNodes].forEach(walk); text += '\n'; return; }
+		if (tag === 'h1') { text += '# '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
+		if (tag === 'h2') { text += '## '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
+		if (tag === 'h3') { text += '### '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
+		if (tag === 'h4') { text += '#### '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
+		if (tag === 'h5') { text += '##### '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
+		if (tag === 'h6') { text += '###### '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
+		if (tag === 'ul') { [...node.childNodes].forEach(walk); text += '\n'; return; }
+		if (tag === 'ol') { let i = 0; [...node.childNodes].forEach(c => { if (c.nodeType === 1 && c.tagName.toLowerCase() === 'li') { i++; text += i + '. '; walk(c); text += '\n'; } else { walk(c); } }); text += '\n'; return; }
+		if (tag === 'hr') { text += '\n---\n\n'; return; }
+		if (tag === 'del' || tag === 's') { text += '~~'; [...node.childNodes].forEach(walk); text += '~~'; return; }
+		if (tag === 'img') { const alt = node.getAttribute('alt') || ''; const src = node.getAttribute('src') || ''; text += alt ? `![${alt}](${src})` : src; return; }
+		if (tag === 'table') { [...node.childNodes].forEach(walk); text += '\n'; return; }
+		if (tag === 'thead') { [...node.childNodes].forEach(walk); return; }
+		if (tag === 'tbody') { [...node.childNodes].forEach(walk); return; }
+		if (tag === 'tr') { [...node.childNodes].forEach(walk); return; }
+		if (tag === 'th') { text += '| **'; [...node.childNodes].forEach(walk); text += '** '; return; }
+		if (tag === 'td') { text += '| '; [...node.childNodes].forEach(walk); text += ' '; return; }
+		if (tag === 'blockquote') { text += '> '; [...node.childNodes].forEach(walk); text += '\n'; return; }
+		[...node.childNodes].forEach(walk);
+	};
+	[...el.childNodes].forEach(walk);
+	return text.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function ensureChatExists(setActiveCallback) {
 	if (!getCurrentChatId() || !getChatById(getCurrentChatId())) {
 		createNewChat(); renderChatList(); setActiveCallback?.();
@@ -363,6 +423,23 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	}, { signal });
 
 	messages.addEventListener('click', (e) => {
+		const codeCopyBtn = e.target.closest('.md-code-copy');
+		if (codeCopyBtn) {
+			const wrapper = codeCopyBtn.closest('.md-code-wrapper');
+			if (wrapper) {
+				const codeBlock = wrapper.querySelector('.md-code-block code');
+				if (codeBlock) {
+					const text = codeBlock.textContent;
+					navigator.clipboard.writeText(text).then(() => {
+						const old = codeCopyBtn.innerHTML;
+						codeCopyBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M20 6L9 17l-5-5"/></svg>`;
+						setTimeout(() => { codeCopyBtn.innerHTML = old; }, 2000);
+					}).catch(err => console.error('Failed to copy code:', err));
+				}
+			}
+			return;
+		}
+
 		const btn = e.target.closest('[data-action]');
 		if (!btn) return;
 		const action  = btn.dataset.action;
@@ -454,9 +531,14 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				startReply(userNodeId);
 			},
 			copy: async () => {
+				const chunks = [];
+				if (node.reasoning && node.reasoning.trim()) {
+					chunks.push(`<think>\n${node.reasoning.trim()}\n</think>`);
+				}
 				const txt = node.parts ? node.parts.filter(p=>p.type==='text').map(p=>p.content).join('') : String(node.content||'');
+				if (txt) chunks.push(txt);
 				try {
-					await navigator.clipboard.writeText(txt);
+					await navigator.clipboard.writeText(chunks.join('\n\n'));
 					const old = btn.innerHTML;
 					btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
 					setTimeout(()=>{ if(btn) btn.innerHTML=old; }, 2000);
@@ -512,28 +594,63 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (!sel || sel.isCollapsed || !sel.rangeCount) return;
 		const range = sel.getRangeAt(0);
 		if (!messages.contains(range.commonAncestorContainer)) return;
+
 		const chat  = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
 		const graph = chat ? ensureGraph(chat) : null;
 		const nodeRawText = (node) => {
 			if (!node) return '';
 			return node.parts ? node.parts.filter(p=>p.type==='text').map(p=>p.content).join('') : String(node.content||'');
 		};
-		const allMsgEls = [...messages.querySelectorAll('.chat-message[data-node-id]')];
-		const selMsgEls = allMsgEls.filter(el => range.intersectsNode(el));
+
+		const msgEls = [...messages.querySelectorAll('.chat-message[data-node-id]')];
+		const selMsgEls = msgEls.filter(el => range.intersectsNode(el));
+		if (selMsgEls.length === 0) return;
+
+		// Determine if selection covers entire message content (not just part of it)
+		const isFullMessageSelection = selMsgEls.every(msgEl => {
+			const content = msgEl.querySelector('.chat-message-content');
+			if (!content) return false;
+			const contentRange = document.createRange();
+			contentRange.selectNodeContents(content);
+			return range.compareBoundaryPoints(Range.START_TO_START, contentRange) <= 0 &&
+			       range.compareBoundaryPoints(Range.END_TO_END, contentRange) >= 0;
+		});
+
 		let plain = '';
-		if (graph && selMsgEls.length > 0) {
+
+		if (isFullMessageSelection) {
+			// Full message(s) selected — use raw stored content including reasoning
 			const parts = [];
-			for (const m of selMsgEls) { const r = nodeRawText(getNode(graph, m.dataset.nodeId)); if (r) parts.push(r); }
+			for (const m of selMsgEls) {
+				const node = graph ? getNode(graph, m.dataset.nodeId) : null;
+				if (!node) continue;
+				const chunks = [];
+				if (node.reasoning && node.reasoning.trim()) {
+					chunks.push(`<think>\n${node.reasoning.trim()}\n</think>`);
+				}
+				const txt = node.parts ? node.parts.filter(p=>p.type==='text').map(p=>p.content).join('') : String(node.content||'');
+				if (txt) chunks.push(txt);
+				if (chunks.length) parts.push(chunks.join('\n\n'));
+			}
 			plain = parts.join('\n\n');
 		}
-		if (!plain) plain = sel.toString();
-		const container = document.createElement('div');
-		container.appendChild(range.cloneContents());
-		container.querySelectorAll('.chat-message-menu, .md-code-header, .chat-typing, .chat-message-inline-attachment, .latex-preamble').forEach(el => el.remove());
-		container.querySelectorAll('.message-tool-call').forEach(el => { const s = el.querySelector('summary'); el.replaceWith(document.createTextNode(s ? s.textContent.trim() : '')); });
-		container.querySelectorAll('.katex-display').forEach(el => { const src = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim(); if (src) el.replaceWith(document.createTextNode(`$$${src}$$`)); });
-		container.querySelectorAll('.katex').forEach(el => { const src = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim(); if (src) el.replaceWith(document.createTextNode(`$${src}$`)); });
-		const htmlPayload = `<!DOCTYPE html><html><body>${container.innerHTML}</body></html>`;
+
+		if (!plain) {
+			// Partial selection — convert rendered HTML back to markdown
+			const selectedRange = range.cloneRange();
+			const fragment = selectedRange.cloneContents();
+			const tempDiv = document.createElement('div');
+			tempDiv.appendChild(fragment);
+			plain = htmlToMarkdown(tempDiv);
+		}
+
+		const htmlContainer = document.createElement('div');
+		htmlContainer.appendChild(range.cloneContents());
+		htmlContainer.querySelectorAll('.chat-message-menu, .md-code-header, .chat-typing, .chat-message-inline-attachment, .latex-preamble').forEach(el => el.remove());
+		htmlContainer.querySelectorAll('.message-tool-call').forEach(el => { const s = el.querySelector('summary'); el.replaceWith(document.createTextNode(s ? s.textContent.trim() : '')); });
+		htmlContainer.querySelectorAll('.katex-display').forEach(el => { const src = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim(); if (src) el.replaceWith(document.createTextNode(`$$${src}$$`)); });
+		htmlContainer.querySelectorAll('.katex').forEach(el => { const src = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim(); if (src) el.replaceWith(document.createTextNode(`$${src}$`)); });
+		const htmlPayload = `<!DOCTYPE html><html><body>${htmlContainer.innerHTML}</body></html>`;
 		e.preventDefault();
 		if (!e.clipboardData) return;
 		e.clipboardData.setData('text/plain', plain);

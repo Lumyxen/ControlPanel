@@ -107,7 +107,7 @@ export function initUpload(root, inputEl, attachmentManager, signal) {
 
 export function initAutoResize(element, signal) {
 	const updatePlaceholder = () => {
-		const isEmpty = (element.textContent || '').trim().length === 0 &&
+		const isEmpty = (element.textContent || '').length === 0 &&
 			!element.querySelector('.inline-attachment');
 		element.dataset.empty = isEmpty ? 'true' : 'false';
 	};

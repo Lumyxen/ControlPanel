@@ -170,6 +170,7 @@
 /* Auto-expanding contenteditable input */
 .chat-input {
     width: 100%;
+    min-width: 0;
     appearance: none;
     background: transparent;
     border: none;
@@ -183,9 +184,10 @@
     box-sizing: border-box;
     min-height: 24px;
     max-height: 300px;
-    overflow-y: hidden;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: normal;
     display: block;
     position: relative;
 }
@@ -793,8 +795,7 @@
     margin: 0;
     color: var(--text);
     white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    overflow-wrap: break-word;
 }
 
 /* Message content container */
@@ -862,9 +863,7 @@
     font-style: italic;
     color: var(--muted);
     white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    line-height: 1.5;
+    overflow-wrap: break-word;
 }
 
 /* Tool call blocks */
@@ -956,7 +955,7 @@
     background: var(--ctp-mantle);
     border: 1px solid var(--border);
     white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     word-break: break-word;
     max-height: 240px;
     overflow-y: auto;
@@ -965,7 +964,7 @@
 .chat-message-text {
     display: block;
     white-space: normal;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     word-break: break-word;
 }
 
@@ -1561,7 +1560,7 @@
 }
 .md-wikilink:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); border-bottom-style: solid; }
 .md-highlight { background: color-mix(in srgb, var(--accent) 25%, transparent); color: var(--text); padding: 0.1em 0.2em; border-radius: var(--radius-none, 0); }
-.md-spoiler { background: var(--text); color: var(--text); padding: 0.1em 0.2em; border-radius: var(--radius-none, 0); cursor: pointer; user-select: none; transition: background 0.15s ease, color 0.15s ease; }
+.md-spoiler { background: var(--text); color: var(--text); padding: 0.1em 0.2em; border-radius: var(--radius-none, 0); cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
 .md-spoiler:hover { background: color-mix(in srgb, var(--text) 80%, transparent); }
 .md-spoiler.revealed { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--text); cursor: default; }
 .md-mention { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); padding: 0.1em 0.3em; border-radius: var(--radius-none, 0); font-weight: 500; }

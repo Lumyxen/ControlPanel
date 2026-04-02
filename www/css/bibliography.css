@@ -433,7 +433,7 @@ a.latex-citation-link:hover {
     background: var(--ctp-mantle);
     white-space: pre-wrap;
     word-break: break-word;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
     max-height: 280px;
     overflow-y: auto;
     line-height: 1.5;

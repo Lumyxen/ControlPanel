@@ -90,12 +90,19 @@
         <h2 class="card-title" id="llamacpp-title">llama.cpp</h2>
 
         <div class="option-row">
-            <label for="llamacpp-flash-attn">Flash Attention</label>
-            <input id="llamacpp-flash-attn" type="checkbox" checked />
+            <span>Flash Attention</span>
+            <label class="toggle-switch" style="width: fit-content;">
+                <input id="llamacpp-flash-attn" type="checkbox" checked />
+                <span class="toggle-track"></span>
+            </label>
         </div>
         <div class="option-row">
             <label for="llamacpp-eval-batch-size">Eval Batch Size</label>
             <input id="llamacpp-eval-batch-size" type="number" min="64" max="16384" step="64" value="2048" style="width:8rem;" />
+        </div>
+        <div class="option-row">
+            <label for="llamacpp-ctx-size">Context Size</label>
+            <input id="llamacpp-ctx-size" type="number" min="0" max="524288" step="512" value="0" style="width:8rem;" />
         </div>
         <div class="option-row">
             <label for="llamacpp-ctx-size">Context Size</label>
