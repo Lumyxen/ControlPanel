@@ -13,6 +13,42 @@ import { consumePendingBuild } from '../backend-suggest.js';
 
 const BACKEND_LABELS = { auto: 'Auto', cpu: 'CPU', cuda: 'CUDA', rocm: 'ROCm', vulkan: 'Vulkan' };
 
+function showRemoveConfirmation(root, backend, onConfirm) {
+	const overlay = document.createElement('div');
+	overlay.className = 'modal-overlay';
+	const dialog = document.createElement('div');
+	dialog.className = 'modal-dialog';
+	dialog.innerHTML = `
+		<h3 class="modal-title">Remove ${BACKEND_LABELS[backend] || backend} Backend</h3>
+		<p class="modal-message">This will delete the built library for the ${BACKEND_LABELS[backend] || backend} backend. This action cannot be undone.</p>
+		<div class="modal-actions">
+			<button class="btn modal-cancel">Cancel</button>
+			<button class="btn btn-danger modal-confirm">Remove</button>
+		</div>
+	`;
+	overlay.appendChild(dialog);
+	document.body.appendChild(overlay);
+
+	const cancelBtn = dialog.querySelector('.modal-cancel');
+	const confirmBtn = dialog.querySelector('.modal-confirm');
+
+	const close = () => overlay.remove();
+
+	cancelBtn.addEventListener('click', close);
+	overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+	confirmBtn.addEventListener('click', () => {
+		close();
+		onConfirm();
+	});
+
+	dialog.addEventListener('keydown', (e) => {
+		if (e.key === 'Escape') close();
+	});
+
+	requestAnimationFrame(() => overlay.classList.add('visible'));
+}
+
 function linkSliderAndNumber(sl, num, min, max) {
 	if (!sl || !num) return;
 	sl.addEventListener('input',  () => { num.value = sl.value; });
@@ -57,6 +93,14 @@ function populateLlamaCppFields(root, s) {
 function selectBackendRadio(root, value) {
 	const valid = ['auto','cpu','cuda','rocm','vulkan'];
 	const v = valid.includes(value) ? value : 'auto';
+	root.querySelectorAll('input[name="llamacpp-backend"]').forEach(r => {
+		r.checked = false;
+		const t = r.closest('.flavour-tile');
+		if (t) {
+			t.classList.remove('selected');
+			t.setAttribute('aria-checked', 'false');
+		}
+	});
 	root.querySelectorAll('input[name="llamacpp-backend"]').forEach(r => {
 		const ok = r.value === v; r.checked = ok;
 		const t = r.closest('.flavour-tile'); if (t) { t.classList.toggle('selected', ok); t.setAttribute('aria-checked', String(ok)); }
@@ -171,23 +215,78 @@ async function startBuildInSettings(root, backend, tag, btn) {
 					const totalSec = Math.round((Date.now() - buildStart) / 1000);
 					const totalStr = totalSec < 60 ? `${totalSec}s` : `${Math.floor(totalSec/60)}m ${totalSec%60}s`;
 					if (labelEl) labelEl.textContent = `Built ${BACKEND_LABELS[backend] || backend} in ${totalStr}. Backend activated.`;
-					if (btn) { btn.textContent = 'Done'; btn.style.color = 'var(--green,green)'; setTimeout(() => { btn.disabled = false; btn.textContent = 'Rebuild'; btn.style.color = ''; }, 4000); }
-					// Update the backend selector in place instead of reloading to avoid flicker
+					if (btn) { btn.textContent = 'Done'; btn.style.color = 'var(--green,green)'; btn.style.opacity = ''; }
 					const container = root.querySelector('#llamacpp-backend-selector');
 					if (container) {
-						const radio = container.querySelector(`input[value="${backend}"]`);
-						if (radio) {
-							radio.disabled = false;
-							const tile = radio.closest('.flavour-tile');
-							if (tile) {
-								tile.style.opacity = '';
-								tile.classList.add('selected');
-								tile.setAttribute('aria-checked', 'true');
+						const rows = [...container.children];
+						const targetRow = rows.find(row => {
+							const radio = row.querySelector(`input[value="${backend}"]`);
+							return radio;
+						});
+						if (targetRow) {
+							container.querySelectorAll('.flavour-tile').forEach(tile => {
+								tile.classList.remove('selected');
+								tile.setAttribute('aria-checked', 'false');
+							});
+							container.querySelectorAll('input[name="llamacpp-backend"]').forEach(radio => {
+								radio.checked = false;
+							});
+							const radio = targetRow.querySelector(`input[value="${backend}"]`);
+							if (radio) {
+								radio.disabled = false;
+								radio.checked = true;
+								const tile = radio.closest('.flavour-tile');
+								if (tile) {
+									tile.style.opacity = '1';
+									tile.classList.add('selected');
+									tile.setAttribute('aria-checked', 'true');
+								}
 							}
+							const existingRemove = targetRow.querySelector('.btn-remove');
+							if (existingRemove) existingRemove.remove();
 						}
 					}
 					const activeLabel = root.querySelector('#llamacpp-active-backend-label');
 					if (activeLabel) activeLabel.textContent = BACKEND_LABELS[backend] || backend.toUpperCase();
+					setTimeout(() => {
+						if (btn) { btn.disabled = false; btn.textContent = 'Rebuild'; btn.style.color = ''; btn.style.opacity = ''; }
+						const container = root.querySelector('#llamacpp-backend-selector');
+						if (container) {
+							const rows = [...container.children];
+							const targetRow = rows.find(row => {
+								const radio = row.querySelector(`input[value="${backend}"]`);
+								return radio;
+							});
+							if (targetRow && !targetRow.querySelector('.btn-remove')) {
+								const removeBtn = document.createElement('button');
+								removeBtn.type = 'button';
+								removeBtn.className = 'btn btn-danger-sm btn-remove';
+								removeBtn.textContent = 'Remove';
+								removeBtn.addEventListener('click', () => {
+									showRemoveConfirmation(root, backend, async () => {
+										removeBtn.disabled = true; removeBtn.textContent = 'Removing...';
+										try {
+											const res = await fetch(`/api/llamacpp/backend/${backend}`, { method: 'DELETE' });
+											const d = await res.json();
+											if (res.ok && d.success) {
+												removeBtn.textContent = 'Removed';
+												removeBtn.style.opacity = '0.3';
+												await initBackendSelector(root);
+											} else {
+												removeBtn.textContent = 'Failed';
+												removeBtn.disabled = false;
+											}
+										} catch (err) {
+											removeBtn.textContent = 'Error';
+											removeBtn.disabled = false;
+										}
+									});
+								});
+								const buildBtn = targetRow.querySelector('.btn-build');
+								if (buildBtn) buildBtn.insertAdjacentElement('afterend', removeBtn);
+							}
+						}
+					}, 1000);
 				} else {
 					if (barEl) { barEl.style.background = 'var(--red,red)'; barEl.style.width = '100%'; }
 					if (labelEl) labelEl.textContent = `Build failed. Check data/logs/build_${backend}.log`;
@@ -239,7 +338,6 @@ async function initBackendSelector(root) {
 		const tileLabel = document.createElement('label');
 		tileLabel.className = 'flavour-tile'; tileLabel.style.width = 'fit-content';
 		tileLabel.setAttribute('aria-checked', 'false');
-		// Only grey out versions that are not built, and remove selected state
 		if (!isBuilt) {
 			tileLabel.style.opacity = '0.5';
 			tileLabel.classList.remove('selected');
@@ -254,14 +352,42 @@ async function initBackendSelector(root) {
 
 		if (backend !== 'auto') {
 			const btn = document.createElement('button');
-			btn.type = 'button'; btn.className = 'btn';
+			btn.type = 'button'; btn.className = 'btn btn-build';
 			btn._origText = isBuilt ? 'Rebuild' : 'Build'; btn.textContent = btn._origText;
-			btn.style.cssText = isBuilt ? 'font-size:0.75rem;padding:2px 8px;opacity:0.6;' : 'font-size:0.78rem;padding:3px 10px;';
+			btn.style.cssText = isBuilt ? 'font-size:0.75rem;padding:2px 8px;' : 'font-size:0.78rem;padding:3px 10px;';
 			btn.addEventListener('click', () => {
 				btn.disabled = true; btn.textContent = 'Building...'; btn.style.color = '';
 				startBuildInSettings(root, backend, tagInput?.value?.trim() || tag, btn).catch(() => { btn.disabled = false; btn.textContent = btn._origText; });
 			});
 			row.appendChild(btn);
+
+			if (isBuilt) {
+				const removeBtn = document.createElement('button');
+				removeBtn.type = 'button'; removeBtn.className = 'btn btn-danger-sm btn-remove';
+				removeBtn.textContent = 'Remove';
+				removeBtn.addEventListener('click', () => {
+					showRemoveConfirmation(root, backend, async () => {
+						removeBtn.disabled = true; removeBtn.textContent = 'Removing...';
+						try {
+							const res = await fetch(`/api/llamacpp/backend/${backend}`, { method: 'DELETE' });
+							const d = await res.json();
+							if (res.ok && d.success) {
+								removeBtn.textContent = 'Removed';
+								removeBtn.style.opacity = '0.3';
+								await initBackendSelector(root);
+							} else {
+								removeBtn.textContent = 'Failed';
+								removeBtn.disabled = false;
+							}
+						} catch (err) {
+							removeBtn.textContent = 'Error';
+							removeBtn.disabled = false;
+						}
+					});
+				});
+				row.appendChild(removeBtn);
+			}
+
 			const prereqMsg = prereqs[backend];
 			if (prereqMsg && !isBuilt) {
 				const warn = document.createElement('div');
@@ -277,8 +403,20 @@ async function initBackendSelector(root) {
 	container.addEventListener('change', (e) => {
 		if (e.target.name !== 'llamacpp-backend') return;
 		container.querySelectorAll('input[name="llamacpp-backend"]').forEach(r => {
-			const t = r.closest('.flavour-tile'); if (t) { t.classList.toggle('selected', r.checked); t.setAttribute('aria-checked', String(r.checked)); }
+			r.checked = false;
+			const t = r.closest('.flavour-tile');
+			if (t) {
+				t.classList.remove('selected');
+				t.setAttribute('aria-checked', 'false');
+			}
 		});
+		const target = e.target;
+		target.checked = true;
+		const t = target.closest('.flavour-tile');
+		if (t) {
+			t.classList.add('selected');
+			t.setAttribute('aria-checked', 'true');
+		}
 	});
 
 	const pending = consumePendingBuild();

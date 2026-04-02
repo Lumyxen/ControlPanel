@@ -152,7 +152,28 @@ bool LlamaCppService::loadLib(const std::string& backendName) {
         return false;
     }
 
-    void* handle = dlopen(so.c_str(), RTLD_NOW | RTLD_LOCAL);
+#ifndef RTLD_DEEPBIND
+#define RTLD_DEEPBIND 0
+#endif
+
+    // Pre-load GGML dependencies with RTLD_GLOBAL so they're shared across
+    // backend switches. GGML's backend registry is a process-lifetime singleton
+    // that cannot be safely torn down, so all GGML libs must stay loaded.
+    static bool ggmlLoaded = false;
+    if (!ggmlLoaded) {
+        const fs::path libsDir = so.parent_path();
+        for (const char* ggmlLib : {"libggml.so", "libggml-base.so", "libggml-cpu.so",
+                                     "libggml-hip.so", "libggml-cuda.so", "libggml-vulkan.so"}) {
+            fs::path ggmlPath = libsDir / ggmlLib;
+            if (fs::exists(ggmlPath)) {
+                void* h = dlopen(ggmlPath.c_str(), RTLD_LAZY | RTLD_GLOBAL);
+                (void)h; // intentionally leaked — GGML must stay loaded
+            }
+        }
+        ggmlLoaded = true;
+    }
+
+    void* handle = dlopen(so.c_str(), RTLD_LAZY | RTLD_GLOBAL);
     if (!handle) {
         std::cerr << "[LlamaCpp] dlopen('" << so.string() << "') failed: "
                   << dlerror() << "\n";
@@ -223,7 +244,9 @@ void LlamaCppService::unloadLib() {
         if (api_->loaded && api_->backend_free) api_->backend_free();
         *api_ = LlamaApi{};
     }
-    if (dlHandle_) { dlclose(dlHandle_); dlHandle_ = nullptr; }
+    // Do NOT dlclose — GGML's backend registry is a process-lifetime singleton.
+    // dlclose would invalidate function pointers held by the registry.
+    dlHandle_ = nullptr;
     activeBackend_.clear();
 }
 
@@ -235,6 +258,14 @@ bool LlamaCppService::switchBackend(const std::string& backendName) {
     std::cout << "[LlamaCpp] Switching backend to: " << backendName << "\n";
 
     std::unique_lock<std::mutex> lock(inferMutex_);
+
+    // If the same backend is already loaded, just ensure the model is loaded
+    if (backendName == activeBackend_ && api_->loaded) {
+        if (!modelLoaded_ && !loadedModelPath_.empty()) {
+            return loadModel(loadedModelPath_);
+        }
+        return true;
+    }
 
     const std::string prevPath = loadedModelPath_;
 

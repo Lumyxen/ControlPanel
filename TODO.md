@@ -30,6 +30,8 @@
 
 ## AI Chat-box
 ### Planned Features
+- On-theme llama.cpp build remove button
+- UI for build removal confirmation
 - Replace emojis with proper SVGs
 - Display colours in a special formatted block with a preview of the colour
   - Detect using `rgb(rrr, ggg, bbb)` and `#rrggbb` and `#rrggbbaa` (apply alpha against white)
@@ -240,10 +242,6 @@
 
 ### To Fix
 #### UI
-- Removing a selected llama.cpp build in the files keeps the build highlighted despite greying out
-  - User seems to still be able to do inference despite removed libraries. It should reload libraries on model loading instead of keeping them loaded in memory
-  - Persists even after backend restart plus hard refresh
-  - Persists for a couple seconds after building a new llama.cpp build with that being auto-selected, causing dual selection visually
 - Markdown tables not working
 - LaTeX processing not working inside of latex type codeblocks
 

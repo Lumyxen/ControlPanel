@@ -40,6 +40,10 @@ public:
     // and re-loads the model if one was previously loaded.
     bool switchBackend(const std::string& backendName);
 
+    // Unload the current library (public so the delete endpoint can call it
+    // when the active backend is removed).
+    void unloadLib();
+
     // ── Model lifecycle (public so the reload-model API endpoint can call them) ──
 
     // Unload the current model (keeps the backend .so loaded).
@@ -102,7 +106,6 @@ private:
     mutable std::mutex inferMutex_;
 
     bool loadLib(const std::string& backendName);
-    void unloadLib();
     bool loadModel(const std::string& path = "");
 
     std::filesystem::path libPath(const std::string& name) const;

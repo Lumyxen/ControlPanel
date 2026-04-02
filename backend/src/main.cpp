@@ -251,6 +251,20 @@ void runServer(Config& config, LmStudioService& lmstudioService,
         if (svc) for (const auto& b : svc->availableBackends()) availArr.append(b);
         result["available"] = availArr;
 
+        // Check if the current setting points to a backend that doesn't exist
+        const std::string setting = config.getLlamacppBackend();
+        if (setting != "auto" && svc) {
+            const auto avail = svc->availableBackends();
+            if (std::find(avail.begin(), avail.end(), setting) == avail.end()) {
+                result["settingValid"] = false;
+                result["setting"] = "auto"; // Override to auto since the setting is invalid
+            } else {
+                result["settingValid"] = true;
+            }
+        } else {
+            result["settingValid"] = true;
+        }
+
         Json::Value hwArr(Json::arrayValue);
         for (const auto& b : LlamaCppService::detectHardwareBackends()) hwArr.append(b);
         result["hardware"] = hwArr;
@@ -294,14 +308,26 @@ void runServer(Config& config, LmStudioService& lmstudioService,
         if (!parseJsonBody(req.body, body, res)) return;
 
         const std::string backend = body.get("backend", "auto").asString();
-        Json::Value patch; patch["llamacppBackend"] = backend;
-        config.updateFromJson(patch);
 
         if (!svc) {
             res.status = 503;
             res.set_content("{\"error\":\"llama.cpp service unavailable\"}", "application/json");
             return;
         }
+
+        // Validate that the requested backend is actually available (has .so file)
+        // For "auto", resolveBackend will pick the best available
+        if (backend != "auto") {
+            const auto avail = svc->availableBackends();
+            if (std::find(avail.begin(), avail.end(), backend) == avail.end()) {
+                res.status = 404;
+                res.set_content("{\"error\":\"Backend '" + backend + "' is not built/available\"}", "application/json");
+                return;
+            }
+        }
+
+        Json::Value patch; patch["llamacppBackend"] = backend;
+        config.updateFromJson(patch);
 
         const std::string resolved = svc->resolveBackend(backend);
         std::cout << "[Backend] Switch requested: " << backend << " → " << resolved << "\n";
@@ -311,6 +337,56 @@ void runServer(Config& config, LmStudioService& lmstudioService,
         result["success"] = ok;
         result["active"]  = svc->getActiveBackend();
         if (!ok) result["error"] = "Backend switch failed — check logs";
+        Json::StreamWriterBuilder wb; wb["indentation"] = "";
+        res.set_content(Json::writeString(wb, result), "application/json");
+    });
+
+    // ── DELETE /api/llamacpp/backend/<name> — remove a built backend ──────────
+    svr.Delete(R"(/api/llamacpp/backend/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+
+        const std::string backend = req.matches[1];
+        if (backend != "cpu" && backend != "cuda" && backend != "rocm" && backend != "vulkan") {
+            res.status = 400;
+            res.set_content("{\"error\":\"backend must be cpu|cuda|rocm|vulkan\"}", "application/json");
+            return;
+        }
+
+        const std::string libPath = (fs::path(libsDir) / ("libllama_" + backend + ".so")).string();
+        if (!fs::exists(libPath)) {
+            res.status = 404;
+            res.set_content("{\"error\":\"Backend library not found\"}", "application/json");
+            return;
+        }
+
+        // If this is the currently active backend, unload and switch to cpu
+        if (svc && svc->getActiveBackend() == backend) {
+            std::cout << "[Backend] Removing active backend '" << backend << "' — switching to cpu\n";
+            svc->switchBackend("cpu");
+        }
+
+        // Remove the backend library
+        std::vector<std::string> removed;
+        fs::remove(fs::path(libPath));
+        removed.push_back("libllama_" + backend + ".so");
+
+        // If the removed backend was the setting, fall back to auto
+        if (config.getLlamacppBackend() == backend) {
+            Json::Value patch; patch["llamacppBackend"] = "auto";
+            config.updateFromJson(patch);
+            if (svc) {
+                const std::string resolved = svc->resolveBackend("auto");
+                svc->switchBackend(resolved);
+            }
+        }
+
+        std::cout << "[Backend] Removed: " << backend << " (" << removed.size() << " files)\n";
+
+        Json::Value result;
+        result["success"] = true;
+        result["removed"] = Json::Value(Json::arrayValue);
+        for (const auto& f : removed) result["removed"].append(f);
+        result["active"] = svc ? svc->getActiveBackend() : "none";
         Json::StreamWriterBuilder wb; wb["indentation"] = "";
         res.set_content(Json::writeString(wb, result), "application/json");
     });
