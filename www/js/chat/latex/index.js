@@ -9,6 +9,7 @@ export {
 	injectMath,
 	retryPendingMath,
 	normaliseMathDelimiters,
+	renderLatexCodeblock,
 } from './math.js';
 
 export {

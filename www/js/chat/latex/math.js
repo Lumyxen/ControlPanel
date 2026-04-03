@@ -1,8 +1,8 @@
 // www/js/chat/latex/math.js
 // Handles math delimiter normalisation, placeholder extraction, and KaTeX/MathJax rendering.
+// Rewritten with robust handling of LaTeX codeblocks and improved math extraction.
 
 // ─── Dynamic renderer injection ──────────────────────────────────────────────
-// Loads KaTeX (preferred) and MathJax (fallback) from CDN when not already present.
 
 (function initMathRenderers() {
 	if (typeof window === 'undefined') return;
@@ -57,7 +57,6 @@
 
 // ─── Regex constants ──────────────────────────────────────────────────────────
 
-/** Matches fenced code blocks (triple-backtick or single-backtick inline). */
 export const CODE_BLOCK_REGEX = /(```[\s\S]*?```|`[^`\n]+`)/g;
 
 const MATH_ENV_NAMES = [
@@ -73,7 +72,7 @@ export const MATH_REGEX = new RegExp(
 	'\\$\\$[\\s\\S]*?\\$\\$' +
 	'|\\\\\\[[\\s\\S]*?\\\\\\]' +
 	'|\\\\\\([\\s\\S]*?\\\\\\)' +
-	'|(?<!\$)\$(?!\$)(?:\\\\.|[^\n$])+?(?<!\s)\$(?!\$)' +
+	'|(?<!\\$)\\$(?!\\$)(?:\\\\.|[^\\n$])+?(?<!\\s)\\$(?!\\$)' +
 	'|\\\\begin\\{(' + MATH_ENV_NAMES + ')(?:\\{[^}]*\\})?\\}[\\s\\S]*?\\\\end\\{\\1(?:\\*)?\\}',
 	'g'
 );
@@ -126,7 +125,6 @@ export function normaliseMathDelimiters(text) {
 	if (!text) return '';
 	let t = text;
 
-	// Rescue citation commands that AI models sometimes wrap in $...$
 	t = t.replace(
 		/\$\s*(\\(?:cite[a-zA-Z]*|textcite|Textcite|parencite|Parencite|autocite|Autocite|fullcite|footcite|footcitetext|nocite)\*?\s*(?:\[[^\]]*\]\s*){0,2}\{[^}]+\})\s*\$/g,
 		(_, inner) => inner.trim()
@@ -149,8 +147,7 @@ export function normaliseMathDelimiters(text) {
 	return t;
 }
 
-// ─── extractMath ─────────────────────────────────────────────────────────────
-// Shields all math blocks from the Markdown parser using opaque placeholders.
+// ─── extractMath ──────────────────────────────────────────────────────────────
 
 export function extractMath(text) {
 	if (!text) return { text: '', mathBlocks: [] };
@@ -160,7 +157,7 @@ export function extractMath(text) {
 	const codeBlocks = [];
 	let ci = 0;
 	let safe = text.replace(CODE_BLOCK_REGEX, (m) => {
-		const ph = `⚿CODEBLOCK${ci}⚿`;
+		const ph = `\u26FFCODEBLOCK${ci}\u26FF`;
 		codeBlocks.push({ ph, m });
 		ci++;
 		return ph;
@@ -169,7 +166,7 @@ export function extractMath(text) {
 	const mathBlocks = [];
 	let mi = 0;
 	safe = safe.replace(MATH_REGEX, (match) => {
-		const ph = `⚿MATHBLOCK${mi}⚿`;
+		const ph = `\u26FFMATHBLOCK${mi}\u26FF`;
 		const isBlock = isDisplayMode(match);
 		const content = extractMathContent(match);
 		mathBlocks.push({ placeholder: ph, content, isBlock, rawMatch: match });
@@ -181,8 +178,7 @@ export function extractMath(text) {
 	return { text: safe, mathBlocks };
 }
 
-// ─── injectMath ──────────────────────────────────────────────────────────────
-// Replaces placeholders produced by extractMath with rendered KaTeX/MathJax HTML.
+// ─── injectMath ───────────────────────────────────────────────────────────────
 
 const KATEX_MACROS = {
 	'\\R': '\\mathbb{R}', '\\N': '\\mathbb{N}', '\\Z': '\\mathbb{Z}',
@@ -235,8 +231,53 @@ export function injectMath(html, mathBlocks) {
 	return result;
 }
 
+// ─── renderLatexCodeblock ─────────────────────────────────────────────────────
+
+export function renderLatexCodeblock(code) {
+	if (!code || !code.trim()) return escapeHtml(code);
+
+	const mathBlocks = [];
+	let mi = 0;
+	let safe = code.replace(MATH_REGEX, (match) => {
+		const ph = `\u26FFLATEXCODEMATH${mi}\u26FF`;
+		const isBlock = isDisplayMode(match);
+		const content = extractMathContent(match);
+		mathBlocks.push({ placeholder: ph, content, isBlock, rawMatch: match });
+		mi++;
+		return ph;
+	});
+
+	safe = escapeHtml(safe);
+
+	for (const { placeholder, content, isBlock, rawMatch } of mathBlocks) {
+		let rendered = '';
+		try {
+			if (window.katex) {
+				rendered = window.katex.renderToString(content, {
+					displayMode: isBlock, throwOnError: false, trust: true,
+					strict: false, output: 'htmlAndMathml', leqno: false, fleqn: false,
+					macros: { ...KATEX_MACROS },
+				});
+			} else if (window.MathJax && window.MathJax.tex2svg) {
+				const node = window.MathJax.tex2svg(content, { display: isBlock });
+				rendered = node.outerHTML || escapeHtml(rawMatch || content);
+			} else {
+				const cls = isBlock ? 'latex-block latex-pending' : 'latex-inline latex-pending';
+				rendered = `<span class="${cls}" data-latex="${escapeHtml(content)}">${escapeHtml(rawMatch || content)}</span>`;
+			}
+		} catch (err) {
+			const cls = isBlock ? 'latex-block latex-error' : 'latex-inline latex-error';
+			rendered = `<span class="${cls}" title="${escapeHtml(err.message)}">${escapeHtml(rawMatch || content)}</span>`;
+		}
+
+		if (isBlock && rendered) rendered = `<div class="latex-display-wrapper">${rendered}</div>`;
+		safe = safe.replace(escapeHtml(placeholder), rendered);
+	}
+
+	return safe;
+}
+
 // ─── retryPendingMath ─────────────────────────────────────────────────────────
-// Re-renders any .latex-pending elements once MathJax has loaded.
 
 export async function retryPendingMath(containerEl = document.body) {
 	if (!containerEl) return;

@@ -440,6 +440,15 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			return;
 		}
 
+		const codeHeader = e.target.closest('.md-code-header');
+		if (codeHeader) {
+			const wrapper = codeHeader.closest('.md-code-wrapper');
+			if (wrapper) {
+				wrapper.classList.toggle('collapsed');
+			}
+			return;
+		}
+
 		const btn = e.target.closest('[data-action]');
 		if (!btn) return;
 		const action  = btn.dataset.action;

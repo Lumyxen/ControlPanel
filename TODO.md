@@ -240,11 +240,11 @@
 
 ### To Fix
 #### UI
-- Markdown tables not working
-- LaTeX processing not working inside of latex type codeblocks
+- None
 
 #### UX
-- None
+- Inference starts, but once does not show in the UI, and when it ends, it will do another inference, which with then show in the UI
+- Stopping inference seems to not actually stop the inference
 ##### Firefox
 - ESC does not properly cancel message editing, requiring 2 presses of ESC
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field

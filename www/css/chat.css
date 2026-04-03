@@ -1456,6 +1456,29 @@
     border: none;
 }
 
+/* LaTeX codeblock — rendered math inside code */
+.md-code-latex .md-code-block {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.9em;
+    line-height: 1.6;
+}
+
+.md-code-latex .md-code-block .katex {
+    font-size: 1em;
+}
+
+.md-code-latex .md-code-block .latex-display-wrapper {
+    margin: 0.5em 0;
+    padding: 0.5em 0;
+    text-align: center;
+}
+
+.md-code-latex .md-code-block .latex-inline {
+    font-family: inherit;
+    background: none;
+    padding: 0;
+}
+
 .md-link {
     color: var(--accent);
     text-decoration: none;
@@ -1625,6 +1648,50 @@ del { text-decoration: line-through; color: var(--muted); }
 
 /* Nested lists */
 .md-list .md-list { margin: 0.25em 0; }
+
+/* Definition Lists */
+.md-deflist {
+    margin: 0.5em 0;
+    padding-left: 0;
+}
+
+.md-deflist-term {
+    font-weight: 600;
+    color: var(--text);
+    margin-top: 0.5em;
+}
+
+.md-deflist-term:first-child {
+    margin-top: 0;
+}
+
+.md-deflist-def {
+    margin-left: 1.5em;
+    margin-bottom: 0.25em;
+    color: var(--text);
+}
+
+/* Definition Lists */
+.md-deflist {
+    margin: 0.5em 0;
+    padding-left: 0;
+}
+
+.md-deflist-term {
+    font-weight: 600;
+    color: var(--text);
+    margin-top: 0.5em;
+}
+
+.md-deflist-term:first-child {
+    margin-top: 0;
+}
+
+.md-deflist-def {
+    margin-left: 1.5em;
+    margin-bottom: 0.25em;
+    color: var(--text);
+}
 
 /* Blockquote refinements */
 .md-blockquote > .md-paragraph:last-child { margin-bottom: 0; }
