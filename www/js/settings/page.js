@@ -91,7 +91,7 @@ function populateLlamaCppFields(root, s) {
 }
 
 function selectBackendRadio(root, value) {
-	const valid = ['auto','cpu','cuda','rocm','vulkan'];
+	const valid =['auto','cpu','cuda','rocm','vulkan'];
 	const v = valid.includes(value) ? value : 'auto';
 	root.querySelectorAll('input[name="llamacpp-backend"]').forEach(r => {
 		r.checked = false;
@@ -120,7 +120,7 @@ async function startBuildInSettings(root, backend, tag, btn) {
 	root.querySelector('#llamacpp-backend-title')?.closest('.card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 	if (barEl) { barEl.style.transition = 'none'; barEl.style.width = '0%'; barEl.style.background = 'var(--accent)'; }
 	if (pctEl) pctEl.textContent = '';
-	if (labelEl) labelEl.textContent = `Starting ${BACKEND_LABELS[backend] || backend} build...`;
+	if (labelEl) labelEl.textContent = `Preparing...`;
 	if (logTail) logTail.textContent = '';
 	if (progressArea) progressArea.hidden = false;
 	requestAnimationFrame(() => requestAnimationFrame(() => { if (barEl) barEl.style.transition = 'width 0.4s ease'; }));
@@ -154,7 +154,6 @@ async function startBuildInSettings(root, backend, tag, btn) {
 		return;
 	}
 
-	if (labelEl) labelEl.textContent = `Building ${BACKEND_LABELS[backend] || backend}...`;
 	_buildPulseRaf = requestAnimationFrame(pulse);
 	if (_buildPollId) { clearInterval(_buildPollId); _buildPollId = null; }
 
@@ -163,21 +162,43 @@ async function startBuildInSettings(root, backend, tag, btn) {
 			const lr = await fetch('/api/llamacpp/build/log?lines=60');
 			const ld = await lr.json();
 			const pct = typeof ld.percent === 'number' ? ld.percent : -1;
-			const lines = Array.isArray(ld.lines) ? ld.lines : [];
-			if (logTail) { logTail.textContent = lines.filter(l => l.trim()).slice(-12).join('\n'); logTail.scrollTop = logTail.scrollHeight; }
+			const lines = Array.isArray(ld.lines) ? ld.lines :[];
 
 			let dlPct = -1;
-			for (const line of lines) {
+			const terminalLines = [];
+			// Regex to match and strip ANSI escape codes safely
+			const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+
+			for (const rawLine of lines) {
+				// Strip ansi and carriage returns to keep things perfectly clean
+				const line = rawLine.replace(ansiRegex, '').replace(/\r/g, '').trim();
+				if (!line) continue;
+
+				let isProgress = false;
 				const dlM = line.match(/\[download\s+(\d+)%\s+complete\]/i);
-				if (dlM) { dlPct = parseInt(dlM[1], 10); }
-				else { const cM = line.match(/Receiving objects:\s+(\d+)%/); if (cM) dlPct = parseInt(cM[1], 10); }
+
+				if (dlM) { 
+					dlPct = parseInt(dlM[1], 10); 
+					isProgress = true; 
+				}
+
+				if (!isProgress) {
+					terminalLines.push(line);
+				}
 			}
+			
+			if (logTail) { 
+				logTail.textContent = terminalLines.slice(-12).join('\n'); 
+				logTail.scrollTop = logTail.scrollHeight; 
+			}
+
 			const activePct = pct >= 0 ? pct : dlPct;
-			const allLog = lines.join('\n');
+			const allLog = terminalLines.join('\n');
+			
 			let phase = '';
 			if (pct >= 0 || allLog.match(/Building C(?:XX)? object/)) phase = 'Compiling...';
-			else if (allLog.includes('Configuring done')) phase = 'Configuring...';
-			else if (dlPct >= 0 || allLog.includes('Cloning into') || allLog.includes('FetchContent')) phase = 'Downloading source...';
+			else if (dlPct >= 0 || allLog.includes('Cloning into') || allLog.includes('FetchContent') || allLog.includes('Downloading source')) phase = 'Downloading source...';
+			else if (allLog.includes('Extracting source')) phase = 'Extracting source...';
 
 			let etaStr = '';
 			if (activePct > 0 && activePct < 100) {
@@ -218,7 +239,7 @@ async function startBuildInSettings(root, backend, tag, btn) {
 					if (btn) { btn.textContent = 'Done'; btn.style.color = 'var(--green,green)'; btn.style.opacity = ''; }
 					const container = root.querySelector('#llamacpp-backend-selector');
 					if (container) {
-						const rows = [...container.children];
+						const rows =[...container.children];
 						const targetRow = rows.find(row => {
 							const radio = row.querySelector(`input[value="${backend}"]`);
 							return radio;
@@ -322,8 +343,8 @@ async function initBackendSelector(root) {
 	loading.remove();
 
 	const allBackends = Array.isArray(data.all) ? data.all : ['cpu','cuda','rocm','vulkan'];
-	const available   = Array.isArray(data.available) ? data.available : [];
-	const hardware    = Array.isArray(data.hardware)  ? data.hardware  : [];
+	const available   = Array.isArray(data.available) ? data.available :[];
+	const hardware    = Array.isArray(data.hardware)  ? data.hardware  :[];
 	const prereqs     = (data.prereqs && typeof data.prereqs === 'object') ? data.prereqs : {};
 	const active = data.active || 'none', setting = data.setting || 'auto', tag = data.tag || 'b8337';
 
@@ -391,7 +412,7 @@ async function initBackendSelector(root) {
 			const prereqMsg = prereqs[backend];
 			if (prereqMsg && !isBuilt) {
 				const warn = document.createElement('div');
-				warn.style.cssText = ['width:100%','margin-top:4px','padding:6px 10px','font-size:0.78rem','line-height:1.5','color:color-mix(in srgb,var(--text) 85%,transparent)','background:color-mix(in srgb,var(--accent) 8%,transparent)','border-left:3px solid color-mix(in srgb,var(--accent) 60%,transparent)','white-space:pre-wrap','word-break:break-word','font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace'].join(';');
+				warn.style.cssText =['width:100%','margin-top:4px','padding:6px 10px','font-size:0.78rem','line-height:1.5','color:color-mix(in srgb,var(--text) 85%,transparent)','background:color-mix(in srgb,var(--accent) 8%,transparent)','border-left:3px solid color-mix(in srgb,var(--accent) 60%,transparent)','white-space:pre-wrap','word-break:break-word','font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace'].join(';');
 				warn.innerHTML = 'Warning: ' + prereqMsg.replace(/(https?:\/\/[^\s)]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:underline;">$1</a>');
 				row.appendChild(warn);
 			}
@@ -463,7 +484,7 @@ export function initSettingsPage(root) {
 			if (isValidAccent(palette, btn.dataset.accent)) setTheme(`${palette}-${flavour}-${btn.dataset.accent}`);
 		});
 		accentGrid.addEventListener('keydown', (e) => {
-			const nav = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'];
+			const nav =['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'];
 			if (!nav.includes(e.key) && e.key !== ' ' && e.key !== 'Enter') return;
 			const items = [...accentGrid.querySelectorAll('button[data-accent][role="radio"]')]; if (!items.length) return;
 			const cur = items.findIndex(el => el.classList.contains('selected'));
@@ -504,7 +525,7 @@ export function initSettingsPage(root) {
 
 	initBackendSelector(root).catch(console.warn);
 
-	const watchedFields = ['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#system-prompt-input','#lmstudio-url-input','#llamacpp-flash-attn','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty'];
+	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#system-prompt-input','#lmstudio-url-input','#llamacpp-flash-attn','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty'];
 	const unsub = SettingsStore.subscribe((s) => {
 		const focused = document.activeElement;
 		if (!watchedFields.some(sel => root.querySelector(sel) === focused)) { populateAISettingsFields(root, s); populateLlamaCppFields(root, s); }

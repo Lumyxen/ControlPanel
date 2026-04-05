@@ -519,10 +519,10 @@ body.sidebar-collapsed.is-chat-page .quick-new-chat {
     color: var(--accent);
 }
 
-/* Larger pin icon - 16px instead of 12px for better visibility */
+/* Pin icon - 12px to match other action buttons */
 .nav-chat-pin svg {
-    width: 16px;
-    height: 16px;
+    width: 12px;
+    height: 12px;
 }
 
 /* Chat actions container - positioned absolutely to not affect layout */

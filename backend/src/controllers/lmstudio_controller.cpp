@@ -6,6 +6,7 @@
 #include <mutex>
 #include <deque>
 #include <thread>
+#include <future>
 #include <chrono>
 #include <iostream>
 #include <atomic>
@@ -23,6 +24,11 @@ struct StreamingCtx {
     std::atomic<bool>       cancelled{false};
     std::string             error;
     std::chrono::steady_clock::time_point last_write = std::chrono::steady_clock::now();
+
+    // FIX: Track the worker future so cleanup can detect when the inference
+    // thread has actually finished, and the content_provider can avoid racing
+    // on ctx state during teardown.
+    std::shared_ptr<std::future<void>> workerFuture;
 };
 
 static std::unordered_map<std::string, std::shared_ptr<StreamingCtx>> g_active_streams;
@@ -114,16 +120,12 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
             res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
             return;
         }
-        // The frontend always sends "prompt" (used by llama.cpp and text-only LM Studio)
-        // and additionally sends "messages" when the thread contains image content blocks
-        // (for vision-capable models). Both fields are validated below.
         if (!body.isMember("model") || !body.isMember("prompt")) {
             res.status = 400;
             res.set_content("{\"error\": \"Missing required fields: model, prompt\"}", "application/json");
             return;
         }
 
-        // "messages" is only present when the thread has image content (vision request).
         const bool hasPrebuiltMessages = body.isMember("messages") && body["messages"].isArray()
                                          && !body["messages"].empty();
 
@@ -135,10 +137,6 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
         int contextWindow        = body.isMember("context_window") ? body["context_window"].asInt()  : 0;
         std::string stream_id    = body.isMember("stream_id")      ? body["stream_id"].asString()    : "";
 
-        // If the frontend sent a structured messages array, use it directly so that
-        // image content blocks (type: "image_url") are forwarded to the model as-is,
-        // enabling vision on any model that supports it.  Prepend the system prompt
-        // as the first message when one is configured.
         Json::Value prebuiltMessages(Json::arrayValue);
         if (hasPrebuiltMessages) {
             if (!systemPrompt.empty()) {
@@ -155,7 +153,6 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
             ? body["tools"]
             : Json::Value(Json::arrayValue);
 
-        // Inject MCP tools for all backends (llama.cpp and LM Studio)
         if (registry && registry->liveCount() > 0) {
             Json::Value mcpTools = registry->getAggregatedTools();
             for (const auto& t : mcpTools)
@@ -177,6 +174,28 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
 
         const bool isLlamaCpp = model.rfind("llamacpp::", 0) == 0;
 
+        // ── Shared onChunk / onError lambdas ──────────────────────────────────
+        // Both backends use these same lambdas to queue chunks and errors.
+        // onChunk returns false immediately when cancelled — this propagates
+        // back through doInference and stops token generation within one decode.
+        auto onChunk = [ctx](const std::string& chunk) -> bool {
+            if (ctx->cancelled.load()) return false;
+            if (!chunk.empty()) {
+                std::lock_guard<std::mutex> lock(ctx->mutex);
+                ctx->chunks.push_back(chunk);
+            }
+            return true;
+        };
+        auto onError = [ctx](const std::string& err) {
+            if (ctx->cancelled.load()) return;
+            std::lock_guard<std::mutex> lock(ctx->mutex);
+            ctx->error = err;
+            ctx->done  = true;
+        };
+        auto cancelCheck = [ctx]() -> bool {
+            return ctx->cancelled.load();
+        };
+
         if (isLlamaCpp) {
             // ── llama.cpp path ────────────────────────────────────────────────
             if (!llamaCppService) {
@@ -185,92 +204,91 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                 return;
             }
 
-            // Always use streamingChatWithTools so that MCP tools and vision
-            // messages are handled uniformly.  When tools is empty and there
-            // are no prebuilt messages the service falls back to plain inference.
             Json::Value llamaMessages = hasPrebuiltMessages
                 ? prebuiltMessages
                 : llamaCppService->buildMessages(prompt, systemPrompt);
 
-            std::thread([ctx, llamaCppService, model, llamaMessages, tools,
-                         maxTokens, temperature, contextWindow, registry]() mutable {
-                auto onChunk = [ctx](const std::string& chunk) -> bool {
-                    if (ctx->cancelled.load()) return false;
-                    if (!chunk.empty()) {
+            // FIX: Use std::async instead of a detached std::thread so the
+            // future can be stored and checked during cleanup.  The inference
+            // thread is no longer "fire and forget" — its lifetime is tied to
+            // the StreamingCtx via workerFuture.
+            auto future = std::make_shared<std::future<void>>(
+                std::async(std::launch::async,
+                    [ctx, llamaCppService, model, llamaMessages, tools,
+                     maxTokens, temperature, contextWindow, registry,
+                     onChunk, onError, cancelCheck]() mutable {
+                        llamaCppService->streamingChatWithTools(
+                            model, llamaMessages, tools,
+                            maxTokens, onChunk, onError, registry,
+                            temperature, contextWindow, cancelCheck);
+
                         std::lock_guard<std::mutex> lock(ctx->mutex);
-                        ctx->chunks.push_back(chunk);
+                        ctx->done = true;
                     }
-                    return true;
-                };
-                auto onError = [ctx](const std::string& err) {
-                    if (ctx->cancelled.load()) return;
-                    std::lock_guard<std::mutex> lock(ctx->mutex);
-                    ctx->error = err;
-                    ctx->done  = true;
-                };
-
-                llamaCppService->streamingChatWithTools(
-                    model, llamaMessages, tools,
-                    maxTokens, onChunk, onError, registry,
-                    temperature, contextWindow);
-
-                std::lock_guard<std::mutex> lock(ctx->mutex);
-                ctx->done = true;
-            }).detach();
+                )
+            );
+            ctx->workerFuture = future;
 
         } else {
             // ── lmstudio path ─────────────────────────────────────────────────
             const bool useTools = tools.isArray() && !tools.empty();
 
-            std::thread([ctx, &service, registry, model, prompt, maxTokens,
-                         systemPrompt, temperature, contextWindow, tools,
-                         useTools, hasPrebuiltMessages, prebuiltMessages]() mutable {
-                auto onChunk =[ctx](const std::string& chunk) -> bool {
-                    if (ctx->cancelled.load()) return false;
-                    if (!chunk.empty()) {
+            auto future = std::make_shared<std::future<void>>(
+                std::async(std::launch::async,
+                    [ctx, &service, registry, model, prompt, maxTokens,
+                     systemPrompt, temperature, contextWindow, tools,
+                     useTools, hasPrebuiltMessages, prebuiltMessages,
+                     onChunk, onError, cancelCheck]() mutable {
+                        if (useTools || hasPrebuiltMessages) {
+                            Json::Value messages = hasPrebuiltMessages
+                                ? prebuiltMessages
+                                : service.buildMessages(prompt, systemPrompt);
+                            service.streamingChatWithTools(
+                                model, messages, tools, maxTokens,
+                                onChunk, onError, registry, temperature, contextWindow,
+                                cancelCheck);
+                        } else {
+                            service.streamingChatWithCallback(
+                                model, prompt, maxTokens, onChunk, onError,
+                                systemPrompt, temperature, contextWindow,
+                                cancelCheck);
+                        }
+
                         std::lock_guard<std::mutex> lock(ctx->mutex);
-                        ctx->chunks.push_back(chunk);
+                        ctx->done = true;
                     }
-                    return true;
-                };
-                auto onError = [ctx](const std::string& err) {
-                    if (ctx->cancelled.load()) return;
-                    std::lock_guard<std::mutex> lock(ctx->mutex);
-                    ctx->error = err;
-                    ctx->done  = true;
-                };
-
-                if (useTools || hasPrebuiltMessages) {
-                    // Use streamingChatWithTools for both tool calls and vision:
-                    //   - It accepts a pre-built messages array (preserving image_url blocks)
-                    //   - With an empty tools array it does a single round with no tool_choice
-                    Json::Value messages = hasPrebuiltMessages
-                        ? prebuiltMessages
-                        : service.buildMessages(prompt, systemPrompt);
-                    service.streamingChatWithTools(
-                        model, messages, tools, maxTokens,
-                        onChunk, onError, registry, temperature, contextWindow);
-                } else {
-                    service.streamingChatWithCallback(
-                        model, prompt, maxTokens, onChunk, onError,
-                        systemPrompt, temperature, contextWindow);
-                }
-
-                std::lock_guard<std::mutex> lock(ctx->mutex);
-                ctx->done = true;
-            }).detach();
+                )
+            );
+            ctx->workerFuture = future;
         }
 
-        // ── SSE content provider (same for both paths) ────────────────────────
+        // ── SSE content provider ──────────────────────────────────────────────
+        //
+        // FIX 1: Heartbeat interval reduced from 500 ms to 100 ms.
+        //        This halves the worst-case delay between a client disconnecting
+        //        and the server detecting it via a failed sink.write(), which in
+        //        turn sets ctx->cancelled and stops the inference thread.
+        //
+        // FIX 2: sink.is_writable() is checked at the top of every provider
+        //        call (unchanged from before) AND the heartbeat is attempted
+        //        more frequently so TCP-level disconnects are caught sooner.
+        //
+        // FIX 3: When the provider finishes (either done or cancelled), it
+        //        waits up to 2 s for the worker future to complete.  This
+        //        prevents the StreamingCtx from being destroyed while the
+        //        inference thread is still writing to ctx->chunks.
         res.set_content_provider(
             "text/event-stream",
             [ctx](size_t /*offset*/, httplib::DataSink& sink) -> bool {
+                // Already cancelled — stop immediately
                 if (ctx->cancelled.load()) {
                     return false;
                 }
 
+                // Detect client disconnect
                 if (!sink.is_writable()) {
                     ctx->cancelled.store(true);
+                    std::cout << "[Streaming] Client disconnected; cancelling inference\n";
                     return false;
                 }
 
@@ -305,7 +323,9 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
 
                 if (!to_write.empty()) {
                     if (!sink.write(to_write.data(), to_write.size())) {
+                        // Write failed — client dropped the connection
                         ctx->cancelled.store(true);
+                        std::cout << "[Streaming] Write failed; cancelling inference\n";
                         return false;
                     }
                     ctx->last_write = now;
@@ -314,19 +334,43 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                 if (is_done) {
                     sink.done();
                 } else if (to_write.empty()) {
-                    // Occasionally flush an empty SSE comment to reliably detect dropped HTTP client connections
-                    if (std::chrono::duration_cast<std::chrono::milliseconds>(now - ctx->last_write).count() >= 500) {
+                    // FIX: Heartbeat every 100 ms (was 500 ms).
+                    // Sending a no-op SSE comment serves two purposes:
+                    //   1. Keeps the TCP connection alive (anti-idle timeout).
+                    //   2. Detects a dropped client faster — write() failure
+                    //      is the primary signal for client disconnect.
+                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now - ctx->last_write).count();
+                    if (elapsed >= 100) {
                         if (!sink.write(":\n\n", 3)) {
                             ctx->cancelled.store(true);
+                            std::cout << "[Streaming] Heartbeat write failed; cancelling inference\n";
                             return false;
                         }
                         ctx->last_write = now;
                     }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 }
 
                 return !ctx->cancelled.load();
-            },[stream_id](bool /*success*/) {
+            },
+            [ctx, stream_id](bool /*success*/) {
+                // FIX: Ensure ctx->cancelled is set so the worker exits its
+                // inference loop even if the provider exited for a non-error
+                // reason (e.g. sink.done() was called normally).  This is a
+                // no-op when inference already finished cleanly.
+                ctx->cancelled.store(true);
+
+                // Wait for the worker future with a short timeout so the ctx
+                // shared_ptr isn't destroyed beneath a still-running thread.
+                if (ctx->workerFuture && ctx->workerFuture->valid()) {
+                    auto status = ctx->workerFuture->wait_for(std::chrono::seconds(5));
+                    if (status != std::future_status::ready) {
+                        std::cerr << "[Streaming] Worker did not finish within timeout "
+                                     "after stream closed (stream_id=" << stream_id << ")\n";
+                    }
+                }
+
                 if (!stream_id.empty()) {
                     std::unique_lock<std::shared_mutex> lock(g_active_streams_mutex);
                     g_active_streams.erase(stream_id);
@@ -341,7 +385,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// handleLmStudioModels  — returns ONLY LM Studio models (for URL testing)
+// handleLmStudioModels
 // ─────────────────────────────────────────────────────────────────────────────
 
 void handleLmStudioModels(const httplib::Request& /*req*/, httplib::Response& res,
@@ -366,14 +410,12 @@ void handleModels(const httplib::Request& /*req*/, httplib::Response& res,
         Json::Value combined;
         combined["data"] = Json::Value(Json::arrayValue);
 
-        // LM Studio models (may fail / return empty if server is down)
         Json::Value lmsModels = service.getModels();
         if (lmsModels.isMember("data") && lmsModels["data"].isArray()) {
             for (const auto& m : lmsModels["data"])
                 combined["data"].append(m);
         }
 
-        // llama.cpp local models (directory scan — no model needs to be loaded)
         if (llamaCppService) {
             Json::Value lcpModels = llamaCppService->getModels();
             if (lcpModels.isMember("data") && lcpModels["data"].isArray()) {

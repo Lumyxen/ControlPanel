@@ -31,17 +31,12 @@
 
 ## AI Chat-box
 ### Planned Features
-- Replace emojis with proper SVGs
-- Display colours in a special formatted block with a preview of the colour
-  - Detect using `rgb(rrr, ggg, bbb)` and `#rrggbb` and `#rrggbbaa` (apply alpha against white)
 - Collapsable/Expandable BibTeX reference list
   - Closed it by default
-- Download progress bar on llama.cpp source downloading
-- Allow removal/deletion of llama.cpp builds
+- Download and Extracting progress bar on llama.cpp source downloading
 - llama.cpp hardware usage configuration
 - Tone down llama.cpp max compute usage to allow computer use during generation
   - Ability to return to maximum usage in settings
-- Ollama support
 - Keep models loaded for 5 minutes after generation completion
   - Setting to change time to unload after generation completion, down to immediate (step before 1 minute), up to infinite (step after 30 minutes)
 - KV cache reuse
@@ -96,20 +91,6 @@
 - Headless browser tool
 - Stop and restart backend options in the front-end, as Windows users likely won't use a terminal to run the app
 ##### Start giving updates to GamingwithNP
-- AI automated research (self-improvement)
-  - Choose the best open sourced (actual open source, not open weight) model available
-    - Train the AI for a set time (configurable, default 5 minutes)
-    - Record score on benchmarks
-  - Feed Qwen 3.5 35B A3B the results, making it try to improve it
-    - If it doesn't improve, discard
-    - If it improves, keep
-  - Once Qwen 3.5 35B A3B feels it'd do worse then the AI it created at improving the AI, it hands that job to the AI
-    - Continue going infinitely.
-  - Greatly discourage scaling and encourage downscaling without performance loss
-  - Encourage a liquid neural network type architecture to slowly involve into or take inspiration from
-  - Do NOT let the initial Qwen 3.5 35B A3B model OR the trained AI to not be in this harness, as to give it up-most capabilities
-  - Small model to keep watch unknowingly to the developer AI to kill the development loop as soon as any sort of malicious intent is detected
-  - NOT meant to be computationally reasonable yet. It's for a preparation for when it does become reasonable, which is entirely unknown and could be tomorrow, or even 2 years from now.
 - Obsidian.md warning, danger, and check custom formatting
 - Mobile UI support
 - Add chat importing (from T3.chat & Google AI Studio)
@@ -199,8 +180,23 @@
   - Kernel version
   - Software stuff
 - VS Code like qualities in text (alt+up/down arrow to move line of text up/down text field lines)
+- Ollama support
 - Message staring per-chat and global
 - Chat folders
+- AI automated research (self-improvement)
+  - Choose the best open sourced (actual open source, not open weight) model available
+    - Train the AI for a set time (configurable, default 5 minutes)
+    - Record score on benchmarks
+  - Feed Qwen 3.5 35B A3B the results, making it try to improve it
+    - If it doesn't improve, discard
+    - If it improves, keep
+  - Once Qwen 3.5 35B A3B feels it'd do worse then the AI it created at improving the AI, it hands that job to the AI
+    - Continue going infinitely.
+  - Greatly discourage scaling and encourage downscaling without performance loss
+  - Encourage a liquid neural network type architecture to slowly involve into or take inspiration from
+  - Do NOT let the initial Qwen 3.5 35B A3B model OR the trained AI to not be in this harness, as to give it up-most capabilities
+  - Small model to keep watch unknowingly to the developer AI to kill the development loop as soon as any sort of malicious intent is detected
+  - NOT meant to be computationally reasonable yet. It's for a preparation for when it does become reasonable, which is entirely unknown and could be tomorrow, or even 2 years from now.
 - Always-On mode, asking a set AI model if there is anything worth doing every set amount of time, and then have it do such thing.
   - Log to keep track of what it noticed, what it decided, and what it did
   - Have it use git to be able to more directly target bad changes
@@ -242,10 +238,12 @@
 
 ### To Fix
 #### UI
-- None
+- Build & Rebuild buttons are not equally sized
+  - Rebuild and remove buttons should be bigger
 
 #### UX
 - LaTeX processing currently in an unfinished state
+- The build history gets cut off in build output element
 ##### Firefox
 - ESC does not properly cancel message editing, requiring 2 presses of ESC
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
@@ -316,6 +314,7 @@
   - New thread message
   - Thread navigation buttons (back & forth)
 - Text processing
+  - Hex, Hexa, and RGB value detectors to display a custom styled block with colour preview
   - Markdown
     - Base Markdown
       - Code block title bar /w copying & collapsing/expansion

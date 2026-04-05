@@ -311,7 +311,8 @@ void LmStudioService::streamingChatWithCallback(
         int maxTokens,
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
-        const std::string& systemPrompt, double temperature, int numCtx) const {
+        const std::string& systemPrompt, double temperature, int numCtx,
+        std::function<bool()> cancelCheck) const {
 
     Json::Value body;
     body["model"]      = model;
@@ -337,9 +338,11 @@ void LmStudioService::streamingChatWithTools(
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
         McpRegistry* registry,
-        double temperature, int numCtx) const {
+        double temperature, int numCtx,
+        std::function<bool()> cancelCheck) const {
 
     for (;;) {
+        if (cancelCheck && cancelCheck()) return;
         Json::Value body;
         body["model"]      = model;
         body["messages"]   = messages;

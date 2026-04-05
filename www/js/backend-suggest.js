@@ -66,7 +66,7 @@ function showBanner(backend, initialData) {
     el.id = BANNER_ID;
     el.innerHTML = `
         <div style="display:flex;align-items:flex-start;gap:10px;">
-            <span style="font-size:1rem;flex-shrink:0;margin-top:1px;">⚡</span>
+            <span style="font-size:1rem;flex-shrink:0;margin-top:1px;"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap-icon lucide-zap"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg></span>
             <div style="flex:1;min-width:0;">
                 <div style="font-weight:600;color:var(--text);font-size:0.85rem;margin-bottom:3px;">
                     ${label} GPU detected

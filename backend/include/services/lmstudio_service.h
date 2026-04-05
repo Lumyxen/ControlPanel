@@ -41,7 +41,8 @@ public:
         std::function<void(const std::string&)> onError,
         const std::string& systemPrompt = "",
         double temperature = -1.0,
-        int numCtx = 0
+        int numCtx = 0,
+        std::function<bool()> cancelCheck = nullptr
     ) const;
 
     void streamingChatWithTools(
@@ -53,7 +54,8 @@ public:
         std::function<void(const std::string&)> onError,
         McpRegistry*        registry,
         double              temperature   = -1.0,
-        int                 numCtx        = 0
+        int                 numCtx        = 0,
+        std::function<bool()> cancelCheck = nullptr
     ) const;
 
     Json::Value getModels() const;

@@ -460,7 +460,7 @@ export function generateBibliography(opts, citationNumbers) {
 	const isAuthorYear = ['authoryear','apa','chicago','harvard','mla'].includes(style);
 	let html = `<div class="latex-bibliography style-${escapeHtml(style)}">` +
 		`<div class="latex-bibliography-header">` +
-		`<span class="latex-bibliography-header-icon">📚</span>` +
+		`<span class="latex-bibliography-header-icon"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-library-icon lucide-library"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg></span>` +
 		`<span>References</span>` +
 		`<span class="latex-bibliography-header-count">${count} entr${count === 1 ? 'y' : 'ies'}</span>` +
 		`</div>`;
@@ -609,7 +609,7 @@ function _processThebibliography(text) {
 			const count = items.length;
 			let html = `<div class="latex-thebibliography">` +
 				`<div class="latex-bibliography-header">` +
-				`<span class="latex-bibliography-header-icon">📚</span>` +
+		`<span class="latex-bibliography-header-icon"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-icon lucide-book"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/></svg></span>` +
 				`<span>References</span>` +
 				`<span class="latex-bibliography-header-count">${count} entr${count === 1 ? 'y' : 'ies'}</span>` +
 				`</div>`;

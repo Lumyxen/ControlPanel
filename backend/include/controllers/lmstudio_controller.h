@@ -19,9 +19,6 @@ void handleStopStream(const httplib::Request& req, httplib::Response& res);
 void handleLmStudioModels(const httplib::Request& req, httplib::Response& res,
                           LmStudioService& service);
 
-void handleLmStudioModels(const httplib::Request& req, httplib::Response& res,
-                          LmStudioService& service);
-
 void handleModels  (const httplib::Request& req, httplib::Response& res,
                     LmStudioService& service,
                     LlamaCppService* llamaCppService = nullptr);

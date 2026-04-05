@@ -2,6 +2,7 @@
 // Glossary and acronym support: \newglossaryentry, \gls, \glspl, \acrfull, etc.
 
 import { getIcon } from '../utils/icons.js';
+import { escapeHtml, escapeAttr } from '../utils/html-utils.js';
 
 export class GlossaryEngine {
   constructor() {
@@ -233,12 +234,4 @@ function parseGlossaryFields(str) {
     fields[match[1]] = match[2];
   }
   return fields;
-}
-
-function escapeHtml(text) {
-  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeAttr(text) {
-  return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

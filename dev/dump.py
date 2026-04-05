@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 BLACKLIST_FILES = frozenset([
-    "login.html", "chat1.json", "chat2.json", "LICENSE"
+    "login.html", "chat1.json", "chat2.json", "LICENSE", "katex.min.js"
 ])
 
 BLACKLIST_FOLDERS = frozenset([

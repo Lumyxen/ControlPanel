@@ -95,6 +95,10 @@ Edit `data/settings.json` with your settings:
 - `POST /mcp` - Dispatch a JSON-RPC 2.0 request to an MCP server
 - `GET /mcp` - MCP Server-Sent Events (SSE) channel stub
 
+## Attribution
+
+This project uses icons from [Lucide](https://lucide.dev/), a clean & consistent icon toolkit made by the Lucide community. Thank you to the Lucide team and contributors for providing high-quality, open-source icons that enhance the user interface.
+
 ## AI Usage
 I do use AI heavily on this project to program.
 

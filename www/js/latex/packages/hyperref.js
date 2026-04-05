@@ -1,3 +1,4 @@
+import { escapeHtml, escapeAttr } from '../utils/html-utils.js';
 // www/js/latex/packages/hyperref.js
 // \href, \url, \hypertarget support.
 
@@ -29,12 +30,4 @@ export function processHyperref(source) {
   });
 
   return result;
-}
-
-function escapeHtml(text) {
-  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeAttr(text) {
-  return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

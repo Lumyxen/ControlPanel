@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # To force a clean rebuild: ./build.sh --clean
+# To build only the Linux x86 binary: ./build.sh --test
 #
 # Build parallelism is automatically adjusted based on available system memory
 # and CPU cores to prevent OOM crashes while maintaining good build speeds.
@@ -70,29 +71,47 @@ if [ ! -f "third_party/httplib/httplib.h" ]; then
     fi
 fi
 
+# Check if --test flag is provided
+TEST_BUILD=false
+for arg in "$@"; do
+    if [[ "${arg}" == "--test" ]]; then
+        TEST_BUILD=true
+    fi
+done
+
 # ── Main binary ───────────────────────────────────────────────────────────────
 echo "=== Building ctrlpanel ==="
 mkdir -p build
 cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --target ctrlpanel     -j"$BUILD_JOBS"
-cmake --build build --target ctrlpanel_exe -j"$BUILD_JOBS"
 
-# ── ARM cross-compile (optional — requires aarch64-linux-gnu-g++) ─────────────
-if command -v aarch64-linux-gnu-g++ &>/dev/null; then
-    echo ""
-    echo "=== Building ARM64 target ==="
-    mkdir -p build-arm
-    cmake -B build-arm \
-        -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake \
-        -DCMAKE_BUILD_TYPE=Release
-    cmake --build build-arm --target ctrlpanel_arm -j"$BUILD_JOBS"
-    cp build-arm/ctrlpanel_arm build/ctrlpanel_arm
-    rm -rf build-arm
+if [[ "$TEST_BUILD" == true ]]; then
+    echo "=== --test: building only Linux x86 binary ==="
+    cmake --build build --target ctrlpanel -j"$BUILD_JOBS"
+else
+    cmake --build build --target ctrlpanel     -j"$BUILD_JOBS"
+    cmake --build build --target ctrlpanel_exe -j"$BUILD_JOBS"
+
+    # ── ARM cross-compile (optional — requires aarch64-linux-gnu-g++) ─────────────
+    if command -v aarch64-linux-gnu-g++ &>/dev/null; then
+        echo ""
+        echo "=== Building ARM64 target ==="
+        mkdir -p build-arm
+        cmake -B build-arm \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake \
+            -DCMAKE_BUILD_TYPE=Release
+        cmake --build build-arm --target ctrlpanel_arm -j"$BUILD_JOBS"
+        cp build-arm/ctrlpanel_arm build/ctrlpanel_arm
+        rm -rf build-arm
+    fi
 fi
 
 echo ""
 echo "=== Done ==="
-echo "  build/ctrlpanel      (Linux x86)"
-echo "  build/ctrlpanel.exe  (Windows)"
-[[ -f "build/ctrlpanel_arm" ]] && echo "  build/ctrlpanel_arm  (ARM64)"
+if [[ "$TEST_BUILD" == true ]]; then
+    echo "  build/ctrlpanel      (Linux x86 - test build)"
+else
+    echo "  build/ctrlpanel      (Linux x86)"
+    echo "  build/ctrlpanel.exe  (Windows)"
+    [[ -f "build/ctrlpanel_arm" ]] && echo "  build/ctrlpanel_arm  (ARM64)"
+fi
 echo ""

@@ -2,6 +2,7 @@
 // TikZ/PGF placeholder support - renders structured placeholders for diagrams.
 
 import { getIcon } from '../utils/icons.js';
+import { escapeHtml, escapeAttr } from '../utils/html-utils.js';
 
 /**
  * Extract TikZ picture environments and render placeholders.
@@ -113,12 +114,4 @@ function formatTikZElement(el) {
     case 'node': return `\\node [${el.options}] (${el.name}) at (${el.position}) {${el.content}};`;
     default: return `${el.type}: ${JSON.stringify(el)}`;
   }
-}
-
-function escapeHtml(text) {
-  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeAttr(text) {
-  return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

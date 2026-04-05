@@ -5,6 +5,8 @@
 #include <vector>
 #include <functional>
 #include <mutex>
+#include <atomic>
+#include <condition_variable>
 #include <filesystem>
 #include <json/json.h>
 
@@ -68,7 +70,8 @@ public:
         std::function<void(const std::string&)> onError,
         const std::string& systemPrompt = "",
         double temperature = -1.0,
-        int numCtx = 0
+        int numCtx = 0,
+        std::function<bool()> cancelCheck = nullptr
     );
 
     void streamingChatWithTools(
@@ -80,7 +83,8 @@ public:
         std::function<void(const std::string&)> onError,
         McpRegistry* registry,
         double temperature = -1.0,
-        int numCtx = 0
+        int numCtx = 0,
+        std::function<bool()> cancelCheck = nullptr
     );
 
 private:
@@ -103,7 +107,18 @@ private:
     void*       clipCtx_       = nullptr;
     bool        visionEnabled_ = false;
 
-    mutable std::mutex inferMutex_;
+    mutable std::mutex              inferMutex_;
+
+    // ── Service-level abort flag ──────────────────────────────────────────────
+    // Set to true by a new inference request before it acquires inferMutex_,
+    // signalling the running inference to stop ASAP.  Cleared to false once the
+    // new request owns the lock and is ready to start its own inference.
+    //
+    // doInference checks this via the combinedCancel predicate before every
+    // call to api_->decode(), so the running inference exits within a single
+    // decode call (~milliseconds) rather than waiting for the current full
+    // generation to complete.
+    mutable std::atomic<bool>       inferAbort_{false};
 
     bool loadLib(const std::string& backendName);
     bool loadModel(const std::string& path = "");
@@ -118,7 +133,8 @@ private:
         const std::vector<std::pair<std::string, std::string>>& messages,
         int maxTokens, double temperature,
         std::function<bool(const std::string&)> onChunk,
-        std::function<void(const std::string&)> onError
+        std::function<void(const std::string&)> onError,
+        std::function<bool()> cancelCheck = nullptr
     ) const;
 
     /**

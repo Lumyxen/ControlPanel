@@ -2,6 +2,7 @@
 // Table of contents generator from parsed LaTeX AST.
 
 import { NodeType, flattenText } from './ast.js';
+import { toRoman } from '../utils/number-utils.js';
 
 const SECTION_LEVELS = {
   '\\part': -1,
@@ -187,15 +188,4 @@ export class TOCGenerator {
       default: return '';
     }
   }
-}
-
-function toRoman(num) {
-  if (num <= 0 || num > 3999) return String(num);
-  const vals = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1];
-  const syms = ['M', 'CM', 'D', 'CD', 'C', 'XC', 'L', 'XL', 'X', 'IX', 'V', 'IV', 'I'];
-  let result = '';
-  for (let i = 0; i < vals.length; i++) {
-    while (num >= vals[i]) { result += syms[i]; num -= vals[i]; }
-  }
-  return result;
 }

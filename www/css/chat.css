@@ -968,6 +968,32 @@
     word-break: break-word;
 }
 
+.colour-preview {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 6px;
+    margin: 0 2px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.85em;
+    vertical-align: middle;
+    cursor: help;
+    white-space: nowrap;
+}
+
+.colour-preview::before {
+    content: '';
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    background-color: var(--preview-colour);
+    flex-shrink: 0;
+}
+
 /* Inline attachments in messages */
 .chat-message-inline-attachment {
     display: flex;
@@ -1648,28 +1674,6 @@ del { text-decoration: line-through; color: var(--muted); }
 
 /* Nested lists */
 .md-list .md-list { margin: 0.25em 0; }
-
-/* Definition Lists */
-.md-deflist {
-    margin: 0.5em 0;
-    padding-left: 0;
-}
-
-.md-deflist-term {
-    font-weight: 600;
-    color: var(--text);
-    margin-top: 0.5em;
-}
-
-.md-deflist-term:first-child {
-    margin-top: 0;
-}
-
-.md-deflist-def {
-    margin-left: 1.5em;
-    margin-bottom: 0.25em;
-    color: var(--text);
-}
 
 /* Definition Lists */
 .md-deflist {

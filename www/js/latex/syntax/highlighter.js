@@ -2,6 +2,7 @@
 // Full LaTeX syntax highlighting for code blocks using the core tokenizer.
 
 import { tokenize, TokenType } from '../core/tokenizer.js';
+import { escapeHtml } from '../utils/html-utils.js';
 
 const COMMAND_HIGHLIGHT = 'latex-command';
 const ENV_HIGHLIGHT = 'latex-env-name';
@@ -111,9 +112,6 @@ export function highlightLatex(source) {
   return result;
 }
 
-function escapeHtml(text) {
-  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 export function wrapHighlighted(code) {
   return `<pre class="latex-highlighted"><code>${code}</code></pre>`;

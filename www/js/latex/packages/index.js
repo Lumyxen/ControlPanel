@@ -2,6 +2,7 @@
 // LaTeX index support: \index, \makeindex, \printindex.
 
 import { getIcon } from '../utils/icons.js';
+import { escapeHtml, escapeAttr } from '../utils/html-utils.js';
 
 export class IndexEngine {
   constructor() {
@@ -129,12 +130,4 @@ export class IndexEngine {
     this.entries.clear();
     this.enabled = false;
   }
-}
-
-function escapeHtml(text) {
-  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeAttr(text) {
-  return String(text).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

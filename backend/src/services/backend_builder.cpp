@@ -8,6 +8,7 @@
 #include <string>
 #include <cstdlib>
 #include <cstdint>
+#include <curl/curl.h>
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -95,7 +96,6 @@ static int calculateOptimalJobs() {
 static const char* CMAKE_TEMPLATE = R"CMAKE(
 cmake_minimum_required(VERSION 3.18)
 project(llama_backend_build CXX C)
-include(FetchContent)
 
 set(BUILD_SHARED_LIBS    ON  CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
@@ -115,10 +115,7 @@ set(CMAKE_PLATFORM_NO_VERSIONED_SONAME ON CACHE BOOL "" FORCE)
 
 @BACKEND_FLAGS@
 
-FetchContent_Declare(llama_cpp
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    URL https://github.com/ggml-org/llama.cpp/archive/@LLAMA_TAG@.tar.gz)
-FetchContent_MakeAvailable(llama_cpp)
+add_subdirectory(llama_src)
 )CMAKE";
 
 static std::string strReplace(std::string s, const std::string& from, const std::string& to) {
@@ -137,6 +134,70 @@ static bool hasCommand(const std::string& cmd) {
 #else
     return system(("command -v " + cmd + " > /dev/null 2>&1").c_str()) == 0;
 #endif
+}
+
+struct DownloadCtx {
+    std::ofstream* logStream;
+    int lastPercent = -1;
+};
+
+static size_t DownloadWriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+    std::ofstream* out = static_cast<std::ofstream*>(userp);
+    out->write(static_cast<char*>(contents), size * nmemb);
+    return size * nmemb;
+}
+
+static int DownloadProgressCallback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow) {
+    DownloadCtx* ctx = static_cast<DownloadCtx*>(clientp);
+    if (dltotal > 0) {
+        int percent = static_cast<int>((dlnow * 100) / dltotal);
+        // Log every 2% to make the progress bar smooth while preventing IO spam
+        if (percent != ctx->lastPercent && (percent % 2 == 0 || percent == 100)) {
+            if (ctx->logStream && ctx->logStream->is_open()) {
+                *(ctx->logStream) << "[download " << percent << "% complete]\n";
+                ctx->logStream->flush();
+            }
+            ctx->lastPercent = percent;
+        }
+    }
+    return 0;
+}
+
+static int downloadWithProgress(const std::string& url, const std::string& outputPath, const std::string& logPath) {
+    CURL* curl = curl_easy_init();
+    if (!curl) return 1;
+
+    std::ofstream outFile(outputPath, std::ios::binary);
+    if (!outFile.is_open()) {
+        curl_easy_cleanup(curl);
+        return 1;
+    }
+
+    std::ofstream logFile(logPath, std::ios::app);
+    DownloadCtx ctx;
+    ctx.logStream = &logFile;
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, DownloadWriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &outFile);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, DownloadProgressCallback);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &ctx);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "ControlPanel/1.0");
+
+    CURLcode res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+
+    if (res != CURLE_OK) {
+        if (logFile.is_open()) {
+            logFile << "[BackendBuilder] CURL error: " << curl_easy_strerror(res) << "\n";
+        }
+        return 1;
+    }
+    return 0;
 }
 
 std::string BackendBuilder::findRocmClang() {
@@ -413,10 +474,10 @@ std::string BackendBuilder::writeCMakeLists(const std::string& buildDir,
 }
 
 int BackendBuilder::build(const std::string& backend,
-                           const std::string& libsDir,
-                           const std::string& buildCacheDir,
-                           const std::string& logPath,
-                           const std::string& llamaTag) {
+                            const std::string& libsDir,
+                            const std::string& buildCacheDir,
+                            const std::string& logPath,
+                            const std::string& llamaTag) {
 
     const std::string prereqErr = checkPrerequisites(backend);
     if (!prereqErr.empty()) {
@@ -429,6 +490,8 @@ int BackendBuilder::build(const std::string& backend,
     const fs::path srcDir   = fs::path(buildCacheDir) / backend;
     const fs::path cmakeBin = srcDir / "cmake_build";
     const fs::path outDir   = fs::path(libsDir);
+    const fs::path tarPath  = srcDir / ("llama.cpp-" + llamaTag + ".tar.gz");
+    const std::string url   = "https://github.com/ggml-org/llama.cpp/archive/" + llamaTag + ".tar.gz";
 
     fs::create_directories(srcDir);
     fs::create_directories(outDir);
@@ -441,6 +504,40 @@ int BackendBuilder::build(const std::string& backend,
             << "==============================\n";
     }
 
+    // ── Download source ───────────────────────────────────────────────────────
+    if (!fs::exists(tarPath)) {
+        std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Downloading source from " << url << "\n";
+        if (downloadWithProgress(url, tarPath.string(), logPath) != 0) {
+            std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Download failed\n";
+            return 1;
+        }
+    } else {
+        std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Using cached source archive\n";
+    }
+
+    // ── Extract source ────────────────────────────────────────────────────────
+    const fs::path extractDir = srcDir / ("llama.cpp-" + llamaTag);
+    if (!fs::exists(extractDir)) {
+        std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Extracting source\n";
+        if (runCmd("tar -xzf \"" + tarPath.string() + "\" -C \"" + srcDir.string() + "\"", logPath) != 0) {
+            std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Extraction failed\n";
+            return 1;
+        }
+    } else {
+        std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Using cached extracted source\n";
+    }
+
+    // Move the extracted directory to a standard name
+    const fs::path llamaSrcDir = srcDir / "llama_src";
+    if (!fs::exists(llamaSrcDir)) {
+        try {
+            fs::rename(extractDir, llamaSrcDir);
+        } catch (const std::exception& e) {
+            std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Failed to rename extracted directory: " << e.what() << "\n";
+            return 1;
+        }
+    }
+
     if (writeCMakeLists(srcDir.string(), backend, llamaTag).empty()) {
         std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Failed to write CMakeLists.txt\n";
         return 1;
@@ -448,7 +545,7 @@ int BackendBuilder::build(const std::string& backend,
 
     // ── cmake configure ───────────────────────────────────────────────────────
     int ret = runCmd(
-        "cmake -B \"" + cmakeBin.string() + "\""
+        "cd \"" + srcDir.string() + "\" && cmake -B \"" + cmakeBin.string() + "\""
         " -S \""       + srcDir.string()  + "\""
         " -DCMAKE_BUILD_TYPE=Release"
         " "            + cmakeArgs(backend)

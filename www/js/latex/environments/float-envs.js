@@ -1,6 +1,7 @@
 // www/js/latex/environments/float-envs.js
 // Float environment handlers: figure, table, wrapfigure, etc.
 import { getIcon } from '../utils/icons.js';
+import { escapeHtml } from '../utils/html-utils.js';
 
 export const FLOAT_ENVIRONMENTS = new Set([
   'figure','figure*','table','table*',
@@ -32,8 +33,4 @@ export function renderFloatEnvironment(name, content, caption = '', label = '', 
     <pre class="latex-float-source-code"><code>${escapeHtml(`\\begin{${name}}\n${content}\n\\end{${name}}`)}</code></pre>
   </details>
 </div>`;
-}
-
-function escapeHtml(text) {
-  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
