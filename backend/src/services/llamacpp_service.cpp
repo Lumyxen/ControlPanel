@@ -760,6 +760,53 @@ std::string LlamaCppService::doInferenceCollect(
 }
 
 // =============================================================================
+// doInferenceCollectWithStreaming — runs inference, streams tokens live to the
+// client AND collects the full text for tool-call detection.
+// Returns the collected text.
+// =============================================================================
+
+std::string LlamaCppService::doInferenceCollectWithStreaming(
+    const std::vector<std::pair<std::string, std::string>>& messages,
+    int maxTokens, double temperature,
+    std::function<bool(const std::string&)> onChunk,
+    std::function<void(const std::string&)> onError,
+    std::function<bool()> cancelCheck
+) const {
+    std::string collected;
+
+    auto innerOnChunk = [&](const std::string& chunk) -> bool {
+        if (cancelCheck && cancelCheck()) return false;
+        // Forward to client live
+        if (!onChunk(chunk)) return false;
+        // Also collect for tool detection
+        if (!chunk.empty() && chunk != "data: [DONE]\n\n") {
+            const std::string prefix = "data: ";
+            if (chunk.size() > prefix.size() && chunk.substr(0, prefix.size()) == prefix) {
+                std::string jsonStr = chunk.substr(prefix.size());
+                while (!jsonStr.empty() && (jsonStr.back() == '\n' || jsonStr.back() == '\r'))
+                    jsonStr.pop_back();
+                Json::Value parsed;
+                Json::CharReaderBuilder rb;
+                std::string errs;
+                std::istringstream ss(jsonStr);
+                if (Json::parseFromStream(rb, ss, &parsed, &errs)) {
+                    if (parsed.isMember("choices") && parsed["choices"].isArray()
+                            && !parsed["choices"].empty()) {
+                        const auto& delta = parsed["choices"][0]["delta"];
+                        if (delta.isMember("content") && delta["content"].isString())
+                            collected += delta["content"].asString();
+                    }
+                }
+            }
+        }
+        return true;
+    };
+
+    doInference(messages, maxTokens, temperature, innerOnChunk, onError);
+    return collected;
+}
+
+// =============================================================================
 // Public streaming entry points
 // =============================================================================
 
@@ -897,20 +944,31 @@ void LlamaCppService::streamingChatWithTools(
     for (int round = 0; round < kMaxToolRounds; ++round) {
         auto pairs = buildPairs(augmentedMessages);
 
-        // Collect this round's output so we can inspect for a tool call.
-        // The collected text is NOT forwarded to the client here.
+        // Collect this round's output while streaming live to the client.
+        // If a tool call is detected, we'll send a retract event to clear
+        // the buffered text from the UI, then execute the tool and loop.
         std::string errorMsg;
-        std::string response = doInferenceCollect(
-            pairs, maxTokens, temperature, nullptr,
-            [&](const std::string& err) { errorMsg = err; });
+        std::string response = doInferenceCollectWithStreaming(
+            pairs, maxTokens, temperature, onChunk,
+            [&](const std::string& err) { errorMsg = err; },
+            nullptr);
 
         if (!errorMsg.empty()) { onError(errorMsg); return; }
 
         std::string toolName, toolArgsJson;
         if (extractToolCall(response, toolName, toolArgsJson)) {
-        	// ── Tool call: execute, emit events, loop ─────────────────────────
+        	// ── Tool call: retract streamed text, execute, emit events, loop ──
         	std::cout << "[LlamaCpp] Tool call detected: " << toolName << "\n";
-      
+
+        	// Send retract event so UI clears the buffered text from this round
+        	if (onChunk) {
+        		Json::Value retractObj;
+        		retractObj["type"] = "retract";
+        		Json::StreamWriterBuilder wb;
+        		wb["indentation"] = "";
+        		if (!onChunk("data: " + Json::writeString(wb, retractObj) + "\n\n")) return;
+        	}
+
         	// Reasoning annotation visible in the UI
         	if (onChunk) {
         		Json::Value fakeChoice;
@@ -921,7 +979,7 @@ void LlamaCppService::streamingChatWithTools(
         		wb["indentation"] = "";
         		if (!onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n")) return;
         	}
-      
+
         	// Send tool call event to UI immediately (before execution)
         	if (onChunk) {
         		Json::Value toolCallEvent;
@@ -934,7 +992,7 @@ void LlamaCppService::streamingChatWithTools(
         		wb["indentation"] = "";
         		if (!onChunk("data: " + Json::writeString(wb, toolCallEvent) + "\n\n")) return;
         	}
-      
+
         	// Parse arguments
         	Json::Value args(Json::objectValue);
         	if (!toolArgsJson.empty()) {
@@ -943,7 +1001,7 @@ void LlamaCppService::streamingChatWithTools(
         		std::istringstream ss(toolArgsJson);
         		Json::parseFromStream(rb, ss, &args, &errs);
         	}
-      
+
         	// Execute
         	Json::Value result = registry->callTool(toolName, args);
         	std::string resultStr;
@@ -957,7 +1015,7 @@ void LlamaCppService::streamingChatWithTools(
         		wb["indentation"] = "";
         		resultStr = Json::writeString(wb, result);
         	}
-      
+
         	// Update tool_execution event with output for the UI
         	if (onChunk) {
         		Json::Value toolEvent;
@@ -986,15 +1044,14 @@ void LlamaCppService::streamingChatWithTools(
             continue; // next round
         }
 
-        // ── No tool call found: stream this answer LIVE ───────────────────────
-        // We discard the collected text and re-run doInference so every token
-        // flows directly to the client in real time. The KV cache is cleared at
-        // the start of each doInference call, so this is a clean re-run.
-        std::cout << "[LlamaCpp] No tool call — streaming final response live\n";
-        doInference(pairs, maxTokens, temperature, onChunk, onError);
+        // ── No tool call found: response was already streamed live ────────────
+        // Just send the DONE marker — the tokens were already streamed during
+        // doInferenceCollectWithStreaming above.
+        std::cout << "[LlamaCpp] No tool call — response already streamed live\n";
+        if (onChunk) onChunk("data: [DONE]\n\n");
         return;
     }
 
-    // Safety: max rounds hit — stream one last live pass
-    doInference(buildPairs(augmentedMessages), maxTokens, temperature, onChunk, onError);
+    // Safety: max rounds hit — send DONE (last round was already streamed)
+    if (onChunk) onChunk("data: [DONE]\n\n");
 }

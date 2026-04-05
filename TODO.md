@@ -3,6 +3,7 @@
 # TODO
 ## Main Control Panel
 ### Planned Features
+- Space mission views (ISS, Artemis II, easy additions for future Artemis missions)
 - Advanced starry background for login page
 - Photos page
   - APK for mobile auto-backup
@@ -220,6 +221,7 @@
     - Warn user if selected AI model is from the same company as the AI model being benchmarked
 
 ### Possible Features
+- TurboQuant support
 - Togglable SLM for detecting false/unwanted text processing (like Markdown)
 - Setting to force thinking blocks on models that have thinking natively
 - Support for an external llama.cpp server
@@ -243,14 +245,13 @@
 - None
 
 #### UX
-- Inference starts, but once does not show in the UI, and when it ends, it will do another inference, which with then show in the UI
-- Stopping inference seems to not actually stop the inference
+- LaTeX processing currently in an unfinished state
 ##### Firefox
 - ESC does not properly cancel message editing, requiring 2 presses of ESC
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
 
 #### Misc Bugs
-- None
+- System Prompt does not count towards used up tokens
 
 ## Password Manager
 ### Planned Features
@@ -269,6 +270,7 @@
 # Done
 ## Control Panel
 ### General
+- Logging setup
 - AES-256-GCM encryption on all stored data (other than settings) with 310.000 iteration key hashing
 - Side bar
   - Collapsable
@@ -286,8 +288,9 @@
   - Customisable theme between all Everforest palette choices and Catppuccin palette choices
 
 ## AI chat-box
-### General
 - Message sending/generation
+- Message threading
+- Thinking/Reasoning support
 - Generation chunk streaming
 - Linux, Windows, and ARM support for back-end
   - Master binary with data being saved in ./data/
@@ -296,7 +299,7 @@
 - Multiple API implementations
   - LM Studio Server
   - llama.cpp internal integration
-    - Automatic switching between built llama.cpp builds
+    - Automatic detect optimal built llama.cpp builds
       - Can manually select builds instead
     - Popup to suggest a build when either none are built or the optimial one isn't built
       - Non-intrusive, can select to not show again
@@ -319,9 +322,46 @@
     - Discord's Markdown features
     - Obsidian.md's Markdown features
   - LaTeX
-    - MathJax
-    - KaTeX
-    - BibTeX
+    - Renderers
+      - MathJax
+      - KaTeX
+      - HTML renderer
+      - Image export
+    - Engines
+      - TeX Core
+      - e-TeX Extensions
+      - LaTeX 2ε
+      - pdfTeX Extensions
+      - ConTeXt Macros
+      - Omega/Unicode Extensions
+      - pTeX (Japanese typesetting)
+    - Bibliography
+      - BibTeX
+    - Packages
+      - amsmath
+      - graphicx
+      - hyperref
+      - xcolor
+      - booktabs
+      - algorithm
+      - TikZ
+      - Beamer
+      - Glossary & Index
+    - Environments
+      - Math (equation, align, gather, matrices, cases)
+      - Text (lists, tables, verbatim, quotes)
+      - Floats
+      - Structural
+    - Features
+      - BibTeX
+      - LaTeX callouts (24 types)
+      - Syntax highlighting
+      - Command autocomplete
+      - Validation/linting
+      - LaTeX to Markdown conversion
+      - Cross-reference resolution
+      - TOC generation
+      - Live stream rendering
 - Model selection dropdown
 - Tool selection dropdown
 - File attachments

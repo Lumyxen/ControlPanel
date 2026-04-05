@@ -18,6 +18,14 @@ import { renderThread, showTyping, buildToolCallElement, patchMessageEditState }
 import { InlineAttachmentManager } from './inline-attachment.js';
 import { parseMarkdown } from './markdown.js';
 import { preprocessLatexText, extractMath, injectMath } from './latex/index.js';
+import { StreamProcessor } from '../latex/live/stream-processor.js';
+import { TokenTracker } from '../latex/live/token-tracker.js';
+import { PendingManager } from '../latex/live/pending-manager.js';
+import { renderKatex } from '../latex/renderers/katex-renderer.js';
+import { renderToHTML } from '../latex/renderers/html-renderer.js';
+import { tokenize } from '../latex/core/tokenizer.js';
+import { parse } from '../latex/core/parser.js';
+import { HTMLRenderer } from '../latex/renderers/html-renderer.js';
 import { streamChatMessage, stopChatMessage } from '../api.js';
 import * as SettingsStore from '../settings-store.js';
 import { initDropdowns, initTools, initUpload, initAutoResize, loadAndPopulateModels, TOOLS_KEY } from './toolbar.js';
@@ -260,17 +268,20 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 		let rawStreamText = '', officialReasoningText = '', activeToolCalls = [], errorFromStream = null, isSaved = false;
 
-		const currentSettings = SettingsStore.get() ?? {};
-		let systemPrompt = currentSettings.systemPrompt ?? '';
-		const temperature = typeof currentSettings.temperature === 'number' ? currentSettings.temperature : null;
+		const latexStreamProcessor = new StreamProcessor({
+			debounceMs: 200,
+			tokenThreshold: 0,
+			onUpdate: (source, changedBlocks) => {
+				const tw = mc?.querySelector('.chat-message-text');
+				if (!tw || !source) return;
+				const pre = preprocessLatexText(source);
+				const { text, mathBlocks } = extractMath(pre);
+				tw.innerHTML = injectMath(parseMarkdown(text), mathBlocks);
+			},
+		});
 
-		if (systemPrompt) {
-			const modelLabel = modelSelect?.querySelector('.chat-dropdown-item-label')?.textContent?.trim() || model;
-			systemPrompt = systemPrompt.replaceAll('{model}', modelLabel);
-			const TOOL_LABELS = { 'web-search': 'Web Search', 'code-exec': 'Code Execution', 'file-read': 'File Reading' };
-			const enabledToolValues = JSON.parse(localStorage.getItem(TOOLS_KEY) || '[]');
-			systemPrompt = systemPrompt.replaceAll('{tools}', enabledToolValues.map(v => TOOL_LABELS[v] ?? v).join(', ') || 'none');
-		}
+		let systemPrompt = chat?.systemPrompt || '';
+		let temperature = chat?.temperature ?? 1.0;
 
 		if (hasVision) {
 			const hint = '[System Override: You have native multimodal vision capabilities. The user has attached an image. Analyze the visual data directly.]';
@@ -307,6 +318,33 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 						errorFromStream = typeof chunk.error === 'object' ? (chunk.error.message || JSON.stringify(chunk.error)) : String(chunk.error);
 						return;
 					}
+					if (chunk.type === 'retract') {
+						// Backend detected a tool call after streaming — clear the
+						// buffered text so we don't duplicate it in the final output.
+						// Tool call events will follow immediately after.
+						rawStreamText = '';
+						officialReasoningText = '';
+						if (uiState.typingEl) {
+							uiState.typingEl.querySelector('.chat-message-text')?.remove();
+							uiState.typingEl.querySelector('.message-reasoning')?.remove();
+						}
+						return;
+					}
+					if (chunk.type === 'tool_execution' && chunk.tool_call) {
+						activeToolCalls.push({ id: chunk.tool_call.id, name: chunk.tool_call.name, input: chunk.tool_call.arguments, output: chunk.tool_call.output });
+					}
+					if (chunk.type === 'retract') {
+						// Backend detected a tool call after streaming — clear the
+						// buffered text so we don't duplicate it in the final output.
+						// Tool call events will follow immediately after.
+						rawStreamText = '';
+						officialReasoningText = '';
+						if (uiState.typingEl) {
+							uiState.typingEl.querySelector('.chat-message-text')?.remove();
+							uiState.typingEl.querySelector('.message-reasoning')?.remove();
+						}
+						return;
+					}
 					if (chunk.type === 'tool_execution' && chunk.tool_call) {
 						activeToolCalls.push({ id: chunk.tool_call.id, name: chunk.tool_call.name, input: chunk.tool_call.arguments, output: chunk.tool_call.output });
 					}
@@ -341,12 +379,14 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 						if (rc) rc.textContent = displayReasoning;
 					}
 
+					latexStreamProcessor.scheduleUpdate(rawStreamText);
+
 					// Update or add tool call elements
 					const existingTCs = mc.querySelectorAll('.message-tool-call');
 					for (let i = 0; i < activeToolCalls.length; i++) {
 						const tc = activeToolCalls[i];
 						let tcEl = null;
-						
+
 						// Find existing element by ID
 						for (const el of existingTCs) {
 							if (el.dataset.toolCallId === tc.id) {
@@ -354,10 +394,10 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 								break;
 							}
 						}
-						
+
 						if (!tcEl) {
-							// Create new tool call element
-							tcEl = buildToolCallElement(tc);
+							tcEl = document.createElement('div');
+							tcEl.className = 'message-tool-call';
 							tcEl.dataset.toolCallId = tc.id;
 							const tw = mc.querySelector('.chat-message-text');
 							tw ? mc.insertBefore(tcEl, tw) : mc.appendChild(tcEl);

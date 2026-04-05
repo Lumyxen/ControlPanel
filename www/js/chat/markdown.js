@@ -14,6 +14,7 @@
 
 import { parseBibtex, getAllBibtexEntries } from './latex/index.js';
 import { renderLatexCodeblock } from './latex/math.js';
+import { BibTeXEngine } from '../latex/engines/bibtex-engine.js';
 
 function escapeHtml(text) {
 	if (!text) return '';
@@ -37,35 +38,26 @@ class Renderer {
 		const isBibtex = lang === 'bibtex' || lang === 'bib' || BIBTEX_RX.test(code);
 
 		if (isBibtex) {
-			parseBibtex(code);
-			const db = getAllBibtexEntries();
-			const blockKeys = [];
-			const entryRx = /@\w+\s*[\{(]\s*([^,\s\}(]+)/g;
-			let em;
-			while ((em = entryRx.exec(code)) !== null) {
-				const key = em[1].trim();
-				if (key && !['string', 'preamble', 'comment'].includes(key.toLowerCase())) {
-					blockKeys.push(key);
-				}
-			}
-
+			const engine = new BibTeXEngine();
+			const entries = engine.parse(code);
+			const blockKeys = entries.map(e => e.key);
 			const count = blockKeys.length;
 			const countLabel = count === 1 ? '1 entry' : `${count} entries`;
 			let entryRows = '';
 			for (const key of blockKeys) {
-				const e = db.get(key);
+				const e = engine.getEntry(key);
 				if (!e) continue;
-				const firstAuthorRaw = (e.author || e.editor || '').split(/\s+and\s+/i)[0] || '';
+				const firstAuthorRaw = (e.fields?.author || e.fields?.editor || '').split(/\s+and\s+/i)[0] || '';
 				const authorShort = firstAuthorRaw.includes(',')
 					? firstAuthorRaw.split(',')[0].trim()
 					: firstAuthorRaw.split(/\s+/).pop() || '';
-				const titleShort = e.title
-					? escapeHtml(e.title.slice(0, 72) + (e.title.length > 72 ? '…' : ''))
+				const titleShort = e.fields?.title
+					? escapeHtml(e.fields.title.slice(0, 72) + (e.fields.title.length > 72 ? '…' : ''))
 					: '';
 				const infoParts = [
 					authorShort ? escapeHtml(authorShort) : null,
 					titleShort ? `<em>${titleShort}</em>` : null,
-					e.year ? escapeHtml(e.year) : null,
+					e.fields?.year ? escapeHtml(e.fields.year) : null,
 				].filter(Boolean);
 				entryRows +=
 					`<div class="bib-source-entry">` +
@@ -73,15 +65,14 @@ class Renderer {
 					`<span class="bib-source-entry-info">${infoParts.join(', ')}</span>` +
 					`</div>`;
 			}
-
 			const rawEscaped = escapeHtml(code);
 			return (
 				`<details class="bib-source-card">` +
 				`<summary>` +
-				`<span class="bib-source-icon">📚</span>` +
+				`<span class="bib-source-icon"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></span>` +
 				`<span class="bib-source-title">Bibliography Source</span>` +
 				`<span class="bib-source-count">${escapeHtml(countLabel)}</span>` +
-				`<span class="bib-source-chevron">▼</span>` +
+				`<span class="bib-source-chevron"><svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>` +
 				`</summary>` +
 				(entryRows ? `<div class="bib-source-entries">${entryRows}</div>` : '') +
 				`<div class="bib-source-raw">${rawEscaped}</div>` +
@@ -132,48 +123,6 @@ class Renderer {
 </div>\n`;
 	}
 
-	blockquote(quote) {
-		return `<blockquote class="md-blockquote">\n${quote}</blockquote>\n`;
-	}
-
-	html(html) {
-		return html + '\n';
-	}
-
-	heading(text, level) {
-		return `<h${level} class="md-header md-header-${level}">${text}</h${level}>\n`;
-	}
-
-	hr() {
-		return `<hr class="md-hr">\n`;
-	}
-
-	list(body, ordered, start) {
-		const type = ordered ? 'ol' : 'ul';
-		const startatt = (ordered && start !== 1) ? ` start="${start}"` : '';
-		return `<${type} class="md-list md-list-${type}"${startatt}>\n${body}</${type}>\n`;
-	}
-
-	deflist(body) {
-		return `<dl class="md-deflist">\n${body}</dl>\n`;
-	}
-
-	deflist(body) {
-		return `<dl class="md-deflist">\n${body}</dl>\n`;
-	}
-
-	listitem(text, task, checked) {
-		if (task) {
-			const checkbox = checked ? 'checked' : '';
-			return `<li class="md-list-item md-task-list-item"><input type="checkbox" disabled ${checkbox}> ${text}</li>\n`;
-		}
-		return `<li class="md-list-item">${text}</li>\n`;
-	}
-
-	paragraph(text) {
-		return `<p class="md-paragraph">${text}</p>\n`;
-	}
-
 	table(header, body) {
 		return `<div class="md-table-wrapper"><table class="md-table">\n<thead>\n${header}</thead>\n<tbody>\n${body}</tbody>\n</table></div>\n`;
 	}
@@ -209,6 +158,10 @@ class Renderer {
 		return `<del>${text}</del>`;
 	}
 
+	paragraph(text) {
+		return `<p class="md-paragraph">${text}</p>\n`;
+	}
+
 	link(href, title, text) {
 		const cleanHref = encodeURI(href).replace(/%25/g, '%');
 		let out = `<a href="${escapeHtml(cleanHref)}" class="md-link"`;
@@ -222,6 +175,46 @@ class Renderer {
 		let out = `<img src="${escapeHtml(cleanHref)}" alt="${escapeHtml(text)}" class="md-image">`;
 		if (title) out += ` title="${escapeHtml(title)}"`;
 		return `<div class="md-image-container">${out}</div>`;
+	}
+
+	heading(text, level) {
+		const tag = `h${Math.min(Math.max(level, 1), 6)}`;
+		return `<${tag} class="md-heading md-heading-${level}">${text}</${tag}>\n`;
+	}
+
+	blockquote(text) {
+		return `<blockquote class="md-blockquote">${text}</blockquote>\n`;
+	}
+
+	hr() {
+		return '<hr class="md-hr">\n';
+	}
+
+	html(text) {
+		return text;
+	}
+
+	list(body, ordered, start) {
+		const tag = ordered ? 'ol' : 'ul';
+		const startAttr = ordered && start && start !== 1 ? ` start="${start}"` : '';
+		return `<${tag} class="md-list md-list-${ordered ? 'ordered' : 'unordered'}"${startAttr}>\n${body}</${tag}>\n`;
+	}
+
+	listitem(text, task, checked) {
+		const taskHtml = task ? `<label class="md-task-label"><input type="checkbox" class="md-task-checkbox"${checked ? ' checked' : ''} disabled> </label>` : '';
+		return `<li class="md-list-item">${taskHtml}${text}</li>\n`;
+	}
+
+	deflist(body) {
+		return `<dl class="md-deflist">${body}</dl>\n`;
+	}
+
+	defterm(text) {
+		return `<dt class="md-defterm">${text}</dt>\n`;
+	}
+
+	defdesc(text) {
+		return `<dd class="md-defdesc">${text}</dd>\n`;
 	}
 }
 

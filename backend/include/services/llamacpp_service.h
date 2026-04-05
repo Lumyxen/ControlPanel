@@ -137,6 +137,23 @@ private:
         std::function<void(const std::string&)> onError
     ) const;
 
+    /**
+     * Like doInferenceCollect but also streams tokens live to the client
+     * via onChunk.  Used by the tool-call loop so the user sees real-time
+     * streaming while we simultaneously buffer for tool-call detection.
+     *
+     * @param cancelCheck  Optional predicate polled each token; return true to abort.
+     * @param onError      Called once on hard errors.
+     * @return             The full generated text (decoded from tokens).
+     */
+    std::string doInferenceCollectWithStreaming(
+        const std::vector<std::pair<std::string, std::string>>& messages,
+        int maxTokens, double temperature,
+        std::function<bool(const std::string&)> onChunk,
+        std::function<void(const std::string&)> onError,
+        std::function<bool()> cancelCheck
+    ) const;
+
     static std::string makeContentChunk(const std::string& text);
     static std::vector<uint8_t> decodeBase64Image(const std::string& dataUrl);
 };

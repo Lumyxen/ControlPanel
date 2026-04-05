@@ -1,0 +1,1609 @@
+/* www/css/latex.css */
+/* LaTeX component styles - all themed via CSS variables, no hardcoded colors. */
+
+/* ─── Callouts (structural environments) ─────────────────────────────────────── */
+
+.latex-callout {
+  border-left: 3px solid var(--latex-callout-border, var(--color-accent));
+  border-radius: 4px;
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--latex-callout-bg, transparent);
+}
+
+.latex-callout-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.latex-callout-icon {
+  display: flex;
+  align-items: center;
+  color: var(--latex-callout-icon-color, var(--color-accent));
+}
+
+.latex-callout-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.latex-callout-title {
+  color: var(--latex-callout-title-color, var(--color-text));
+}
+
+.latex-callout-content {
+  padding-left: 0.25rem;
+  color: var(--color-text-secondary);
+}
+
+.latex-qed {
+  float: right;
+  font-size: 1em;
+  color: var(--color-text-muted);
+}
+
+/* Callout type variants */
+.latex-callout-theorem { --latex-callout-border: var(--color-theorem, var(--color-accent, #4a90d9)); --latex-callout-bg: var(--bg-theorem, transparent); }
+.latex-callout-definition { --latex-callout-border: var(--color-definition, var(--color-success, #2ecc71)); --latex-callout-bg: var(--bg-definition, transparent); }
+.latex-callout-proof { --latex-callout-border: var(--color-proof, var(--color-muted, #95a5a6)); --latex-callout-bg: var(--bg-proof, transparent); }
+.latex-callout-lemma { --latex-callout-border: var(--color-lemma, var(--color-warning, #f39c12)); --latex-callout-bg: var(--bg-lemma, transparent); }
+.latex-callout-corollary { --latex-callout-border: var(--color-corollary, var(--color-danger, #e74c3c)); --latex-callout-bg: var(--bg-corollary, transparent); }
+.latex-callout-example { --latex-callout-border: var(--color-example, var(--color-info, #3498db)); --latex-callout-bg: var(--bg-example, transparent); }
+.latex-callout-remark { --latex-callout-border: var(--color-remark, var(--color-purple, #9b59b6)); --latex-callout-bg: var(--bg-remark, transparent); }
+.latex-callout-note { --latex-callout-border: var(--color-note, var(--color-teal, #1abc9c)); --latex-callout-bg: var(--bg-note, transparent); }
+.latex-callout-warning { --latex-callout-border: var(--color-warning, var(--color-warning, #f39c12)); --latex-callout-bg: var(--bg-warning, transparent); }
+.latex-callout-exercise { --latex-callout-border: var(--color-exercise, var(--color-orange, #e67e22)); --latex-callout-bg: var(--bg-exercise, transparent); }
+.latex-callout-solution { --latex-callout-border: var(--color-solution, var(--color-success-dark, #27ae60)); --latex-callout-bg: var(--bg-solution, transparent); }
+.latex-callout-proposition { --latex-callout-border: var(--color-proposition, var(--color-accent, #4a90d9)); --latex-callout-bg: var(--bg-proposition, transparent); }
+.latex-callout-axiom { --latex-callout-border: var(--color-axiom, var(--color-accent, #4a90d9)); --latex-callout-bg: var(--bg-axiom, transparent); }
+.latex-callout-conjecture { --latex-callout-border: var(--color-conjecture, var(--color-purple, #9b59b6)); --latex-callout-bg: var(--bg-conjecture, transparent); }
+.latex-callout-hypothesis { --latex-callout-border: var(--color-hypothesis, var(--color-info, #3498db)); --latex-callout-bg: var(--bg-hypothesis, transparent); }
+.latex-callout-observation { --latex-callout-border: var(--color-observation, var(--color-muted, #95a5a6)); --latex-callout-bg: var(--bg-observation, transparent); }
+.latex-callout-notation { --latex-callout-border: var(--color-notation, var(--color-accent, #4a90d9)); --latex-callout-bg: var(--bg-notation, transparent); }
+.latex-callout-claim { --latex-callout-border: var(--color-claim, var(--color-warning, #f39c12)); --latex-callout-bg: var(--bg-claim, transparent); }
+.latex-callout-problem { --latex-callout-border: var(--color-problem, var(--color-danger, #e74c3c)); --latex-callout-bg: var(--bg-problem, transparent); }
+.latex-callout-fact { --latex-callout-border: var(--color-fact, var(--color-success, #2ecc71)); --latex-callout-bg: var(--bg-fact, transparent); }
+.latex-callout-assumption { --latex-callout-border: var(--color-assumption, var(--color-warning, #f39c12)); --latex-callout-bg: var(--bg-assumption, transparent); }
+.latex-callout-criterion { --latex-callout-border: var(--color-criterion, var(--color-accent, #4a90d9)); --latex-callout-bg: var(--bg-criterion, transparent); }
+.latex-callout-assertion { --latex-callout-border: var(--color-assertion, var(--color-info, #3498db)); --latex-callout-bg: var(--bg-assertion, transparent); }
+.latex-callout-property { --latex-callout-border: var(--color-property, var(--color-success, #2ecc71)); --latex-callout-bg: var(--bg-property, transparent); }
+.latex-callout-condition { --latex-callout-border: var(--color-condition, var(--color-warning, #f39c12)); --latex-callout-bg: var(--bg-condition, transparent); }
+.latex-callout-question { --latex-callout-border: var(--color-question, var(--color-info, #3498db)); --latex-callout-bg: var(--bg-question, transparent); }
+.latex-callout-answer { --latex-callout-border: var(--color-answer, var(--color-success, #2ecc71)); --latex-callout-bg: var(--bg-answer, transparent); }
+.latex-callout-summary { --latex-callout-border: var(--color-summary, var(--color-muted, #95a5a6)); --latex-callout-bg: var(--bg-summary, transparent); }
+.latex-callout-conclusion { --latex-callout-border: var(--color-conclusion, var(--color-accent, #4a90d9)); --latex-callout-bg: var(--bg-conclusion, transparent); }
+.latex-callout-case { --latex-callout-border: var(--color-case, var(--color-info, #3498db)); --latex-callout-bg: var(--bg-case, transparent); }
+.latex-callout-abstract { --latex-callout-border: var(--color-abstract, var(--color-muted, #95a5a6)); --latex-callout-bg: var(--bg-abstract, transparent); }
+
+/* ─── Math blocks ────────────────────────────────────────────────────────────── */
+
+.latex-math-block {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.latex-math-block[data-display="true"] {
+  display: block;
+  text-align: center;
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.latex-math-env {
+  margin: 0.5rem 0;
+}
+
+.latex-display-math {
+  display: block;
+  text-align: center;
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+.latex-inline-math {
+  display: inline;
+}
+
+.latex-numbered::after {
+  content: counter(equation-counter);
+  counter-increment: equation-counter;
+  float: right;
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+}
+
+/* ─── Pending / Error states ─────────────────────────────────────────────────── */
+
+.latex-pending {
+  opacity: 0.6;
+  position: relative;
+}
+
+.latex-pending::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--color-accent);
+  animation: latex-pending-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes latex-pending-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+.latex-failed {
+  border: 1px solid var(--color-error, #e74c3c);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  background: var(--bg-error, rgba(231, 76, 60, 0.1));
+}
+
+.latex-failed-text {
+  font-family: monospace;
+  font-size: 0.85em;
+  color: var(--color-error, #e74c3c);
+}
+
+.latex-katex-error,
+.latex-mathjax-error {
+  border: 1px solid var(--color-error, #e74c3c);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  background: var(--bg-error, rgba(231, 76, 60, 0.1));
+  cursor: help;
+}
+
+.latex-error-raw {
+  font-family: monospace;
+  font-size: 0.85em;
+  color: var(--color-error, #e74c3c);
+}
+
+/* ─── Lists ──────────────────────────────────────────────────────────────────── */
+
+.latex-list {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.latex-list-item {
+  margin: 0.25rem 0;
+}
+
+.latex-description .latex-description-term {
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+.latex-description .latex-description-def {
+  margin-left: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* ─── Tables ─────────────────────────────────────────────────────────────────── */
+
+.latex-table-wrapper {
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.latex-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.latex-table-header {
+  font-weight: 600;
+  text-align: left;
+  padding: 0.5rem;
+}
+
+.latex-table-cell {
+  padding: 0.5rem;
+  vertical-align: top;
+}
+
+.latex-table-row {
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.1));
+}
+
+/* Booktabs rules */
+.latex-booktabs-toprule .latex-booktabs-cell {
+  border-top: 2px solid var(--color-text, currentColor);
+  padding: 0.25rem 0;
+}
+
+.latex-booktabs-midrule .latex-booktabs-cell {
+  border-top: 1px solid var(--color-text, currentColor);
+  padding: 0.25rem 0;
+}
+
+.latex-booktabs-bottomrule .latex-booktabs-cell {
+  border-top: 2px solid var(--color-text, currentColor);
+  padding: 0.25rem 0;
+}
+
+.latex-booktabs-cmidrule .latex-booktabs-cell {
+  border-top: 0.5px solid var(--color-text, currentColor);
+  padding: 0.25rem 0;
+}
+
+.latex-booktabs-addlinespace {
+  height: 6pt;
+}
+
+/* ─── Floats ─────────────────────────────────────────────────────────────────── */
+
+.latex-float {
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  margin: 1rem 0;
+  overflow: hidden;
+}
+
+.latex-float-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-secondary, rgba(255,255,255,0.05));
+  font-weight: 600;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.latex-float-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+}
+
+.latex-float-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.latex-float-content {
+  padding: 0.75rem;
+}
+
+.latex-float-caption {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9em;
+  color: var(--color-text-secondary);
+  border-top: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  text-align: center;
+}
+
+.latex-float-source {
+  border-top: 1px solid var(--color-border, rgba(255,255,255,0.1));
+}
+
+.latex-float-source summary {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+  user-select: none;
+}
+
+.latex-float-source-code {
+  margin: 0;
+  padding: 0.75rem;
+  font-size: 0.8em;
+  overflow-x: auto;
+  background: var(--bg-code, rgba(0,0,0,0.2));
+  color: var(--color-text-secondary);
+}
+
+/* ─── Verbatim / Code ────────────────────────────────────────────────────────── */
+
+.latex-verbatim,
+.latex-lstlisting,
+.latex-minted {
+  background: var(--bg-code, rgba(0,0,0,0.2));
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 4px;
+  padding: 0.75rem;
+  overflow-x: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+  margin: 0.5rem 0;
+}
+
+/* ─── Syntax Highlighting ────────────────────────────────────────────────────── */
+
+.latex-highlighted code {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+
+.latex-command { color: var(--latex-cmd-color, #569cd6); }
+.latex-env-name { color: var(--latex-env-color, #4ec9b0); }
+.latex-comment { color: var(--latex-comment-color, #6a9955); font-style: italic; }
+.latex-math { color: var(--latex-math-color, #ce9178); }
+.latex-brace { color: var(--latex-brace-color, #d4d4d4); }
+.latex-special { color: var(--latex-special-color, #dcdcaa); }
+.latex-text { color: var(--color-text, currentColor); }
+.latex-arg { color: var(--latex-arg-color, #9cdcfe); }
+
+/* ─── Preamble Section ───────────────────────────────────────────────────────── */
+
+.latex-preamble-section {
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  margin: 0.75rem 0;
+  overflow: hidden;
+}
+
+.latex-preamble-section summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  background: var(--bg-secondary, rgba(255,255,255,0.05));
+  font-size: 0.85em;
+  font-weight: 600;
+  user-select: none;
+}
+
+.latex-preamble-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+}
+
+.latex-preamble-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.latex-preamble-items {
+  padding: 0.5rem 0.75rem;
+}
+
+.latex-preamble-item {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  font-size: 0.85em;
+  font-family: var(--font-mono, monospace);
+}
+
+.latex-preamble-cmd {
+  color: var(--latex-cmd-color, #569cd6);
+  font-weight: 600;
+}
+
+.latex-preamble-args {
+  color: var(--color-text-secondary);
+}
+
+/* ─── Algorithm ──────────────────────────────────────────────────────────────── */
+
+.latex-algorithm {
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  margin: 1rem 0;
+  overflow: hidden;
+}
+
+.latex-algorithmic {
+  padding: 0.75rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+  line-height: 1.6;
+  counter-reset: algo-line;
+}
+
+.latex-algorithmic[data-numbered] .latex-algo-line {
+  counter-increment: algo-line;
+}
+
+.latex-algorithmic[data-numbered] .latex-algo-line::before {
+  content: counter(algo-line);
+  display: inline-block;
+  width: 2em;
+  text-align: right;
+  margin-right: 0.75rem;
+  color: var(--color-text-muted);
+  font-size: 0.85em;
+  user-select: none;
+}
+
+.latex-algo-kw {
+  color: var(--latex-algo-kw-color, #569cd6);
+  font-weight: 600;
+}
+
+.latex-algo-comment {
+  color: var(--latex-comment-color, #6a9955);
+  font-style: italic;
+}
+
+.latex-algo-caption {
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.9em;
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  text-align: center;
+}
+
+.latex-algo-statex {
+  padding-left: 2em;
+}
+
+/* ─── Graphics ───────────────────────────────────────────────────────────────── */
+
+.latex-graphics {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--color-border, rgba(255,255,255,0.2));
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: var(--color-text-secondary);
+  margin: 0.5rem 0;
+}
+
+.latex-graphics-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+}
+
+.latex-graphics-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.latex-graphics-name {
+  font-family: var(--font-mono, monospace);
+}
+
+.latex-graphics-dim {
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+}
+
+/* ─── Bibliography ───────────────────────────────────────────────────────────── */
+
+.bibliography {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+}
+
+.bibliography h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1em;
+  color: var(--color-text);
+}
+
+.bib-entry {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.05));
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+.bib-entry:last-child {
+  border-bottom: none;
+}
+
+.latex-citation {
+  color: var(--color-accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.latex-citation:hover {
+  text-decoration: underline;
+}
+
+/* ─── Fraction ───────────────────────────────────────────────────────────────── */
+
+.latex-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 0.25rem;
+}
+
+.latex-frac-num {
+  border-bottom: 1px solid var(--color-text, currentColor);
+  padding: 0 0.25rem;
+  font-size: 0.9em;
+}
+
+.latex-frac-den {
+  padding: 0 0.25rem;
+  font-size: 0.9em;
+}
+
+/* ─── Sectioning ─────────────────────────────────────────────────────────────── */
+
+.latex-section {
+  margin: 1rem 0 0.5rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.latex-section-0 { font-size: 1.5em; }
+.latex-section-1 { font-size: 1.3em; }
+.latex-section-2 { font-size: 1.15em; }
+.latex-section-3 { font-size: 1.05em; }
+.latex-section-4 { font-size: 1em; }
+
+/* ─── Quotes ─────────────────────────────────────────────────────────────────── */
+
+.latex-quote,
+.latex-quotation {
+  border-left: 3px solid var(--color-border, rgba(255,255,255,0.2));
+  margin: 0.75rem 0;
+  padding: 0.5rem 1rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.latex-verse {
+  margin: 0.75rem 0;
+  padding-left: 2rem;
+  font-style: italic;
+  color: var(--color-text-secondary);
+}
+
+/* ─── Alignment ──────────────────────────────────────────────────────────────── */
+
+.latex-center { text-align: center; }
+.latex-flushleft { text-align: left; }
+.latex-flushright { text-align: right; }
+
+/* ─── Spacing ────────────────────────────────────────────────────────────────── */
+
+.latex-quad { display: inline-block; width: 1em; }
+.latex-qquad { display: inline-block; width: 2em; }
+.latex-space { display: inline-block; }
+
+/* ─── Monospace ──────────────────────────────────────────────────────────────── */
+
+.latex-tt {
+  font-family: var(--font-mono, monospace);
+}
+
+/* ─── Links ──────────────────────────────────────────────────────────────────── */
+
+.latex-href,
+.latex-url,
+.latex-hyperlink,
+.latex-hyperref {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.latex-href:hover,
+.latex-url:hover,
+.latex-hyperlink:hover,
+.latex-hyperref:hover {
+  text-decoration: underline;
+}
+
+.latex-nolinkurl {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.9em;
+  color: var(--color-text-secondary);
+}
+
+/* ─── Diagnostics Panel ──────────────────────────────────────────────────────── */
+
+.latex-diagnostics {
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  margin: 0.75rem 0;
+  overflow: hidden;
+}
+
+.latex-diagnostics-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.85em;
+  font-weight: 600;
+  user-select: none;
+}
+
+.latex-diagnostics-header.error {
+  background: var(--bg-error, rgba(231, 76, 60, 0.1));
+  color: var(--color-error, #e74c3c);
+}
+
+.latex-diagnostics-header.warning {
+  background: var(--bg-warning, rgba(243, 156, 18, 0.1));
+  color: var(--color-warning, #f39c12);
+}
+
+.latex-diagnostics-header.info {
+  background: var(--bg-info, rgba(52, 152, 219, 0.1));
+  color: var(--color-info, #3498db);
+}
+
+.latex-diagnostics-body {
+  padding: 0.75rem;
+  font-size: 0.85em;
+  font-family: var(--font-mono, monospace);
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.latex-diagnostic-item {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.05));
+}
+
+.latex-diagnostic-item:last-child {
+  border-bottom: none;
+}
+
+.latex-diagnostic-suggestion {
+  margin-top: 0.25rem;
+  font-size: 0.9em;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* ─── TikZ Placeholder ───────────────────────────────────────────────────────── */
+
+.latex-tikz-placeholder,
+.latex-tikz-inline {
+  border: 1px dashed var(--color-border, rgba(255,255,255,0.2));
+  border-radius: 6px;
+  margin: 0.75rem 0;
+  overflow: hidden;
+  background: var(--bg-secondary, rgba(255,255,255,0.03));
+}
+
+.latex-tikz-inline {
+  display: inline-flex;
+  margin: 0 0.25rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.latex-tikz-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+.latex-tikz-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+}
+
+.latex-tikz-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.latex-tikz-label {
+  color: var(--color-text);
+}
+
+.latex-tikz-info {
+  margin-left: auto;
+  font-size: 0.8em;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.latex-tikz-options {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8em;
+  font-family: var(--font-mono, monospace);
+  color: var(--color-text-secondary);
+}
+
+.latex-tikz-source summary {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+  user-select: none;
+}
+
+.latex-tikz-source-code {
+  margin: 0;
+  padding: 0.75rem;
+  font-size: 0.8em;
+  overflow-x: auto;
+  background: var(--bg-code, rgba(0,0,0,0.2));
+  color: var(--color-text-secondary);
+}
+
+/* ─── Beamer ─────────────────────────────────────────────────────────────────── */
+
+.latex-beamer-frame {
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 8px;
+  margin: 1.5rem 0;
+  overflow: hidden;
+  background: var(--bg-primary, transparent);
+}
+
+.latex-beamer-frame-title {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 1.2em;
+  font-weight: 600;
+  background: var(--bg-secondary, rgba(255,255,255,0.05));
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.1));
+}
+
+.latex-beamer-frame-subtitle {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  font-size: 1em;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.1));
+}
+
+.latex-beamer-frame-content {
+  padding: 1rem;
+}
+
+.latex-beamer-block {
+  border-radius: 4px;
+  margin: 0.75rem 0;
+  overflow: hidden;
+  border-left: 3px solid var(--color-accent);
+}
+
+.latex-beamer-block-alert {
+  border-left-color: var(--color-danger, #e74c3c);
+}
+
+.latex-beamer-block-example {
+  border-left-color: var(--color-success, #2ecc71);
+}
+
+.latex-beamer-block-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.9em;
+  background: var(--bg-secondary, rgba(255,255,255,0.05));
+}
+
+.latex-beamer-block-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+}
+
+.latex-beamer-block-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.latex-beamer-block-title {
+  color: var(--color-text);
+}
+
+.latex-beamer-block-content {
+  padding: 0.75rem;
+}
+
+.latex-beamer-pause {
+  display: block;
+  height: 0;
+  border-top: 1px dashed var(--color-border, rgba(255,255,255,0.2));
+  margin: 0.5rem 0;
+}
+
+.latex-beamer-alert {
+  color: var(--color-danger, #e74c3c);
+  font-weight: 600;
+}
+
+.latex-beamer-structure {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.latex-beamer-only,
+.latex-beamer-uncover,
+.latex-beamer-visible,
+.latex-beamer-invisible {
+  transition: opacity 0.3s ease;
+}
+
+/* ─── Glossary ───────────────────────────────────────────────────────────────── */
+
+.latex-glossary {
+  margin: 1rem 0;
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.latex-glossary-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 1.1em;
+  font-weight: 600;
+  background: var(--bg-secondary, rgba(255,255,255,0.05));
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.1));
+}
+
+.latex-glossary-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+}
+
+.latex-glossary-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.latex-glossary-table,
+.latex-acronym-table {
+  width: 100%;
+}
+
+.latex-glossary-entry,
+.latex-acronym-entry {
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.05));
+}
+
+.latex-glossary-entry:last-child,
+.latex-acronym-entry:last-child {
+  border-bottom: none;
+}
+
+.latex-glossary-name,
+.latex-acronym-short {
+  font-weight: 600;
+  padding: 0.5rem;
+}
+
+.latex-glossary-symbol {
+  padding: 0.5rem;
+  font-family: var(--font-mono, monospace);
+}
+
+.latex-glossary-description,
+.latex-acronym-long,
+.latex-acronym-description {
+  padding: 0.5rem;
+  color: var(--color-text-secondary);
+}
+
+.latex-glossary-usage,
+.latex-acronym-usage {
+  padding: 0.5rem;
+  text-align: center;
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+}
+
+.latex-glossary-unused {
+  opacity: 0.5;
+}
+
+.latex-gls {
+  color: var(--color-accent);
+  cursor: help;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--color-accent);
+}
+
+.latex-gls:hover {
+  text-decoration: none;
+}
+
+/* ─── Index ──────────────────────────────────────────────────────────────────── */
+
+.latex-index {
+  margin: 1rem 0;
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.latex-index-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 1.1em;
+  font-weight: 600;
+  background: var(--bg-secondary, rgba(255,255,255,0.05));
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.1));
+}
+
+.latex-index-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+}
+
+.latex-index-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.latex-index-group {
+  padding: 0.5rem 1rem;
+}
+
+.latex-index-letter {
+  margin: 0.5rem 0;
+  font-size: 1.2em;
+  font-weight: 600;
+  color: var(--color-accent);
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  padding-bottom: 0.25rem;
+}
+
+.latex-index-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.latex-index-entry {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.03));
+}
+
+.latex-index-term {
+  font-weight: 600;
+}
+
+.latex-index-pages {
+  margin-left: 0.5rem;
+  font-size: 0.9em;
+  color: var(--color-text-secondary);
+}
+
+.latex-index-subentries {
+  list-style: none;
+  margin: 0.25rem 0 0.25rem 1rem;
+  padding: 0;
+}
+
+.latex-index-subentry {
+  padding: 0.15rem 0;
+}
+
+.latex-index-subterm {
+  font-weight: 400;
+}
+
+.latex-index-mark {
+  display: inline;
+}
+
+/* ─── Table of Contents ──────────────────────────────────────────────────────── */
+
+.latex-toc {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  background: var(--bg-secondary, rgba(255,255,255,0.03));
+}
+
+.latex-toc-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.latex-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.latex-toc-item {
+  padding: 0.25rem 0;
+}
+
+.latex-toc-item[data-depth="1"] { padding-left: 1.5rem; }
+.latex-toc-item[data-depth="2"] { padding-left: 3rem; }
+.latex-toc-item[data-depth="3"] { padding-left: 4.5rem; }
+.latex-toc-item[data-depth="4"] { padding-left: 6rem; }
+.latex-toc-item[data-depth="5"] { padding-left: 7.5rem; }
+
+.latex-toc-link {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  color: var(--color-text);
+  text-decoration: none;
+  padding: 0.15rem 0;
+}
+
+.latex-toc-link:hover {
+  color: var(--color-accent);
+}
+
+.latex-toc-number {
+  font-weight: 600;
+  min-width: 2em;
+  color: var(--color-text-secondary);
+}
+
+.latex-toc-title {
+  flex: 1;
+}
+
+.latex-toc-starred .latex-toc-number {
+  display: none;
+}
+
+/* ─── Cross-Reference ────────────────────────────────────────────────────────── */
+
+.latex-ref,
+.latex-pageref,
+.latex-eqref,
+.latex-autoref,
+.latex-nameref {
+  color: var(--color-accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.latex-ref:hover,
+.latex-pageref:hover,
+.latex-eqref:hover,
+.latex-autoref:hover,
+.latex-nameref:hover {
+  text-decoration: underline;
+}
+
+.latex-ref[data-resolved="false"],
+.latex-pageref[data-resolved="false"],
+.latex-eqref[data-resolved="false"],
+.latex-autoref[data-resolved="false"],
+.latex-nameref[data-resolved="false"] {
+  color: var(--color-warning, #f39c12);
+  font-weight: 600;
+}
+
+.latex-label {
+  display: inline;
+}
+
+/* ─── Array ──────────────────────────────────────────────────────────────────── */
+
+.latex-array {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  border-left: 1px solid var(--color-border, rgba(255,255,255,0.2));
+  border-right: 1px solid var(--color-border, rgba(255,255,255,0.2));
+  padding: 0 0.5rem;
+  margin: 0 0.25rem;
+}
+
+.latex-array-row {
+  display: flex;
+  justify-content: center;
+}
+
+.latex-array-cell {
+  padding: 0.25rem 0.5rem;
+}
+
+/* ─── Math Unavailable ───────────────────────────────────────────────────────── */
+
+.latex-katex-unavailable,
+.latex-mathjax-unavailable {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.9em;
+  color: var(--color-text-muted);
+  padding: 0.25rem 0.5rem;
+  border: 1px dashed var(--color-border, rgba(255,255,255,0.2));
+  border-radius: 4px;
+}
+
+/* ─── TikZ Placeholder ───────────────────────────────────────────────────────── */
+
+.latex-tikz-placeholder,
+.latex-tikz-inline {
+  border: 1px dashed var(--color-border, rgba(255,255,255,0.2));
+  border-radius: 6px;
+  margin: 0.75rem 0;
+  overflow: hidden;
+  background: var(--bg-secondary, rgba(255,255,255,0.03));
+}
+
+.latex-tikz-inline {
+  display: inline-flex;
+  margin: 0 0.25rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.latex-tikz-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+.latex-tikz-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+}
+
+.latex-tikz-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.latex-tikz-label {
+  color: var(--color-text);
+}
+
+.latex-tikz-info {
+  margin-left: auto;
+  font-size: 0.8em;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.latex-tikz-options {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8em;
+  font-family: var(--font-mono, monospace);
+  color: var(--color-text-secondary);
+}
+
+.latex-tikz-source summary {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+  user-select: none;
+}
+
+.latex-tikz-source-code {
+  margin: 0;
+  padding: 0.75rem;
+  font-size: 0.8em;
+  overflow-x: auto;
+  background: var(--bg-code, rgba(0,0,0,0.2));
+  color: var(--color-text-secondary);
+}
+
+/* ─── Beamer ─────────────────────────────────────────────────────────────────── */
+
+.latex-beamer-frame {
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 8px;
+  margin: 1.5rem 0;
+  overflow: hidden;
+  background: var(--bg-primary, transparent);
+}
+
+.latex-beamer-frame-title {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 1.2em;
+  font-weight: 600;
+  background: var(--bg-secondary, rgba(255,255,255,0.05));
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.1));
+}
+
+.latex-beamer-frame-subtitle {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  font-size: 1em;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.1));
+}
+
+.latex-beamer-frame-content {
+  padding: 1rem;
+}
+
+.latex-beamer-block {
+  border-radius: 4px;
+  margin: 0.75rem 0;
+  overflow: hidden;
+  border-left: 3px solid var(--color-accent);
+}
+
+.latex-beamer-block-alert {
+  border-left-color: var(--color-danger, #e74c3c);
+}
+
+.latex-beamer-block-example {
+  border-left-color: var(--color-success, #2ecc71);
+}
+
+.latex-beamer-block-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.9em;
+  background: var(--bg-secondary, rgba(255,255,255,0.05));
+}
+
+.latex-beamer-block-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+}
+
+.latex-beamer-block-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.latex-beamer-block-title {
+  color: var(--color-text);
+}
+
+.latex-beamer-block-content {
+  padding: 0.75rem;
+}
+
+.latex-beamer-pause {
+  display: block;
+  height: 0;
+  border-top: 1px dashed var(--color-border, rgba(255,255,255,0.2));
+  margin: 0.5rem 0;
+}
+
+.latex-beamer-alert {
+  color: var(--color-danger, #e74c3c);
+  font-weight: 600;
+}
+
+.latex-beamer-structure {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.latex-beamer-only,
+.latex-beamer-uncover,
+.latex-beamer-visible,
+.latex-beamer-invisible {
+  transition: opacity 0.3s ease;
+}
+
+/* ─── Glossary ───────────────────────────────────────────────────────────────── */
+
+.latex-glossary {
+  margin: 1rem 0;
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.latex-glossary-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 1.1em;
+  font-weight: 600;
+  background: var(--bg-secondary, rgba(255,255,255,0.05));
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.1));
+}
+
+.latex-glossary-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+}
+
+.latex-glossary-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.latex-glossary-table,
+.latex-acronym-table {
+  width: 100%;
+}
+
+.latex-glossary-entry,
+.latex-acronym-entry {
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.05));
+}
+
+.latex-glossary-entry:last-child,
+.latex-acronym-entry:last-child {
+  border-bottom: none;
+}
+
+.latex-glossary-name,
+.latex-acronym-short {
+  font-weight: 600;
+  padding: 0.5rem;
+}
+
+.latex-glossary-symbol {
+  padding: 0.5rem;
+  font-family: var(--font-mono, monospace);
+}
+
+.latex-glossary-description,
+.latex-acronym-long,
+.latex-acronym-description {
+  padding: 0.5rem;
+  color: var(--color-text-secondary);
+}
+
+.latex-glossary-usage,
+.latex-acronym-usage {
+  padding: 0.5rem;
+  text-align: center;
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+}
+
+.latex-glossary-unused {
+  opacity: 0.5;
+}
+
+.latex-gls {
+  color: var(--color-accent);
+  cursor: help;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--color-accent);
+}
+
+.latex-gls:hover {
+  text-decoration: none;
+}
+
+/* ─── Index ──────────────────────────────────────────────────────────────────── */
+
+.latex-index {
+  margin: 1rem 0;
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.latex-index-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: 1.1em;
+  font-weight: 600;
+  background: var(--bg-secondary, rgba(255,255,255,0.05));
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.1));
+}
+
+.latex-index-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+}
+
+.latex-index-icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.latex-index-group {
+  padding: 0.5rem 1rem;
+}
+
+.latex-index-letter {
+  margin: 0.5rem 0;
+  font-size: 1.2em;
+  font-weight: 600;
+  color: var(--color-accent);
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  padding-bottom: 0.25rem;
+}
+
+.latex-index-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.latex-index-entry {
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.03));
+}
+
+.latex-index-term {
+  font-weight: 600;
+}
+
+.latex-index-pages {
+  margin-left: 0.5rem;
+  font-size: 0.9em;
+  color: var(--color-text-secondary);
+}
+
+.latex-index-subentries {
+  list-style: none;
+  margin: 0.25rem 0 0.25rem 1rem;
+  padding: 0;
+}
+
+.latex-index-subentry {
+  padding: 0.15rem 0;
+}
+
+.latex-index-subterm {
+  font-weight: 400;
+}
+
+.latex-index-mark {
+  display: inline;
+}
+
+/* ─── Table of Contents ──────────────────────────────────────────────────────── */
+
+.latex-toc {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  background: var(--bg-secondary, rgba(255,255,255,0.03));
+}
+
+.latex-toc-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.latex-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.latex-toc-item {
+  padding: 0.25rem 0;
+}
+
+.latex-toc-item[data-depth="1"] { padding-left: 1.5rem; }
+.latex-toc-item[data-depth="2"] { padding-left: 3rem; }
+.latex-toc-item[data-depth="3"] { padding-left: 4.5rem; }
+.latex-toc-item[data-depth="4"] { padding-left: 6rem; }
+.latex-toc-item[data-depth="5"] { padding-left: 7.5rem; }
+
+.latex-toc-link {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  color: var(--color-text);
+  text-decoration: none;
+  padding: 0.15rem 0;
+}
+
+.latex-toc-link:hover {
+  color: var(--color-accent);
+}
+
+.latex-toc-number {
+  font-weight: 600;
+  min-width: 2em;
+  color: var(--color-text-secondary);
+}
+
+.latex-toc-title {
+  flex: 1;
+}
+
+.latex-toc-starred .latex-toc-number {
+  display: none;
+}
+
+/* ─── Cross-Reference ────────────────────────────────────────────────────────── */
+
+.latex-ref,
+.latex-pageref,
+.latex-eqref,
+.latex-autoref,
+.latex-nameref {
+  color: var(--color-accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.latex-ref:hover,
+.latex-pageref:hover,
+.latex-eqref:hover,
+.latex-autoref:hover,
+.latex-nameref:hover {
+  text-decoration: underline;
+}
+
+.latex-ref[data-resolved="false"],
+.latex-pageref[data-resolved="false"],
+.latex-eqref[data-resolved="false"],
+.latex-autoref[data-resolved="false"],
+.latex-nameref[data-resolved="false"] {
+  color: var(--color-warning, #f39c12);
+  font-weight: 600;
+}
+
+.latex-label {
+  display: inline;
+}
+
+/* ─── Array ──────────────────────────────────────────────────────────────────── */
+
+.latex-array {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  border-left: 1px solid var(--color-border, rgba(255,255,255,0.2));
+  border-right: 1px solid var(--color-border, rgba(255,255,255,0.2));
+  padding: 0 0.5rem;
+  margin: 0 0.25rem;
+}
+
+.latex-array-row {
+  display: flex;
+  justify-content: center;
+}
+
+.latex-array-cell {
+  padding: 0.25rem 0.5rem;
+}
+
+/* ─── Math Unavailable ───────────────────────────────────────────────────────── */
+
+.latex-katex-unavailable,
+.latex-mathjax-unavailable {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.9em;
+  color: var(--color-text-muted);
+  padding: 0.25rem 0.5rem;
+  border: 1px dashed var(--color-border, rgba(255,255,255,0.2));
+  border-radius: 4px;
+}
