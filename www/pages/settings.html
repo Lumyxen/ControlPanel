@@ -101,6 +101,13 @@
             </label>
         </div>
         <div class="option-row">
+            <span>KV Cache Reuse</span>
+            <label class="toggle-switch" style="width: fit-content;">
+                <input id="llamacpp-kv-cache-reuse" type="checkbox" checked />
+                <span class="toggle-track"></span>
+            </label>
+        </div>
+        <div class="option-row">
             <label for="llamacpp-eval-batch-size">Eval Batch Size</label>
             <input id="llamacpp-eval-batch-size" type="number" min="64" max="16384" step="64" value="2048" style="width:8rem;" />
         </div>
@@ -118,6 +125,14 @@
         <div class="option-row">
             <label for="llamacpp-gpu-layers">GPU Layers</label>
             <input id="llamacpp-gpu-layers" type="number" min="0" max="999" step="1" value="0" style="width:8rem;" />
+        </div>
+        <div class="option-row">
+            <label for="llamacpp-kv-cache-type">KV Cache Quantisation</label>
+            <select id="llamacpp-kv-cache-type" class="text-input" style="width:8rem; padding: 6px 10px;">
+                <option value="f16">F16 (Default)</option>
+                <option value="q8_0">Q8_0 (8-bit)</option>
+                <option value="q4_0">Q4_0 (4-bit)</option>
+            </select>
         </div>
         <div class="option-row">
             <label>CPU Threads</label>

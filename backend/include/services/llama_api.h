@@ -52,6 +52,17 @@ struct LlamaApi {
     // ── Memory ────────────────────────────────────────────────────────────────
     llama_memory_t (*get_memory)                (llama_context* ctx)                               = nullptr;
     void          (*memory_clear)               (llama_memory_t mem, bool data)                    = nullptr;
+    
+    // We declare these as returning void so we don't accidentally read garbage
+    // or trigger false-failures if the library returns false on partial trims.
+    void          (*memory_seq_rm)              (llama_memory_t mem, llama_seq_id seq_id, llama_pos p0, llama_pos p1) = nullptr;
+    void          (*kv_cache_seq_rm)            (llama_context* ctx, llama_seq_id seq_id, llama_pos p0, llama_pos p1) = nullptr;
+    void          (*kv_cache_clear)             (llama_context* ctx)                               = nullptr;
+
+    // Optional — needed in older versions to flush M-RoPE's internal position-max
+    // tracker after a partial KV cache trim via memory_seq_rm.
+    void          (*kv_cache_defrag)            (llama_context* ctx)                               = nullptr;
+    void          (*kv_cache_update)            (llama_context* ctx)                               = nullptr;
 
     // ── Tokenisation ──────────────────────────────────────────────────────────
     int32_t       (*tokenize)                   (const llama_vocab* vocab,

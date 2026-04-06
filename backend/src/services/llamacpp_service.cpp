@@ -1,4 +1,3 @@
-// backend/src/services/llamacpp_service.cpp
 #include "services/llamacpp_service.h"
 #include "services/llama_api.h"
 #include "services/mcp_registry.h"
@@ -277,6 +276,25 @@ bool LlamaCppService::loadLib(const std::string& backendName) {
     RESOLVE(sampler_sample,               "llama_sampler_sample");
     RESOLVE(sampler_free,                 "llama_sampler_free");
 
+    // Optional symbols — resolved gracefully; absence does not abort loading.
+    {
+        void* p = dlsym(handle, "llama_memory_seq_rm");
+        if (p) std::memcpy(&api_->memory_seq_rm, &p, sizeof(p));
+        
+        p = dlsym(handle, "llama_kv_cache_seq_rm");
+        if (p) std::memcpy(&api_->kv_cache_seq_rm, &p, sizeof(p));
+        
+        p = dlsym(handle, "llama_kv_cache_clear");
+        if (p) std::memcpy(&api_->kv_cache_clear, &p, sizeof(p));
+    }
+
+    {
+        void* p = dlsym(handle, "llama_kv_cache_defrag");
+        if (p) std::memcpy(&api_->kv_cache_defrag, &p, sizeof(p));
+        p = dlsym(handle, "llama_kv_cache_update");
+        if (p) std::memcpy(&api_->kv_cache_update, &p, sizeof(p));
+    }
+
     {
         void* p;
         p = dlsym(handle, "ggml_backend_reg_count");
@@ -408,6 +426,7 @@ void LlamaCppService::unloadModel() {
     }
     modelLoaded_ = false;
     loadedModelId_.clear();
+    kvCacheTokens_.clear();
 }
 
 bool LlamaCppService::loadModel(const std::string& path) {
@@ -450,6 +469,14 @@ bool LlamaCppService::loadModel(const std::string& path) {
     cparams.n_threads_batch = n_threads_batch;
     cparams.flash_attn_type = flashAttn ? LLAMA_FLASH_ATTN_TYPE_ENABLED
                                         : LLAMA_FLASH_ATTN_TYPE_AUTO;
+
+    std::string kvTypeStr = config_.getLlamacppKvCacheType();
+    ggml_type kvType = GGML_TYPE_F16;
+    if (kvTypeStr == "q8_0") kvType = GGML_TYPE_Q8_0;
+    else if (kvTypeStr == "q4_0") kvType = GGML_TYPE_Q4_0;
+    
+    cparams.type_k = kvType;
+    cparams.type_v = kvType;
 
     auto* c = api_->init_from_model(m, cparams);
     if (!c) {
@@ -687,13 +714,6 @@ static bool extractToolCall(const std::string& text,
 // =============================================================================
 // doInference
 //
-// FIX: cancelCheck is now checked BEFORE every api_->decode() call — both in
-// the prefill loop and in the generation loop.  Previously the prefill loop
-// checked cancellation only via the onChunk("") heartbeat, which meant a
-// single large-batch prefill decode could block for seconds after cancellation
-// was signalled.  Now, cancellation is detected at the earliest possible point
-// before each blocking decode.
-//
 // The cancelCheck predicate combines:
 //   • the caller-supplied per-stream ctx->cancelled flag, AND
 //   • inferAbort_ — the service-level abort flag set when a new inference
@@ -761,26 +781,72 @@ void LlamaCppService::doInference(
 
     std::cout << "[LlamaCpp] Inference started (input tokens: " << inputTokens.size() << ")\n";
 
-    api_->memory_clear(api_->get_memory(ctx), true);
+    int matchLen = 0;
+    if (config_.getLlamacppKvCacheReuse()) {
+        while (matchLen < static_cast<int>(inputTokens.size()) && 
+               matchLen < static_cast<int>(kvCacheTokens_.size()) && 
+               inputTokens[matchLen] == kvCacheTokens_[matchLen]) {
+            matchLen++;
+        }
+    }
+
+    // Helper lambda to safely clear the KV cache
+    auto clear_cache = [&]() {
+        if (api_->memory_clear && api_->get_memory) {
+            api_->memory_clear(api_->get_memory(ctx), true);
+        } else if (api_->kv_cache_clear) {
+            api_->kv_cache_clear(ctx);
+        } else if (api_->kv_cache_seq_rm) {
+            api_->kv_cache_seq_rm(ctx, -1, -1, -1);
+        }
+        kvCacheTokens_.clear();
+    };
+
+    if (matchLen == 0) {
+        clear_cache();
+        std::cout << "[LlamaCpp] KV cache cleared\n";
+    } else if (matchLen < static_cast<int>(kvCacheTokens_.size())) {
+        // Partial match: reuse the first matchLen tokens, trim the rest.
+        bool trimmed = false;
+        
+        if (api_->memory_seq_rm && api_->get_memory) {
+            api_->memory_seq_rm(api_->get_memory(ctx), 0, matchLen, -1);
+            trimmed = true;
+        } else if (api_->kv_cache_seq_rm) {
+            api_->kv_cache_seq_rm(ctx, 0, matchLen, -1);
+            trimmed = true;
+        }
+
+        if (trimmed) {
+            if (api_->kv_cache_defrag) api_->kv_cache_defrag(ctx);
+            if (api_->kv_cache_update) api_->kv_cache_update(ctx);
+
+            std::cout << "[LlamaCpp] KV cache reused " << matchLen << " tokens, removed "
+                      << (kvCacheTokens_.size() - matchLen) << " tokens\n";
+            kvCacheTokens_.resize(matchLen);
+        } else {
+            clear_cache();
+            matchLen = 0;
+            std::cout << "[LlamaCpp] KV cache cleared (seq_rm not found)\n";
+        }
+    } else {
+        std::cout << "[LlamaCpp] KV cache fully reused (" << matchLen << " tokens)\n";
+    }
+
     llama_batch batch = api_->batch_init(n_batch_, 0, 1);
-    int nProcessed = 0;
+    int nProcessed = matchLen;
 
     // ── Prefill loop ──────────────────────────────────────────────────────────
-    // FIX: cancelCheck is now checked before AND after every decode call so
-    // that cancellation during a large-batch prefill is detected immediately
-    // rather than only on the next heartbeat.
     while (nProcessed < static_cast<int>(inputTokens.size())) {
         // Heartbeat: lets the onChunk wrapper detect connection drop
         if (!onChunk("")) {
             api_->batch_free(batch);
-            api_->memory_clear(api_->get_memory(ctx), true);
             return;
         }
         // Explicit cancel check before the blocking decode
         if (cancelCheck && cancelCheck()) {
             std::cout << "[LlamaCpp] Cancelled during prefill\n";
             api_->batch_free(batch);
-            api_->memory_clear(api_->get_memory(ctx), true);
             return;
         }
 
@@ -796,17 +862,31 @@ void LlamaCppService::doInference(
         if (nProcessed + cs == static_cast<int>(inputTokens.size())) batch.logits[cs-1] = 1;
 
         if (api_->decode(ctx, batch) != 0) {
+            if (nProcessed == matchLen && matchLen > 0) {
+                // If it fails on the very first batch of a resumed prefill, it's almost certainly
+                // the M-RoPE position-tracker bug where max_pos wasn't decremented by seq_rm.
+                // We catch this, completely clear the KV cache, and retry full prompt processing.
+                std::cout << "[LlamaCpp] decode failed on KV cache resume (likely M-RoPE constraint). Clearing cache and retrying full prefill.\n";
+                clear_cache();
+                matchLen = 0;
+                nProcessed = 0;
+                continue; // restart the loop
+            }
+            
             onError("llama_decode (prefill) failed");
             api_->batch_free(batch);
-            api_->memory_clear(api_->get_memory(ctx), true);
+            clear_cache();
             return;
         }
 
-        // Cancel check after decode (catches cancellation set during decode)
+        for (int i = 0; i < cs; ++i) {
+            kvCacheTokens_.push_back(batch.token[i]);
+        }
+
+        // Cancel check after decode
         if (cancelCheck && cancelCheck()) {
             std::cout << "[LlamaCpp] Cancelled after prefill decode\n";
             api_->batch_free(batch);
-            api_->memory_clear(api_->get_memory(ctx), true);
             return;
         }
 
@@ -826,15 +906,9 @@ void LlamaCppService::doInference(
     api_->sampler_chain_add(sampler, api_->sampler_init_dist(LLAMA_DEFAULT_SEED));
 
     // ── Generation loop ───────────────────────────────────────────────────────
-    // FIX: cancelCheck is checked at three points per token:
-    //   1. Via onChunk("") heartbeat — catches dropped HTTP connections
-    //   2. Explicit check before sampler_sample — fast path
-    //   3. Explicit check before decode — most critical, prevents one extra
-    //      blocking decode after cancellation is signalled
-    //   4. Explicit check after decode — catches cancellation set during decode
     int nGen = 0; bool cancelled = false;
     while (nGen < maxTokens && !cancelled) {
-        // 1. Heartbeat: onChunk wrapper returns false when connection is gone
+        // 1. Heartbeat
         if (!onChunk("")) { cancelled = true; break; }
         // 2. Fast cancel check
         if (cancelCheck && cancelCheck()) { cancelled = true; break; }
@@ -852,8 +926,7 @@ void LlamaCppService::doInference(
             }
         }
 
-        // 3. Cancel before decode — the most important check: avoids one
-        //    unnecessary blocking decode call after stop is signalled
+        // 3. Cancel before decode
         if (cancelCheck && cancelCheck()) { cancelled = true; break; }
 
         batch.n_tokens    = 1;
@@ -863,9 +936,15 @@ void LlamaCppService::doInference(
         batch.seq_id[0][0] = 0;
         batch.logits[0]   = 1;
 
-        if (api_->decode(ctx, batch) != 0) { onError("llama_decode (generation) failed"); break; }
+        if (api_->decode(ctx, batch) != 0) { 
+            onError("llama_decode (generation) failed"); 
+            kvCacheTokens_.clear();
+            break; 
+        }
+        
+        kvCacheTokens_.push_back(tok);
 
-        // 4. Cancel after decode — catches cancellation set during decode
+        // 4. Cancel after decode
         if (cancelCheck && cancelCheck()) { cancelled = true; break; }
 
         ++nGen;
@@ -873,9 +952,8 @@ void LlamaCppService::doInference(
 
     api_->sampler_free(sampler);
     api_->batch_free(batch);
-    api_->memory_clear(api_->get_memory(ctx), true);
 
-    if (!cancelled) onChunk("data: [DONE]\n\n");
+    if (!cancelled) onChunk("data:[DONE]\n\n");
 
     std::cout << "[LlamaCpp] Inference " << (cancelled ? "cancelled" : "completed")
               << " (generated " << nGen << " tokens)\n";
@@ -884,12 +962,6 @@ void LlamaCppService::doInference(
 // =============================================================================
 // doInferenceCollect — runs inference and returns the full generated text.
 // Used ONLY for intermediate tool-detection rounds, never the final round.
-//
-// FIX: cancelCheck is now correctly forwarded to doInference.  Previously it
-// was only captured inside the onChunk lambda, which meant the explicit
-// cancelCheck() calls in doInference's generation loop were always skipped
-// (they saw nullptr), leaving cancellation detection solely to the onChunk
-// heartbeat path.
 // =============================================================================
 
 std::string LlamaCppService::doInferenceCollect(
@@ -902,7 +974,7 @@ std::string LlamaCppService::doInferenceCollect(
 
     auto onChunk = [&](const std::string& chunk) -> bool {
         if (cancelCheck && cancelCheck()) return false;
-        if (!chunk.empty() && chunk != "data: [DONE]\n\n") {
+        if (!chunk.empty() && chunk != "data:[DONE]\n\n") {
             const std::string prefix = "data: ";
             if (chunk.size() > prefix.size() && chunk.substr(0, prefix.size()) == prefix) {
                 std::string jsonStr = chunk.substr(prefix.size());
@@ -925,7 +997,6 @@ std::string LlamaCppService::doInferenceCollect(
         return true;
     };
 
-    // FIX: pass cancelCheck so doInference's explicit cancelCheck() calls work
     doInference(messages, maxTokens, temperature, onChunk, onError, cancelCheck);
     return collected;
 }
@@ -988,10 +1059,6 @@ void LlamaCppService::streamingChatWithCallback(
     const std::string& systemPrompt, double temperature, int,
     std::function<bool()> cancelCheck)
 {
-    // FIX: Signal any currently-running inference to abort before blocking on
-    // inferMutex_.  This ensures that a new inference request preempts a stale
-    // one within a single decode call (milliseconds) rather than waiting for
-    // the entire generation to complete (potentially minutes).
     inferAbort_.store(true);
     std::unique_lock<std::mutex> lock(inferMutex_);
     inferAbort_.store(false);  // We own the lock; clear the flag for our run.
@@ -1006,30 +1073,13 @@ void LlamaCppService::streamingChatWithCallback(
         if (!ensureModelLoaded()) { onError("No llama.cpp model loaded"); return; }
     }
 
-    // Combine the caller's cancel predicate with the service-level abort flag.
-    // doInference will use this at every cancel-check point.
-    auto combinedCancel = [this, &cancelCheck]() -> bool {
+    auto combinedCancel =[this, &cancelCheck]() -> bool {
         return inferAbort_.load() || (cancelCheck && cancelCheck());
     };
 
     doInference(parseMessages(prompt, systemPrompt), maxTokens, temperature,
                 onChunk, onError, combinedCancel);
 }
-
-// =============================================================================
-// streamingChatWithTools — MCP tool-call loop for llama.cpp
-//
-// Key design principle for streaming correctness:
-//   • Only INTERMEDIATE rounds (where a tool call was detected) use
-//     doInferenceCollect — the output is never forwarded to the client,
-//     only tool-execution events and reasoning annotations are sent.
-//   • The FINAL round (when no tool call is detected, or no tools exist)
-//     always calls doInference directly so every token is streamed live
-//     to the client as it is generated. No buffering, no re-emission.
-//
-// This means the client always sees real token-by-token streaming on the
-// response the user actually reads.
-// =============================================================================
 
 void LlamaCppService::streamingChatWithTools(
     const std::string&, Json::Value messages, const Json::Value& tools, int maxTokens,
@@ -1038,7 +1088,6 @@ void LlamaCppService::streamingChatWithTools(
     McpRegistry* registry, double temperature, int,
     std::function<bool()> cancelCheck)
 {
-    // FIX: Same preemption pattern as streamingChatWithCallback.
     inferAbort_.store(true);
     std::unique_lock<std::mutex> lock(inferMutex_);
     inferAbort_.store(false);
@@ -1053,8 +1102,7 @@ void LlamaCppService::streamingChatWithTools(
         if (!ensureModelLoaded()) { onError("No llama.cpp model loaded"); return; }
     }
 
-    // Combined cancel predicate used throughout this call's doInference invocations.
-    auto combinedCancel = [this, &cancelCheck]() -> bool {
+    auto combinedCancel =[this, &cancelCheck]() -> bool {
         return inferAbort_.load() || (cancelCheck && cancelCheck());
     };
 
@@ -1151,9 +1199,6 @@ void LlamaCppService::streamingChatWithTools(
         if (combinedCancel()) return;
         auto pairs = buildPairs(augmentedMessages);
 
-        // Collect this round's output while streaming live to the client.
-        // If a tool call is detected, we'll send a retract event to clear
-        // the buffered text from the UI, then execute the tool and loop.
         std::string errorMsg;
         std::string response = doInferenceCollectWithStreaming(
             pairs, maxTokens, temperature, onChunk,
@@ -1164,12 +1209,10 @@ void LlamaCppService::streamingChatWithTools(
 
         std::string toolName, toolArgsJson;
         if (extractToolCall(response, toolName, toolArgsJson)) {
-        	// ── Tool call: retract streamed text, execute, emit events, loop ──
         	std::cout << "[LlamaCpp] Tool call detected: " << toolName << "\n";
 
         	if (combinedCancel()) return;
 
-        	// Send retract event so UI clears the buffered text from this round
         	if (onChunk) {
         		Json::Value retractObj;
         		retractObj["type"] = "retract";
@@ -1178,7 +1221,6 @@ void LlamaCppService::streamingChatWithTools(
         		if (!onChunk("data: " + Json::writeString(wb, retractObj) + "\n\n")) return;
         	}
 
-        	// Reasoning annotation visible in the UI
         	if (onChunk) {
         		Json::Value fakeChoice;
         		fakeChoice["delta"]["reasoning"] = "\n*Executing tool: " + toolName + "*\n";
@@ -1189,7 +1231,6 @@ void LlamaCppService::streamingChatWithTools(
         		if (!onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n")) return;
         	}
 
-        	// Send tool call event to UI immediately (before execution)
         	if (onChunk) {
         		Json::Value toolCallEvent;
         		toolCallEvent["type"] = "tool_execution";
@@ -1202,7 +1243,6 @@ void LlamaCppService::streamingChatWithTools(
         		if (!onChunk("data: " + Json::writeString(wb, toolCallEvent) + "\n\n")) return;
         	}
 
-        	// Parse arguments
         	Json::Value args(Json::objectValue);
         	if (!toolArgsJson.empty()) {
         		Json::CharReaderBuilder rb;
@@ -1213,7 +1253,6 @@ void LlamaCppService::streamingChatWithTools(
 
         	if (combinedCancel()) return;
 
-        	// Execute
         	Json::Value result = registry->callTool(toolName, args);
         	std::string resultStr;
         	if (result.isArray()) {
@@ -1227,7 +1266,6 @@ void LlamaCppService::streamingChatWithTools(
         		resultStr = Json::writeString(wb, result);
         	}
 
-        	// Update tool_execution event with output for the UI
         	if (onChunk) {
         		Json::Value toolEvent;
         		toolEvent["type"] = "tool_execution";
@@ -1240,7 +1278,6 @@ void LlamaCppService::streamingChatWithTools(
         		if (!onChunk("data: " + Json::writeString(wb, toolEvent) + "\n\n")) return;
         	}
 
-            // Append assistant + tool result, then loop
             Json::Value assistantMsg;
             assistantMsg["role"]    = "assistant";
             assistantMsg["content"] = response;
@@ -1255,12 +1292,10 @@ void LlamaCppService::streamingChatWithTools(
             continue; // next round
         }
 
-        // ── No tool call found: response was already streamed live ────────────
         std::cout << "[LlamaCpp] No tool call — response already streamed live\n";
         if (onChunk) onChunk("data:[DONE]\n\n");
         return;
     }
 
-    // Safety: max rounds hit — send DONE (last round was already streamed)
-    if (onChunk) onChunk("data: [DONE]\n\n");
+    if (onChunk) onChunk("data:[DONE]\n\n");
 }

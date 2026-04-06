@@ -9,6 +9,7 @@
 #include <condition_variable>
 #include <filesystem>
 #include <thread>
+#include <cstdint>
 #include <json/json.h>
 
 struct LlamaApi;
@@ -110,6 +111,9 @@ private:
 
     void*       clipCtx_       = nullptr;
     bool        visionEnabled_ = false;
+
+    // KV cache reuse vector storing the context of evaluated tokens
+    mutable std::vector<int32_t> kvCacheTokens_;
 
     mutable std::mutex              inferMutex_;
 

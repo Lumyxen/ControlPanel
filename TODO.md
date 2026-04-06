@@ -37,8 +37,6 @@
 - llama.cpp hardware usage configuration
 - Tone down llama.cpp max compute usage to allow computer use during generation
   - Ability to return to maximum usage in settings
-- Keep models loaded for 5 minutes after generation completion
-  - Setting to change time to unload after generation completion, down to immediate (step before 1 minute), up to infinite (step after 30 minutes)
 - KV cache reuse
 - KV Quantisation
   - Reduce memory usage at the cost of decreasing context quality
@@ -240,6 +238,7 @@
 #### UI
 - Build & Rebuild buttons are not equally sized
   - Rebuild and remove buttons should be bigger
+- Emojis are not properly rendering
 
 #### UX
 - LaTeX processing currently in an unfinished state
@@ -251,6 +250,7 @@
 #### Misc Bugs
 - System Prompt does not count towards used up tokens
 - AI model should only be loaded on first inference, not on runtime
+- M-RoPE models do not work with current KV Cache reuse implementation
 
 ## Password Manager
 ### Planned Features
@@ -279,13 +279,22 @@
 - Settings page
   - Configuration for AI generation values such as
     - Default model
-    - Max output tokens fallback
     - Temperature
+    - Max output tokens fallback
     - System Prompt
-    - Time to unload models
-      - From immediate (after inference completion), to 1 minute, to 30 minutes, to infinity (unloads only on backend shutdown)
     - llama.cpp build
       - CPU, Vulkan, CUDA, ROCm
+    - Flash Attention
+    - KV Cache reuse
+    - Eval Batch size
+    - Time to unload models
+      - From immediate (after inference completion), to 1 minute, to 30 minutes, to infinity (unloads only on llama.cpp reload)
+    - GPU Layers
+    - KV Cache quantisation
+    - CPU Threads (generation & batch)
+    - Top-P
+    - Min-P
+    - Repetition Penalty
   - Customisable theme between all Everforest palette choices and Catppuccin palette choices
 
 ## AI chat-box
@@ -307,6 +316,8 @@
       - Popup to suggest a build when either none are built or the optimial one isn't built
         - Non-intrusive, can select to not show again
     - Model persistent loading for a set amount of time
+    - KV Cache reuse & quantisation
+    - KV Cache quantisation
 - New chat button when sidebar is collapsed
 - Message hover menu
   - AI message regeneration

@@ -18,6 +18,7 @@ private:
 
     // ── llama.cpp settings ────────────────────────────────────────────────────
     bool        llamacppFlashAttn;
+    bool        llamacppKvCacheReuse;
     int         llamacppEvalBatchSize;
     int         llamacppCtxSize;
     int         llamacppGpuLayers;
@@ -27,6 +28,9 @@ private:
     double      llamacppMinP;
     double      llamacppRepeatPenalty;
     int         llamacppModelKeepAlive; // -1 = infinite, 0 = immediate, >0 = minutes
+    
+    // KV Cache Type
+    std::string llamacppKvCacheType; // "f16", "q8_0", "q4_0"
 
     // ── Backend preference ────────────────────────────────────────────────────
     std::string llamacppBackend;
@@ -117,6 +121,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
 5. **Admit:** If the answer is unavailable, state "I don't know" without apology.)SYS"),
           lmStudioUrl("http://localhost:1234"),
           llamacppFlashAttn(true),
+          llamacppKvCacheReuse(true),
           llamacppEvalBatchSize(2048),
           llamacppCtxSize(0),
           llamacppGpuLayers(0),
@@ -126,6 +131,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
           llamacppMinP(0.05),
           llamacppRepeatPenalty(1.15),
           llamacppModelKeepAlive(5),
+          llamacppKvCacheType("f16"),
           llamacppBackend("auto"),
           llamacppTag("b8391"),
           backendSuggestionDismissed(false),
@@ -148,6 +154,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
         else if (cfg.isMember("maxTokens")) fallbackMaxOutputTokens = cfg["maxTokens"].asInt();
 
         if (cfg.isMember("llamacppFlashAttn"))     llamacppFlashAttn     = cfg["llamacppFlashAttn"].asBool();
+        if (cfg.isMember("llamacppKvCacheReuse"))  llamacppKvCacheReuse  = cfg["llamacppKvCacheReuse"].asBool();
         if (cfg.isMember("llamacppEvalBatchSize")) llamacppEvalBatchSize = cfg["llamacppEvalBatchSize"].asInt();
         if (cfg.isMember("llamacppCtxSize"))       llamacppCtxSize       = cfg["llamacppCtxSize"].asInt();
         if (cfg.isMember("llamacppGpuLayers"))     llamacppGpuLayers     = cfg["llamacppGpuLayers"].asInt();
@@ -157,6 +164,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
         if (cfg.isMember("llamacppMinP"))          llamacppMinP          = cfg["llamacppMinP"].asDouble();
         if (cfg.isMember("llamacppRepeatPenalty")) llamacppRepeatPenalty = cfg["llamacppRepeatPenalty"].asDouble();
         if (cfg.isMember("llamacppModelKeepAlive"))llamacppModelKeepAlive= cfg["llamacppModelKeepAlive"].asInt();
+        if (cfg.isMember("llamacppKvCacheType"))   llamacppKvCacheType   = cfg["llamacppKvCacheType"].asString();
 
         if (cfg.isMember("llamacppBackend")) {
             const std::string b = cfg["llamacppBackend"].asString();
@@ -184,6 +192,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
         else if (root.isMember("maxTokens")) fallbackMaxOutputTokens = root["maxTokens"].asInt();
 
         if (root.isMember("llamacppFlashAttn"))     llamacppFlashAttn     = root["llamacppFlashAttn"].asBool();
+        if (root.isMember("llamacppKvCacheReuse"))  llamacppKvCacheReuse  = root["llamacppKvCacheReuse"].asBool();
         if (root.isMember("llamacppEvalBatchSize")) llamacppEvalBatchSize = root["llamacppEvalBatchSize"].asInt();
         if (root.isMember("llamacppCtxSize"))       llamacppCtxSize       = root["llamacppCtxSize"].asInt();
         if (root.isMember("llamacppGpuLayers"))     llamacppGpuLayers     = root["llamacppGpuLayers"].asInt();
@@ -193,6 +202,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
         if (root.isMember("llamacppMinP"))          llamacppMinP          = root["llamacppMinP"].asDouble();
         if (root.isMember("llamacppRepeatPenalty")) llamacppRepeatPenalty = root["llamacppRepeatPenalty"].asDouble();
         if (root.isMember("llamacppModelKeepAlive"))llamacppModelKeepAlive= root["llamacppModelKeepAlive"].asInt();
+        if (root.isMember("llamacppKvCacheType"))   llamacppKvCacheType   = root["llamacppKvCacheType"].asString();
 
         if (root.isMember("llamacppBackend")) {
             const std::string b = root["llamacppBackend"].asString();
@@ -218,6 +228,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
         root["systemPrompt"]               = systemPrompt;
         root["lmStudioUrl"]                = lmStudioUrl;
         root["llamacppFlashAttn"]          = llamacppFlashAttn;
+        root["llamacppKvCacheReuse"]       = llamacppKvCacheReuse;
         root["llamacppEvalBatchSize"]      = llamacppEvalBatchSize;
         root["llamacppCtxSize"]            = llamacppCtxSize;
         root["llamacppGpuLayers"]          = llamacppGpuLayers;
@@ -227,6 +238,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
         root["llamacppMinP"]               = llamacppMinP;
         root["llamacppRepeatPenalty"]      = llamacppRepeatPenalty;
         root["llamacppModelKeepAlive"]     = llamacppModelKeepAlive;
+        root["llamacppKvCacheType"]        = llamacppKvCacheType;
         root["llamacppBackend"]            = llamacppBackend;
         root["llamacppTag"]                = llamacppTag;
         root["backendSuggestionDismissed"] = backendSuggestionDismissed;
@@ -238,6 +250,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
     std::string getHost()       { std::lock_guard<std::mutex> l(mutex); return host; }
     std::string getLmStudioUrl(){ std::lock_guard<std::mutex> l(mutex); return lmStudioUrl; }
     bool   getLlamacppFlashAttn()     { std::lock_guard<std::mutex> l(mutex); return llamacppFlashAttn; }
+    bool   getLlamacppKvCacheReuse()  { std::lock_guard<std::mutex> l(mutex); return llamacppKvCacheReuse; }
     int    getLlamacppEvalBatchSize() { std::lock_guard<std::mutex> l(mutex); return llamacppEvalBatchSize; }
     int    getLlamacppCtxSize()       { std::lock_guard<std::mutex> l(mutex); return llamacppCtxSize; }
     int    getLlamacppGpuLayers()     { std::lock_guard<std::mutex> l(mutex); return llamacppGpuLayers; }
@@ -247,6 +260,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
     double getLlamacppMinP()          { std::lock_guard<std::mutex> l(mutex); return llamacppMinP; }
     double getLlamacppRepeatPenalty() { std::lock_guard<std::mutex> l(mutex); return llamacppRepeatPenalty; }
     int    getLlamacppModelKeepAlive(){ std::lock_guard<std::mutex> l(mutex); return llamacppModelKeepAlive; }
+    std::string getLlamacppKvCacheType()  { std::lock_guard<std::mutex> l(mutex); return llamacppKvCacheType; }
     std::string getLlamacppBackend()  { std::lock_guard<std::mutex> l(mutex); return llamacppBackend; }
     std::string getLlamacppTag()      { std::lock_guard<std::mutex> l(mutex); return llamacppTag; }
     bool   getBackendSuggestionDismissed() { std::lock_guard<std::mutex> l(mutex); return backendSuggestionDismissed; }
@@ -272,6 +286,7 @@ private:
         root["systemPrompt"]               = systemPrompt;
         root["lmStudioUrl"]                = lmStudioUrl;
         root["llamacppFlashAttn"]          = llamacppFlashAttn;
+        root["llamacppKvCacheReuse"]       = llamacppKvCacheReuse;
         root["llamacppEvalBatchSize"]      = llamacppEvalBatchSize;
         root["llamacppCtxSize"]            = llamacppCtxSize;
         root["llamacppGpuLayers"]          = llamacppGpuLayers;
@@ -281,6 +296,7 @@ private:
         root["llamacppMinP"]               = llamacppMinP;
         root["llamacppRepeatPenalty"]      = llamacppRepeatPenalty;
         root["llamacppModelKeepAlive"]     = llamacppModelKeepAlive;
+        root["llamacppKvCacheType"]        = llamacppKvCacheType;
         root["llamacppBackend"]            = llamacppBackend;
         root["llamacppTag"]                = llamacppTag;
         root["backendSuggestionDismissed"] = backendSuggestionDismissed;

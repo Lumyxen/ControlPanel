@@ -79,12 +79,15 @@ function populateLlamaCppFields(root, s) {
 	if (!s) return;
 	const fa = root.querySelector('#llamacpp-flash-attn');
 	if (fa && s.llamacppFlashAttn != null) fa.checked = Boolean(s.llamacppFlashAttn);
+	const kvr = root.querySelector('#llamacpp-kv-cache-reuse');
+	if (kvr && s.llamacppKvCacheReuse != null) kvr.checked = Boolean(s.llamacppKvCacheReuse);
 	const set = (id, v) => { const el = root.querySelector(id); if (el && v != null) el.value = v; };
 	set('#llamacpp-eval-batch-size', s.llamacppEvalBatchSize);
 	set('#llamacpp-ctx-size',        s.llamacppCtxSize);
 	set('#llamacpp-gpu-layers',      s.llamacppGpuLayers);
 	set('#llamacpp-threads',         s.llamacppThreads);
 	set('#llamacpp-threads-batch',   s.llamacppThreadsBatch);
+	set('#llamacpp-kv-cache-type',   s.llamacppKvCacheType);
 	const setSl = (sid, nid, v) => {
 		const sl = root.querySelector(sid), num = root.querySelector(nid);
 		if (v == null) return; if (sl) sl.value = v; if (num) num.value = v;
@@ -182,7 +185,7 @@ async function startBuildInSettings(root, backend, tag, btn) {
 			const lines = Array.isArray(ld.lines) ? ld.lines :[];
 
 			let dlPct = -1;
-			const terminalLines = [];
+			const terminalLines =[];
 			// Regex to match and strip ANSI escape codes safely
 			const ansiRegex = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
 
@@ -359,7 +362,7 @@ async function initBackendSelector(root) {
 	}
 	loading.remove();
 
-	const allBackends = Array.isArray(data.all) ? data.all : ['cpu','cuda','rocm','vulkan'];
+	const allBackends = Array.isArray(data.all) ? data.all :['cpu','cuda','rocm','vulkan'];
 	const available   = Array.isArray(data.available) ? data.available :[];
 	const hardware    = Array.isArray(data.hardware)  ? data.hardware  :[];
 	const prereqs     = (data.prereqs && typeof data.prereqs === 'object') ? data.prereqs : {};
@@ -368,7 +371,7 @@ async function initBackendSelector(root) {
 	if (tagInput)    tagInput.value = tag;
 	if (activeLabel) activeLabel.textContent = active === 'none' ? 'None' : (BACKEND_LABELS[active] || active.toUpperCase());
 
-	for (const backend of ['auto', ...allBackends]) {
+	for (const backend of['auto', ...allBackends]) {
 		const isBuilt     = backend === 'auto' || available.includes(backend);
 		const hasHardware = backend === 'auto' || hardware.includes(backend);
 		const row = document.createElement('div');
@@ -503,7 +506,7 @@ export function initSettingsPage(root) {
 		accentGrid.addEventListener('keydown', (e) => {
 			const nav =['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'];
 			if (!nav.includes(e.key) && e.key !== ' ' && e.key !== 'Enter') return;
-			const items = [...accentGrid.querySelectorAll('button[data-accent][role="radio"]')]; if (!items.length) return;
+			const items =[...accentGrid.querySelectorAll('button[data-accent][role="radio"]')]; if (!items.length) return;
 			const cur = items.findIndex(el => el.classList.contains('selected'));
 			if (nav.includes(e.key)) {
 				e.preventDefault();
@@ -550,7 +553,7 @@ export function initSettingsPage(root) {
 
 	initBackendSelector(root).catch(console.warn);
 
-	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#system-prompt-input','#lmstudio-url-input','#llamacpp-flash-attn','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty','#llamacpp-keep-alive-slider'];
+	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#system-prompt-input','#lmstudio-url-input','#llamacpp-flash-attn','#llamacpp-kv-cache-reuse','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty','#llamacpp-keep-alive-slider','#llamacpp-kv-cache-type'];
 	const unsub = SettingsStore.subscribe((s) => {
 		const focused = document.activeElement;
 		if (!watchedFields.some(sel => root.querySelector(sel) === focused)) { populateAISettingsFields(root, s); populateLlamaCppFields(root, s); }
@@ -609,11 +612,13 @@ export function initSettingsPage(root) {
 			try {
 				await SettingsStore.save({
 					llamacppFlashAttn:     root.querySelector('#llamacpp-flash-attn')?.checked ?? true,
+					llamacppKvCacheReuse:  root.querySelector('#llamacpp-kv-cache-reuse')?.checked ?? true,
 					llamacppEvalBatchSize: parseInt(root.querySelector('#llamacpp-eval-batch-size')?.value ?? '2048', 10) || 2048,
 					llamacppCtxSize:       parseInt(root.querySelector('#llamacpp-ctx-size')?.value ?? '0',    10) || 0,
 					llamacppGpuLayers:     parseInt(root.querySelector('#llamacpp-gpu-layers')?.value ?? '0',  10) || 0,
 					llamacppThreads:       parseInt(root.querySelector('#llamacpp-threads')?.value ?? '0',     10) || 0,
 					llamacppThreadsBatch:  parseInt(root.querySelector('#llamacpp-threads-batch')?.value ?? '0', 10) || 0,
+					llamacppKvCacheType:   root.querySelector('#llamacpp-kv-cache-type')?.value ?? 'f16',
 					llamacppTopP:          parseFloat(root.querySelector('#llamacpp-top-p')?.value ?? '0.9')   || 0.9,
 					llamacppMinP:          parseFloat(root.querySelector('#llamacpp-min-p')?.value ?? '0.05')  || 0.05,
 					llamacppRepeatPenalty: parseFloat(root.querySelector('#llamacpp-repeat-penalty')?.value ?? '1.15') || 1.15,
