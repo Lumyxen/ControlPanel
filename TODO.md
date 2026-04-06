@@ -37,10 +37,6 @@
 - llama.cpp hardware usage configuration
 - Tone down llama.cpp max compute usage to allow computer use during generation
   - Ability to return to maximum usage in settings
-- KV cache reuse
-- KV Quantisation
-  - Reduce memory usage at the cost of decreasing context quality
-- Button to go all the way to bottom of chat history
 - Be able to scroll up and stop auto-scroll or scroll down and re-enter auto-scroll
 - Center LaTeX formatting
   - Better live updating of the formatting
@@ -305,6 +301,7 @@
 - Linux, Windows, and ARM support for back-end
   - Master binary with data being saved in ./data/
 - Chat history
+  - Scroll-to-bottom button
 - Multiple chats
 - Multiple API implementations
   - LM Studio Server

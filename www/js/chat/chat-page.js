@@ -72,9 +72,9 @@ function htmlToMarkdown(el) {
 		if (tag === 'h1') { text += '# '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
 		if (tag === 'h2') { text += '## '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
 		if (tag === 'h3') { text += '### '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
-		if (tag === 'h4') { text += '#### '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
+		if (tag === 'h4') { text += '#### ';[...node.childNodes].forEach(walk); text += '\n\n'; return; }
 		if (tag === 'h5') { text += '##### '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
-		if (tag === 'h6') { text += '###### '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
+		if (tag === 'h6') { text += '###### ';[...node.childNodes].forEach(walk); text += '\n\n'; return; }
 		if (tag === 'ul') { [...node.childNodes].forEach(walk); text += '\n'; return; }
 		if (tag === 'ol') { let i = 0; [...node.childNodes].forEach(c => { if (c.nodeType === 1 && c.tagName.toLowerCase() === 'li') { i++; text += i + '. '; walk(c); text += '\n'; } else { walk(c); } }); text += '\n'; return; }
 		if (tag === 'hr') { text += '\n---\n\n'; return; }
@@ -86,7 +86,7 @@ function htmlToMarkdown(el) {
 		if (tag === 'tr') { [...node.childNodes].forEach(walk); return; }
 		if (tag === 'th') { text += '| **'; [...node.childNodes].forEach(walk); text += '** '; return; }
 		if (tag === 'td') { text += '| '; [...node.childNodes].forEach(walk); text += ' '; return; }
-		if (tag === 'blockquote') { text += '> '; [...node.childNodes].forEach(walk); text += '\n'; return; }
+		if (tag === 'blockquote') { text += '> ';[...node.childNodes].forEach(walk); text += '\n'; return; }
 		[...node.childNodes].forEach(walk);
 	};
 	[...el.childNodes].forEach(walk);
@@ -134,7 +134,35 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		typingEl: null, typingTimeout: null, streamAbort: null,
 		flushResponse: null, isGenerating: false,
 		liveGeneratingNode: null, activeStreamId: null,
+		isScrolledUp: false,
 	};
+
+	const contentEl = messages.closest('.content') || messages;
+	const scrollToBottomBtn = root.querySelector('#scrollToBottomBtn');
+
+	const checkScroll = () => {
+		if (!scrollToBottomBtn) return;
+		const scrollBottom = contentEl.scrollHeight - contentEl.scrollTop - contentEl.clientHeight;
+		uiState.isScrolledUp = scrollBottom > 150;
+		
+		if (uiState.isScrolledUp) {
+			scrollToBottomBtn.classList.add('visible');
+		} else {
+			scrollToBottomBtn.classList.remove('visible');
+		}
+	};
+
+	contentEl.addEventListener('scroll', checkScroll, { signal });
+	window.addEventListener('resize', checkScroll, { signal });
+
+	if (scrollToBottomBtn) {
+		scrollToBottomBtn.addEventListener('click', () => {
+			contentEl.scrollTo({
+				top: contentEl.scrollHeight,
+				behavior: 'smooth'
+			});
+		}, { signal });
+	}
 
 	const updateLiveContext = () => {
 		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
@@ -146,7 +174,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			const node = getNode(ensureGraph(chat), uiState.editingNodeId);
 			if (node) {
 				extra -= estimateNodeTokens(node);
-				let draftParts = [];
+				let draftParts =[];
 				if (node.parts) {
 					let set = false;
 					for (const p of node.parts) {
@@ -226,6 +254,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	const startReply = async (parentUserNodeId) => {
 		stopTyping();
 		uiState.typingEl = showTyping(messages);
+		checkScroll();
 		setGeneratingState(true);
 
 		const activeChatId    = getCurrentChatId();
@@ -266,7 +295,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const estimatedPromptTokens = Math.ceil(conversationHistory.length / 3) + 200;
 		if (estimatedPromptTokens + maxTokens > contextLimit) maxTokens = Math.max(256, contextLimit - estimatedPromptTokens);
 
-		let rawStreamText = '', officialReasoningText = '', activeToolCalls = [], errorFromStream = null, isSaved = false;
+		let rawStreamText = '', officialReasoningText = '', activeToolCalls =[], errorFromStream = null, isSaved = false;
 
 		const latexStreamProcessor = new StreamProcessor({
 			debounceMs: 200,
@@ -317,21 +346,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					if (chunk.error) {
 						errorFromStream = typeof chunk.error === 'object' ? (chunk.error.message || JSON.stringify(chunk.error)) : String(chunk.error);
 						return;
-					}
-					if (chunk.type === 'retract') {
-						// Backend detected a tool call after streaming — clear the
-						// buffered text so we don't duplicate it in the final output.
-						// Tool call events will follow immediately after.
-						rawStreamText = '';
-						officialReasoningText = '';
-						if (uiState.typingEl) {
-							uiState.typingEl.querySelector('.chat-message-text')?.remove();
-							uiState.typingEl.querySelector('.message-reasoning')?.remove();
-						}
-						return;
-					}
-					if (chunk.type === 'tool_execution' && chunk.tool_call) {
-						activeToolCalls.push({ id: chunk.tool_call.id, name: chunk.tool_call.name, input: chunk.tool_call.arguments, output: chunk.tool_call.output });
 					}
 					if (chunk.type === 'retract') {
 						// Backend detected a tool call after streaming — clear the
@@ -425,8 +439,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					} else {
 						mc.querySelector('.chat-message-text')?.remove();
 					}
-					const se = messages.closest('.content') || messages;
-					se.scrollTop = se.scrollHeight;
+					
+					if (!uiState.isScrolledUp) {
+					    contentEl.scrollTop = contentEl.scrollHeight;
+					} else {
+					    checkScroll();
+					}
 				},
 				currentSignal, systemPrompt, temperature, contextLimit, uiState.activeStreamId, visionMessages,
 			);
@@ -549,12 +567,14 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					if (empty) empty.hidden = true;
 					startReply(sibling.id);
 				}
+				checkScroll();
 			},
 			thread: () => {
 				const newNode = branchFromNode(graph, nodeId, { preserveSelectedTail: true });
 				if (!newNode) return;
 				recomputeLeafId(graph); chat.updatedAt = Date.now(); saveChats();
 				rerender(); setActiveCallback?.();
+				checkScroll();
 			},
 			back: () => {
 				setSelectedChildId(graph, node.parentId, nodeId, -1);
@@ -578,9 +598,10 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				resetEdit(); rerender(); setActiveCallback?.();
 				if (empty) empty.hidden = true;
 				startReply(userNodeId);
+				checkScroll();
 			},
 			copy: async () => {
-				const chunks = [];
+				const chunks =[];
 				if (node.reasoning && node.reasoning.trim()) {
 					chunks.push(`<think>\n${node.reasoning.trim()}\n</think>`);
 				}
@@ -669,11 +690,11 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 		if (isFullMessageSelection) {
 			// Full message(s) selected — use raw stored content including reasoning
-			const parts = [];
+			const parts =[];
 			for (const m of selMsgEls) {
 				const node = graph ? getNode(graph, m.dataset.nodeId) : null;
 				if (!node) continue;
-				const chunks = [];
+				const chunks =[];
 				if (node.reasoning && node.reasoning.trim()) {
 					chunks.push(`<think>\n${node.reasoning.trim()}\n</think>`);
 				}
@@ -723,7 +744,10 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		rerender(); renderChatList(); setActiveCallback?.();
 		const sendNoReply = form.dataset.sendNoReply === '1';
 		delete form.dataset.sendNoReply;
-		if (!sendNoReply && userNode?.id) startReply(userNode.id);
+		if (!sendNoReply && userNode?.id) {
+			startReply(userNode.id);
+		}
+		checkScroll();
 	}, { signal });
 
 	rerender();

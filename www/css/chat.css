@@ -66,6 +66,47 @@
     z-index: 10;
 }
 
+/* Scroll to bottom button */
+.scroll-to-bottom-btn {
+    position: absolute;
+    top: -48px;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-none, 0);
+    background: color-mix(in srgb, var(--panel) 90%, transparent);
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 20;
+    transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.scroll-to-bottom-btn.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+}
+
+.scroll-to-bottom-btn:hover {
+    background: var(--panel);
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+.scroll-to-bottom-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
 /* Attachments (above textarea) */
 .chat-attachments {
     display: flex;
