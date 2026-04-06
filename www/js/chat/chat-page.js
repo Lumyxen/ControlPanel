@@ -67,15 +67,15 @@ function htmlToMarkdown(el) {
 			else { text += '```\n' + node.textContent + '\n```'; }
 			return;
 		}
-		if (tag === 'a') { const href = node.getAttribute('href'); const inner = [...node.childNodes].map(n => n.textContent).join(''); text += href ? `[${inner}](${href})` : inner; return; }
-		if (tag === 'li') { text += '- '; [...node.childNodes].forEach(walk); text += '\n'; return; }
+		if (tag === 'a') { const href = node.getAttribute('href'); const inner =[...node.childNodes].map(n => n.textContent).join(''); text += href ? `[${inner}](${href})` : inner; return; }
+		if (tag === 'li') { text += '- ';[...node.childNodes].forEach(walk); text += '\n'; return; }
 		if (tag === 'h1') { text += '# '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
 		if (tag === 'h2') { text += '## '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
 		if (tag === 'h3') { text += '### '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
 		if (tag === 'h4') { text += '#### ';[...node.childNodes].forEach(walk); text += '\n\n'; return; }
 		if (tag === 'h5') { text += '##### '; [...node.childNodes].forEach(walk); text += '\n\n'; return; }
 		if (tag === 'h6') { text += '###### ';[...node.childNodes].forEach(walk); text += '\n\n'; return; }
-		if (tag === 'ul') { [...node.childNodes].forEach(walk); text += '\n'; return; }
+		if (tag === 'ul') {[...node.childNodes].forEach(walk); text += '\n'; return; }
 		if (tag === 'ol') { let i = 0; [...node.childNodes].forEach(c => { if (c.nodeType === 1 && c.tagName.toLowerCase() === 'li') { i++; text += i + '. '; walk(c); text += '\n'; } else { walk(c); } }); text += '\n'; return; }
 		if (tag === 'hr') { text += '\n---\n\n'; return; }
 		if (tag === 'del' || tag === 's') { text += '~~'; [...node.childNodes].forEach(walk); text += '~~'; return; }
@@ -85,9 +85,8 @@ function htmlToMarkdown(el) {
 		if (tag === 'tbody') { [...node.childNodes].forEach(walk); return; }
 		if (tag === 'tr') { [...node.childNodes].forEach(walk); return; }
 		if (tag === 'th') { text += '| **'; [...node.childNodes].forEach(walk); text += '** '; return; }
-		if (tag === 'td') { text += '| '; [...node.childNodes].forEach(walk); text += ' '; return; }
-		if (tag === 'blockquote') { text += '> ';[...node.childNodes].forEach(walk); text += '\n'; return; }
-		[...node.childNodes].forEach(walk);
+		if (tag === 'td') { text += '| ';[...node.childNodes].forEach(walk); text += ' '; return; }
+		if (tag === 'blockquote') { text += '> ';[...node.childNodes].forEach(walk); text += '\n'; return; }[...node.childNodes].forEach(walk);
 	};
 	[...el.childNodes].forEach(walk);
 	return text.replace(/\n{3,}/g, '\n\n').trim();
@@ -140,10 +139,19 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	const contentEl = messages.closest('.content') || messages;
 	const scrollToBottomBtn = root.querySelector('#scrollToBottomBtn');
 
+	let lastScrollTop = contentEl.scrollTop;
 	const checkScroll = () => {
 		if (!scrollToBottomBtn) return;
-		const scrollBottom = contentEl.scrollHeight - contentEl.scrollTop - contentEl.clientHeight;
-		uiState.isScrolledUp = scrollBottom > 150;
+		const currentScrollTop = contentEl.scrollTop;
+		const scrollBottom = contentEl.scrollHeight - currentScrollTop - contentEl.clientHeight;
+		
+		if (scrollBottom <= 10) {
+			uiState.isScrolledUp = false;
+		} else if (currentScrollTop < lastScrollTop) {
+			uiState.isScrolledUp = true;
+		}
+		
+		lastScrollTop = currentScrollTop;
 		
 		if (uiState.isScrolledUp) {
 			scrollToBottomBtn.classList.add('visible');
@@ -153,7 +161,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	};
 
 	contentEl.addEventListener('scroll', checkScroll, { signal });
-	window.addEventListener('resize', checkScroll, { signal });
+	window.addEventListener('resize', () => {
+		if (!uiState.isScrolledUp) {
+			contentEl.scrollTop = contentEl.scrollHeight;
+		}
+		checkScroll();
+	}, { signal });
 
 	if (scrollToBottomBtn) {
 		scrollToBottomBtn.addEventListener('click', () => {
@@ -672,7 +685,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			return node.parts ? node.parts.filter(p=>p.type==='text').map(p=>p.content).join('') : String(node.content||'');
 		};
 
-		const msgEls = [...messages.querySelectorAll('.chat-message[data-node-id]')];
+		const msgEls =[...messages.querySelectorAll('.chat-message[data-node-id]')];
 		const selMsgEls = msgEls.filter(el => range.intersectsNode(el));
 		if (selMsgEls.length === 0) return;
 

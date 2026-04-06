@@ -37,7 +37,6 @@
 - llama.cpp hardware usage configuration
 - Tone down llama.cpp max compute usage to allow computer use during generation
   - Ability to return to maximum usage in settings
-- Be able to scroll up and stop auto-scroll or scroll down and re-enter auto-scroll
 - Center LaTeX formatting
   - Better live updating of the formatting
 - Better model folder structure (each model has a directory containing .gguf, .mmproj, and .tiktoken/vocab.json)
@@ -302,6 +301,8 @@
   - Master binary with data being saved in ./data/
 - Chat history
   - Scroll-to-bottom button
+- Auto-scrolling on generation
+  - Easily scroll out and scroll back in
 - Multiple chats
 - Multiple API implementations
   - LM Studio Server
