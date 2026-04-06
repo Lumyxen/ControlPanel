@@ -8,6 +8,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <filesystem>
+#include <thread>
 #include <json/json.h>
 
 struct LlamaApi;
@@ -47,6 +48,9 @@ public:
     void unloadLib();
 
     // ── Model lifecycle (public so the reload-model API endpoint can call them) ──
+
+    // Reload the model picking up config changes
+    bool reloadModel();
 
     // Unload the current model (keeps the backend .so loaded).
     void unloadModel();
@@ -108,6 +112,18 @@ private:
     bool        visionEnabled_ = false;
 
     mutable std::mutex              inferMutex_;
+
+    // ── Automatic model unloading ──────────────────────────────────────────────
+    std::mutex              unloadMutex_;
+    std::condition_variable unloadCv_;
+    std::thread             unloadThread_;
+    bool                    unloadThreadRunning_ = false;
+    std::chrono::steady_clock::time_point unloadTime_;
+    bool                    unloadScheduled_ = false;
+
+    void scheduleUnload();
+    void cancelUnload();
+    void unloadWorker();
 
     // ── Service-level abort flag ──────────────────────────────────────────────
     // Set to true by a new inference request before it acquires inferMutex_,

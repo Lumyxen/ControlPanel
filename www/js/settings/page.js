@@ -13,6 +13,12 @@ import { consumePendingBuild } from '../backend-suggest.js';
 
 const BACKEND_LABELS = { auto: 'Auto', cpu: 'CPU', cuda: 'CUDA', rocm: 'ROCm', vulkan: 'Vulkan' };
 
+function formatKeepAlive(val) {
+	if (val === 0) return "Immediate";
+	if (val === 31) return "Infinite";
+	return val + " min" + (val === 1 ? "" : "s");
+}
+
 function showRemoveConfirmation(root, backend, onConfirm) {
 	const overlay = document.createElement('div');
 	overlay.className = 'modal-overlay';
@@ -86,6 +92,17 @@ function populateLlamaCppFields(root, s) {
 	setSl('#llamacpp-top-p-slider',          '#llamacpp-top-p',          s.llamacppTopP);
 	setSl('#llamacpp-min-p-slider',          '#llamacpp-min-p',          s.llamacppMinP);
 	setSl('#llamacpp-repeat-penalty-slider', '#llamacpp-repeat-penalty', s.llamacppRepeatPenalty);
+	
+	if (s.llamacppModelKeepAlive != null) {
+		const sl = root.querySelector('#llamacpp-keep-alive-slider');
+		const disp = root.querySelector('#llamacpp-keep-alive-display');
+		if (sl && disp) {
+			const val = s.llamacppModelKeepAlive === -1 ? 31 : s.llamacppModelKeepAlive;
+			sl.value = val;
+			disp.textContent = formatKeepAlive(val);
+		}
+	}
+
 	if (s.llamacppBackend != null) selectBackendRadio(root, s.llamacppBackend);
 	if (s.llamacppTag != null) { const ti = root.querySelector('#llamacpp-tag-input'); if (ti) ti.value = s.llamacppTag; }
 }
@@ -520,12 +537,20 @@ export function initSettingsPage(root) {
 	linkSliderAndNumber(root.querySelector('#llamacpp-min-p-slider'),          root.querySelector('#llamacpp-min-p'),          0, 1);
 	linkSliderAndNumber(root.querySelector('#llamacpp-repeat-penalty-slider'), root.querySelector('#llamacpp-repeat-penalty'), 1, 2);
 
+	const kaSl = root.querySelector('#llamacpp-keep-alive-slider');
+	const kaDisp = root.querySelector('#llamacpp-keep-alive-display');
+	if (kaSl && kaDisp) {
+		kaSl.addEventListener('input', () => {
+			kaDisp.textContent = formatKeepAlive(parseInt(kaSl.value, 10));
+		});
+	}
+
 	const cached = SettingsStore.get();
 	if (cached) { populateAISettingsFields(root, cached); populateLlamaCppFields(root, cached); }
 
 	initBackendSelector(root).catch(console.warn);
 
-	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#system-prompt-input','#lmstudio-url-input','#llamacpp-flash-attn','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty'];
+	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#system-prompt-input','#lmstudio-url-input','#llamacpp-flash-attn','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty','#llamacpp-keep-alive-slider'];
 	const unsub = SettingsStore.subscribe((s) => {
 		const focused = document.activeElement;
 		if (!watchedFields.some(sel => root.querySelector(sel) === focused)) { populateAISettingsFields(root, s); populateLlamaCppFields(root, s); }
@@ -592,6 +617,10 @@ export function initSettingsPage(root) {
 					llamacppTopP:          parseFloat(root.querySelector('#llamacpp-top-p')?.value ?? '0.9')   || 0.9,
 					llamacppMinP:          parseFloat(root.querySelector('#llamacpp-min-p')?.value ?? '0.05')  || 0.05,
 					llamacppRepeatPenalty: parseFloat(root.querySelector('#llamacpp-repeat-penalty')?.value ?? '1.15') || 1.15,
+					llamacppModelKeepAlive: (() => {
+						const v = parseInt(root.querySelector('#llamacpp-keep-alive-slider')?.value ?? '5', 10);
+						return v === 31 ? -1 : v;
+					})()
 				});
 				try {
 					await fetch('/api/llamacpp/reload-model', { method: 'POST' });

@@ -250,6 +250,7 @@
 
 #### Misc Bugs
 - System Prompt does not count towards used up tokens
+- AI model should only be loaded on first inference, not on runtime
 
 ## Password Manager
 ### Planned Features
@@ -281,6 +282,8 @@
     - Max output tokens fallback
     - Temperature
     - System Prompt
+    - Time to unload models
+      - From immediate (after inference completion), to 1 minute, to 30 minutes, to infinity (unloads only on backend shutdown)
     - llama.cpp build
       - CPU, Vulkan, CUDA, ROCm
   - Customisable theme between all Everforest palette choices and Catppuccin palette choices
@@ -299,10 +302,11 @@
   - llama.cpp internal integration
     - Automatic detect optimal built llama.cpp builds
       - Can manually select builds instead
-    - Popup to suggest a build when either none are built or the optimial one isn't built
-      - Non-intrusive, can select to not show again
-    - Settings section to build any type of build you want
-      - Download and build progress indication including a mini console for output
+        - Settings section to build any type of build you want
+          - Download and build progress indication including a mini console for output
+      - Popup to suggest a build when either none are built or the optimial one isn't built
+        - Non-intrusive, can select to not show again
+    - Model persistent loading for a set amount of time
 - New chat button when sidebar is collapsed
 - Message hover menu
   - AI message regeneration
@@ -324,7 +328,6 @@
     - Renderers
       - MathJax
       - KaTeX
-      - HTML renderer
       - Image export
     - Engines
       - TeX Core

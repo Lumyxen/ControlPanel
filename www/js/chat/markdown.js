@@ -54,7 +54,7 @@ class Renderer {
 				const titleShort = e.fields?.title
 					? escapeHtml(e.fields.title.slice(0, 72) + (e.fields.title.length > 72 ? '…' : ''))
 					: '';
-				const infoParts = [
+				const infoParts =[
 					authorShort ? escapeHtml(authorShort) : null,
 					titleShort ? `<em>${titleShort}</em>` : null,
 					e.fields?.year ? escapeHtml(e.fields.year) : null,
@@ -164,6 +164,7 @@ class Renderer {
 
 	link(href, title, text) {
 		const cleanHref = encodeURI(href).replace(/%25/g, '%');
+		if (/^\s*javascript:/i.test(cleanHref)) return escapeHtml(text); // Prevent XSS
 		let out = `<a href="${escapeHtml(cleanHref)}" class="md-link"`;
 		if (title) out += ` title="${escapeHtml(title)}"`;
 		out += ` target="_blank" rel="noopener noreferrer">${text}</a>`;
@@ -239,15 +240,29 @@ class InlineParser {
 			if (src[0] === '<') {
 				const tagMatch = src.match(/^<[^>]+>/);
 				if (tagMatch) {
-					out += tagMatch[0];
-					src = src.substring(tagMatch[0].length);
+					const tag = tagMatch[0];
+					// Only allow safely whitelisted tags heavily used by our preprocessors
+					const isSafe = /^<\/?(strong|em|code|a|img|ul|ol|li|br|hr|sup|sub|del|s|u|table|thead|tbody|tr|th|td)\b/i.test(tag) ||
+						/class="(?:latex|md|katex|bib)-/.test(tag) ||
+						/^<div style="text-align:/.test(tag) ||
+						/^<a href="[^"]*" target="_blank" rel="noopener noreferrer">/i.test(tag) ||
+						/^<\/a>/i.test(tag) ||
+						/^<\/?(?:svg|path|circle|rect|line|ellipse|polyline|polygon)\b/i.test(tag);
+					
+					if (isSafe) {
+						out += tag;
+					} else {
+						// Escape any unwhitelisted tags so the AI can safely output HTML file contents
+						out += escapeHtml(tag);
+					}
+					src = src.substring(tag.length);
 					continue;
 				}
 			}
 
 			match = src.match(/^<([a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\s\x00-\x1f<>]+)>/);
 			if (match) {
-				out += this.renderer.link(match[1], null, match[1]);
+				out += this.renderer.link(match[1], null, escapeHtml(match[1]));
 				src = src.substring(match[0].length);
 				continue;
 			}
@@ -255,7 +270,7 @@ class InlineParser {
 			if (this.options.gfm) {
 				match = src.match(/^https?:\/\/[^\s<]+[^<.,:;"')\]\s]/);
 				if (match) {
-					out += this.renderer.link(match[0], null, match[0]);
+					out += this.renderer.link(match[0], null, escapeHtml(match[0]));
 					src = src.substring(match[0].length);
 					continue;
 				}
@@ -278,7 +293,7 @@ class InlineParser {
 				if (isImage) {
 					out += this.renderer.image(href, title, linkText);
 				} else {
-					out += this.renderer.link(href, title, linkText);
+					out += this.renderer.link(href, title, this.parse(linkText));
 				}
 				src = src.substring(match[0].length);
 				continue;
@@ -286,42 +301,42 @@ class InlineParser {
 
 			match = src.match(/^\*\*\*([\s\S]+?)\*\*\*(?!\*)/);
 			if (match) {
-				out += this.renderer.strong(this.renderer.em(match[1]));
+				out += this.renderer.strong(this.renderer.em(this.parse(match[1])));
 				src = src.substring(match[0].length);
 				continue;
 			}
 
 			match = src.match(/^___([\s\S]+?)___(?!_)/);
 			if (match) {
-				out += this.renderer.strong(this.renderer.em(match[1]));
+				out += this.renderer.strong(this.renderer.em(this.parse(match[1])));
 				src = src.substring(match[0].length);
 				continue;
 			}
 
 			match = src.match(/^\*\*([\s\S]+?)\*\*(?!\*)/);
 			if (match) {
-				out += this.renderer.strong(match[1]);
+				out += this.renderer.strong(this.parse(match[1]));
 				src = src.substring(match[0].length);
 				continue;
 			}
 
 			match = src.match(/^__([\s\S]+?)__(?!_)/);
 			if (match) {
-				out += this.renderer.strong(match[1]);
+				out += this.renderer.strong(this.parse(match[1]));
 				src = src.substring(match[0].length);
 				continue;
 			}
 
 			match = src.match(/^\*([\s\S]+?)\*(?!\*)/);
 			if (match) {
-				out += this.renderer.em(match[1]);
+				out += this.renderer.em(this.parse(match[1]));
 				src = src.substring(match[0].length);
 				continue;
 			}
 
 			match = src.match(/^_([\s\S]+?)_(?!_)/);
 			if (match) {
-				out += this.renderer.em(match[1]);
+				out += this.renderer.em(this.parse(match[1]));
 				src = src.substring(match[0].length);
 				continue;
 			}
@@ -331,7 +346,7 @@ class InlineParser {
 				match = src.match(/^(`+)([^`]+)\1(?!`)/);
 			}
 			if (match) {
-				out += this.renderer.codespan(match[2]);
+				out += this.renderer.codespan(escapeHtml(match[2]));
 				src = src.substring(match[0].length);
 				continue;
 			}
@@ -346,21 +361,22 @@ class InlineParser {
 			if (this.options.gfm) {
 				match = src.match(/^~~([\s\S]+?)~~(?!~)/);
 				if (match) {
-					out += this.renderer.del(match[1]);
+					out += this.renderer.del(this.parse(match[1]));
 					src = src.substring(match[0].length);
 					continue;
 				}
 			}
 
+			// Catch-all: properly escapes any unmatched character that isn't parsed
 			match = src.match(/^[\s\S]+?(?=[\\<!\[`*~_]|https?:\/\/|\n|$)/);
 			if (match) {
-				out += match[0];
+				out += escapeHtml(match[0]);
 				src = src.substring(match[0].length);
 				continue;
 			}
 
 			if (src) {
-				out += src[0];
+				out += escapeHtml(src[0]);
 				src = src.substring(1);
 			}
 		}
@@ -397,7 +413,7 @@ function tryParseTable(src) {
 		return null;
 	});
 
-	const bodyLines = [];
+	const bodyLines =[];
 	for (let i = 2; i < lines.length; i++) {
 		const line = lines[i];
 		if (line.trim() === '') break;
@@ -424,7 +440,7 @@ function tryParseDefList(src) {
 	const defLineRx = /^ {0,3}:[ \t]+/;
 	const termLineRx = /^[^\n\S]*[^\n\s:][^\n]*$/;
 
-	const items = [];
+	const items =[];
 	let consumed = 0;
 	let i = 0;
 
@@ -453,7 +469,7 @@ function tryParseDefList(src) {
 			if (nextDefIdx < lines.length && defLineRx.test(lines[nextDefIdx])) {
 				const text = line.trim();
 				if (text) {
-					items.push({ term: text, defs: [] });
+					items.push({ term: text, defs:[] });
 				}
 				consumed += line.length + 1;
 				i++;
@@ -464,7 +480,7 @@ function tryParseDefList(src) {
 
 		const text = line.trim();
 		if (text) {
-			items.push({ term: text, defs: [] });
+			items.push({ term: text, defs:[] });
 		}
 		consumed += line.length + 1;
 		i++;
@@ -487,7 +503,7 @@ function tryParseList(src) {
 
 	const lines = src.split('\n');
 	const items = [];
-	let currentLines = [];
+	let currentLines =[];
 	let inItem = false;
 	let consumed = 0;
 
@@ -569,7 +585,7 @@ function parseListItem(raw) {
 }
 
 function tokenize(src) {
-	const tokens = [];
+	const tokens =[];
 	src = (src || '').replace(/\r\n|\r/g, '\n');
 
 	while (src) {
@@ -638,7 +654,18 @@ function tokenize(src) {
 
 		const htmlBlockMatch = src.match(/^ {0,3}<(div|details|summary|table|blockquote|pre|ul|ol|li|p)[\s>][\s\S]*?(?:<\/\1>|$)/i);
 		if (htmlBlockMatch) {
-			tokens.push({ type: 'html', text: htmlBlockMatch[0].trim() });
+			const block = htmlBlockMatch[0].trim();
+			// Only allow explicitly known, injected HTML blocks from preprocessors
+			const isSafe = /class="(?:latex|md|katex|bib)-/.test(block) ||
+				/^<div style="text-align:/.test(block) ||
+				/^<hr>/.test(block);
+
+			if (isSafe) {
+				tokens.push({ type: 'html', text: block });
+			} else {
+				// Will be treated safely as a paragraph and fully escaped later
+				tokens.push({ type: 'paragraph', text: block });
+			}
 			src = src.substring(htmlBlockMatch[0].length);
 			continue;
 		}
@@ -679,16 +706,6 @@ function renderToken(token, renderer, inlineParser) {
 				body += renderer.listitem(renderItemContent(item.text, inlineParser, renderer), item.task, item.checked);
 			}
 			return renderer.list(body, token.ordered, token.start);
-		}
-		case 'deflist': {
-			let body = '';
-			for (const item of token.items) {
-				body += `<dt class="md-deflist-term">${inlineParser.parse(item.term)}</dt>\n`;
-				for (const def of item.defs) {
-					body += `<dd class="md-deflist-def">${inlineParser.parse(def)}</dd>\n`;
-				}
-			}
-			return renderer.deflist(body);
 		}
 		case 'deflist': {
 			let body = '';
@@ -765,25 +782,25 @@ function highlightCode(code, language) {
 	src = escapeHtml(src);
 
 	const keywords = {
-		javascript: ['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default'],
-		typescript: ['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'implements', 'interface', 'type', 'enum', 'namespace', 'module', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default', 'string', 'number', 'boolean', 'any', 'unknown', 'never', 'object', 'symbol', 'bigint', 'as', 'satisfies', 'infer', 'keyof', 'readonly', 'abstract', 'private', 'protected', 'public', 'static', 'get', 'set', 'declare'],
-		python: ['def', 'class', 'if', 'elif', 'else', 'for', 'while', 'return', 'yield', 'lambda', 'import', 'from', 'as', 'try', 'except', 'finally', 'raise', 'with', 'pass', 'break', 'continue', 'del', 'assert', 'global', 'nonlocal', 'True', 'False', 'None', 'and', 'or', 'not', 'in', 'is', 'async', 'await', 'match', 'case'],
-		java: ['public', 'private', 'protected', 'static', 'final', 'abstract', 'class', 'interface', 'extends', 'implements', 'return', 'void', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'default', 'try', 'catch', 'finally', 'throw', 'throws', 'new', 'this', 'super', 'true', 'false', 'null', 'import', 'package', 'instanceof', 'synchronized', 'volatile', 'transient', 'native', 'strictfp', 'const', 'goto'],
-		cpp: ['int', 'float', 'double', 'char', 'void', 'bool', 'auto', 'const', 'static', 'volatile', 'extern', 'inline', 'virtual', 'explicit', 'mutable', 'constexpr', 'consteval', 'constinit', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'goto', 'try', 'catch', 'throw', 'class', 'struct', 'union', 'enum', 'typedef', 'typename', 'template', 'namespace', 'using', 'public', 'private', 'protected', 'friend', 'operator', 'new', 'delete', 'sizeof', 'typeid', 'decltype', 'nullptr', 'true', 'false', 'this', 'override', 'final', 'noexcept', 'concept', 'requires', 'co_await', 'co_return', 'co_yield'],
-		c: ['int', 'float', 'double', 'char', 'void', 'short', 'long', 'signed', 'unsigned', 'const', 'static', 'volatile', 'extern', 'auto', 'register', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'goto', 'struct', 'union', 'enum', 'typedef', 'sizeof', 'inline', 'restrict'],
-		go: ['package', 'import', 'func', 'var', 'const', 'type', 'struct', 'interface', 'map', 'chan', 'if', 'else', 'for', 'range', 'switch', 'case', 'default', 'break', 'continue', 'fallthrough', 'return', 'goto', 'defer', 'go', 'select', 'make', 'new', 'len', 'cap', 'append', 'copy', 'close', 'delete', 'panic', 'recover', 'nil', 'true', 'false', 'iota'],
-		rust: ['fn', 'let', 'mut', 'const', 'static', 'type', 'struct', 'enum', 'trait', 'impl', 'pub', 'use', 'mod', 'crate', 'super', 'self', 'if', 'else', 'match', 'while', 'loop', 'for', 'in', 'break', 'continue', 'return', 'async', 'await', 'move', 'ref', 'where', 'unsafe', 'extern', 'as', 'dyn', 'yield', 'macro', 'union', 'typeof'],
+		javascript:['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default'],
+		typescript:['const', 'let', 'var', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'class', 'extends', 'implements', 'interface', 'type', 'enum', 'namespace', 'module', 'import', 'export', 'from', 'async', 'await', 'try', 'catch', 'finally', 'throw', 'new', 'this', 'super', 'true', 'false', 'null', 'undefined', 'typeof', 'instanceof', 'void', 'delete', 'yield', 'default', 'string', 'number', 'boolean', 'any', 'unknown', 'never', 'object', 'symbol', 'bigint', 'as', 'satisfies', 'infer', 'keyof', 'readonly', 'abstract', 'private', 'protected', 'public', 'static', 'get', 'set', 'declare'],
+		python:['def', 'class', 'if', 'elif', 'else', 'for', 'while', 'return', 'yield', 'lambda', 'import', 'from', 'as', 'try', 'except', 'finally', 'raise', 'with', 'pass', 'break', 'continue', 'del', 'assert', 'global', 'nonlocal', 'True', 'False', 'None', 'and', 'or', 'not', 'in', 'is', 'async', 'await', 'match', 'case'],
+		java:['public', 'private', 'protected', 'static', 'final', 'abstract', 'class', 'interface', 'extends', 'implements', 'return', 'void', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue', 'default', 'try', 'catch', 'finally', 'throw', 'throws', 'new', 'this', 'super', 'true', 'false', 'null', 'import', 'package', 'instanceof', 'synchronized', 'volatile', 'transient', 'native', 'strictfp', 'const', 'goto'],
+		cpp:['int', 'float', 'double', 'char', 'void', 'bool', 'auto', 'const', 'static', 'volatile', 'extern', 'inline', 'virtual', 'explicit', 'mutable', 'constexpr', 'consteval', 'constinit', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'goto', 'try', 'catch', 'throw', 'class', 'struct', 'union', 'enum', 'typedef', 'typename', 'template', 'namespace', 'using', 'public', 'private', 'protected', 'friend', 'operator', 'new', 'delete', 'sizeof', 'typeid', 'decltype', 'nullptr', 'true', 'false', 'this', 'override', 'final', 'noexcept', 'concept', 'requires', 'co_await', 'co_return', 'co_yield'],
+		c:['int', 'float', 'double', 'char', 'void', 'short', 'long', 'signed', 'unsigned', 'const', 'static', 'volatile', 'extern', 'auto', 'register', 'if', 'else', 'switch', 'case', 'default', 'for', 'while', 'do', 'break', 'continue', 'return', 'goto', 'struct', 'union', 'enum', 'typedef', 'sizeof', 'inline', 'restrict'],
+		go:['package', 'import', 'func', 'var', 'const', 'type', 'struct', 'interface', 'map', 'chan', 'if', 'else', 'for', 'range', 'switch', 'case', 'default', 'break', 'continue', 'fallthrough', 'return', 'goto', 'defer', 'go', 'select', 'make', 'new', 'len', 'cap', 'append', 'copy', 'close', 'delete', 'panic', 'recover', 'nil', 'true', 'false', 'iota'],
+		rust:['fn', 'let', 'mut', 'const', 'static', 'type', 'struct', 'enum', 'trait', 'impl', 'pub', 'use', 'mod', 'crate', 'super', 'self', 'if', 'else', 'match', 'while', 'loop', 'for', 'in', 'break', 'continue', 'return', 'async', 'await', 'move', 'ref', 'where', 'unsafe', 'extern', 'as', 'dyn', 'yield', 'macro', 'union', 'typeof'],
 		json: ['true', 'false', 'null'],
-		html: ['DOCTYPE', 'html', 'head', 'body', 'title', 'meta', 'link', 'script', 'style', 'div', 'span', 'p', 'a', 'img', 'br', 'hr', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'form', 'input', 'button', 'select', 'option', 'textarea', 'label', 'nav', 'header', 'footer', 'main', 'section', 'article', 'aside'],
-		css: ['import', 'media', 'keyframes', 'font-face', 'supports', 'charset', 'important', 'color', 'background', 'border', 'margin', 'padding', 'width', 'height', 'display', 'position', 'top', 'left', 'right', 'bottom', 'float', 'clear', 'font', 'text', 'align', 'content', 'overflow', 'visibility', 'opacity', 'transform', 'transition', 'animation', 'flex', 'grid', 'min', 'max', 'calc', 'var'],
-		sql: ['SELECT', 'FROM', 'WHERE', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TABLE', 'INDEX', 'VIEW', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'FULL', 'CROSS', 'ON', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'ALL', 'DISTINCT', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'BETWEEN', 'LIKE', 'EXISTS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'IF', 'CAST', 'CONVERT', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'VALUES', 'INTO', 'SET'],
-		bash: ['if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'for', 'while', 'until', 'do', 'done', 'in', 'function', 'return', 'break', 'continue', 'shift', 'exit', 'export', 'local', 'readonly', 'unset', 'declare', 'typeset', 'source', 'alias', 'unalias', 'trap', 'wait', 'exec', 'eval', 'echo', 'printf', 'read', 'test', 'true', 'false', 'cd', 'pwd', 'ls', 'cat', 'grep', 'awk', 'sed', 'cut', 'sort', 'uniq', 'head', 'tail', 'chmod', 'chown', 'mkdir', 'rm', 'cp', 'mv', 'tar', 'gzip', 'gunzip', 'find', 'xargs', 'curl', 'wget', 'ssh', 'scp', 'sudo', 'su', 'ps', 'kill', 'top', 'df', 'du', 'free', 'uptime', 'date', 'time', 'sleep', 'jobs', 'fg', 'bg', 'disown', 'nohup', 'env', 'set', 'shopt', 'getopts', 'command', 'builtin', 'type', 'hash', 'ulimit', 'umask', 'caller', 'logout', 'exit'],
-		sh: ['if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'for', 'while', 'until', 'do', 'done', 'in', 'function', 'return', 'break', 'continue', 'exit', 'export', 'local', 'echo', 'printf', 'read', 'cd', 'ls', 'cat', 'grep', 'awk', 'sed', 'true', 'false'],
-		latex: ['documentclass', 'usepackage', 'begin', 'end', 'section', 'subsection', 'subsubsection', 'chapter', 'title', 'author', 'date', 'maketitle', 'tableofcontents', 'newcommand', 'renewcommand', 'include', 'input', 'cite', 'ref', 'label', 'bibliography', 'bibliographystyle', 'usebibliography', 'addbibresource', 'printbibliography'],
-		tex: ['documentclass', 'usepackage', 'begin', 'end', 'section', 'subsection', 'subsubsection', 'chapter', 'title', 'author', 'date', 'maketitle', 'tableofcontents', 'newcommand', 'renewcommand', 'include', 'input', 'cite', 'ref', 'label', 'bibliography', 'bibliographystyle', 'usebibliography', 'addbibresource', 'printbibliography'],
+		html:['DOCTYPE', 'html', 'head', 'body', 'title', 'meta', 'link', 'script', 'style', 'div', 'span', 'p', 'a', 'img', 'br', 'hr', 'table', 'tr', 'td', 'th', 'thead', 'tbody', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'form', 'input', 'button', 'select', 'option', 'textarea', 'label', 'nav', 'header', 'footer', 'main', 'section', 'article', 'aside'],
+		css:['import', 'media', 'keyframes', 'font-face', 'supports', 'charset', 'important', 'color', 'background', 'border', 'margin', 'padding', 'width', 'height', 'display', 'position', 'top', 'left', 'right', 'bottom', 'float', 'clear', 'font', 'text', 'align', 'content', 'overflow', 'visibility', 'opacity', 'transform', 'transition', 'animation', 'flex', 'grid', 'min', 'max', 'calc', 'var'],
+		sql:['SELECT', 'FROM', 'WHERE', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TABLE', 'INDEX', 'VIEW', 'JOIN', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'FULL', 'CROSS', 'ON', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'ALL', 'DISTINCT', 'AS', 'AND', 'OR', 'NOT', 'NULL', 'IS', 'IN', 'BETWEEN', 'LIKE', 'EXISTS', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'IF', 'CAST', 'CONVERT', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'VALUES', 'INTO', 'SET'],
+		bash:['if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'for', 'while', 'until', 'do', 'done', 'in', 'function', 'return', 'break', 'continue', 'shift', 'exit', 'export', 'local', 'readonly', 'unset', 'declare', 'typeset', 'source', 'alias', 'unalias', 'trap', 'wait', 'exec', 'eval', 'echo', 'printf', 'read', 'test', 'true', 'false', 'cd', 'pwd', 'ls', 'cat', 'grep', 'awk', 'sed', 'cut', 'sort', 'uniq', 'head', 'tail', 'chmod', 'chown', 'mkdir', 'rm', 'cp', 'mv', 'tar', 'gzip', 'gunzip', 'find', 'xargs', 'curl', 'wget', 'ssh', 'scp', 'sudo', 'su', 'ps', 'kill', 'top', 'df', 'du', 'free', 'uptime', 'date', 'time', 'sleep', 'jobs', 'fg', 'bg', 'disown', 'nohup', 'env', 'set', 'shopt', 'getopts', 'command', 'builtin', 'type', 'hash', 'ulimit', 'umask', 'caller', 'logout', 'exit'],
+		sh:['if', 'then', 'else', 'elif', 'fi', 'case', 'esac', 'for', 'while', 'until', 'do', 'done', 'in', 'function', 'return', 'break', 'continue', 'exit', 'export', 'local', 'echo', 'printf', 'read', 'cd', 'ls', 'cat', 'grep', 'awk', 'sed', 'true', 'false'],
+		latex:['documentclass', 'usepackage', 'begin', 'end', 'section', 'subsection', 'subsubsection', 'chapter', 'title', 'author', 'date', 'maketitle', 'tableofcontents', 'newcommand', 'renewcommand', 'include', 'input', 'cite', 'ref', 'label', 'bibliography', 'bibliographystyle', 'usebibliography', 'addbibresource', 'printbibliography'],
+		tex:['documentclass', 'usepackage', 'begin', 'end', 'section', 'subsection', 'subsubsection', 'chapter', 'title', 'author', 'date', 'maketitle', 'tableofcontents', 'newcommand', 'renewcommand', 'include', 'input', 'cite', 'ref', 'label', 'bibliography', 'bibliographystyle', 'usebibliography', 'addbibresource', 'printbibliography'],
 	};
 
-	const langKeywords = keywords[lang] || [];
+	const langKeywords = keywords[lang] ||[];
 	if (langKeywords.length > 0) {
 		const keywordRegex = new RegExp('\\b(' + langKeywords.join('|') + ')\\b', 'g');
 		src = src.replace(keywordRegex, '<span class="md-keyword">$1</span>');

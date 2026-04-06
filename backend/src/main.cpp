@@ -402,8 +402,7 @@ void runServer(Config& config, LmStudioService& lmstudioService,
             return;
         }
         config.load(); // pick up any saved changes
-        svc->unloadModel();
-        const bool ok = svc->ensureModelLoaded();
+        const bool ok = svc->reloadModel();
         Json::Value result;
         result["success"] = ok;
         result["modelId"] = svc->getLoadedModelId();

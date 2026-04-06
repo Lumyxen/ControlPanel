@@ -26,6 +26,7 @@ private:
     double      llamacppTopP;
     double      llamacppMinP;
     double      llamacppRepeatPenalty;
+    int         llamacppModelKeepAlive; // -1 = infinite, 0 = immediate, >0 = minutes
 
     // ── Backend preference ────────────────────────────────────────────────────
     std::string llamacppBackend;
@@ -124,6 +125,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
           llamacppTopP(0.9),
           llamacppMinP(0.05),
           llamacppRepeatPenalty(1.15),
+          llamacppModelKeepAlive(5),
           llamacppBackend("auto"),
           llamacppTag("b8391"),
           backendSuggestionDismissed(false),
@@ -154,6 +156,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
         if (cfg.isMember("llamacppTopP"))          llamacppTopP          = cfg["llamacppTopP"].asDouble();
         if (cfg.isMember("llamacppMinP"))          llamacppMinP          = cfg["llamacppMinP"].asDouble();
         if (cfg.isMember("llamacppRepeatPenalty")) llamacppRepeatPenalty = cfg["llamacppRepeatPenalty"].asDouble();
+        if (cfg.isMember("llamacppModelKeepAlive"))llamacppModelKeepAlive= cfg["llamacppModelKeepAlive"].asInt();
 
         if (cfg.isMember("llamacppBackend")) {
             const std::string b = cfg["llamacppBackend"].asString();
@@ -189,6 +192,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
         if (root.isMember("llamacppTopP"))          llamacppTopP          = root["llamacppTopP"].asDouble();
         if (root.isMember("llamacppMinP"))          llamacppMinP          = root["llamacppMinP"].asDouble();
         if (root.isMember("llamacppRepeatPenalty")) llamacppRepeatPenalty = root["llamacppRepeatPenalty"].asDouble();
+        if (root.isMember("llamacppModelKeepAlive"))llamacppModelKeepAlive= root["llamacppModelKeepAlive"].asInt();
 
         if (root.isMember("llamacppBackend")) {
             const std::string b = root["llamacppBackend"].asString();
@@ -222,6 +226,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
         root["llamacppTopP"]               = llamacppTopP;
         root["llamacppMinP"]               = llamacppMinP;
         root["llamacppRepeatPenalty"]      = llamacppRepeatPenalty;
+        root["llamacppModelKeepAlive"]     = llamacppModelKeepAlive;
         root["llamacppBackend"]            = llamacppBackend;
         root["llamacppTag"]                = llamacppTag;
         root["backendSuggestionDismissed"] = backendSuggestionDismissed;
@@ -241,6 +246,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
     double getLlamacppTopP()          { std::lock_guard<std::mutex> l(mutex); return llamacppTopP; }
     double getLlamacppMinP()          { std::lock_guard<std::mutex> l(mutex); return llamacppMinP; }
     double getLlamacppRepeatPenalty() { std::lock_guard<std::mutex> l(mutex); return llamacppRepeatPenalty; }
+    int    getLlamacppModelKeepAlive(){ std::lock_guard<std::mutex> l(mutex); return llamacppModelKeepAlive; }
     std::string getLlamacppBackend()  { std::lock_guard<std::mutex> l(mutex); return llamacppBackend; }
     std::string getLlamacppTag()      { std::lock_guard<std::mutex> l(mutex); return llamacppTag; }
     bool   getBackendSuggestionDismissed() { std::lock_guard<std::mutex> l(mutex); return backendSuggestionDismissed; }
@@ -274,6 +280,7 @@ private:
         root["llamacppTopP"]               = llamacppTopP;
         root["llamacppMinP"]               = llamacppMinP;
         root["llamacppRepeatPenalty"]      = llamacppRepeatPenalty;
+        root["llamacppModelKeepAlive"]     = llamacppModelKeepAlive;
         root["llamacppBackend"]            = llamacppBackend;
         root["llamacppTag"]                = llamacppTag;
         root["backendSuggestionDismissed"] = backendSuggestionDismissed;

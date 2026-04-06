@@ -109,8 +109,11 @@
             <input id="llamacpp-ctx-size" type="number" min="0" max="524288" step="512" value="0" style="width:8rem;" />
         </div>
         <div class="option-row">
-            <label for="llamacpp-ctx-size">Context Size</label>
-            <input id="llamacpp-ctx-size" type="number" min="0" max="524288" step="512" value="0" style="width:8rem;" />
+            <label for="llamacpp-keep-alive-slider">Time to Unload</label>
+            <div class="input-group" style="gap:0.75rem;align-items:center;">
+                <input id="llamacpp-keep-alive-slider" type="range" min="0" max="31" step="1" value="5" style="flex:1;min-width:0;" />
+                <span id="llamacpp-keep-alive-display" style="flex:none;width:5rem;text-align:right;">5 mins</span>
+            </div>
         </div>
         <div class="option-row">
             <label for="llamacpp-gpu-layers">GPU Layers</label>

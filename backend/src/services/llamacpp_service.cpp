@@ -74,12 +74,76 @@ LlamaCppService::LlamaCppService(const std::string& modelsDir,
         std::cerr << "[LlamaCpp] Failed to load '" << resolved << "' — trying cpu\n";
         loadLib("cpu");
     }
+
+    unloadThreadRunning_ = true;
+    unloadThread_ = std::thread(&LlamaCppService::unloadWorker, this);
 }
 
 LlamaCppService::~LlamaCppService() {
+    {
+        std::unique_lock<std::mutex> lock(unloadMutex_);
+        unloadThreadRunning_ = false;
+        unloadCv_.notify_all();
+    }
+    if (unloadThread_.joinable()) unloadThread_.join();
+
     unloadLib();
     delete api_;
     api_ = nullptr;
+}
+
+// =============================================================================
+// Automatic unloading
+// =============================================================================
+
+void LlamaCppService::scheduleUnload() {
+    int keepAlive = config_.getLlamacppModelKeepAlive();
+    if (keepAlive == -1) {
+        return; // Infinite
+    }
+
+    std::unique_lock<std::mutex> lock(unloadMutex_);
+    if (keepAlive == 0) {
+        unloadTime_ = std::chrono::steady_clock::now();
+    } else {
+        unloadTime_ = std::chrono::steady_clock::now() + std::chrono::minutes(keepAlive);
+    }
+    unloadScheduled_ = true;
+    unloadCv_.notify_one();
+}
+
+void LlamaCppService::cancelUnload() {
+    std::unique_lock<std::mutex> lock(unloadMutex_);
+    unloadScheduled_ = false;
+    unloadCv_.notify_one();
+}
+
+void LlamaCppService::unloadWorker() {
+    std::unique_lock<std::mutex> lock(unloadMutex_);
+    while (unloadThreadRunning_) {
+        if (!unloadScheduled_) {
+            unloadCv_.wait(lock);
+            continue;
+        }
+
+        auto status = unloadCv_.wait_until(lock, unloadTime_);
+        if (!unloadThreadRunning_) break;
+
+        if (status == std::cv_status::timeout && unloadScheduled_) {
+            unloadScheduled_ = false;
+            lock.unlock();
+
+            std::unique_lock<std::mutex> inferLock(inferMutex_, std::try_to_lock);
+            if (inferLock.owns_lock()) {
+                if (modelLoaded_) {
+                    std::cout << "[LlamaCpp] Model automatically unloaded after timeout.\n";
+                    unloadModel();
+                }
+            }
+
+            lock.lock();
+        }
+    }
 }
 
 // =============================================================================
@@ -262,6 +326,12 @@ bool LlamaCppService::switchBackend(const std::string& backendName) {
     std::unique_lock<std::mutex> lock(inferMutex_);
     inferAbort_.store(false);
 
+    cancelUnload();
+    struct UnloadGuard {
+        LlamaCppService* svc;
+        ~UnloadGuard() { svc->scheduleUnload(); }
+    } ug{this};
+
     // If the same backend is already loaded, just ensure the model is loaded
     if (backendName == activeBackend_ && api_->loaded) {
         if (!modelLoaded_ && !loadedModelPath_.empty()) {
@@ -288,6 +358,21 @@ bool LlamaCppService::switchBackend(const std::string& backendName) {
         return loadModel(prevPath);
     }
     return true;
+}
+
+bool LlamaCppService::reloadModel() {
+    inferAbort_.store(true);
+    std::unique_lock<std::mutex> lock(inferMutex_);
+    inferAbort_.store(false);
+
+    cancelUnload();
+    struct UnloadGuard {
+        LlamaCppService* svc;
+        ~UnloadGuard() { svc->scheduleUnload(); }
+    } ug{this};
+
+    unloadModel();
+    return ensureModelLoaded();
 }
 
 // =============================================================================
@@ -395,6 +480,12 @@ Json::Value LlamaCppService::getModels() const {
     out["data"] = Json::Value(Json::arrayValue);
     if (!fs::exists(modelsDir_)) return out;
 
+    std::unique_lock<std::mutex> lock(inferMutex_);
+    bool isModelLoaded = modelLoaded_;
+    std::string loadedPath = loadedModelPath_;
+    int nCtx = n_ctx_;
+    lock.unlock();
+
     for (const auto& entry : fs::directory_iterator(modelsDir_)) {
         if (entry.path().extension() != ".gguf") continue;
         const std::string fname = entry.path().filename().string();
@@ -405,9 +496,9 @@ Json::Value LlamaCppService::getModels() const {
         m["id"]             = modelIdFromPath(path);
         m["name"]           = stemFromPath(path);
         m["source"]         = "llamacpp";
-        m["context_length"] = n_ctx_;
+        m["context_length"] = nCtx;
         m["max_tokens"]     = 8192;
-        m["loaded"]         = (modelLoaded_ && loadedModelPath_ == path);
+        m["loaded"]         = (isModelLoaded && loadedPath == path);
         out["data"].append(m);
     }
     return out;
@@ -905,6 +996,12 @@ void LlamaCppService::streamingChatWithCallback(
     std::unique_lock<std::mutex> lock(inferMutex_);
     inferAbort_.store(false);  // We own the lock; clear the flag for our run.
 
+    cancelUnload();
+    struct UnloadGuard {
+        LlamaCppService* svc;
+        ~UnloadGuard() { svc->scheduleUnload(); }
+    } ug{this};
+
     if (!modelLoaded_) {
         if (!ensureModelLoaded()) { onError("No llama.cpp model loaded"); return; }
     }
@@ -946,6 +1043,12 @@ void LlamaCppService::streamingChatWithTools(
     std::unique_lock<std::mutex> lock(inferMutex_);
     inferAbort_.store(false);
 
+    cancelUnload();
+    struct UnloadGuard {
+        LlamaCppService* svc;
+        ~UnloadGuard() { svc->scheduleUnload(); }
+    } ug{this};
+
     if (!modelLoaded_) {
         if (!ensureModelLoaded()) { onError("No llama.cpp model loaded"); return; }
     }
@@ -958,7 +1061,7 @@ void LlamaCppService::streamingChatWithTools(
     const bool hasTools = tools.isArray() && !tools.empty() && registry;
 
     // ── Convert OpenAI messages JSON array to (role, content) pairs ──────────
-    auto buildPairs = [](const Json::Value& msgs) {
+    auto buildPairs =[](const Json::Value& msgs) {
         std::vector<std::pair<std::string, std::string>> pairs;
         for (const auto& msg : msgs) {
             const std::string role = msg.get("role", "user").asString();
@@ -1154,7 +1257,7 @@ void LlamaCppService::streamingChatWithTools(
 
         // ── No tool call found: response was already streamed live ────────────
         std::cout << "[LlamaCpp] No tool call — response already streamed live\n";
-        if (onChunk) onChunk("data: [DONE]\n\n");
+        if (onChunk) onChunk("data:[DONE]\n\n");
         return;
     }
 
