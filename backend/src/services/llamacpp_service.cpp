@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstring>
 #include <thread>
+#include <set>
 #include <unistd.h>
 
 #ifndef _WIN32
@@ -41,9 +42,118 @@ static std::string stemFromPath(const std::string& path) {
 static std::string modelIdFromPath(const std::string& path) {
     return "llamacpp::" + stemFromPath(path);
 }
+static std::string modelIdFromDirectory(const std::string& dir) {
+    return "llamacpp::" + fs::path(dir).filename().string();
+}
 
 fs::path LlamaCppService::libPath(const std::string& name) const {
     return fs::path(libsDir_) / ("libllama_" + name + ".so");
+}
+
+// =============================================================================
+// Model directory helpers
+// =============================================================================
+
+std::string LlamaCppService::findGgufInDirectory(const std::string& dir) const {
+    if (!fs::is_directory(dir)) return "";
+
+    for (const auto& entry : fs::directory_iterator(dir)) {
+        if (entry.path().extension() == ".gguf") {
+            const std::string fname = entry.path().filename().string();
+            // Skip mmproj files — they are projector files, not model files
+            if (fname.find("mmproj") != std::string::npos) continue;
+            return entry.path().string();
+        }
+    }
+    return "";
+}
+
+std::vector<ModelInfo> LlamaCppService::scanModels() const {
+    std::vector<ModelInfo> models;
+
+    if (!fs::exists(modelsDir_) || !fs::is_directory(modelsDir_)) {
+        return models;
+    }
+
+    // Read model state without locking — slightly stale values are fine
+    // for a scan operation, and this avoids self-deadlock when called
+    // from ensureModelLoaded() (which is called while inferMutex_ is
+    // already held by streamingChatWithCallback / streamingChatWithTools).
+    bool isModelLoaded = modelLoaded_;
+    std::string loadedPath = loadedModelPath_;
+    int nCtx = n_ctx_;
+
+    // Recursive scan to support provider/model-quant/ directory structure
+    std::set<fs::path> scannedDirs; // avoid scanning a parent if we already found a .gguf in a child
+    for (auto it = fs::recursive_directory_iterator(modelsDir_);
+         it != fs::recursive_directory_iterator(); ++it) {
+
+        if (!it->is_directory()) continue;
+
+        const fs::path& dirPath = it->path();
+
+        // Skip if a subdirectory of an already-scanned directory
+        bool skip = false;
+        for (const auto& scanned : scannedDirs) {
+            if (dirPath.string().rfind(scanned.string(), 0) == 0 && dirPath != scanned) {
+                skip = true;
+                break;
+            }
+        }
+        if (skip) {
+            it.disable_recursion_pending();
+            continue;
+        }
+
+        // Find the .gguf file in this directory
+        std::string ggufPath = findGgufInDirectory(dirPath.string());
+        if (ggufPath.empty()) continue; // No valid model file here — may be in a subdirectory
+
+        // Found a model directory — record it and skip children
+        scannedDirs.insert(dirPath);
+
+        const std::string dirName = dirPath.filename().string();
+        const std::string relDir = fs::relative(dirPath, modelsDir_).string();
+
+        // Look for optional .mmproj (vision projector)
+        std::string mmprojPath;
+        for (const auto& f : fs::directory_iterator(dirPath)) {
+            if (f.path().extension() == ".gguf") {
+                const std::string fname = f.path().filename().string();
+                if (fname.find("mmproj") != std::string::npos) {
+                    mmprojPath = f.path().string();
+                    break;
+                }
+            }
+        }
+
+        // Look for optional tokenizer file (.tiktoken, tokenizer.json, or vocab.json)
+        std::string tokenizerPath;
+        for (const auto& f : fs::directory_iterator(dirPath)) {
+            const std::string fname = f.path().filename().string();
+            if (fname == "tokenizer.json" || fname == "tokenizer_config.json" ||
+                fname == "vocab.json" || fname == "special_tokens_map.json" ||
+                fname.find(".tiktoken") != std::string::npos) {
+                tokenizerPath = f.path().string();
+                break;
+            }
+        }
+
+        ModelInfo info;
+        info.id = "llamacpp::" + relDir;
+        info.name = relDir;
+        info.directory = dirPath;
+        info.ggufPath = ggufPath;
+        info.mmprojPath = mmprojPath;
+        info.tokenizerPath = tokenizerPath;
+        info.contextLength = nCtx;
+        info.maxTokens = 8192;
+        info.loaded = (isModelLoaded && loadedPath == ggufPath);
+
+        models.push_back(std::move(info));
+    }
+
+    return models;
 }
 
 // =============================================================================
@@ -401,18 +511,11 @@ bool LlamaCppService::ensureModelLoaded() {
     if (modelLoaded_) return true;
     if (!api_->loaded) return false;
 
-    if (!fs::exists(modelsDir_)) {
-        return false;
-    }
+    auto models = scanModels();
+    if (models.empty()) return false;
 
-    for (const auto& entry : fs::directory_iterator(modelsDir_)) {
-        if (entry.path().extension() == ".gguf") {
-            const std::string fname = entry.path().filename().string();
-            if (fname.find("mmproj") != std::string::npos) continue;
-            if (loadModel(entry.path().string())) return true;
-        }
-    }
-    return false;
+    // Load the first available model
+    return loadModel(models[0].ggufPath);
 }
 
 void LlamaCppService::unloadModel() {
@@ -505,27 +608,18 @@ bool LlamaCppService::loadModel(const std::string& path) {
 Json::Value LlamaCppService::getModels() const {
     Json::Value out;
     out["data"] = Json::Value(Json::arrayValue);
-    if (!fs::exists(modelsDir_)) return out;
 
-    std::unique_lock<std::mutex> lock(inferMutex_);
-    bool isModelLoaded = modelLoaded_;
-    std::string loadedPath = loadedModelPath_;
-    int nCtx = n_ctx_;
-    lock.unlock();
-
-    for (const auto& entry : fs::directory_iterator(modelsDir_)) {
-        if (entry.path().extension() != ".gguf") continue;
-        const std::string fname = entry.path().filename().string();
-        if (fname.find("mmproj") != std::string::npos) continue;
-        const std::string path = entry.path().string();
-
+    auto models = scanModels();
+    for (const auto& info : models) {
         Json::Value m;
-        m["id"]             = modelIdFromPath(path);
-        m["name"]           = stemFromPath(path);
+        m["id"]             = info.id;
+        m["name"]           = info.name;
         m["source"]         = "llamacpp";
-        m["context_length"] = nCtx;
-        m["max_tokens"]     = 8192;
-        m["loaded"]         = (isModelLoaded && loadedPath == path);
+        m["context_length"] = info.contextLength;
+        m["max_tokens"]     = info.maxTokens;
+        m["loaded"]         = info.loaded;
+        m["has_tokenizer"]  = !info.tokenizerPath.empty();
+        m["has_mmproj"]     = !info.mmprojPath.empty();
         out["data"].append(m);
     }
     return out;
@@ -806,29 +900,13 @@ void LlamaCppService::doInference(
         clear_cache();
         std::cout << "[LlamaCpp] KV cache cleared\n";
     } else if (matchLen < static_cast<int>(kvCacheTokens_.size())) {
-        // Partial match: reuse the first matchLen tokens, trim the rest.
-        bool trimmed = false;
-        
-        if (api_->memory_seq_rm && api_->get_memory) {
-            api_->memory_seq_rm(api_->get_memory(ctx), 0, matchLen, -1);
-            trimmed = true;
-        } else if (api_->kv_cache_seq_rm) {
-            api_->kv_cache_seq_rm(ctx, 0, matchLen, -1);
-            trimmed = true;
-        }
-
-        if (trimmed) {
-            if (api_->kv_cache_defrag) api_->kv_cache_defrag(ctx);
-            if (api_->kv_cache_update) api_->kv_cache_update(ctx);
-
-            std::cout << "[LlamaCpp] KV cache reused " << matchLen << " tokens, removed "
-                      << (kvCacheTokens_.size() - matchLen) << " tokens\n";
-            kvCacheTokens_.resize(matchLen);
-        } else {
-            clear_cache();
-            matchLen = 0;
-            std::cout << "[LlamaCpp] KV cache cleared (seq_rm not found)\n";
-        }
+        // Partial match: the llama.cpp memory module keeps the "last position"
+        // counter at the old max even after seq_rm, which breaks M-RoPE
+        // (requires X < Y for positions).  Always clear the whole cache
+        // to avoid position conflicts.
+        clear_cache();
+        matchLen = 0;
+        std::cout << "[LlamaCpp] KV cache cleared (partial match not safe for M-RoPE)\n";
     } else {
         std::cout << "[LlamaCpp] KV cache fully reused (" << matchLen << " tokens)\n";
     }

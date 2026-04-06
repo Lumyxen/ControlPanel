@@ -41,11 +41,13 @@ export async function getModels() {
  * @param {string|null} streamId      - Identifier for explicit halt via /chat/stop
  * @param {Array|null}  messages      - Structured OpenAI-format messages (enables vision/multimodal).
  *                                      When provided, takes precedence over prompt.
+ * @param {function}    onDone        - Called when stream completes (success or error)
  */
 export async function streamChatMessage(
     model, prompt, maxTokens = 8192, onChunk,
     signal = null, systemPrompt = "", temperature = null,
     contextWindow = null, streamId = null, messages = null,
+    onDone = null,
 ) {
     const url = new URL(`${window.location.origin}${API_BASE}/chat/stream`);
     const payload = { model, max_tokens: maxTokens, prompt };
@@ -104,7 +106,10 @@ export async function streamChatMessage(
                     if (onChunk) onChunk(parsed);
                 } catch { /* ignore malformed SSE frames */ }
             }
-            if (streamFinished) break;
+            if (streamFinished) {
+                if (onDone) onDone();
+                break;
+            }
         }
 
         if (streamError) throw streamError;
@@ -112,6 +117,8 @@ export async function streamChatMessage(
         if (err.name === 'AbortError') throw err;
         console.error("Streaming request failed:", err);
         throw err;
+    } finally {
+        if (onDone) onDone();
     }
 }
 

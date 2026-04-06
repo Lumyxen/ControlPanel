@@ -460,6 +460,11 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					}
 				},
 				currentSignal, systemPrompt, temperature, contextLimit, uiState.activeStreamId, visionMessages,
+				() => {
+					// Stream finished - update UI immediately
+					closeTypingReasoning();
+					setGeneratingState(false);
+				}
 			);
 
 			if (errorFromStream) throw new Error(errorFromStream);

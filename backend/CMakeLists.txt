@@ -123,6 +123,7 @@ set(SOURCES
     src/main.cpp
     src/services/lmstudio_service.cpp
     src/services/llamacpp_service.cpp
+    src/services/huggingface_service.cpp
     src/services/backend_builder.cpp
     src/services/mcp_service.cpp
     src/services/mcp_client.cpp

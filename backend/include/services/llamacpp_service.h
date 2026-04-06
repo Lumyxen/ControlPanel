@@ -16,6 +16,18 @@ struct LlamaApi;
 class Config;
 class McpRegistry;
 
+struct ModelInfo {
+    std::string id;              // directory name, e.g. "llamacpp::qwen3-8b"
+    std::string name;            // display name
+    std::string directory;       // full path to model directory
+    std::string ggufPath;        // path to the .gguf file
+    std::string mmprojPath;      // path to .mmproj (empty if none)
+    std::string tokenizerPath;   // path to .tiktoken or vocab.json (empty if none)
+    int contextLength;           // from config or default
+    int maxTokens;
+    bool loaded;
+};
+
 class LlamaCppService {
 public:
     LlamaCppService(const std::string& modelsDir,
@@ -61,6 +73,8 @@ public:
 
     // ── Models ────────────────────────────────────────────────────────────────
 
+    // Scan modelsDir for model directories and return metadata
+    std::vector<ModelInfo> scanModels() const;
     Json::Value getModels() const;
     Json::Value buildMessages(const std::string& prompt,
                               const std::string& systemPrompt) const;
@@ -142,6 +156,9 @@ private:
 
     bool loadLib(const std::string& backendName);
     bool loadModel(const std::string& path = "");
+
+    // Find the .gguf file in a model directory
+    std::string findGgufInDirectory(const std::string& dir) const;
 
     std::filesystem::path libPath(const std::string& name) const;
 

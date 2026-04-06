@@ -39,15 +39,8 @@
   - Ability to return to maximum usage in settings
 - Center LaTeX formatting
   - Better live updating of the formatting
-- Better model folder structure (each model has a directory containing .gguf, .mmproj, and .tiktoken/vocab.json)
-- Edit available model list
-  - Model search
-    - LM Studio
-    - HuggingFace (downloads model into ./data/models/)
-      - Automatically finds the mmproj and vocab for the model.
-      - Automatically converts gguf models into .rkllm on NPU build
-  - Filters
 - RKNN-LLM support to automatic backend inference software switching
+- Automatically converts gguf models into .rkllm when NPU build shows
 - Add logprobs
   - Highlight uncertain tokens
 - Speculative Decoding

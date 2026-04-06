@@ -10,11 +10,13 @@
 #include <streambuf>
 #include <deque>
 #include <ctime>
+#include <algorithm>
 #include <curl/curl.h>
 #include <httplib.h>
 #include "config/config.h"
 #include "services/lmstudio_service.h"
 #include "services/llamacpp_service.h"
+#include "services/huggingface_service.h"
 #include "services/backend_builder.h"
 #include "services/mcp_service.h"
 #include "services/mcp_registry.h"
@@ -208,11 +210,15 @@ void runServer(Config& config, LmStudioService& lmstudioService,
                McpService& mcpService, McpRegistry& registry,
                const std::string& dataDir,
                LlamaCppService* svc,
+               const std::string& modelsDir,
                const std::string& libsDir,
                const std::string& buildCacheDir) {
 
     httplib::Server svr;
     { std::lock_guard<std::mutex> lk(g_serverMutex); g_server = &svr; }
+    
+    // Create HuggingFace service
+    HuggingFaceService hfService;
 
     svr.set_logger([](const httplib::Request& req, const httplib::Response& res) {
         if (req.path == "/health" ||
@@ -567,6 +573,340 @@ void runServer(Config& config, LmStudioService& lmstudioService,
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleModels(req, res, lmstudioService, svc);
     });
+    svr.Delete("/api/models", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+
+        Json::CharReaderBuilder reader;
+        Json::Value body;
+        std::string errs;
+        std::istringstream iss(req.body);
+        if (!Json::parseFromStream(reader, iss, &body, &errs)) {
+            res.status = 400;
+            Json::Value err; err["error"] = "Invalid JSON";
+            Json::StreamWriterBuilder wb;
+            res.set_content(Json::writeString(wb, err), "application/json");
+            return;
+        }
+
+        std::string modelId = body.get("model_id", "").asString();
+        if (modelId.empty()) {
+            res.status = 400;
+            Json::Value err; err["error"] = "Missing model_id";
+            Json::StreamWriterBuilder wb;
+            res.set_content(Json::writeString(wb, err), "application/json");
+            return;
+        }
+
+        // Strip the llamacpp:: prefix to get the directory name
+        std::string dirName = modelId;
+        if (dirName.rfind("llamacpp::", 0) == 0) {
+            dirName = dirName.substr(10);
+        }
+
+        fs::path modelDir = fs::path(modelsDir) / dirName;
+        Json::Value result;
+        if (!fs::exists(modelDir)) {
+            res.status = 404;
+            result["status"] = "not_found";
+            result["error"] = "Model directory does not exist";
+        } else {
+            // If this is the loaded model, unload it first
+            if (svc && svc->getLoadedModelId() == modelId) {
+                svc->unloadModel();
+                svc->unloadLib();
+            }
+            std::error_code ec;
+            fs::remove_all(modelDir, ec);
+            if (ec) {
+                res.status = 500;
+                result["status"] = "error";
+                result["error"] = ec.message();
+            } else {
+                result["status"] = "deleted";
+                result["directory"] = dirName;
+                std::cout << "[ModelManager] Deleted model: " << dirName << "\n";
+            }
+        }
+
+        Json::StreamWriterBuilder wb;
+        res.set_content(Json::writeString(wb, result), "application/json");
+    });
+    
+    // ── HuggingFace model search & download ───────────────────────────────
+    svr.Get("/api/huggingface/search", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        
+        HfSearchFilters filters;
+        filters.search = req.get_param_value("search");
+        filters.author = req.get_param_value("author");
+        filters.pipeline = req.get_param_value("pipeline");
+        filters.limit = req.has_param("limit") ? std::stoi(req.get_param_value("limit")) : 20;
+        filters.sort = req.get_param_value("sort");
+        if (filters.sort.empty()) filters.sort = "downloads";
+        filters.imageSupport = req.has_param("image_support");
+        filters.audioSupport = req.has_param("audio_support");
+        
+        Json::Value result = hfService.searchModels(filters);
+        Json::StreamWriterBuilder wb;
+        res.set_content(Json::writeString(wb, result), "application/json");
+    });
+    
+    svr.Get("/api/huggingface/model-info", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        
+        std::string modelId = req.get_param_value("model_id");
+        if (modelId.empty()) {
+            res.status = 400;
+            Json::Value err; err["error"] = "Missing model_id parameter";
+            Json::StreamWriterBuilder wb;
+            res.set_content(Json::writeString(wb, err), "application/json");
+            return;
+        }
+        
+        Json::Value result = hfService.getModelInfo(modelId);
+        Json::StreamWriterBuilder wb;
+        res.set_content(Json::writeString(wb, result), "application/json");
+    });
+
+    svr.Get("/api/huggingface/files", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+
+        std::string modelId = req.get_param_value("model_id");
+        if (modelId.empty()) {
+            res.status = 400;
+            Json::Value err; err["error"] = "Missing model_id parameter";
+            Json::StreamWriterBuilder wb;
+            res.set_content(Json::writeString(wb, err), "application/json");
+            return;
+        }
+
+        auto allFiles = hfService.listModelFiles(modelId);
+        Json::Value result;
+        result["gguf"] = Json::Value(Json::arrayValue);
+        result["mmproj"] = Json::Value(Json::arrayValue);
+        result["tokenizer"] = Json::Value(Json::arrayValue);
+
+        for (const auto& file : allFiles) {
+            std::string fname = fs::path(file).filename().string();
+            Json::Value entry;
+            entry["path"] = file;
+            entry["name"] = fname;
+
+            if (fname.find("mmproj") != std::string::npos && fname.find(".gguf") != std::string::npos) {
+                result["mmproj"].append(entry);
+            } else if (fname.find(".gguf") != std::string::npos) {
+                // Extract size hint from filename if available (e.g. Q4_K_M.gguf)
+                result["gguf"].append(entry);
+            } else if (fname == "vocab.json" || fname.find(".tiktoken") != std::string::npos ||
+                       fname == "tokenizer.json" || fname == "tokenizer_config.json") {
+                result["tokenizer"].append(entry);
+            }
+        }
+
+        Json::StreamWriterBuilder wb;
+        res.set_content(Json::writeString(wb, result), "application/json");
+    });
+    
+    svr.Post("/api/huggingface/download", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+
+        Json::CharReaderBuilder reader;
+        Json::Value body;
+        std::string errs;
+        std::istringstream iss(req.body);
+        if (!Json::parseFromStream(reader, iss, &body, &errs)) {
+            res.status = 400;
+            Json::Value err; err["error"] = "Invalid JSON: " + errs;
+            Json::StreamWriterBuilder wb;
+            res.set_content(Json::writeString(wb, err), "application/json");
+            return;
+        }
+
+        std::string modelId = body.get("model_id", "").asString();
+        std::string dirName = body.get("directory_name", "").asString();
+
+        // Optional: specific file paths (if user selected quantisation)
+        std::string ggufPath = body.get("gguf_path", "").asString();
+        std::string mmprojPath = body.get("mmproj_path", "").asString();
+        std::string tokenizerPath = body.get("tokenizer_path", "").asString();
+
+        if (modelId.empty()) {
+            res.status = 400;
+            Json::Value err; err["error"] = "Missing model_id";
+            Json::StreamWriterBuilder wb;
+            res.set_content(Json::writeString(wb, err), "application/json");
+            return;
+        }
+
+        if (dirName.empty()) {
+            // Auto-generate directory name: provider/model-quant
+            // e.g. "bartowski/Qwen3.5-9B-Q4_K_M"
+            size_t slashPos = modelId.find('/');
+            std::string provider = (slashPos != std::string::npos) ? modelId.substr(0, slashPos) : "unknown";
+            std::string modelName = (slashPos != std::string::npos) ? modelId.substr(slashPos + 1) : modelId;
+
+            // Try to extract quantisation from the selected GGUF path
+            if (!ggufPath.empty()) {
+                std::string ggufName = fs::path(ggufPath).filename().string();
+                static const std::vector<std::string> quants = {
+                    "Q4_K_M","Q4_K_S","Q5_K_M","Q5_K_S","Q4_0","Q3_K_M","Q6_K","Q8_0",
+                    "IQ4_XS","IQ4_NL","IQ3_M","IQ3_S","Q2_K","IQ2_M","IQ2_XS","IQ2_S",
+                    "Q4_AWQ","FP16","FP32"
+                };
+                for (const auto& q : quants) {
+                    if (ggufName.find(q) != std::string::npos) {
+                        modelName += "-" + q;
+                        break;
+                    }
+                }
+            }
+
+            dirName = provider + "/" + modelName;
+        }
+
+        // Start async download — returns immediately with job ID
+        std::string jobId = hfService.startDownload(modelId, dirName, modelsDir, ggufPath, mmprojPath, tokenizerPath);
+
+        Json::Value result;
+        result["status"] = "started";
+        result["job_id"] = jobId;
+        result["model_id"] = modelId;
+        result["directory_name"] = dirName;
+
+        Json::StreamWriterBuilder wb;
+        res.set_content(Json::writeString(wb, result), "application/json");
+    });
+
+    svr.Get("/api/huggingface/download-status", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+
+        std::string jobId = req.get_param_value("job_id");
+        if (jobId.empty()) {
+            // Return all active downloads
+            Json::Value result;
+            result["jobs"] = Json::Value(Json::arrayValue);
+            auto jobs = hfService.listDownloads();
+            for (const auto& job : jobs) {
+                Json::Value j;
+                j["id"] = job.id;
+                j["model_id"] = job.modelId;
+                j["directory_name"] = job.directoryName;
+                j["status"] = (job.status == DownloadJob::Completed) ? "completed" :
+                              (job.status == DownloadJob::Failed) ? "failed" : "in_progress";
+                j["current_file"] = job.currentFile;
+                j["files_downloaded"] = job.filesDownloaded;
+                j["total_files"] = job.totalFiles;
+                j["percent"] = job.percent();
+                if (!job.errorMessage.empty()) j["error"] = job.errorMessage;
+                result["jobs"].append(j);
+            }
+            Json::StreamWriterBuilder wb;
+            res.set_content(Json::writeString(wb, result), "application/json");
+            return;
+        }
+
+        auto job = hfService.getDownloadStatus(jobId);
+        Json::Value result;
+        result["id"] = job.id;
+        result["model_id"] = job.modelId;
+        result["directory_name"] = job.directoryName;
+        result["status"] = (job.status == DownloadJob::Completed) ? "completed" :
+                          (job.status == DownloadJob::Failed) ? "failed" : "in_progress";
+        result["current_file"] = job.currentFile;
+        result["files_downloaded"] = job.filesDownloaded;
+        result["total_files"] = job.totalFiles;
+        result["percent"] = job.percent();
+        if (!job.errorMessage.empty()) result["error"] = job.errorMessage;
+
+        Json::StreamWriterBuilder wb;
+        res.set_content(Json::writeString(wb, result), "application/json");
+    });
+
+    svr.Post("/api/huggingface/cancel-download", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+
+        Json::CharReaderBuilder reader;
+        Json::Value body;
+        std::string errs;
+        std::istringstream iss(req.body);
+        if (!Json::parseFromStream(reader, iss, &body, &errs)) {
+            res.status = 400;
+            Json::Value err; err["error"] = "Invalid JSON";
+            Json::StreamWriterBuilder wb;
+            res.set_content(Json::writeString(wb, err), "application/json");
+            return;
+        }
+
+        std::string jobId = body.get("job_id", "").asString();
+        if (!jobId.empty()) hfService.cancelDownload(jobId);
+
+        Json::Value ok; ok["status"] = "cancelled";
+        Json::StreamWriterBuilder wb;
+        res.set_content(Json::writeString(wb, ok), "application/json");
+    });
+
+    svr.Post("/api/huggingface/install-tokenizer", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+
+        Json::CharReaderBuilder reader;
+        Json::Value body;
+        std::string errs;
+        std::istringstream iss(req.body);
+        if (!Json::parseFromStream(reader, iss, &body, &errs)) {
+            res.status = 400;
+            Json::Value err; err["error"] = "Invalid JSON";
+            Json::StreamWriterBuilder wb;
+            res.set_content(Json::writeString(wb, err), "application/json");
+            return;
+        }
+
+        std::string modelId = body.get("model_id", "").asString();
+        std::string dirName = body.get("directory_name", "").asString();
+        std::string baseModel = body.get("base_model", "").asString();
+
+        if (modelId.empty()) {
+            res.status = 400;
+            Json::Value err; err["error"] = "Missing model_id";
+            Json::StreamWriterBuilder wb;
+            res.set_content(Json::writeString(wb, err), "application/json");
+            return;
+        }
+
+        // Determine the model directory from the model ID
+        if (dirName.empty()) {
+            // Strip llamacpp:: prefix
+            std::string id = modelId;
+            if (id.rfind("llamacpp::", 0) == 0) id = id.substr(10);
+            dirName = id;
+        }
+
+        fs::path modelDir = fs::path(modelsDir) / dirName;
+        if (!fs::exists(modelDir)) {
+            res.status = 404;
+            Json::Value err; err["error"] = "Model directory not found: " + dirName;
+            Json::StreamWriterBuilder wb;
+            res.set_content(Json::writeString(wb, err), "application/json");
+            return;
+        }
+
+        // Install tokenizer directly into the model directory
+        int downloaded = hfService.installTokenizer(modelId, modelDir.string());
+
+        // If nothing was downloaded and user provided a base model, try that
+        if (downloaded == 0 && !baseModel.empty()) {
+            downloaded = hfService.installTokenizer(baseModel, modelDir.string());
+        }
+
+        Json::Value result;
+        result["status"] = downloaded > 0 ? "installed" : "failed";
+        result["files_downloaded"] = downloaded;
+        result["directory"] = dirName;
+        if (downloaded == 0) result["error"] = "Could not find tokenizer files";
+
+        Json::StreamWriterBuilder wb;
+        res.set_content(Json::writeString(wb, result), "application/json");
+    });
+    
     svr.Get("/api/lmstudio/models", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleLmStudioModels(req, res, lmstudioService);
@@ -718,6 +1058,7 @@ int main() {
     registry.loadFromFile(mcpJsonPath);
 
     LlamaCppService llamaCppService(modelsDir.string(), libsDir.string(), config);
+    HuggingFaceService hfService;
 
     // ── Startup banner ────────────────────────────────────────────────────────
     const auto available = llamaCppService.availableBackends();
@@ -742,10 +1083,14 @@ int main() {
     std::cout << "===========================\n\n";
 
     serverError = false;
+    
+    // Set models dir env for HuggingFace downloads
+    setenv("CTRLPANEL_MODELS_DIR", modelsDir.string().c_str(), 0);
+    
     std::thread serverThread(runServer,
         std::ref(config), std::ref(lmstudioService),
         std::ref(mcpService), std::ref(registry),
-        dataDir.string(), &llamaCppService,
+        dataDir.string(), &llamaCppService, modelsDir.string(),
         libsDir.string(), buildCache.string());
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
