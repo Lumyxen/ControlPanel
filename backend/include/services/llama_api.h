@@ -77,6 +77,10 @@ struct LlamaApi {
                                                  const llama_chat_message* chat,
                                                  size_t n_msg, bool add_ass,
                                                  char* buf, int32_t length)                        = nullptr;
+    // Logit retrieval for logprob computation
+    float*        (*get_logits)                 (llama_context* ctx)                             = nullptr;
+    int32_t       (*get_logits_count)           (llama_context* ctx)                             = nullptr;
+    int32_t       (*n_vocab_from_vocab)         (const llama_vocab* vocab)                       = nullptr;
 
     // ── Samplers ─────────────────────────────────────────────────────────────
     llama_sampler_chain_params (*sampler_chain_default_params) ()                                  = nullptr;

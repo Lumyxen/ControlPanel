@@ -60,12 +60,72 @@ export function buildNodeTextForHistory(node) {
 	return nodeContent;
 }
 
+// ─── buildLogprobAnnotation ──────────────────────────────────────────────────
+// Builds a text annotation showing token confidence levels for selected tokens.
+// Used to include logprob info in the conversation history for the AI to see.
+
+function buildLogprobAnnotation(tokenLogprobs, settings) {
+	// Logprob thresholds (log base 2): -0.32 ≈ 80%, -1.0 ≈ 50%
+	const HIGH_THRESHOLD    = -0.32;
+	const MEDIUM_THRESHOLD  = -1.0;
+
+	const includeHigh    = settings?.logprobHistoryHigh ?? false;
+	const includeMedium  = settings?.logprobHistoryMedium ?? false;
+	const includeLow     = settings?.logprobHistoryLow ?? false;
+
+	// If nothing is enabled, skip
+	if (!includeHigh && !includeMedium && !includeLow) return null;
+
+	const annotated = [];
+	let totalTokens = 0;
+	let flaggedTokens = 0;
+
+	for (const { text, logprob } of tokenLogprobs) {
+		totalTokens++;
+		if (logprob == null || isNaN(logprob)) continue;
+
+		const prob = Math.pow(2, logprob) * 100;
+		const pct = Math.round(prob);
+
+		let level = null;
+		if (logprob >= HIGH_THRESHOLD)   level = 'HIGH';
+		else if (logprob >= MEDIUM_THRESHOLD) level = 'MEDIUM';
+		else level = 'LOW';
+
+		if ((level === 'HIGH' && !includeHigh) ||
+			(level === 'MEDIUM' && !includeMedium) ||
+			(level === 'LOW' && !includeLow)) continue;
+
+		flaggedTokens++;
+		annotated.push({ text, level, pct });
+	}
+
+	if (annotated.length === 0) return null;
+
+	// Build a structured annotation
+	let annotation = `\n<logprob_confidence total_tokens=${totalTokens} flagged=${flaggedTokens}>\n`;
+	for (const { text, level, pct } of annotated) {
+		// Use angle brackets to avoid markdown conflicts
+		const escaped = text.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+		annotation += `[${escaped}](${level}=${pct}%) `;
+	}
+	annotation += '\n</logprob_confidence>\n';
+	return annotation;
+}
+
 // ─── buildApiMessages ─────────────────────────────────────────────────────────
 // Converts an array of node IDs into structured OpenAI-format messages.
 // Returns a multimodal array when any user message contains image attachments.
+//
+// @param {Object} [settings] - Optional settings object with logprobHistory* flags
 
-export function buildApiMessages(graph, nodeIds) {
+export function buildApiMessages(graph, nodeIds, settings = null) {
 	const apiMessages = [];
+
+	// Determine which logprob levels to include
+	const includeLogprobs = settings && (
+		settings.logprobHistoryHigh || settings.logprobHistoryMedium || settings.logprobHistoryLow
+	);
 
 	for (const nodeId of nodeIds) {
 		const node = getNode(graph, nodeId);
@@ -73,7 +133,16 @@ export function buildApiMessages(graph, nodeIds) {
 		const role = node.role === 'user' ? 'user' : 'assistant';
 
 		if (role === 'assistant') {
-			const textContent = buildNodeTextForHistory(node);
+			let textContent = buildNodeTextForHistory(node);
+
+			// Append logprob annotations if enabled
+			if (includeLogprobs && node.tokenLogprobs && node.tokenLogprobs.length > 0) {
+				const logprobNote = buildLogprobAnnotation(node.tokenLogprobs, settings);
+				if (logprobNote) {
+					textContent += '\n\n' + logprobNote;
+				}
+			}
+
 			if (textContent) apiMessages.push({ role, content: textContent });
 			continue;
 		}

@@ -8,6 +8,8 @@
 #include <sstream>
 #include <algorithm>
 #include <cstring>
+#include <cmath>
+#include <optional>
 #include <thread>
 #include <set>
 #include <unistd.h>
@@ -415,6 +417,16 @@ bool LlamaCppService::loadLib(const std::string& backendName) {
         if (p) std::memcpy(&api_->ggml_backend_reg_name,  &p, sizeof(p));
     }
 
+    // Logprob symbols — optional; absence means logprob highlighting disabled.
+    {
+        void* p = dlsym(handle, "llama_get_logits");
+        if (p) std::memcpy(&api_->get_logits, &p, sizeof(p));
+        p = dlsym(handle, "llama_get_logits_count");
+        if (p) std::memcpy(&api_->get_logits_count, &p, sizeof(p));
+        p = dlsym(handle, "llama_n_vocab");
+        if (p) std::memcpy(&api_->n_vocab_from_vocab, &p, sizeof(p));
+    }
+
     api_->loaded   = true;
     activeBackend_ = backendName;
 
@@ -507,14 +519,31 @@ bool LlamaCppService::reloadModel() {
 // Model loading
 // =============================================================================
 
-bool LlamaCppService::ensureModelLoaded() {
-    if (modelLoaded_) return true;
+bool LlamaCppService::ensureModelLoaded(const std::string& modelId) {
+    if (modelLoaded_) {
+        if (!modelId.empty() && loadedModelId_ != modelId) {
+            std::cout << "[LlamaCpp] Requested model '" << modelId
+                      << "' differs from loaded '" << loadedModelId_
+                      << "' — reloading\n";
+            unloadModel();
+        } else {
+            return true;
+        }
+    }
     if (!api_->loaded) return false;
 
     auto models = scanModels();
     if (models.empty()) return false;
 
-    // Load the first available model
+    if (!modelId.empty()) {
+        for (const auto& info : models) {
+            if (info.id == modelId) {
+                std::cout << "[LlamaCpp] Loading requested model: " << info.ggufPath << "\n";
+                return loadModel(info.ggufPath);
+            }
+        }
+        std::cerr << "[LlamaCpp] Requested model '" << modelId << "' not found — loading first available\n";
+    }
     return loadModel(models[0].ggufPath);
 }
 
@@ -690,7 +719,7 @@ LlamaCppService::parseMessages(const std::string& prompt,
 // Chunk helpers
 // =============================================================================
 
-std::string LlamaCppService::makeContentChunk(const std::string& text) {
+std::string LlamaCppService::makeContentChunk(const std::string& text, std::optional<float> logprob) {
     std::string escaped;
     escaped.reserve(text.size() + 4);
     for (unsigned char c : text) {
@@ -705,7 +734,16 @@ std::string LlamaCppService::makeContentChunk(const std::string& text) {
                 else escaped += static_cast<char>(c);
         }
     }
-    return "data: {\"choices\":[{\"delta\":{\"content\":\"" + escaped + "\"}}]}\n\n";
+
+    std::string chunk = "{\"choices\":[{\"delta\":{\"content\":\"" + escaped + "\"}}]}";
+    if (logprob.has_value()) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "\"logprob\":%.6f,", logprob.value());
+        size_t pos = chunk.find("\"delta\":{");
+        if (pos != std::string::npos)
+            chunk.insert(pos + 9, buf);
+    }
+    return "data: " + chunk + "\n\n";
 }
 
 std::vector<uint8_t> LlamaCppService::decodeBase64Image(const std::string& dataUrl) {
@@ -819,7 +857,8 @@ void LlamaCppService::doInference(
     int maxTokens, double temperature,
     std::function<bool(const std::string&)> onChunk,
     std::function<void(const std::string&)> onError,
-    std::function<bool()> cancelCheck
+    std::function<bool()> cancelCheck,
+    bool emitLogprobs
 ) const {
     if (!api_->loaded || !model_ || !ctx_) { onError("No backend or model loaded"); return; }
     if (maxTokens <= 0) maxTokens = 8192;
@@ -991,18 +1030,40 @@ void LlamaCppService::doInference(
         // 2. Fast cancel check
         if (cancelCheck && cancelCheck()) { cancelled = true; break; }
 
+        // Extract logits BEFORE the sampler modifies them
+        std::optional<float> tokenLogprob;
+        float* rawLogits = nullptr;
+        if (emitLogprobs) {
+            rawLogits = api_->get_logits(ctx);
+        }
+
         llama_token tok = api_->sampler_sample(sampler, ctx, -1);
         if (api_->vocab_is_eog(vocab, tok)) break;
+
+        // Compute logprob from the raw (pre-sampler) logits
+        if (emitLogprobs && rawLogits && api_->n_vocab_from_vocab && vocab) {
+            const int32_t vs = api_->n_vocab_from_vocab(vocab);
+            if (vs > 0 && vs < 1000000 && tok >= 0 && tok < vs) {
+                const float effTemp = (temp > 0.0f) ? temp : 1.0f;
+                float ml = -1e30f;
+                for (int32_t i = 0; i < vs; ++i) {
+                    float scaled = rawLogits[i] / effTemp;
+                    if (scaled > ml) ml = scaled;
+                }
+                double lse = 0.0;
+                for (int32_t i = 0; i < vs; ++i) {
+                    lse += std::exp(static_cast<double>(rawLogits[i] / effTemp - ml));
+                }
+                lse = std::log(lse) + ml;
+                const double scaledLogit = static_cast<double>(rawLogits[tok] / effTemp);
+                tokenLogprob = static_cast<float>((scaledLogit - lse) / std::log(2.0));
+                if (nGen < 3) std::cout << "[LlamaCpp] Logprob[" << nGen << "]: " << tokenLogprob.value() << "\n";
+            }
+        }
 
         char piece[256];
         int np = api_->token_to_piece(vocab, tok, piece, sizeof(piece)-1, 0, false);
         if (np < 0) np = 0;
-        if (np > 0) {
-            piece[np] = '\0';
-            if (!onChunk(makeContentChunk(std::string(piece, static_cast<size_t>(np))))) {
-                cancelled = true; break;
-            }
-        }
 
         // 3. Cancel before decode
         if (cancelCheck && cancelCheck()) { cancelled = true; break; }
@@ -1012,12 +1073,19 @@ void LlamaCppService::doInference(
         batch.pos[0]      = static_cast<int>(inputTokens.size()) + nGen;
         batch.n_seq_id[0] = 1;
         batch.seq_id[0][0] = 0;
-        batch.logits[0]   = 1;
+        batch.logits[0]   = 1;  // Always compute logits for next iteration
 
-        if (api_->decode(ctx, batch) != 0) { 
-            onError("llama_decode (generation) failed"); 
+        if (api_->decode(ctx, batch) != 0) {
+            onError("llama_decode (generation) failed");
             kvCacheTokens_.clear();
-            break; 
+            break;
+        }
+
+        if (np > 0) {
+            piece[np] = '\0';
+            if (!onChunk(makeContentChunk(std::string(piece, static_cast<size_t>(np)), tokenLogprob))) {
+                cancelled = true; break;
+            }
         }
         
         kvCacheTokens_.push_back(tok);
@@ -1090,7 +1158,8 @@ std::string LlamaCppService::doInferenceCollectWithStreaming(
     int maxTokens, double temperature,
     std::function<bool(const std::string&)> onChunk,
     std::function<void(const std::string&)> onError,
-    std::function<bool()> cancelCheck
+    std::function<bool()> cancelCheck,
+    bool emitLogprobs
 ) const {
     std::string collected;
 
@@ -1122,7 +1191,7 @@ std::string LlamaCppService::doInferenceCollectWithStreaming(
         return true;
     };
 
-    doInference(messages, maxTokens, temperature, innerOnChunk, onError, cancelCheck);
+    doInference(messages, maxTokens, temperature, innerOnChunk, onError, cancelCheck, emitLogprobs);
     return collected;
 }
 
@@ -1131,11 +1200,12 @@ std::string LlamaCppService::doInferenceCollectWithStreaming(
 // =============================================================================
 
 void LlamaCppService::streamingChatWithCallback(
-    const std::string&, const std::string& prompt, int maxTokens,
+    const std::string& model, const std::string& prompt, int maxTokens,
     std::function<bool(const std::string&)> onChunk,
     std::function<void(const std::string&)> onError,
     const std::string& systemPrompt, double temperature, int,
-    std::function<bool()> cancelCheck)
+    std::function<bool()> cancelCheck,
+    bool emitLogprobs)
 {
     inferAbort_.store(true);
     std::unique_lock<std::mutex> lock(inferMutex_);
@@ -1148,7 +1218,7 @@ void LlamaCppService::streamingChatWithCallback(
     } ug{this};
 
     if (!modelLoaded_) {
-        if (!ensureModelLoaded()) { onError("No llama.cpp model loaded"); return; }
+        if (!ensureModelLoaded(model)) { onError("No llama.cpp model loaded"); return; }
     }
 
     auto combinedCancel =[this, &cancelCheck]() -> bool {
@@ -1156,15 +1226,16 @@ void LlamaCppService::streamingChatWithCallback(
     };
 
     doInference(parseMessages(prompt, systemPrompt), maxTokens, temperature,
-                onChunk, onError, combinedCancel);
+                onChunk, onError, combinedCancel, emitLogprobs);
 }
 
 void LlamaCppService::streamingChatWithTools(
-    const std::string&, Json::Value messages, const Json::Value& tools, int maxTokens,
+    const std::string& model, Json::Value messages, const Json::Value& tools, int maxTokens,
     std::function<bool(const std::string&)> onChunk,
     std::function<void(const std::string&)> onError,
     McpRegistry* registry, double temperature, int,
-    std::function<bool()> cancelCheck)
+    std::function<bool()> cancelCheck,
+    bool emitLogprobs)
 {
     inferAbort_.store(true);
     std::unique_lock<std::mutex> lock(inferMutex_);
@@ -1177,7 +1248,7 @@ void LlamaCppService::streamingChatWithTools(
     } ug{this};
 
     if (!modelLoaded_) {
-        if (!ensureModelLoaded()) { onError("No llama.cpp model loaded"); return; }
+        if (!ensureModelLoaded(model)) { onError("No llama.cpp model loaded"); return; }
     }
 
     auto combinedCancel =[this, &cancelCheck]() -> bool {
@@ -1243,7 +1314,7 @@ void LlamaCppService::streamingChatWithTools(
             return;
         }
 
-        doInference(textMessages, maxTokens, temperature, onChunk, onError, combinedCancel);
+        doInference(textMessages, maxTokens, temperature, onChunk, onError, combinedCancel, emitLogprobs);
         return;
     }
 
@@ -1281,7 +1352,7 @@ void LlamaCppService::streamingChatWithTools(
         std::string response = doInferenceCollectWithStreaming(
             pairs, maxTokens, temperature, onChunk,
             [&](const std::string& err) { errorMsg = err; },
-            combinedCancel);
+            combinedCancel, emitLogprobs);
 
         if (!errorMsg.empty()) { onError(errorMsg); return; }
 

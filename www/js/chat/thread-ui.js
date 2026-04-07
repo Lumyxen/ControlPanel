@@ -7,6 +7,7 @@ import { formatBytes, getFileExtension, getFiletypeIcon, getFiletypeName } from 
 import { parseMarkdown } from './markdown.js';
 import { detectAndRenderColours } from './colour-utils.js';
 import { preprocessLatexText, extractMath, injectMath } from './latex/index.js';
+import { applyTokenHighlighting } from './token-highlighting.js';
 
 // ─── HTML escaping ────────────────────────────────────────────────────────────
 
@@ -147,7 +148,7 @@ export function buildReasoningElement(reasoning) {
 
 // ─── Content container ────────────────────────────────────────────────────────
 
-export function buildContentContainer(node, isEditing, editingDraft) {
+export function buildContentContainer(node, isEditing, editingDraft, settings = null) {
 	const container = document.createElement('div');
 	container.className = 'chat-message-content';
 
@@ -198,19 +199,27 @@ export function buildContentContainer(node, isEditing, editingDraft) {
 		if (node.attachments?.length > 0) node.attachments.forEach(a => container.appendChild(buildInlineAttachment(a)));
 	}
 
+	// Apply token highlighting if this node has logprob data
+	if (!isEditing && node.role === 'assistant' && node.tokenLogprobs && node.tokenLogprobs.length > 0) {
+		const textEl = container.querySelector('.chat-message-text');
+		if (textEl) {
+			applyTokenHighlighting(textEl, node.tokenLogprobs, settings);
+		}
+	}
+
 	return container;
 }
 
 // ─── Full message element ─────────────────────────────────────────────────────
 
-function buildMessageElement({ node, isEditing, editingDraft, canBranchBack, canBranchForward, canResend }) {
+function buildMessageElement({ node, isEditing, editingDraft, canBranchBack, canBranchForward, canResend, settings }) {
 	const div = document.createElement('div');
 	div.className = `chat-message ${node.role}`;
 	div.setAttribute('role', 'article');
 	div.setAttribute('aria-label', node.role === 'user' ? 'You' : 'Assistant');
 	div.dataset.nodeId = node.id;
 
-	div.appendChild(buildContentContainer(node, isEditing, editingDraft));
+	div.appendChild(buildContentContainer(node, isEditing, editingDraft, settings));
 
 	const menu = document.createElement('div');
 	menu.className = 'chat-message-menu';
@@ -257,7 +266,7 @@ export function showTyping(container) {
 	return div;
 }
 
-export function renderThread(messagesEl, chat, uiState) {
+export function renderThread(messagesEl, chat, uiState, settings = null) {
 	if (!messagesEl || !chat) return;
 	const graph = ensureGraph(chat);
 	messagesEl.querySelectorAll('.chat-message, .chat-typing').forEach(el => el.remove());
@@ -273,6 +282,7 @@ export function renderThread(messagesEl, chat, uiState) {
 			canBranchBack:    nav.canBack,
 			canBranchForward: nav.canForward,
 			canResend:        Boolean(node.parentId) && node.role !== 'system',
+			settings,
 		}));
 	});
 	scrollToBottom(messagesEl);
@@ -283,12 +293,12 @@ export function renderThread(messagesEl, chat, uiState) {
  * rebuilding the entire thread. Avoids the Chromium flash during full re-renders.
  * Returns false if the element wasn't found — caller should fall back to renderThread.
  */
-export function patchMessageEditState(messagesEl, graph, node, isEditing, editingDraft) {
+export function patchMessageEditState(messagesEl, graph, node, isEditing, editingDraft, settings = null) {
 	const msgEl = messagesEl.querySelector(`[data-node-id="${node.id}"]`);
 	if (!msgEl) return false;
 
 	const oldContent = msgEl.querySelector('.chat-message-content');
-	const newContent = buildContentContainer(node, isEditing, editingDraft);
+	const newContent = buildContentContainer(node, isEditing, editingDraft, settings);
 	if (oldContent) msgEl.replaceChild(newContent, oldContent);
 	else msgEl.insertBefore(newContent, msgEl.querySelector('.chat-message-menu'));
 

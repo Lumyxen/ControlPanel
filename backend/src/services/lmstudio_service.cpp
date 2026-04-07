@@ -312,7 +312,8 @@ void LmStudioService::streamingChatWithCallback(
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
         const std::string& systemPrompt, double temperature, int numCtx,
-        std::function<bool()> cancelCheck) const {
+        std::function<bool()> cancelCheck,
+        bool emitLogprobs) const {
 
     Json::Value body;
     body["model"]      = model;
@@ -321,6 +322,7 @@ void LmStudioService::streamingChatWithCallback(
     body["stream"]     = true;
     if (temperature >= 0.0) body["temperature"] = temperature;
     if (numCtx > 0)         body["num_ctx"]     = numCtx;
+    if (emitLogprobs)       body["logprobs"]    = true;
 
     std::vector<StreamContext::ToolCallAccum> unused;
     std::string finishReason = streamOneRound(body, onChunk, onError, unused);
@@ -339,7 +341,8 @@ void LmStudioService::streamingChatWithTools(
         std::function<void(const std::string&)> onError,
         McpRegistry* registry,
         double temperature, int numCtx,
-        std::function<bool()> cancelCheck) const {
+        std::function<bool()> cancelCheck,
+        bool emitLogprobs) const {
 
     for (;;) {
         if (cancelCheck && cancelCheck()) return;
@@ -350,6 +353,7 @@ void LmStudioService::streamingChatWithTools(
         body["stream"]     = true;
         if (temperature >= 0.0) body["temperature"] = temperature;
         if (numCtx > 0)         body["num_ctx"]     = numCtx;
+        if (emitLogprobs)       body["logprobs"]    = true;
 
         if (!tools.isNull() && tools.isArray() && !tools.empty()) {
             body["tools"]       = tools;

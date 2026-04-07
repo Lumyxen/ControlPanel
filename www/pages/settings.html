@@ -47,6 +47,56 @@
             <label for="system-prompt-input">System Prompt</label>
             <textarea id="system-prompt-input" class="system-prompt-input" rows="6" placeholder="Enter a system prompt…"></textarea>
         </div>
+        <div class="option-row">
+            <span style="font-weight:600;">Token Highlighting</span>
+            <span class="option-hint">Colour-code tokens by confidence — green (certain), yellow (moderate), red (uncertain)</span>
+        </div>
+        <div class="option-row" style="padding-left: 1rem;">
+            <span>High confidence (≥80%)</span>
+            <label class="toggle-switch" style="width: fit-content;">
+                <input id="logprob-highlight-high" type="checkbox" />
+                <span class="toggle-track"></span>
+            </label>
+        </div>
+        <div class="option-row" style="padding-left: 1rem;">
+            <span>Medium confidence (50-80%)</span>
+            <label class="toggle-switch" style="width: fit-content;">
+                <input id="logprob-highlight-medium" type="checkbox" />
+                <span class="toggle-track"></span>
+            </label>
+        </div>
+        <div class="option-row" style="padding-left: 1rem;">
+            <span>Low confidence (&lt;50%)</span>
+            <label class="toggle-switch" style="width: fit-content;">
+                <input id="logprob-highlight-low" type="checkbox" checked />
+                <span class="toggle-track"></span>
+            </label>
+        </div>
+        <div class="option-row">
+            <span style="font-weight:600;">Include Logprobs in Chat History</span>
+            <span class="option-hint">Show token confidence levels to the AI as part of conversation context</span>
+        </div>
+        <div class="option-row" style="padding-left: 1rem;">
+            <span>High confidence (≥80%)</span>
+            <label class="toggle-switch" style="width: fit-content;">
+                <input id="logprob-history-high" type="checkbox" />
+                <span class="toggle-track"></span>
+            </label>
+        </div>
+        <div class="option-row" style="padding-left: 1rem;">
+            <span>Medium confidence (50-80%)</span>
+            <label class="toggle-switch" style="width: fit-content;">
+                <input id="logprob-history-medium" type="checkbox" />
+                <span class="toggle-track"></span>
+            </label>
+        </div>
+        <div class="option-row" style="padding-left: 1rem;">
+            <span>Low confidence (&lt;50%)</span>
+            <label class="toggle-switch" style="width: fit-content;">
+                <input id="logprob-history-low" type="checkbox" />
+                <span class="toggle-track"></span>
+            </label>
+        </div>
         <div class="input-group" style="margin-top: 0.75rem;">
             <button type="button" id="save-ai-settings" class="btn btn-primary">Save</button>
             <span id="ai-settings-status" class="option-hint" style="margin-left: 0.5rem;"></span>

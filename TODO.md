@@ -239,6 +239,7 @@
 - System Prompt does not count towards used up tokens
 - AI model should only be loaded on first inference, not on runtime
 - M-RoPE models do not work with current KV Cache reuse implementation
+- AI can not see their own confidence scores
 
 ## Password Manager
 ### Planned Features
@@ -283,6 +284,11 @@
     - Top-P
     - Min-P
     - Repetition Penalty
+    - Being able to see high (>80%), medium (50-80%), and/or low (<50%) confidence tokens for the AI to self reflect
+  - Being able to see high (>80%), medium (50-80%), and/or low (<50%) confidence tokens
+  - AI Model browser to search for GGUF models on HuggingFace
+    - Automatically finds mmproj and tokenizer files
+    - Downloads into an organised structure of folders
   - Customisable theme between all Everforest palette choices and Catppuccin palette choices
 
 ## AI chat-box

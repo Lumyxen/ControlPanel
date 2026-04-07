@@ -136,6 +136,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
         double temperature       = body.isMember("temperature")    ? body["temperature"].asDouble()  : -1.0;
         int contextWindow        = body.isMember("context_window") ? body["context_window"].asInt()  : 0;
         std::string stream_id    = body.isMember("stream_id")      ? body["stream_id"].asString()    : "";
+        bool emitLogprobs        = body.isMember("logprobs")       ? body["logprobs"].asBool()       : false;
 
         Json::Value prebuiltMessages(Json::arrayValue);
         if (hasPrebuiltMessages) {
@@ -216,11 +217,11 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                 std::async(std::launch::async,
                     [ctx, llamaCppService, model, llamaMessages, tools,
                      maxTokens, temperature, contextWindow, registry,
-                     onChunk, onError, cancelCheck]() mutable {
+                     onChunk, onError, cancelCheck, emitLogprobs]() mutable {
                         llamaCppService->streamingChatWithTools(
                             model, llamaMessages, tools,
                             maxTokens, onChunk, onError, registry,
-                            temperature, contextWindow, cancelCheck);
+                            temperature, contextWindow, cancelCheck, emitLogprobs);
 
                         std::lock_guard<std::mutex> lock(ctx->mutex);
                         ctx->done = true;
@@ -238,7 +239,7 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                     [ctx, &service, registry, model, prompt, maxTokens,
                      systemPrompt, temperature, contextWindow, tools,
                      useTools, hasPrebuiltMessages, prebuiltMessages,
-                     onChunk, onError, cancelCheck]() mutable {
+                     onChunk, onError, cancelCheck, emitLogprobs]() mutable {
                         if (useTools || hasPrebuiltMessages) {
                             Json::Value messages = hasPrebuiltMessages
                                 ? prebuiltMessages
@@ -246,12 +247,12 @@ void handleStreaming(const httplib::Request& req, httplib::Response& res,
                             service.streamingChatWithTools(
                                 model, messages, tools, maxTokens,
                                 onChunk, onError, registry, temperature, contextWindow,
-                                cancelCheck);
+                                cancelCheck, emitLogprobs);
                         } else {
                             service.streamingChatWithCallback(
                                 model, prompt, maxTokens, onChunk, onError,
                                 systemPrompt, temperature, contextWindow,
-                                cancelCheck);
+                                cancelCheck, emitLogprobs);
                         }
 
                         std::lock_guard<std::mutex> lock(ctx->mutex);

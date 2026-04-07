@@ -13,7 +13,7 @@ import {
 	getChatById, getCurrentChatId, saveChats, setChatModel, setCurrentChatId,
 } from './store.js';
 import { renderChatList } from './sidebar.js';
-import { updateContextUI, getModelMaxTokens, getModelContextLimitFromUI, estimateNodeTokens, estimatePartsTokens } from './context.js';
+import { updateContextUI, getModelMaxTokens, getModelContextLimitFromUI, estimateNodeTokens, estimatePartsTokens, estimateTokensForText } from './context.js';
 import { renderThread, showTyping, buildToolCallElement, patchMessageEditState } from './thread-ui.js';
 import { InlineAttachmentManager } from './inline-attachment.js';
 import { parseMarkdown } from './markdown.js';
@@ -26,12 +26,33 @@ import { renderToHTML } from '../latex/renderers/html-renderer.js';
 import { tokenize } from '../latex/core/tokenizer.js';
 import { parse } from '../latex/core/parser.js';
 import { HTMLRenderer } from '../latex/renderers/html-renderer.js';
+import { applyTokenHighlighting } from './token-highlighting.js';
 import { streamChatMessage, stopChatMessage } from '../api.js';
 import * as SettingsStore from '../settings-store.js';
 import { initDropdowns, initTools, initUpload, initAutoResize, loadAndPopulateModels, TOOLS_KEY } from './toolbar.js';
 import { buildNodeTextForHistory, buildApiMessages, parseStreamReasoning } from './generation.js';
 
 let chatPageAbort = null;
+
+// Simple throttle for live highlighting during streaming
+function throttle(fn, ms) {
+	let last = 0;
+	let timer = null;
+	return function(...args) {
+		const now = Date.now();
+		const remaining = ms - (now - last);
+		if (remaining <= 0) {
+			last = now;
+			fn(...args);
+		} else if (!timer) {
+			timer = setTimeout(() => {
+				last = Date.now();
+				timer = null;
+				fn(...args);
+			}, remaining);
+		}
+	};
+}
 
 // Convert rendered HTML back to markdown for partial selections
 function htmlToMarkdown(el) {
@@ -107,7 +128,7 @@ export function loadCurrentChat(setActiveCallback) {
 	const graph = chat ? ensureGraph(chat) : null;
 	const hasMessages = Boolean(graph && computeThreadNodeIds(graph).length > 0);
 	if (empty) empty.hidden = hasMessages;
-	if (chat) renderThread(messages, chat, { editingNodeId: null, editingDraft: '' });
+	if (chat) renderThread(messages, chat, { editingNodeId: null, editingDraft: '' }, SettingsStore.get());
 	else messages.querySelectorAll('.chat-message, .chat-typing').forEach(el => el.remove());
 	renderChatList();
 	setActiveCallback?.();
@@ -182,6 +203,11 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		let extra = 0;
 		const parts = attachmentManager.extractParts();
 		if (parts?.length > 0) extra += estimatePartsTokens(parts);
+		// Account for system prompt from global settings
+		const settings = SettingsStore.get();
+		if (settings?.systemPrompt) {
+			extra += estimateTokensForText(settings.systemPrompt);
+		}
 		if (uiState.isGenerating && uiState.liveGeneratingNode) extra += estimateNodeTokens(uiState.liveGeneratingNode);
 		if (uiState.editingNodeId && chat) {
 			const node = getNode(ensureGraph(chat), uiState.editingNodeId);
@@ -209,6 +235,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	initUpload(root, input, attachmentManager, signal);
 	const resizeInput = initAutoResize(input, signal);
 	input.addEventListener('input', updateLiveContext, { signal });
+	// Show initial context UI (includes system prompt tokens)
+	updateLiveContext();
 	input.addEventListener('keydown', (e) => {
 		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
 			e.preventDefault();
@@ -225,7 +253,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	const rerender = () => {
 		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
 		if (!chat) { messages.querySelectorAll('.chat-message, .chat-typing').forEach(el => el.remove()); return; }
-		renderThread(messages, chat, { editingNodeId: uiState.editingNodeId, editingDraft: uiState.editingDraft });
+		renderThread(messages, chat, { editingNodeId: uiState.editingNodeId, editingDraft: uiState.editingDraft }, SettingsStore.get());
 		if (empty) empty.hidden = computeThreadNodeIds(ensureGraph(chat)).length > 0;
 	};
 
@@ -300,8 +328,9 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		}
 		if (!conversationHistory.trim()) conversationHistory = 'Hello';
 
-		let apiMessages = buildApiMessages(graph, threadIds);
-		if (apiMessages.length === 0 && parentUserNodeId) apiMessages = buildApiMessages(graph, [parentUserNodeId]);
+		const settings = SettingsStore.get();
+		let apiMessages = buildApiMessages(graph, threadIds, settings);
+		if (apiMessages.length === 0 && parentUserNodeId) apiMessages = buildApiMessages(graph, [parentUserNodeId], settings);
 		const hasVision = apiMessages.some(m => Array.isArray(m.content));
 		const visionMessages = hasVision ? apiMessages : null;
 
@@ -309,6 +338,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (estimatedPromptTokens + maxTokens > contextLimit) maxTokens = Math.max(256, contextLimit - estimatedPromptTokens);
 
 		let rawStreamText = '', officialReasoningText = '', activeToolCalls =[], errorFromStream = null, isSaved = false;
+		let tokenLogprobs = []; // Array of {text, logprob}
+		let mc = null; // Hoisted — used by latex_streamProcessor.onUpdate
 
 		const latexStreamProcessor = new StreamProcessor({
 			debounceMs: 200,
@@ -322,8 +353,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			},
 		});
 
-		let systemPrompt = chat?.systemPrompt || '';
-		let temperature = chat?.temperature ?? 1.0;
+		let systemPrompt = SettingsStore.get()?.systemPrompt || '';
+		let temperature = SettingsStore.get()?.temperature ?? 1.0;
 
 		if (hasVision) {
 			const hint = '[System Override: You have native multimodal vision capabilities. The user has attached an image. Analyze the visual data directly.]';
@@ -344,7 +375,21 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				if (node) {
 					if (finalReasoning)             node.reasoning  = finalReasoning;
 					if (activeToolCalls.length > 0) node.toolCalls  = activeToolCalls;
+					// Save token logprobs if we collected any
+					if (tokenLogprobs.length > 0) {
+						node.tokenLogprobs = tokenLogprobs;
+						console.log('[ChatPage] Saved', tokenLogprobs.length, 'token logprobs to node');
+					} else {
+						console.warn('[ChatPage] No token logprobs collected (tokenLogprobs.length = 0)');
+					}
 					saveChats();
+					
+					// Apply token highlighting to the newly created message
+					if (tokenLogprobs.length > 0) {
+						const settings = SettingsStore.get();
+						const mode = getHighlightMode(settings);
+						// We'll apply highlighting after render in renderThread
+					}
 				}
 			} else if (errorFromStream) {
 				addChildMessageToChat(activeChatId, parentUserNodeId, 'assistant', `**Error:** ${errorFromStream}`);
@@ -366,6 +411,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 						// Tool call events will follow immediately after.
 						rawStreamText = '';
 						officialReasoningText = '';
+						tokenLogprobs = []; // Clear token logprobs on retract
 						if (uiState.typingEl) {
 							uiState.typingEl.querySelector('.chat-message-text')?.remove();
 							uiState.typingEl.querySelector('.message-reasoning')?.remove();
@@ -378,7 +424,19 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					if (chunk.choices?.[0]?.delta) {
 						const delta = chunk.choices[0].delta;
 						if (delta.reasoning) officialReasoningText += delta.reasoning;
-						if (delta.content)   rawStreamText         += delta.content;
+						if (delta.content) {
+							rawStreamText += delta.content;
+							// Collect logprob if present
+							if (delta.logprob != null) {
+								tokenLogprobs.push({
+									text: delta.content,
+									logprob: delta.logprob
+								});
+								if (tokenLogprobs.length <= 3) {
+									console.log('[ChatPage] Token:', JSON.stringify(delta.content), 'logprob:', delta.logprob);
+								}
+							}
+						}
 					}
 					uiState.liveGeneratingNode = { role: 'assistant', content: rawStreamText, reasoning: officialReasoningText, toolCalls: activeToolCalls };
 					updateLiveContext();
@@ -392,7 +450,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 						uiState.typingEl.innerHTML = '';
 						uiState.typingEl.className = 'chat-message assistant';
 					}
-					let mc = uiState.typingEl.querySelector('.chat-message-content');
+					mc = uiState.typingEl.querySelector('.chat-message-content');
 					if (!mc) { mc = document.createElement('div'); mc.className = 'chat-message-content'; uiState.typingEl.appendChild(mc); }
 
 					if (displayReasoning) {
@@ -449,6 +507,12 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 						const pre = preprocessLatexText(parsedContent);
 						const { text, mathBlocks } = extractMath(pre);
 						tw.innerHTML = injectMath(parseMarkdown(text), mathBlocks);
+
+						// Live token highlighting during streaming
+						if (tokenLogprobs.length > 0) {
+							const settings = SettingsStore.get();
+							applyTokenHighlighting(tw, tokenLogprobs, settings);
+						}
 					} else {
 						mc.querySelector('.chat-message-text')?.remove();
 					}
@@ -464,7 +528,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 					// Stream finished - update UI immediately
 					closeTypingReasoning();
 					setGeneratingState(false);
-				}
+				},
+				true // Enable logprobs
 			);
 
 			if (errorFromStream) throw new Error(errorFromStream);
@@ -544,7 +609,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				uiState.editingNodeId = nodeId;
 				uiState.editingDraft  = node.parts ? node.parts.filter(p=>p.type==='text').map(p=>p.content).join('') : String(node.content||'');
 				uiState.editingSaveMode = null;
-				const patched = patchMessageEditState(messages, graph, node, true, uiState.editingDraft);
+				const patched = patchMessageEditState(messages, graph, node, true, uiState.editingDraft, SettingsStore.get());
 				if (!patched) rerender();
 				updateLiveContext();
 				setTimeout(() => {
@@ -555,7 +620,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			cancel: () => {
 				const escNode = uiState.editingNodeId ? getNode(graph, uiState.editingNodeId) : null;
 				resetEdit();
-				const patched = escNode ? patchMessageEditState(messages, graph, escNode, false, null) : false;
+				const patched = escNode ? patchMessageEditState(messages, graph, escNode, false, null, SettingsStore.get()) : false;
 				if (!patched) rerender();
 			},
 			save: () => {
@@ -662,7 +727,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			const chat2 = getChatById(getCurrentChatId());
 			const g2    = chat2 ? ensureGraph(chat2) : null;
 			const escNode = (escNodeId && g2) ? getNode(g2, escNodeId) : null;
-			const patched = escNode ? patchMessageEditState(messages, g2, escNode, false, null) : false;
+			const patched = escNode ? patchMessageEditState(messages, g2, escNode, false, null, SettingsStore.get()) : false;
 			if (!patched) rerender();
 		}
 	}, { signal });

@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <thread>
 #include <cstdint>
+#include <optional>
 #include <json/json.h>
 
 struct LlamaApi;
@@ -69,7 +70,7 @@ public:
     void unloadModel();
 
     // Scan modelsDir for the first .gguf and load it.
-    bool ensureModelLoaded();
+    bool ensureModelLoaded(const std::string& modelId = "");
 
     // ── Models ────────────────────────────────────────────────────────────────
 
@@ -90,7 +91,8 @@ public:
         const std::string& systemPrompt = "",
         double temperature = -1.0,
         int numCtx = 0,
-        std::function<bool()> cancelCheck = nullptr
+        std::function<bool()> cancelCheck = nullptr,
+        bool emitLogprobs = false
     );
 
     void streamingChatWithTools(
@@ -103,7 +105,8 @@ public:
         McpRegistry* registry,
         double temperature = -1.0,
         int numCtx = 0,
-        std::function<bool()> cancelCheck = nullptr
+        std::function<bool()> cancelCheck = nullptr,
+        bool emitLogprobs = false
     );
 
 private:
@@ -171,7 +174,8 @@ private:
         int maxTokens, double temperature,
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
-        std::function<bool()> cancelCheck = nullptr
+        std::function<bool()> cancelCheck = nullptr,
+        bool emitLogprobs = false
     ) const;
 
     /**
@@ -204,9 +208,10 @@ private:
         int maxTokens, double temperature,
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
-        std::function<bool()> cancelCheck
+        std::function<bool()> cancelCheck,
+        bool emitLogprobs = false
     ) const;
 
-    static std::string makeContentChunk(const std::string& text);
+    static std::string makeContentChunk(const std::string& text, std::optional<float> logprob = std::nullopt);
     static std::vector<uint8_t> decodeBase64Image(const std::string& dataUrl);
 };

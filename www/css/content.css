@@ -546,3 +546,76 @@ input[type=range]:focus::-moz-range-thumb {
     gap: 12px;
     justify-content: flex-end;
 }
+
+/* ─── Token Highlighting ───────────────────────────────────────────────────── */
+
+/* Base token style - applies when token highlighting is enabled */
+.token-highlighting-enabled .chat-message-text {
+    position: relative;
+}
+
+/* Token spans */
+.token-highlighting-enabled .token {
+    border-radius: 2px;
+    padding: 0 1px;
+    transition: background-color 0.15s ease;
+    cursor: default;
+    position: relative;
+}
+
+/* Analytic mode colours */
+.token-highlighting-enabled .token-certain,
+.token-highlighting-enabled .chat-message-text > .token-certain {
+    background-color: rgba(76, 175, 80, 0.25);
+}
+
+.token-highlighting-enabled .token-moderate,
+.token-highlighting-enabled .chat-message-text > .token-moderate {
+    background-color: rgba(255, 193, 7, 0.30);
+}
+
+.token-highlighting-enabled .token-uncertain,
+.token-highlighting-enabled .chat-message-text > .token-uncertain {
+    background-color: rgba(244, 67, 54, 0.40);
+}
+
+/* Hover tooltip showing probability */
+.token-highlighting-enabled .token:hover::after,
+.token-highlighting-enabled .chat-message-text > .token-certain:hover::after,
+.token-highlighting-enabled .chat-message-text > .token-moderate:hover::after,
+.token-highlighting-enabled .chat-message-text > .token-uncertain:hover::after {
+    content: attr(data-probability);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    font-size: 0.7rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    z-index: 10;
+    font-family: monospace;
+    pointer-events: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Fallback tooltip for elements with title attribute */
+.token-highlighting-enabled .chat-message-text > [title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    font-size: 0.7rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    z-index: 10;
+    font-family: monospace;
+    pointer-events: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}

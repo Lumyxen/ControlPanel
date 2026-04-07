@@ -42,12 +42,14 @@ export async function getModels() {
  * @param {Array|null}  messages      - Structured OpenAI-format messages (enables vision/multimodal).
  *                                      When provided, takes precedence over prompt.
  * @param {function}    onDone        - Called when stream completes (success or error)
+ * @param {boolean}     logprobs      - Whether to emit per-token logprobs (default: false)
  */
 export async function streamChatMessage(
     model, prompt, maxTokens = 8192, onChunk,
     signal = null, systemPrompt = "", temperature = null,
     contextWindow = null, streamId = null, messages = null,
     onDone = null,
+    logprobs = false,
 ) {
     const url = new URL(`${window.location.origin}${API_BASE}/chat/stream`);
     const payload = { model, max_tokens: maxTokens, prompt };
@@ -57,6 +59,7 @@ export async function streamChatMessage(
     if (temperature !== null && temperature !== undefined) payload.temperature = temperature;
     if (contextWindow !== null && contextWindow > 0)       payload.context_window = contextWindow;
     if (streamId)                          payload.stream_id      = streamId;
+    if (logprobs)                          payload.logprobs       = logprobs;
 
     try {
         const response = await fetch(url.toString(), {

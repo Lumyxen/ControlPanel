@@ -73,6 +73,18 @@ function populateAISettingsFields(root, s) {
 		const sl = root.querySelector('#temperature-slider'), nm = root.querySelector('#temperature-input');
 		if (sl) sl.value = t; if (nm) nm.value = t;
 	}
+	// Logprob highlighting toggles
+	const setToggle = (id, val) => {
+		const el = root.querySelector(id);
+		if (el && val != null) el.checked = Boolean(val);
+	};
+	setToggle('#logprob-highlight-high',   s.logprobHighlightHigh);
+	setToggle('#logprob-highlight-medium', s.logprobHighlightMedium);
+	setToggle('#logprob-highlight-low',    s.logprobHighlightLow);
+	// Logprob history toggles
+	setToggle('#logprob-history-high',   s.logprobHistoryHigh);
+	setToggle('#logprob-history-medium', s.logprobHistoryMedium);
+	setToggle('#logprob-history-low',    s.logprobHistoryLow);
 }
 
 function populateLlamaCppFields(root, s) {
@@ -573,6 +585,12 @@ export function initSettingsPage(root) {
 					temperature:             parseFloat(tempNum?.value ?? tempSl?.value ?? '0.7') || 0.7,
 					fallbackMaxOutputTokens: parseInt(root.querySelector('#max-tokens-input')?.value ?? '8192', 10) || 8192,
 					lmStudioUrl:             root.querySelector('#lmstudio-url-input')?.value?.trim() || 'http://localhost:1234',
+					logprobHighlightHigh:    root.querySelector('#logprob-highlight-high')?.checked ?? false,
+					logprobHighlightMedium:  root.querySelector('#logprob-highlight-medium')?.checked ?? false,
+					logprobHighlightLow:     root.querySelector('#logprob-highlight-low')?.checked ?? true,
+					logprobHistoryHigh:      root.querySelector('#logprob-history-high')?.checked ?? false,
+					logprobHistoryMedium:    root.querySelector('#logprob-history-medium')?.checked ?? false,
+					logprobHistoryLow:       root.querySelector('#logprob-history-low')?.checked ?? false,
 				});
 				if (statusEl) { statusEl.textContent = 'Saved.'; statusEl.style.color = 'var(--green,green)'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
 			} catch (err) {

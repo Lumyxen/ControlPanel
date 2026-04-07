@@ -41,6 +41,16 @@ private:
     // ── UI dismiss state ──────────────────────────────────────────────────────
     bool        backendSuggestionDismissed;
 
+    // ── Logprob highlighting ──────────────────────────────────────────────────
+    bool        logprobHighlightHigh;     // Highlight high confidence tokens
+    bool        logprobHighlightMedium;   // Highlight medium confidence tokens
+    bool        logprobHighlightLow;      // Highlight low confidence tokens
+
+    // ── Logprob inclusion in chat history ─────────────────────────────────────
+    bool        logprobHistoryHigh;   // Include high confidence tokens in history
+    bool        logprobHistoryMedium; // Include medium confidence tokens in history
+    bool        logprobHistoryLow;    // Include low confidence tokens in history
+
     std::string settingsPath;
     std::mutex  mutex;
 
@@ -133,8 +143,14 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
           llamacppModelKeepAlive(5),
           llamacppKvCacheType("f16"),
           llamacppBackend("auto"),
-          llamacppTag("b8391"),
+          llamacppTag("b8683"),
           backendSuggestionDismissed(false),
+          logprobHighlightHigh(false),
+          logprobHighlightMedium(false),
+          logprobHighlightLow(true),
+          logprobHistoryHigh(false),
+          logprobHistoryMedium(false),
+          logprobHistoryLow(false),
           settingsPath(path) {}
 
     void load() {
@@ -175,6 +191,18 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
             llamacppTag = cfg["llamacppTag"].asString();
         if (cfg.isMember("backendSuggestionDismissed"))
             backendSuggestionDismissed = cfg["backendSuggestionDismissed"].asBool();
+        if (cfg.isMember("logprobHighlightHigh"))
+            logprobHighlightHigh = cfg["logprobHighlightHigh"].asBool();
+        if (cfg.isMember("logprobHighlightMedium"))
+            logprobHighlightMedium = cfg["logprobHighlightMedium"].asBool();
+        if (cfg.isMember("logprobHighlightLow"))
+            logprobHighlightLow = cfg["logprobHighlightLow"].asBool();
+        if (cfg.isMember("logprobHistoryHigh"))
+            logprobHistoryHigh = cfg["logprobHistoryHigh"].asBool();
+        if (cfg.isMember("logprobHistoryMedium"))
+            logprobHistoryMedium = cfg["logprobHistoryMedium"].asBool();
+        if (cfg.isMember("logprobHistoryLow"))
+            logprobHistoryLow = cfg["logprobHistoryLow"].asBool();
     }
 
     void save() { std::lock_guard<std::mutex> lock(mutex); saveUnlocked(); }
@@ -213,6 +241,18 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
             llamacppTag = root["llamacppTag"].asString();
         if (root.isMember("backendSuggestionDismissed"))
             backendSuggestionDismissed = root["backendSuggestionDismissed"].asBool();
+        if (root.isMember("logprobHighlightHigh"))
+            logprobHighlightHigh = root["logprobHighlightHigh"].asBool();
+        if (root.isMember("logprobHighlightMedium"))
+            logprobHighlightMedium = root["logprobHighlightMedium"].asBool();
+        if (root.isMember("logprobHighlightLow"))
+            logprobHighlightLow = root["logprobHighlightLow"].asBool();
+        if (root.isMember("logprobHistoryHigh"))
+            logprobHistoryHigh = root["logprobHistoryHigh"].asBool();
+        if (root.isMember("logprobHistoryMedium"))
+            logprobHistoryMedium = root["logprobHistoryMedium"].asBool();
+        if (root.isMember("logprobHistoryLow"))
+            logprobHistoryLow = root["logprobHistoryLow"].asBool();
 
         saveUnlocked();
     }
@@ -242,6 +282,12 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
         root["llamacppBackend"]            = llamacppBackend;
         root["llamacppTag"]                = llamacppTag;
         root["backendSuggestionDismissed"] = backendSuggestionDismissed;
+        root["logprobHighlightHigh"]         = logprobHighlightHigh;
+        root["logprobHighlightMedium"]       = logprobHighlightMedium;
+        root["logprobHighlightLow"]          = logprobHighlightLow;
+        root["logprobHistoryHigh"]           = logprobHistoryHigh;
+        root["logprobHistoryMedium"]         = logprobHistoryMedium;
+        root["logprobHistoryLow"]            = logprobHistoryLow;
         return root;
     }
 
@@ -264,6 +310,12 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
     std::string getLlamacppBackend()  { std::lock_guard<std::mutex> l(mutex); return llamacppBackend; }
     std::string getLlamacppTag()      { std::lock_guard<std::mutex> l(mutex); return llamacppTag; }
     bool   getBackendSuggestionDismissed() { std::lock_guard<std::mutex> l(mutex); return backendSuggestionDismissed; }
+    bool   getLogprobHighlightHigh()       { std::lock_guard<std::mutex> l(mutex); return logprobHighlightHigh; }
+    bool   getLogprobHighlightMedium()     { std::lock_guard<std::mutex> l(mutex); return logprobHighlightMedium; }
+    bool   getLogprobHighlightLow()        { std::lock_guard<std::mutex> l(mutex); return logprobHighlightLow; }
+    bool   getLogprobHistoryHigh()         { std::lock_guard<std::mutex> l(mutex); return logprobHistoryHigh; }
+    bool   getLogprobHistoryMedium()       { std::lock_guard<std::mutex> l(mutex); return logprobHistoryMedium; }
+    bool   getLogprobHistoryLow()          { std::lock_guard<std::mutex> l(mutex); return logprobHistoryLow; }
 
     std::string getMcpConfigPath() const {
         const std::string suffix = "settings.json";
@@ -300,6 +352,12 @@ private:
         root["llamacppBackend"]            = llamacppBackend;
         root["llamacppTag"]                = llamacppTag;
         root["backendSuggestionDismissed"] = backendSuggestionDismissed;
+        root["logprobHighlightHigh"]         = logprobHighlightHigh;
+        root["logprobHighlightMedium"]       = logprobHighlightMedium;
+        root["logprobHighlightLow"]          = logprobHighlightLow;
+        root["logprobHistoryHigh"]           = logprobHistoryHigh;
+        root["logprobHistoryMedium"]         = logprobHistoryMedium;
+        root["logprobHistoryLow"]            = logprobHistoryLow;
         std::ofstream file(settingsPath);
         if (file.is_open()) {
             Json::StreamWriterBuilder builder;

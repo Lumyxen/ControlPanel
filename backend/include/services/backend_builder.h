@@ -25,14 +25,14 @@ public:
     //   buildCacheDir  : cmake build dirs (e.g. "data/build-cache") —
     //                    preserved between calls for incremental rebuilds
     //   logPath        : all build output is appended here
-    //   llamaTag       : llama.cpp git tag (e.g. "b8391")
+    //   llamaTag       : llama.cpp git tag (e.g. "b8683")
     //
     // Returns 0 on success, non-zero on failure.
     static int build(const std::string& backend,
                      const std::string& libsDir,
                      const std::string& buildCacheDir,
                      const std::string& logPath,
-                     const std::string& llamaTag = "b8391");
+                     const std::string& llamaTag = "b8683");
 
     // Returns an empty string if all tools needed for this backend are
     // present, otherwise an error message describing what is missing.
