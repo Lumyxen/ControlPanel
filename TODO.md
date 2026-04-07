@@ -41,8 +41,6 @@
   - Better live updating of the formatting
 - RKNN-LLM support to automatic backend inference software switching
 - Automatically converts gguf models into .rkllm when NPU build shows
-- Add logprobs
-  - Highlight uncertain tokens
 - Speculative Decoding
   - Setting to enable/disable this
   - Setting to change both small and large models
