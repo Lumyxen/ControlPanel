@@ -294,6 +294,7 @@
 - Message threading
 - Thinking/Reasoning support
 - Generation chunk streaming
+- Certainty highlighting
 - Linux, Windows, and ARM support for back-end
   - Master binary with data being saved in ./data/
 - Chat history
