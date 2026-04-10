@@ -4,28 +4,39 @@
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
 //
-// The inline script in index.html hides the page (visibility:hidden) and does
-// a synchronous sessionStorage check.  Here we do the full async check that
-// includes asking peer tabs for the key via BroadcastChannel.
+// Validates the session with the backend. If the backend doesn't have
+// the AES key (e.g. server restart without re-login), the session is stale
+// and we redirect to login.
 //
 // Flow:
-//   1. Already have key in sessionStorage → proceed immediately.
-//   2. No key, but another tab responds within 300 ms → key stored, proceed.
-//   3. No key, no peer → redirect to login.html.
+//   1. Have session token → validate with backend → proceed or redirect.
+//   2. No token → ask peer tabs → validate → proceed or redirect.
 
-import { isUnlocked, syncFromOtherTabs, startKeyShareServer, logout } from './auth.js';
+import { isUnlocked, syncFromOtherTabs, startKeyShareServer, logout, validateSession } from './auth.js';
 
-if (!isUnlocked()) {
-    const synced = await syncFromOtherTabs();
-    if (!synced) {
-        document.documentElement.style.visibility = '';
-        window.location.replace('./login.html');
-        throw new Error('Not authenticated — redirecting.');
-    }
+async function checkAuth() {
+	if (!isUnlocked()) {
+		const synced = await syncFromOtherTabs();
+		if (!synced) {
+			document.documentElement.style.visibility = '';
+			window.location.replace('./login.html');
+			return false;
+		}
+	}
+	const valid = await validateSession();
+	if (!valid) {
+		sessionStorage.removeItem('ctrlpanel:sessionToken');
+		document.documentElement.style.visibility = '';
+		window.location.replace('./login.html');
+		return false;
+	}
+	return true;
 }
 
-// Key is confirmed present. Start the share server so this tab can respond
-// to future key-request messages from newly opened tabs.
+const authOk = await checkAuth();
+if (!authOk) throw new Error('Auth check failed — redirecting to login.');
+
+// Start the share server so this tab can respond to peer tabs
 startKeyShareServer();
 
 // Reveal the page (was hidden by the inline script to prevent content flash).

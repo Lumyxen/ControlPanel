@@ -108,6 +108,10 @@ export function recomputeLeafId(graph) {
 }
 
 export function appendNode(graph, { parentId, role, content, timestamp, attachments, parts, toolCalls }) {
+	// If no parent specified, use the leaf (last message in thread)
+	if (parentId == null) {
+		parentId = graph.leafId ?? graph.rootId;
+	}
 	const parent = getNode(graph, parentId);
 	if (!parent) throw new Error("appendNode: parent not found");
 	const id = generateId();
@@ -153,7 +157,7 @@ export function createSiblingCopy(graph, nodeId, { content, timestamp, parts, at
 		children:[],
 		editedFrom: node.id,
 	};
-    
+
     // Default to copying existing parts/attachments if not explicitly provided
     if (parts !== undefined) {
         if (parts) sibling.parts = JSON.parse(JSON.stringify(parts));
@@ -175,6 +179,16 @@ export function createSiblingCopy(graph, nodeId, { content, timestamp, parts, at
     }
 
     if (node.toolCalls) sibling.toolCalls = JSON.parse(JSON.stringify(node.toolCalls));
+
+    // Only copy tokenLogprobs if the content is unchanged.
+    // When content is edited, the old logprobs don't match the new text.
+    const originalText = node.parts
+        ? node.parts.filter(p => p.type === 'text').map(p => p.content).join('')
+        : String(node.content ?? '');
+    const contentChanged = content !== undefined && String(content) !== originalText;
+    if (!contentChanged && node.tokenLogprobs) {
+        sibling.tokenLogprobs = JSON.parse(JSON.stringify(node.tokenLogprobs));
+    }
 
 	graph.nodes[siblingId] = sibling;
 	parent.children.push(siblingId);
@@ -208,6 +222,7 @@ export function branchFromNode(graph, nodeId, { preserveSelectedTail = false } =
     if (node.attachments) sibling.attachments = JSON.parse(JSON.stringify(node.attachments));
     if (node.reasoning) sibling.reasoning = node.reasoning;
     if (node.toolCalls) sibling.toolCalls = JSON.parse(JSON.stringify(node.toolCalls));
+    if (node.tokenLogprobs) sibling.tokenLogprobs = JSON.parse(JSON.stringify(node.tokenLogprobs));
 
 	graph.nodes[siblingId] = sibling;
 	parent.children.push(siblingId);
@@ -237,6 +252,7 @@ export function branchFromNode(graph, nodeId, { preserveSelectedTail = false } =
         if (oldNext.attachments) cloned.attachments = JSON.parse(JSON.stringify(oldNext.attachments));
         if (oldNext.reasoning) cloned.reasoning = oldNext.reasoning;
         if (oldNext.toolCalls) cloned.toolCalls = JSON.parse(JSON.stringify(oldNext.toolCalls));
+        if (oldNext.tokenLogprobs) cloned.tokenLogprobs = JSON.parse(JSON.stringify(oldNext.tokenLogprobs));
 
 		graph.nodes[newId] = cloned;
 		graph.nodes[prevNewId].children.push(newId);

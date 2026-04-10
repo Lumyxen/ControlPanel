@@ -10,7 +10,7 @@ import {
 } from './graph.js';
 import {
 	addChildMessageToChat, addMessageToChat, createNewChat,
-	getChatById, getCurrentChatId, saveChats, setChatModel, setCurrentChatId,
+	getChatById, getCurrentChatId, loadChats, saveChats, setChatModel, setCurrentChatId,
 } from './store.js';
 import { renderChatList } from './sidebar.js';
 import { updateContextUI, getModelMaxTokens, getModelContextLimitFromUI, estimateNodeTokens, estimatePartsTokens, estimateTokensForText } from './context.js';
@@ -19,40 +19,13 @@ import { InlineAttachmentManager } from './inline-attachment.js';
 import { parseMarkdown } from './markdown.js';
 import { preprocessLatexText, extractMath, injectMath } from './latex/index.js';
 import { StreamProcessor } from '../latex/live/stream-processor.js';
-import { TokenTracker } from '../latex/live/token-tracker.js';
-import { PendingManager } from '../latex/live/pending-manager.js';
-import { renderKatex } from '../latex/renderers/katex-renderer.js';
-import { renderToHTML } from '../latex/renderers/html-renderer.js';
-import { tokenize } from '../latex/core/tokenizer.js';
-import { parse } from '../latex/core/parser.js';
-import { HTMLRenderer } from '../latex/renderers/html-renderer.js';
 import { applyTokenHighlighting } from './token-highlighting.js';
-import { streamChatMessage, stopChatMessage } from '../api.js';
+import { submitGenerationTask, streamTask, getTaskByChat, cancelTask } from '../api.js';
 import * as SettingsStore from '../settings-store.js';
-import { initDropdowns, initTools, initUpload, initAutoResize, loadAndPopulateModels, TOOLS_KEY } from './toolbar.js';
+import { initDropdowns, initTools, initUpload, initAutoResize, loadAndPopulateModels } from './toolbar.js';
 import { buildNodeTextForHistory, buildApiMessages, parseStreamReasoning } from './generation.js';
 
 let chatPageAbort = null;
-
-// Simple throttle for live highlighting during streaming
-function throttle(fn, ms) {
-	let last = 0;
-	let timer = null;
-	return function(...args) {
-		const now = Date.now();
-		const remaining = ms - (now - last);
-		if (remaining <= 0) {
-			last = now;
-			fn(...args);
-		} else if (!timer) {
-			timer = setTimeout(() => {
-				last = Date.now();
-				timer = null;
-				fn(...args);
-			}, remaining);
-		}
-	};
-}
 
 // Convert rendered HTML back to markdown for partial selections
 function htmlToMarkdown(el) {
@@ -153,7 +126,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		editingNodeId: null, editingDraft: '', editingSaveMode: null,
 		typingEl: null, typingTimeout: null, streamAbort: null,
 		flushResponse: null, isGenerating: false,
-		liveGeneratingNode: null, activeStreamId: null,
+		liveGeneratingNode: null, activeTaskId: null,
 		isScrolledUp: false,
 	};
 
@@ -278,7 +251,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	};
 
 	const stopTyping = () => {
-		if (uiState.activeStreamId) { stopChatMessage(uiState.activeStreamId).catch(()=>{}); uiState.activeStreamId = null; }
+		// Do NOT cancel backend generation - task persists independently
 		if (uiState.flushResponse)  { uiState.flushResponse(); uiState.flushResponse = null; }
 		if (uiState.streamAbort)    { uiState.streamAbort.abort(); uiState.streamAbort = null; }
 		if (uiState.typingTimeout)  { clearTimeout(uiState.typingTimeout); uiState.typingTimeout = null; }
@@ -287,8 +260,9 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	};
 
 	signal.addEventListener('abort', () => {
-		if (uiState.activeStreamId) { stopChatMessage(uiState.activeStreamId).catch(()=>{}); uiState.activeStreamId = null; }
-		if (uiState.flushResponse)  { uiState.flushResponse(); uiState.flushResponse = null; }
+		// Do NOT save incomplete content — the backend task persists independently
+		// and the reconnect logic will pick up the running task on next page load
+		uiState.flushResponse = null;
 		if (uiState.streamAbort)    uiState.streamAbort.abort();
 	});
 
@@ -301,7 +275,6 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		const activeChatId    = getCurrentChatId();
 		uiState.streamAbort   = new AbortController();
 		const currentSignal   = uiState.streamAbort.signal;
-		uiState.activeStreamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
 
 		const modelSelect = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
 		const model = modelSelect?.dataset?.value || '';
@@ -338,8 +311,8 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (estimatedPromptTokens + maxTokens > contextLimit) maxTokens = Math.max(256, contextLimit - estimatedPromptTokens);
 
 		let rawStreamText = '', officialReasoningText = '', activeToolCalls =[], errorFromStream = null, isSaved = false;
-		let tokenLogprobs = []; // Array of {text, logprob}
-		let mc = null; // Hoisted — used by latex_streamProcessor.onUpdate
+		let tokenLogprobs = [];
+		let mc = null;
 
 		const latexStreamProcessor = new StreamProcessor({
 			debounceMs: 200,
@@ -375,178 +348,353 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				if (node) {
 					if (finalReasoning)             node.reasoning  = finalReasoning;
 					if (activeToolCalls.length > 0) node.toolCalls  = activeToolCalls;
-					// Save token logprobs if we collected any
 					if (tokenLogprobs.length > 0) {
 						node.tokenLogprobs = tokenLogprobs;
-						console.log('[ChatPage] Saved', tokenLogprobs.length, 'token logprobs to node');
-					} else {
-						console.warn('[ChatPage] No token logprobs collected (tokenLogprobs.length = 0)');
 					}
-					saveChats();
-					
-					// Apply token highlighting to the newly created message
-					if (tokenLogprobs.length > 0) {
-						const settings = SettingsStore.get();
-						const mode = getHighlightMode(settings);
-						// We'll apply highlighting after render in renderThread
-					}
+					// Don't saveChats() — the backend saves independently via
+					// appendAssistantMessage. We only update the local graph for
+					// immediate display; on next reload, loadChats() gets the truth.
 				}
 			} else if (errorFromStream) {
 				addChildMessageToChat(activeChatId, parentUserNodeId, 'assistant', `**Error:** ${errorFromStream}`);
 			}
 			uiState.liveGeneratingNode = null;
+			uiState.activeTaskId = null;
 		};
 
+		// Chunk buffering for smooth streaming: collect chunks and process
+		// them in batches with yields to allow browser repaints
+		let pendingChunks = [];
+		let isProcessingChunks = false;
+
+		const processPendingChunks = () => {
+			const batchSize = Math.min(5, pendingChunks.length);
+			for (let i = 0; i < batchSize; i++) {
+				const chunk = pendingChunks.shift();
+				if (currentSignal.aborted) return;
+				if (chunk.error) {
+					errorFromStream = typeof chunk.error === 'object' ? (chunk.error.message || JSON.stringify(chunk.error)) : String(chunk.error);
+					return;
+				}
+				if (chunk.type === 'retract') {
+					rawStreamText = '';
+					officialReasoningText = '';
+					tokenLogprobs = [];
+					if (uiState.typingEl) {
+						uiState.typingEl.querySelector('.chat-message-text')?.remove();
+						uiState.typingEl.querySelector('.message-reasoning')?.remove();
+					}
+					return;
+				}
+				if (chunk.type === 'tool_execution' && chunk.tool_call) {
+					activeToolCalls.push({ id: chunk.tool_call.id, name: chunk.tool_call.name, input: chunk.tool_call.arguments, output: chunk.tool_call.output });
+				}
+				if (chunk.choices?.[0]?.delta) {
+					const delta = chunk.choices[0].delta;
+					if (delta.reasoning) officialReasoningText += delta.reasoning;
+					if (delta.content) {
+						rawStreamText += delta.content;
+						if (delta.logprob != null) {
+							tokenLogprobs.push({ text: delta.content, logprob: delta.logprob });
+						}
+					}
+				}
+				uiState.liveGeneratingNode = { role: 'assistant', content: rawStreamText, reasoning: officialReasoningText, toolCalls: activeToolCalls };
+				updateLiveContext();
+
+				if (!uiState.typingEl) return;
+				const { parsedContent, parsedReasoning } = parseStreamReasoning(rawStreamText);
+				let displayReasoning = officialReasoningText;
+				if (parsedReasoning) displayReasoning += (displayReasoning ? '\n\n' : '') + parsedReasoning.trim();
+
+				if (!uiState.typingEl.querySelector('.chat-message-content')) {
+					uiState.typingEl.innerHTML = '';
+					uiState.typingEl.className = 'chat-message assistant';
+				}
+				mc = uiState.typingEl.querySelector('.chat-message-content');
+				if (!mc) { mc = document.createElement('div'); mc.className = 'chat-message-content'; uiState.typingEl.appendChild(mc); }
+
+				if (displayReasoning) {
+					let re = mc.querySelector('.message-reasoning');
+					if (!re) {
+						re = document.createElement('details'); re.className = 'message-reasoning'; re.open = true;
+						re.innerHTML = '<summary>Thinking...</summary><div class="reasoning-content"></div>';
+						mc.insertBefore(re, mc.firstChild);
+					}
+					const rc = re.querySelector('.reasoning-content');
+					if (rc) rc.textContent = displayReasoning;
+				}
+
+				latexStreamProcessor.scheduleUpdate(rawStreamText);
+
+				const existingTCs = mc.querySelectorAll('.message-tool-call');
+				for (let j = 0; j < activeToolCalls.length; j++) {
+					const tc = activeToolCalls[j];
+					let tcEl = null;
+					for (const el of existingTCs) {
+						if (el.dataset.toolCallId === tc.id) { tcEl = el; break; }
+					}
+					if (!tcEl) {
+						tcEl = document.createElement('div');
+						tcEl.className = 'message-tool-call';
+						tcEl.dataset.toolCallId = tc.id;
+						const tw = mc.querySelector('.chat-message-text');
+						tw ? mc.insertBefore(tcEl, tw) : mc.appendChild(tcEl);
+					} else {
+						const body = tcEl.querySelector('.tool-call-body');
+						if (body && tc.output) {
+							const outputSection = body.querySelector('.tool-call-section-label:last-of-type');
+							if (outputSection) {
+								const outputCode = outputSection.nextElementSibling;
+								if (outputCode && outputCode.classList.contains('tool-call-code')) outputCode.textContent = tc.output;
+							}
+						}
+					}
+				}
+
+				if (parsedContent) {
+					let tw = mc.querySelector('.chat-message-text');
+					if (!tw) { tw = document.createElement('div'); tw.className = 'chat-message-text'; mc.appendChild(tw); }
+					const pre = preprocessLatexText(parsedContent);
+					const { text, mathBlocks } = extractMath(pre);
+					tw.innerHTML = injectMath(parseMarkdown(text), mathBlocks);
+					if (tokenLogprobs.length > 0) {
+						applyTokenHighlighting(tw, tokenLogprobs, SettingsStore.get());
+					}
+				} else {
+					mc.querySelector('.chat-message-text')?.remove();
+				}
+
+				if (!uiState.isScrolledUp) contentEl.scrollTop = contentEl.scrollHeight;
+				else checkScroll();
+			}
+
+			if (pendingChunks.length > 0) {
+				requestAnimationFrame(() => {
+					if (pendingChunks.length > 0 && !currentSignal.aborted) processPendingChunks();
+				});
+			} else {
+				isProcessingChunks = false;
+			}
+		};
+
+		const chunkHandler = (chunk) => {
+			pendingChunks.push(chunk);
+			if (!isProcessingChunks) {
+				isProcessingChunks = true;
+				processPendingChunks();
+			}
+		};
+
+		// ── Submit the generation task to the backend ─────────────────────────
+		const taskPayload = {
+			model, prompt: conversationHistory, max_tokens: maxTokens,
+			system_prompt: systemPrompt, temperature, context_window: contextLimit,
+			logprobs: true,
+			chat_id: activeChatId,
+			parent_user_node_id: parentUserNodeId || '',
+		};
+		if (visionMessages) taskPayload.messages = visionMessages;
+
 		try {
-			await streamChatMessage(model, conversationHistory, maxTokens,
-				(chunk) => {
-					if (currentSignal.aborted) return;
+			const submitResult = await submitGenerationTask(taskPayload);
+			const taskId = submitResult.task_id;
+			uiState.activeTaskId = taskId;
+
+			// ── Stream chunks from the task ─────────────────────────────────
+			await streamTask(taskId, 0, chunkHandler, currentSignal, () => {
+				// Process ALL remaining chunks synchronously — must complete
+				// before the promise resolves so flushResponse gets full content.
+				while (pendingChunks.length > 0) {
+					const chunk = pendingChunks.shift();
 					if (chunk.error) {
 						errorFromStream = typeof chunk.error === 'object' ? (chunk.error.message || JSON.stringify(chunk.error)) : String(chunk.error);
-						return;
-					}
-					if (chunk.type === 'retract') {
-						// Backend detected a tool call after streaming — clear the
-						// buffered text so we don't duplicate it in the final output.
-						// Tool call events will follow immediately after.
-						rawStreamText = '';
-						officialReasoningText = '';
-						tokenLogprobs = []; // Clear token logprobs on retract
-						if (uiState.typingEl) {
-							uiState.typingEl.querySelector('.chat-message-text')?.remove();
-							uiState.typingEl.querySelector('.message-reasoning')?.remove();
-						}
-						return;
-					}
-					if (chunk.type === 'tool_execution' && chunk.tool_call) {
+					} else if (chunk.type === 'retract') {
+						rawStreamText = ''; officialReasoningText = ''; tokenLogprobs = [];
+					} else if (chunk.type === 'tool_execution' && chunk.tool_call) {
 						activeToolCalls.push({ id: chunk.tool_call.id, name: chunk.tool_call.name, input: chunk.tool_call.arguments, output: chunk.tool_call.output });
-					}
-					if (chunk.choices?.[0]?.delta) {
+					} else if (chunk.choices?.[0]?.delta) {
 						const delta = chunk.choices[0].delta;
 						if (delta.reasoning) officialReasoningText += delta.reasoning;
 						if (delta.content) {
 							rawStreamText += delta.content;
-							// Collect logprob if present
-							if (delta.logprob != null) {
-								tokenLogprobs.push({
-									text: delta.content,
-									logprob: delta.logprob
-								});
-								if (tokenLogprobs.length <= 3) {
-									console.log('[ChatPage] Token:', JSON.stringify(delta.content), 'logprob:', delta.logprob);
-								}
-							}
+							if (delta.logprob != null) tokenLogprobs.push({ text: delta.content, logprob: delta.logprob });
 						}
 					}
-					uiState.liveGeneratingNode = { role: 'assistant', content: rawStreamText, reasoning: officialReasoningText, toolCalls: activeToolCalls };
-					updateLiveContext();
-
-					if (!uiState.typingEl) return;
-					const { parsedContent, parsedReasoning } = parseStreamReasoning(rawStreamText);
-					let displayReasoning = officialReasoningText;
-					if (parsedReasoning) displayReasoning += (displayReasoning ? '\n\n' : '') + parsedReasoning.trim();
-
-					if (!uiState.typingEl.querySelector('.chat-message-content')) {
-						uiState.typingEl.innerHTML = '';
-						uiState.typingEl.className = 'chat-message assistant';
-					}
-					mc = uiState.typingEl.querySelector('.chat-message-content');
-					if (!mc) { mc = document.createElement('div'); mc.className = 'chat-message-content'; uiState.typingEl.appendChild(mc); }
-
-					if (displayReasoning) {
-						let re = mc.querySelector('.message-reasoning');
-						if (!re) {
-							re = document.createElement('details'); re.className = 'message-reasoning'; re.open = true;
-							re.innerHTML = '<summary>Thinking...</summary><div class="reasoning-content"></div>';
-							mc.insertBefore(re, mc.firstChild);
-						}
-						const rc = re.querySelector('.reasoning-content');
-						if (rc) rc.textContent = displayReasoning;
-					}
-
-					latexStreamProcessor.scheduleUpdate(rawStreamText);
-
-					// Update or add tool call elements
-					const existingTCs = mc.querySelectorAll('.message-tool-call');
-					for (let i = 0; i < activeToolCalls.length; i++) {
-						const tc = activeToolCalls[i];
-						let tcEl = null;
-
-						// Find existing element by ID
-						for (const el of existingTCs) {
-							if (el.dataset.toolCallId === tc.id) {
-								tcEl = el;
-								break;
-							}
-						}
-
-						if (!tcEl) {
-							tcEl = document.createElement('div');
-							tcEl.className = 'message-tool-call';
-							tcEl.dataset.toolCallId = tc.id;
-							const tw = mc.querySelector('.chat-message-text');
-							tw ? mc.insertBefore(tcEl, tw) : mc.appendChild(tcEl);
-						} else {
-							// Update existing tool call element with output
-							const body = tcEl.querySelector('.tool-call-body');
-							if (body && tc.output) {
-								const outputSection = body.querySelector('.tool-call-section-label:last-of-type');
-								if (outputSection) {
-									const outputCode = outputSection.nextElementSibling;
-									if (outputCode && outputCode.classList.contains('tool-call-code')) {
-										outputCode.textContent = tc.output;
-									}
-								}
-							}
-						}
-					}
-
-					if (parsedContent) {
-						let tw = mc.querySelector('.chat-message-text');
-						if (!tw) { tw = document.createElement('div'); tw.className = 'chat-message-text'; mc.appendChild(tw); }
-						const pre = preprocessLatexText(parsedContent);
-						const { text, mathBlocks } = extractMath(pre);
-						tw.innerHTML = injectMath(parseMarkdown(text), mathBlocks);
-
-						// Live token highlighting during streaming
-						if (tokenLogprobs.length > 0) {
-							const settings = SettingsStore.get();
-							applyTokenHighlighting(tw, tokenLogprobs, settings);
-						}
-					} else {
-						mc.querySelector('.chat-message-text')?.remove();
-					}
-					
-					if (!uiState.isScrolledUp) {
-					    contentEl.scrollTop = contentEl.scrollHeight;
-					} else {
-					    checkScroll();
-					}
-				},
-				currentSignal, systemPrompt, temperature, contextLimit, uiState.activeStreamId, visionMessages,
-				() => {
-					// Stream finished - update UI immediately
-					closeTypingReasoning();
-					setGeneratingState(false);
-				},
-				true // Enable logprobs
-			);
+				}
+				closeTypingReasoning();
+				setGeneratingState(false);
+			});
 
 			if (errorFromStream) throw new Error(errorFromStream);
 			if (!rawStreamText && !officialReasoningText && activeToolCalls.length === 0) throw new Error('Empty response from AI');
 
-			closeTypingReasoning(); stopTyping(); rerender(); renderChatList(); setActiveCallback?.();
+			stopTyping();
+			// Reload from backend (source of truth) instead of using stale local state
+			await loadChats();
+			rerender();
+			renderChatList();
+			setActiveCallback?.();
 		} catch (err) {
 			if (err.name === 'AbortError') {
-				uiState.flushResponse?.(); uiState.flushResponse = null;
-				stopTyping(); rerender(); renderChatList(); setActiveCallback?.();
+				// User clicked stop or page navigated away - backend task lives on
+				uiState.flushResponse = null; // don't save partial content
+				stopTyping();
+				rerender();
+				renderChatList();
+				setActiveCallback?.();
 				return;
 			}
 			console.error('[ChatPage] Stream error:', err);
-			uiState.flushResponse?.(); uiState.flushResponse = null;
-			stopTyping(); rerender(); renderChatList(); setActiveCallback?.();
+			uiState.flushResponse = null;
+			stopTyping();
+			rerender();
+			renderChatList();
+			setActiveCallback?.();
 		}
 	};
+
+	// ── Reconnect: check backend for any running/completed task on this chat ──
+	const reconnectCheck = async () => {
+		const chatId = getCurrentChatId();
+		if (!chatId) return;
+
+		try {
+			const task = await getTaskByChat(chatId);
+			if (!task || task.error) return;
+
+			if (task.status === 'completed') {
+				// Backend already saved the result — just reload chats
+				await loadChats();
+				const chat = getChatById(chatId);
+				if (chat) renderThread(messages, chat, { editingNodeId: uiState.editingNodeId, editingDraft: uiState.editingDraft }, SettingsStore.get());
+				renderChatList();
+				setActiveCallback?.();
+				return;
+			}
+
+			if (task.status === 'running' || task.status === 'pending') {
+				const reconnectAbort = new AbortController();
+				uiState.streamAbort = reconnectAbort;
+				const currentSignal = reconnectAbort.signal;
+
+				let rawStreamText = '', officialReasoningText = '', activeToolCalls =[], errorFromStream = null;
+				let tokenLogprobs = [];
+				let mc = null;
+				let pendingChunks = [];
+				let isProcessingChunks = false;
+
+				// Don't render existing messages — just show the typing indicator.
+				// The streamTask will replay ALL chunks from the backend, rebuilding
+				// the full content. On completion, reload from the backend (the source
+				// of truth) instead of saving frontend state to it.
+				const typingEl = showTyping(messages);
+				uiState.typingEl = typingEl;
+				// No flushResponse — backend already saved the result independently.
+				// Do NOT call saveChats() — it would overwrite the backend truth.
+
+				const latexStreamProcessor = new StreamProcessor({
+					debounceMs: 200, tokenThreshold: 0,
+					onUpdate: (source) => {
+						mc = typingEl.querySelector('.chat-message-content');
+						const tw = mc?.querySelector('.chat-message-text');
+						if (!tw || !source) return;
+						const pre = preprocessLatexText(source);
+						const { text, mathBlocks } = extractMath(pre);
+						tw.innerHTML = injectMath(parseMarkdown(text), mathBlocks);
+					},
+				});
+
+				const processPendingChunks = () => {
+					const batchSize = Math.min(5, pendingChunks.length);
+					for (let i = 0; i < batchSize; i++) {
+						const chunk = pendingChunks.shift();
+						if (currentSignal.aborted) return;
+						if (chunk.error) { errorFromStream = typeof chunk.error === 'object' ? (chunk.error.message || JSON.stringify(chunk.error)) : String(chunk.error); return; }
+						if (chunk.type === 'retract') { rawStreamText = ''; officialReasoningText = ''; tokenLogprobs = []; return; }
+						if (chunk.type === 'tool_execution' && chunk.tool_call) activeToolCalls.push({ id: chunk.tool_call.id, name: chunk.tool_call.name, input: chunk.tool_call.arguments, output: chunk.tool_call.output });
+						if (chunk.choices?.[0]?.delta) {
+							const delta = chunk.choices[0].delta;
+							if (delta.reasoning) officialReasoningText += delta.reasoning;
+							if (delta.content) { rawStreamText += delta.content; if (delta.logprob != null) tokenLogprobs.push({ text: delta.content, logprob: delta.logprob }); }
+						}
+						uiState.liveGeneratingNode = { role: 'assistant', content: rawStreamText, reasoning: officialReasoningText, toolCalls: activeToolCalls };
+						updateLiveContext();
+						mc = uiState.typingEl?.querySelector('.chat-message-content');
+						if (!mc) { uiState.typingEl.innerHTML = ''; uiState.typingEl.className = 'chat-message assistant'; mc = document.createElement('div'); mc.className = 'chat-message-content'; uiState.typingEl.appendChild(mc); }
+						const { parsedContent, parsedReasoning } = parseStreamReasoning(rawStreamText);
+						let displayReasoning = officialReasoningText;
+						if (parsedReasoning) displayReasoning += (displayReasoning ? '\n\n' : '') + parsedReasoning.trim();
+						if (displayReasoning) {
+							let re = mc.querySelector('.message-reasoning');
+							if (!re) { re = document.createElement('details'); re.className = 'message-reasoning'; re.open = true; re.innerHTML = '<summary>Thinking...</summary><div class="reasoning-content"></div>'; mc.insertBefore(re, mc.firstChild); }
+							const rc = re.querySelector('.reasoning-content'); if (rc) rc.textContent = displayReasoning;
+						}
+						latexStreamProcessor.scheduleUpdate(rawStreamText);
+						const existingTCs = mc.querySelectorAll('.message-tool-call');
+						for (let j = 0; j < activeToolCalls.length; j++) {
+							const tc = activeToolCalls[j]; let tcEl = null;
+							for (const el of existingTCs) { if (el.dataset.toolCallId === tc.id) { tcEl = el; break; } }
+							if (!tcEl) { tcEl = document.createElement('div'); tcEl.className = 'message-tool-call'; tcEl.dataset.toolCallId = tc.id; const tw = mc.querySelector('.chat-message-text'); tw ? mc.insertBefore(tcEl, tw) : mc.appendChild(tcEl); }
+							else { const body = tcEl.querySelector('.tool-call-body'); if (body && tc.output) { const os = body.querySelector('.tool-call-section-label:last-of-type'); if (os) { const oc = os.nextElementSibling; if (oc && oc.classList.contains('tool-call-code')) oc.textContent = tc.output; } } }
+						}
+						if (parsedContent) { let tw = mc.querySelector('.chat-message-text'); if (!tw) { tw = document.createElement('div'); tw.className = 'chat-message-text'; mc.appendChild(tw); } const pre = preprocessLatexText(parsedContent); const { text, mathBlocks } = extractMath(pre); tw.innerHTML = injectMath(parseMarkdown(text), mathBlocks); }
+						else mc.querySelector('.chat-message-text')?.remove();
+						if (tokenLogprobs.length > 0) {
+							const tw = mc.querySelector('.chat-message-text');
+							if (tw) applyTokenHighlighting(tw, tokenLogprobs, SettingsStore.get());
+						}
+						if (!uiState.isScrolledUp) contentEl.scrollTop = contentEl.scrollHeight;
+					}
+					if (pendingChunks.length > 0) { requestAnimationFrame(() => { if (pendingChunks.length > 0 && !currentSignal.aborted) processPendingChunks(); }); }
+					else isProcessingChunks = false;
+				};
+
+				const chunkHandler = (chunk) => { pendingChunks.push(chunk); if (!isProcessingChunks) { isProcessingChunks = true; processPendingChunks(); } };
+
+				setGeneratingState(true);
+				checkScroll();
+
+				try {
+					await streamTask(task.id, 0, chunkHandler, currentSignal, () => {
+						// Process ALL remaining chunks synchronously — must complete
+						// before the promise resolves.
+						while (pendingChunks.length > 0) {
+							const chunk = pendingChunks.shift();
+							if (chunk.error) errorFromStream = typeof chunk.error === 'object' ? (chunk.error.message || JSON.stringify(chunk.error)) : String(chunk.error);
+							else if (chunk.type === 'retract') { rawStreamText = ''; officialReasoningText = ''; tokenLogprobs = []; }
+							else if (chunk.type === 'tool_execution' && chunk.tool_call) activeToolCalls.push({ id: chunk.tool_call.id, name: chunk.tool_call.name, input: chunk.tool_call.arguments, output: chunk.tool_call.output });
+							else if (chunk.choices?.[0]?.delta) { const delta = chunk.choices[0].delta; if (delta.reasoning) officialReasoningText += delta.reasoning; if (delta.content) { rawStreamText += delta.content; if (delta.logprob != null) tokenLogprobs.push({ text: delta.content, logprob: delta.logprob }); } }
+						}
+						closeTypingReasoning();
+						setGeneratingState(false);
+					});
+
+					if (errorFromStream) throw new Error(errorFromStream);
+					// Reload from backend (source of truth) — don't save frontend state
+					await loadChats();
+					const chat = getChatById(chatId);
+					if (chat) renderThread(messages, chat, { editingNodeId: uiState.editingNodeId, editingDraft: uiState.editingDraft }, SettingsStore.get());
+					renderChatList();
+					setActiveCallback?.();
+				} catch (e) {
+					if (e.name !== 'AbortError') console.error('[ChatPage] Reconnect stream error:', e);
+					await loadChats();
+					const chat = getChatById(chatId);
+					if (chat) renderThread(messages, chat, { editingNodeId: uiState.editingNodeId, editingDraft: uiState.editingDraft }, SettingsStore.get());
+					renderChatList();
+					setActiveCallback?.();
+				}
+			}
+		} catch (e) {
+			// ignore
+		}
+	};
+
+	// Delay reconnect to let the page fully settle and avoid EventSource interruption during navigation
+	requestAnimationFrame(() => {
+		requestAnimationFrame(reconnectCheck);
+	});
 
 	document.addEventListener('keydown', (e) => {
 		if ((e.key === 'Escape' || e.key === 'Esc') && uiState.editingNodeId) {
@@ -646,7 +794,9 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				resetEdit();
 				rerender();
 				setActiveCallback?.();
-				if (saveMode !== 'preserve') {
+				// Only auto-regenerate when editing a user message (to get a new AI response).
+				// Editing an assistant message should just update the text, not trigger a new generation.
+				if (saveMode !== 'preserve' && sibling.role === 'user') {
 					if (empty) empty.hidden = true;
 					startReply(sibling.id);
 				}
@@ -659,13 +809,19 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				rerender(); setActiveCallback?.();
 				checkScroll();
 			},
-			back: () => {
-				setSelectedChildId(graph, node.parentId, nodeId, -1);
+			'branch-back': () => {
+				const siblings = getNode(graph, node.parentId)?.children || [];
+				const idx = siblings.indexOf(nodeId);
+				if (idx <= 0) return;
+				setSelectedChildId(graph, node.parentId, siblings[idx - 1]);
 				recomputeLeafId(graph); chat.updatedAt = Date.now(); saveChats();
 				resetEdit(); rerender(); setActiveCallback?.();
 			},
-			forward: () => {
-				setSelectedChildId(graph, node.parentId, nodeId, +1);
+			'branch-forward': () => {
+				const siblings = getNode(graph, node.parentId)?.children || [];
+				const idx = siblings.indexOf(nodeId);
+				if (idx < 0 || idx >= siblings.length - 1) return;
+				setSelectedChildId(graph, node.parentId, siblings[idx + 1]);
 				recomputeLeafId(graph); chat.updatedAt = Date.now(); saveChats();
 				resetEdit(); rerender(); setActiveCallback?.();
 			},
@@ -812,7 +968,18 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 	form.addEventListener('submit', (e) => {
 		e.preventDefault();
-		if (uiState.isGenerating) { stopTyping(); rerender(); setActiveCallback?.(); return; }
+		if (uiState.isGenerating) {
+			// Actually cancel the backend task, don't just hide it visually
+			const taskId = uiState.activeTaskId;
+			uiState.flushResponse = null; // prevent saving partial content — must happen BEFORE abort
+			uiState.streamAbort?.abort();
+			uiState.streamAbort = null;
+			if (taskId) cancelTask(taskId).catch(() => {});
+			stopTyping();
+			rerender();
+			setActiveCallback?.();
+			return;
+		}
 		const parts = attachmentManager.extractParts();
 		if (!parts || parts.length === 0) return;
 		ensureChatExists(setActiveCallback);

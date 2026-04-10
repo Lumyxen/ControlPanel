@@ -129,11 +129,13 @@ set(SOURCES
     src/services/mcp_client.cpp
     src/services/mcp_stdio_client.cpp
     src/services/mcp_registry.cpp
+    src/services/crypto_service.cpp
     src/controllers/lmstudio_controller.cpp
     src/controllers/config_controller.cpp
     src/controllers/auth_controller.cpp
     src/controllers/chat_controller.cpp
     src/controllers/mcp_controller.cpp
+    src/controllers/generation_task_manager.cpp
     ${EMBED_CPP}
 )
 
@@ -155,12 +157,17 @@ else()
 
     # Linux
     add_executable(ctrlpanel ${SOURCES})
-    target_link_libraries(ctrlpanel ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread dl)
+    target_link_libraries(ctrlpanel ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread dl ssl crypto)
 
     # Windows (dl stub is a no-op on Windows; service gracefully reports unavailable)
     add_executable(ctrlpanel_exe ${SOURCES})
     set_target_properties(ctrlpanel_exe PROPERTIES OUTPUT_NAME "ctrlpanel" SUFFIX ".exe")
-    target_link_libraries(ctrlpanel_exe ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread)
+    target_link_libraries(ctrlpanel_exe ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread dl)
+    # Try to link OpenSSL on Windows if available
+    find_package(OpenSSL QUIET)
+    if(OPENSSL_FOUND)
+        target_link_libraries(ctrlpanel_exe OpenSSL::SSL OpenSSL::Crypto)
+    endif()
 
     install(TARGETS ctrlpanel ctrlpanel_exe DESTINATION bin)
 endif()

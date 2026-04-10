@@ -7,127 +7,143 @@ const API_BASE = "/api";
 async function makeRequest(endpoint, options = {}) {
     const url = `${API_BASE}${endpoint}`;
     const headers = { "Content-Type": "application/json", ...options.headers };
+
+    // Attach session token if available
     try {
-        const response = await fetch(url, { ...options, headers });
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({}));
-            const errMsg = typeof error.error === 'object' && error.error !== null
-                ? (error.error.message || JSON.stringify(error.error))
-                : error.error;
-            throw new Error(errMsg || `HTTP ${response.status}`);
+        const { getSessionToken } = await import('./auth.js');
+        const token = getSessionToken();
+        if (token) {
+            headers['X-Session-Token'] = token;
         }
-        return await response.json();
-    } catch (err) {
-        console.error("API request failed:", err);
-        throw err;
+    } catch { /* auth.js may not be loaded */ }
+
+    const response = await fetch(url, { ...options, headers });
+    if (!response.ok) {
+        if (response.status === 401) {
+            // Session invalidated — redirect to login
+            sessionStorage.removeItem('ctrlpanel:sessionToken');
+            window.location.replace('/login.html');
+            throw new Error('Session expired');
+        }
+        const error = await response.json().catch(() => ({}));
+        const errMsg = typeof error.error === 'object' && error.error !== null
+            ? (error.error.message || JSON.stringify(error.error))
+            : error.error;
+        throw new Error(errMsg || `HTTP ${response.status}`);
     }
+    return await response.json();
 }
 
 export async function getModels() {
     return makeRequest("/models");
 }
 
+// ─── Task-based generation API ───────────────────────────────────────────────
+// These functions support backend-managed generation that persists across
+// browser tab close/reload. The frontend submits a task, then opens an SSE
+// stream to receive chunks. If the tab closes mid-generation, the task
+// continues on the backend and can be resumed on reconnect.
+
 /**
- * Stream a chat message.
- *
- * @param {string}      model
- * @param {string}      prompt        - Full conversation history string (fallback when messages is null)
- * @param {number}      maxTokens
- * @param {function}    onChunk       - Called with each parsed SSE chunk
- * @param {AbortSignal} signal
- * @param {string}      systemPrompt
- * @param {number|null} temperature   - Sampling temperature (null = backend default)
- * @param {number|null} contextWindow - Context window size (used by LM Studio via num_ctx)
- * @param {string|null} streamId      - Identifier for explicit halt via /chat/stop
- * @param {Array|null}  messages      - Structured OpenAI-format messages (enables vision/multimodal).
- *                                      When provided, takes precedence over prompt.
- * @param {function}    onDone        - Called when stream completes (success or error)
- * @param {boolean}     logprobs      - Whether to emit per-token logprobs (default: false)
+ * Submit a generation task to the backend.
+ * Returns the task_id immediately. Generation runs in the background.
  */
-export async function streamChatMessage(
-    model, prompt, maxTokens = 8192, onChunk,
-    signal = null, systemPrompt = "", temperature = null,
-    contextWindow = null, streamId = null, messages = null,
-    onDone = null,
-    logprobs = false,
-) {
-    const url = new URL(`${window.location.origin}${API_BASE}/chat/stream`);
-    const payload = { model, max_tokens: maxTokens, prompt };
-
-    if (messages && messages.length > 0)  payload.messages       = messages;
-    if (systemPrompt)                      payload.system_prompt  = systemPrompt;
-    if (temperature !== null && temperature !== undefined) payload.temperature = temperature;
-    if (contextWindow !== null && contextWindow > 0)       payload.context_window = contextWindow;
-    if (streamId)                          payload.stream_id      = streamId;
-    if (logprobs)                          payload.logprobs       = logprobs;
-
-    try {
-        const response = await fetch(url.toString(), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-            signal,
-        });
-
-        if (!response.ok) {
-            let error = {};
-            try { error = await response.json(); } catch {}
-            const errMsg = typeof error.error === 'object' && error.error !== null
-                ? (error.error.message || JSON.stringify(error.error))
-                : error.error;
-            throw new Error(errMsg || `HTTP ${response.status}`);
-        }
-
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error("Response body is not readable");
-
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let streamError = null;
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-
-            let streamFinished = false;
-            for (const line of lines) {
-                if (!line.startsWith("data: ")) continue;
-                const data = line.slice(6);
-                if (data === "[DONE]") { streamFinished = true; break; }
-                try {
-                    const parsed = JSON.parse(data);
-                    if (parsed.error) {
-                        const msg = typeof parsed.error === 'object' && parsed.error !== null
-                            ? (parsed.error.message || JSON.stringify(parsed.error))
-                            : String(parsed.error);
-                        streamError = new Error(msg);
-                    }
-                    if (onChunk) onChunk(parsed);
-                } catch { /* ignore malformed SSE frames */ }
-            }
-            if (streamFinished) {
-                if (onDone) onDone();
-                break;
-            }
-        }
-
-        if (streamError) throw streamError;
-    } catch (err) {
-        if (err.name === 'AbortError') throw err;
-        console.error("Streaming request failed:", err);
-        throw err;
-    } finally {
-        if (onDone) onDone();
-    }
+export async function submitGenerationTask(payload) {
+    return makeRequest("/tasks/generate", { method: "POST", body: JSON.stringify(payload) });
 }
 
-/** Explicitly cancel a running stream (overcomes TCP/OS layer cache delays). */
-export async function stopChatMessage(streamId) {
-    return makeRequest("/chat/stop", { method: "POST", body: JSON.stringify({ stream_id: streamId }) });
+/**
+ * Get the status of a generation task (lightweight polling).
+ */
+export async function getTaskStatus(taskId) {
+    return makeRequest(`/tasks/${taskId}`);
+}
+
+/**
+ * Stream a generation task using EventSource (proper SSE in browsers).
+ * Replays all accumulated chunks then waits for completion.
+ *
+ * @param {string}   taskId
+ * @param {number}   resumeOffset  - Not used with EventSource (always starts from 0)
+ * @param {function} onChunk       - Called with each parsed SSE chunk
+ * @param {AbortSignal} signal
+ * @param {function} onDone        - Called when task completes
+ */
+export async function streamTask(taskId, _resumeOffset, onChunk, signal = null, onDone = null) {
+    return new Promise((resolve, reject) => {
+        const url = `/api/tasks/${taskId}/stream`;
+        const es = new EventSource(url);
+
+        const cleanup = () => {
+            es.close();
+            if (signal) signal.removeEventListener('abort', abortHandler);
+        };
+
+        const abortHandler = () => {
+            cleanup();
+            reject(new DOMException('Aborted', 'AbortError'));
+        };
+
+        if (signal) signal.addEventListener('abort', abortHandler);
+
+        es.addEventListener('error', () => {
+            cleanup();
+            resolve();
+        });
+
+        es.onmessage = (event) => {
+            if (event.data === '[DONE]') {
+                cleanup();
+                if (onDone) onDone();
+                resolve();
+                return;
+            }
+            try {
+                const parsed = JSON.parse(event.data);
+                if (parsed.error) {
+                    const msg = typeof parsed.error === 'object' && parsed.error !== null
+                        ? (parsed.error.message || JSON.stringify(parsed.error))
+                        : String(parsed.error);
+                    cleanup();
+                    reject(new Error(msg));
+                    return;
+                }
+                onChunk(parsed);
+            } catch {
+                // ignore malformed SSE frames
+            }
+        };
+    });
+}
+
+/** Cancel a running generation task. */
+export async function cancelTask(taskId) {
+    return makeRequest(`/tasks/${taskId}/cancel`, { method: "POST" });
+}
+
+/** List all generation tasks (for debug/admin). */
+export async function listTasks() {
+    return makeRequest("/tasks");
+}
+
+/** Find the latest task for a given chat. Returns null if no task found. */
+export async function getTaskByChat(chatId) {
+    try {
+        const url = `${API_BASE}/tasks/by-chat?chat_id=${encodeURIComponent(chatId)}`;
+        const headers = { "Content-Type": "application/json" };
+        try {
+            const { getSessionToken } = await import('./auth.js');
+            const token = getSessionToken();
+            if (token) headers['X-Session-Token'] = token;
+        } catch {}
+
+        const response = await fetch(url, { headers });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return body;
+        return body;
+    } catch {
+        return null;
+    }
 }
 
 export async function getSettings()          { return makeRequest("/config/settings"); }

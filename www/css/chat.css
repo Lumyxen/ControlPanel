@@ -1448,12 +1448,15 @@
     font-weight: 600;
     letter-spacing: 0.05em;
     user-select: none;
+    flex-shrink: 0;
 }
 
 .md-code-actions {
     display: flex;
     align-items: center;
     gap: 4px;
+    flex-shrink: 0;
+    margin-left: auto;
 }
 
 .md-code-actions button {

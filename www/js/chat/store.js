@@ -1,7 +1,6 @@
 import { createEmptyGraph, ensureGraph } from "./graph.js";
 import { generateId } from "./util.js";
 import { getChatsData, saveChatsData } from "../api.js";
-import { encryptPayload, decryptPayload } from "../auth.js";
 
 // localStorage key for the user's last explicitly-chosen model.
 const LAST_MODEL_KEY = "ctrlpanel:lastModel";
@@ -14,9 +13,7 @@ let pins = []; // array of chat ID strings
 
 export async function loadChats() {
 	try {
-		const rawData = await getChatsData();
-		// decryptPayload is a pass-through for unencrypted data (migration compat)
-		const data    = await decryptPayload(rawData);
+		const data = await getChatsData();
 		chats         = Array.isArray(data?.chats) ? data.chats : [];
 		currentChatId = data?.currentChatId || null;
 		pins          = Array.isArray(data?.pins) ? data.pins.map(String) : [];
@@ -39,13 +36,12 @@ function buildSavePayload() {
 
 /**
  * Fire-and-forget save to backend.
- * Encrypts the payload with the session AES-256-GCM key before sending.
+ * The backend handles encryption automatically.
  */
 export function saveChats() {
 	(async () => {
-		const payload   = buildSavePayload();
-		const encrypted = await encryptPayload(payload);
-		await saveChatsData(encrypted);
+		const payload = buildSavePayload();
+		await saveChatsData(payload);
 	})().catch((err) => {
 		console.error("[Store] Failed to save chats:", err);
 	});
@@ -178,7 +174,6 @@ export function addChildMessageToChat(chatId, parentId, role, content, attachmen
 	const graph = ensureGraph(chat);
 	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts, toolCalls });
 	chat.updatedAt = Date.now();
-	saveChats();
 	return node;
 }
 

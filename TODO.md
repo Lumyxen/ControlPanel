@@ -31,6 +31,8 @@
 
 ## AI Chat-box
 ### Planned Features
+- TTS
+- STT
 - Collapsable/Expandable BibTeX reference list
   - Closed it by default
 - Download and Extracting progress bar on llama.cpp source downloading
@@ -202,6 +204,7 @@
 
 ### Possible Features
 - TurboQuant support
+- Custom tools support
 - Togglable SLM for detecting false/unwanted text processing (like Markdown)
 - Setting to force thinking blocks on models that have thinking natively
 - Support for an external llama.cpp server
@@ -295,6 +298,8 @@
 - Thinking/Reasoning support
 - Generation chunk streaming
 - Certainty highlighting
+- Background generation, allowing you to close the tab and return to it after generation finishes
+  - Persists live streaming and certainty highlighting on refresh
 - Linux, Windows, and ARM support for back-end
   - Master binary with data being saved in ./data/
 - Chat history

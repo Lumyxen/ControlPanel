@@ -25,6 +25,7 @@
 #include "controllers/mcp_controller.h"
 #include "controllers/chat_controller.h"
 #include "controllers/auth_controller.h"
+#include "controllers/generation_task_manager.h"
 #include "embedded_frontend.h"
 
 #ifndef _WIN32
@@ -126,7 +127,7 @@ void addCorsHeaders(httplib::Response& res, const httplib::Request& req) {
         res.set_header("Access-Control-Allow-Credentials", "true");
     }
     res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.set_header("Access-Control-Allow-Headers", "Content-Type");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type, X-Chunk-Offset, X-Session-Token");
     res.set_header("Access-Control-Max-Age", "86400");
 }
 
@@ -216,7 +217,11 @@ void runServer(Config& config, LmStudioService& lmstudioService,
 
     httplib::Server svr;
     { std::lock_guard<std::mutex> lk(g_serverMutex); g_server = &svr; }
-    
+
+    // Create persistent storage
+    AuthStore authStore((fs::path(dataDir) / "auth.json").string());
+    ChatStore chatStore((fs::path(dataDir) / "chats.json").string(), &authStore);
+
     // Create HuggingFace service
     HuggingFaceService hfService;
 
@@ -569,6 +574,53 @@ void runServer(Config& config, LmStudioService& lmstudioService,
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleStopStream(req, res);
     });
+
+    // ── Task-based generation API ─────────────────────────────────────────────
+    svr.Post("/api/tasks/generate", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        handleTaskSubmit(req, res, lmstudioService, svc, &registry, &chatStore);
+    });
+
+    svr.Get("/api/tasks", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        handleTaskList(req, res);
+    });
+    svr.Get("/api/tasks/by-chat", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        handleTaskByChat(req, res);
+    });
+    // Catch-all for /api/tasks/<id> and /api/tasks/<id>/<action>
+    // MUST be after specific routes above
+    auto handleTaskSubRoute = [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        const std::string prefix = "/api/tasks/";
+        std::string rest = req.path.substr(prefix.size());
+        size_t slashPos = rest.find('/');
+        std::string taskId = (slashPos == std::string::npos) ? rest : rest.substr(0, slashPos);
+        std::string action = (slashPos == std::string::npos) ? "" : rest.substr(slashPos + 1);
+
+        if (action == "wait" && req.method == "GET") {
+            handleTaskWait(req, res, taskId);
+        } else if (action == "stream" && req.method == "GET") {
+            handleTaskStream(req, res, taskId);
+        } else if (action == "cancel" && req.method == "POST") {
+            handleTaskCancel(req, res, taskId);
+        } else {
+            handleTaskStatus(req, res, taskId);
+        }
+    };
+
+    svr.Options(R"(/api/tasks/.*)", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        res.status = 200;
+    });
+    svr.Get(R"(/api/tasks/.*)", [&](const httplib::Request& req, httplib::Response& res) {
+        handleTaskSubRoute(req, res);
+    });
+    svr.Post(R"(/api/tasks/.*)", [&](const httplib::Request& req, httplib::Response& res) {
+        handleTaskSubRoute(req, res);
+    });
+
     svr.Get("/api/models", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleModels(req, res, lmstudioService, svc);
@@ -939,8 +991,6 @@ void runServer(Config& config, LmStudioService& lmstudioService,
         res.set_content(Json::writeString(wb, r), "application/json");
     });
 
-    ChatStore chatStore((fs::path(dataDir) / "chats.json").string());
-    AuthStore authStore((fs::path(dataDir) / "auth.json").string());
     svr.Get("/api/chats", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleGetChats(req, res, chatStore);
@@ -949,14 +999,26 @@ void runServer(Config& config, LmStudioService& lmstudioService,
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleSaveChats(req, res, chatStore);
     });
-    // ── Auth (password salt + sentinel — stored server-side) ─────────────────
+    // ── Auth (backend-managed key derivation + session tokens) ───────────────
     svr.Get("/api/auth", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
         handleGetAuth(req, res, authStore);
     });
-    svr.Post("/api/auth", [&](const httplib::Request& req, httplib::Response& res) {
+    svr.Post("/api/auth/setup", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);
-        handleSetAuth(req, res, authStore);
+        handleSetupAuth(req, res, authStore);
+    });
+    svr.Post("/api/auth/login", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        handleLoginAuth(req, res, authStore);
+    });
+    svr.Post("/api/auth/logout", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        handleLogoutAuth(req, res);
+    });
+    svr.Get("/api/auth/validate", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+        handleValidateAuth(req, res, authStore);
     });
 
     svr.Post("/mcp", [&](const httplib::Request& req, httplib::Response& res) {

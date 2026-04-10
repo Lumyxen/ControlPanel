@@ -45,7 +45,7 @@
 			// app.js sets visibility back to '' after confirming the key.
 			// If the key is already present (refreshed tab), unhide immediately
 			// so there is zero visible delay for the common case.
-			if (!sessionStorage.getItem('ctrlpanel:sessionKey')) {
+			if (!sessionStorage.getItem('ctrlpanel:sessionToken')) {
 				document.documentElement.style.visibility = 'hidden';
 			}
 		})();
