@@ -68,26 +68,54 @@ Edit `data/settings.json` with your settings:
 **General**
 - `GET /health` - Check backend health status
 
+**Authentication**
+- `GET /api/auth` - Check if a password has been set up
+- `POST /api/auth/setup` - Set up the initial password (fails if already set up)
+- `POST /api/auth/login` - Log in with an existing password, returns a session token
+- `POST /api/auth/logout` - Revoke the current session
+- `GET /api/auth/validate` - Validate a session token
+
 **Chat & Models**
 - `POST /api/chat` - Send a non-streaming chat message
 - `POST /api/chat/stream` - Send a streaming chat message (SSE)
 - `POST /api/chat/stop` - Stop an active chat stream
 - `GET /api/models` - List available models (LM Studio & local llama.cpp)
-- `GET /api/chats` - Get saved chat history/threads
-- `PUT /api/chats` - Save/Update chat history/threads
+- `DELETE /api/models` - Delete a downloaded model from disk (body: `model_id`)
+- `GET /api/lmstudio/models` - List models from LM Studio only
+- `GET /api/chats` - Get saved chat history/threads (requires `X-Session-Token`)
+- `PUT /api/chats` - Save/Update chat history/threads (requires `X-Session-Token`)
+
+**Task-Based Generation**
+- `POST /api/tasks/generate` - Create an async generation task (returns `task_id`)
+- `GET /api/tasks` - List all tasks with their statuses
+- `GET /api/tasks/by-chat` - Get the most recent task for a given `chat_id` query param
+- `GET /api/tasks/:id` - Get the status and result of a specific task
+- `GET /api/tasks/:id/wait` - Block until the task completes, then return the result
+- `GET /api/tasks/:id/stream` - SSE stream that replays past chunks and continues live generation
+- `POST /api/tasks/:id/cancel` - Cancel a pending or running task
 
 **Configuration**
 - `GET /api/config/settings` - Get current control panel settings
 - `PUT /api/config/settings` - Update control panel settings
 
 **llama.cpp Management**
-- `GET /api/llamacpp/backend` - Get backend info (available, hardware, active)
+- `GET /api/llamacpp/backend` - Get backend info (available, hardware, active, suggestions)
 - `POST /api/llamacpp/backend` - Switch the active llama.cpp backend
+- `DELETE /api/llamacpp/backend/:name` - Remove a built backend library from disk
 - `POST /api/llamacpp/reload-model` - Unload and reload the model (applies config changes)
 - `POST /api/llamacpp/build` - Start building a new backend shared library
 - `GET /api/llamacpp/build/status` - Get the status of the current build
 - `GET /api/llamacpp/build/log` - Get the latest log lines for the active build
 - `POST /api/llamacpp/backend/dismiss` - Dismiss the GPU backend suggestion
+
+**HuggingFace Model Hub**
+- `GET /api/huggingface/search` - Search HuggingFace for models
+- `GET /api/huggingface/model-info` - Get metadata for a specific HuggingFace model
+- `GET /api/huggingface/files` - List files for a HuggingFace model (gguf, mmproj, tokenizer)
+- `POST /api/huggingface/download` - Start an async download of a HuggingFace model
+- `GET /api/huggingface/download-status` - Check download progress or list active downloads
+- `POST /api/huggingface/cancel-download` - Cancel an active download
+- `POST /api/huggingface/install-tokenizer` - Install tokenizer files into an existing model directory
 
 **MCP (Model Context Protocol)**
 - `GET /api/mcp/tools` - List aggregated tools from all live MCP servers

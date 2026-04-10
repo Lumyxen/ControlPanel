@@ -307,6 +307,7 @@
 - Auto-scrolling on generation
   - Easily scroll out and scroll back in
 - Multiple chats
+- Extensive headless API
 - Multiple API implementations
   - LM Studio Server
   - llama.cpp internal integration
