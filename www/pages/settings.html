@@ -120,7 +120,7 @@
 
         <div class="option-row">
             <label for="llamacpp-tag-input">llama.cpp Tag</label>
-            <input id="llamacpp-tag-input" class="text-input" type="text" value="b8391" placeholder="e.g. b8391" autocomplete="off" spellcheck="false" style="width:9rem;" />
+            <input id="llamacpp-tag-input" class="text-input" type="text" value="b8749" placeholder="e.g. b8749" autocomplete="off" spellcheck="false" style="width:9rem;" />
         </div>
 
         <div class="input-group" style="margin-top:0.75rem;">
@@ -149,6 +149,9 @@
                 <input id="llamacpp-flash-attn" type="checkbox" checked />
                 <span class="toggle-track"></span>
             </label>
+        </div>
+        <div class="option-row" style="grid-template-columns: 1fr;">
+            <span class="option-hint" style="color: #f59e0b; grid-column: 1;">Warning: can cause severe output quality degradation (garbled/grammatically incorrect text) with certain models like Qwen 3.5. Disable if you notice nonsensical output.</span>
         </div>
         <div class="option-row">
             <span>KV Cache Reuse</span>

@@ -71,7 +71,7 @@ message(STATUS "Downloading llama.cpp headers via HTTP archive...")
 FetchContent_Declare(
     llama_cpp_headers
     DOWNLOAD_EXTRACT_TIMESTAMP true
-    URL https://github.com/ggml-org/llama.cpp/archive/b8391.tar.gz
+    URL https://github.com/ggml-org/llama.cpp/archive/b8749.tar.gz
 )
 FetchContent_GetProperties(llama_cpp_headers)
 if(NOT llama_cpp_headers_POPULATED)

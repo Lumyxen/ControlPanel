@@ -378,7 +378,7 @@ async function initBackendSelector(root) {
 	const available   = Array.isArray(data.available) ? data.available :[];
 	const hardware    = Array.isArray(data.hardware)  ? data.hardware  :[];
 	const prereqs     = (data.prereqs && typeof data.prereqs === 'object') ? data.prereqs : {};
-	const active = data.active || 'none', setting = data.setting || 'auto', tag = data.tag || 'b8337';
+	const active = data.active || 'none', setting = data.setting || 'auto', tag = data.tag || 'b8749';
 
 	if (tagInput)    tagInput.value = tag;
 	if (activeLabel) activeLabel.textContent = active === 'none' ? 'None' : (BACKEND_LABELS[active] || active.toUpperCase());
@@ -607,7 +607,7 @@ export function initSettingsPage(root) {
 			try {
 				const selected = root.querySelector('input[name="llamacpp-backend"]:checked');
 				const backend  = selected?.value || 'auto';
-				const tagVal   = root.querySelector('#llamacpp-tag-input')?.value?.trim() || 'b8337';
+				const tagVal   = root.querySelector('#llamacpp-tag-input')?.value?.trim() || 'b8749';
 				const res = await fetch('/api/llamacpp/backend', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ backend }) });
 				const d = await res.json();
 				await SettingsStore.save({ llamacppBackend: backend, llamacppTag: tagVal });

@@ -237,7 +237,6 @@
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
 
 #### Misc Bugs
-- System Prompt does not count towards used up tokens
 - AI model should only be loaded on first inference, not on runtime
 - M-RoPE models do not work with current KV Cache reuse implementation
 - AI can not see their own confidence scores

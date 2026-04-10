@@ -143,7 +143,7 @@ Then write the claim followed by `\cite{shannon1948mathematical}`. On subsequent
           llamacppModelKeepAlive(5),
           llamacppKvCacheType("f16"),
           llamacppBackend("auto"),
-          llamacppTag("b8683"),
+          llamacppTag("b8749"),
           backendSuggestionDismissed(false),
           logprobHighlightHigh(false),
           logprobHighlightMedium(false),
