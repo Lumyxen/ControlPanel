@@ -150,3 +150,18 @@ export async function getSettings()          { return makeRequest("/config/setti
 export async function updateSettings(s)      { return makeRequest("/config/settings", { method: "PUT", body: JSON.stringify(s) }); }
 export async function getChatsData()         { return makeRequest("/chats"); }
 export async function saveChatsData(data)    { return makeRequest("/chats", { method: "PUT", body: JSON.stringify(data) }); }
+
+/**
+ * Generate an AI title for a chat based on the first user message.
+ * @param {Object} params
+ * @param {string} params.message - The user's first message
+ * @param {string} params.model - The model to use for generation
+ * @param {string} [params.system_prompt] - Optional system prompt
+ * @returns {Promise<{title: string}>}
+ */
+export async function generateAiTitle(params) {
+    return makeRequest("/chat/generate-title", {
+        method: "POST",
+        body: JSON.stringify(params),
+    });
+}

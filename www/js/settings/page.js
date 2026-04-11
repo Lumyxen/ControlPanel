@@ -85,6 +85,10 @@ function populateAISettingsFields(root, s) {
 	setToggle('#logprob-history-high',   s.logprobHistoryHigh);
 	setToggle('#logprob-history-medium', s.logprobHistoryMedium);
 	setToggle('#logprob-history-low',    s.logprobHistoryLow);
+	// AI title generation
+	setToggle('#ai-title-enabled', s.aiTitleEnabled !== false); // default true
+	set('#ai-title-model-input', s.aiTitleModel || '');
+	set('#ai-title-system-prompt-input', s.aiTitleSystemPrompt || '');
 }
 
 function populateLlamaCppFields(root, s) {
@@ -100,6 +104,8 @@ function populateLlamaCppFields(root, s) {
 	set('#llamacpp-threads',         s.llamacppThreads);
 	set('#llamacpp-threads-batch',   s.llamacppThreadsBatch);
 	set('#llamacpp-kv-cache-type',   s.llamacppKvCacheType);
+	const concurrentEl = root.querySelector('#llamacpp-title-model-concurrent');
+	if (concurrentEl) concurrentEl.checked = Boolean(s.llamacppTitleModelConcurrent);
 	const setSl = (sid, nid, v) => {
 		const sl = root.querySelector(sid), num = root.querySelector(nid);
 		if (v == null) return; if (sl) sl.value = v; if (num) num.value = v;
@@ -565,7 +571,7 @@ export function initSettingsPage(root) {
 
 	initBackendSelector(root).catch(console.warn);
 
-	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#system-prompt-input','#lmstudio-url-input','#llamacpp-flash-attn','#llamacpp-kv-cache-reuse','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty','#llamacpp-keep-alive-slider','#llamacpp-kv-cache-type'];
+	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#system-prompt-input','#lmstudio-url-input','#llamacpp-flash-attn','#llamacpp-kv-cache-reuse','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty','#llamacpp-keep-alive-slider','#llamacpp-kv-cache-type','#llamacpp-title-model-concurrent','#ai-title-enabled','#ai-title-model-input','#ai-title-system-prompt-input'];
 	const unsub = SettingsStore.subscribe((s) => {
 		const focused = document.activeElement;
 		if (!watchedFields.some(sel => root.querySelector(sel) === focused)) { populateAISettingsFields(root, s); populateLlamaCppFields(root, s); }
@@ -591,6 +597,10 @@ export function initSettingsPage(root) {
 					logprobHistoryHigh:      root.querySelector('#logprob-history-high')?.checked ?? false,
 					logprobHistoryMedium:    root.querySelector('#logprob-history-medium')?.checked ?? false,
 					logprobHistoryLow:       root.querySelector('#logprob-history-low')?.checked ?? false,
+					aiTitleEnabled:          root.querySelector('#ai-title-enabled')?.checked ?? true,
+					aiTitleModel:            root.querySelector('#ai-title-model-input')?.value?.trim() ?? '',
+					aiTitleSystemPrompt:     root.querySelector('#ai-title-system-prompt-input')?.value ?? '',
+					llamacppTitleModelConcurrent: root.querySelector('#llamacpp-title-model-concurrent')?.checked ?? false,
 				});
 				if (statusEl) { statusEl.textContent = 'Saved.'; statusEl.style.color = 'var(--green,green)'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
 			} catch (err) {
@@ -636,7 +646,8 @@ export function initSettingsPage(root) {
 					llamacppGpuLayers:     parseInt(root.querySelector('#llamacpp-gpu-layers')?.value ?? '0',  10) || 0,
 					llamacppThreads:       parseInt(root.querySelector('#llamacpp-threads')?.value ?? '0',     10) || 0,
 					llamacppThreadsBatch:  parseInt(root.querySelector('#llamacpp-threads-batch')?.value ?? '0', 10) || 0,
-					llamacppKvCacheType:   root.querySelector('#llamacpp-kv-cache-type')?.value ?? 'f16',
+					llamacppKvCacheType:       root.querySelector('#llamacpp-kv-cache-type')?.value ?? 'f16',
+					llamacppTitleModelConcurrent: root.querySelector('#llamacpp-title-model-concurrent')?.checked ?? false,
 					llamacppTopP:          parseFloat(root.querySelector('#llamacpp-top-p')?.value ?? '0.9')   || 0.9,
 					llamacppMinP:          parseFloat(root.querySelector('#llamacpp-min-p')?.value ?? '0.05')  || 0.05,
 					llamacppRepeatPenalty: parseFloat(root.querySelector('#llamacpp-repeat-penalty')?.value ?? '1.15') || 1.15,

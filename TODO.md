@@ -284,7 +284,11 @@
     - Top-P
     - Min-P
     - Repetition Penalty
-    - Being able to see high (>80%), medium (50-80%), and/or low (<50%) confidence tokens for the AI to self reflect
+    - AI being able to see its own high (>80%), medium (50-80%), and/or low (<50%) confidence tokens
+  - Enabling AI titles
+  - Specific model used for AI title generation
+  - Whether to concurrently load the AI model used to generate titles alongside the main AI model or unload the main AI model first and reload it after
+  - System prompt for the AI used to generate titles
   - Being able to see high (>80%), medium (50-80%), and/or low (<50%) confidence tokens
   - AI Model browser to search for GGUF models on HuggingFace
     - Automatically finds mmproj and tokenizer files
@@ -306,6 +310,7 @@
 - Auto-scrolling on generation
   - Easily scroll out and scroll back in
 - Multiple chats
+- AI generated chat titles
 - Extensive headless API
 - Multiple API implementations
   - LM Studio Server

@@ -20,12 +20,68 @@ import { parseMarkdown } from './markdown.js';
 import { preprocessLatexText, extractMath, injectMath } from './latex/index.js';
 import { StreamProcessor } from '../latex/live/stream-processor.js';
 import { applyTokenHighlighting } from './token-highlighting.js';
-import { submitGenerationTask, streamTask, getTaskByChat, cancelTask } from '../api.js';
+import { submitGenerationTask, streamTask, getTaskByChat, cancelTask, generateAiTitle } from '../api.js';
 import * as SettingsStore from '../settings-store.js';
 import { initDropdowns, initTools, initUpload, initAutoResize, loadAndPopulateModels } from './toolbar.js';
 import { buildNodeTextForHistory, buildApiMessages, parseStreamReasoning } from './generation.js';
 
 let chatPageAbort = null;
+
+// ── AI Title Generation (reusable) ────────────────────────────────────────────
+async function triggerAiTitleGeneration(root, chatId) {
+	const chat = getChatById(chatId);
+	if (!chat || chat.title !== "New Chat") return;
+
+	// Only on first message (exactly 1 user message)
+	const userCount = chat.graph?.nodes
+		? Object.values(chat.graph.nodes).filter(n => n.role === 'user').length
+		: 0;
+	if (userCount !== 1) return;
+
+	const settings = await SettingsStore.init();
+	if (settings?.aiTitleEnabled === false) return;
+
+	const modelSelect = root?.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
+	const currentModel = modelSelect?.dataset?.value || '';
+	const titleModel = settings?.aiTitleModel || currentModel;
+	if (!titleModel) return;
+
+	// Build conversation context
+	let conversationText = '';
+	for (const n of Object.values(chat.graph.nodes)) {
+		if (n.role === 'user' || n.role === 'assistant') {
+			conversationText += `${n.role === 'user' ? 'User' : 'Assistant'}: ${n.content || ''}\n\n`;
+		}
+	}
+	if (!conversationText.trim()) return;
+
+	try {
+		const timeout = AbortSignal.timeout(30000);
+		const result = await fetch('/api/chat/generate-title', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				message: conversationText,
+				model: titleModel,
+				title_system_prompt: settings?.aiTitleSystemPrompt || '',
+			}),
+			signal: timeout,
+		});
+
+		if (result.ok) {
+			const data = await result.json();
+			if (data.title) {
+				const { renameChat } = await import('./store.js');
+				renameChat(chatId, data.title);
+				renderChatList();
+			}
+		}
+	} catch (err) {
+		if (err.name === 'TimeoutError') {
+			console.warn('[ChatPage] AI title generation timed out (30s)');
+		}
+	}
+}
 
 // Convert rendered HTML back to markdown for partial selections
 function htmlToMarkdown(el) {
@@ -527,7 +583,17 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 			});
 
 			if (errorFromStream) throw new Error(errorFromStream);
-			if (!rawStreamText && !officialReasoningText && activeToolCalls.length === 0) throw new Error('Empty response from AI');
+			if (!rawStreamText && !officialReasoningText && activeToolCalls.length === 0) {
+				// Stream ended with no content - likely interrupted by page navigation/refresh.
+				// Backend task persists independently. Reload from backend and let reconnect handle it.
+				stopTyping();
+				setGeneratingState(false);
+				await loadChats();
+				rerender();
+				renderChatList();
+				setActiveCallback?.();
+				return;
+			}
 
 			stopTyping();
 			// Reload from backend (source of truth) instead of using stale local state
@@ -966,7 +1032,7 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		try { e.clipboardData.setData('text/html', htmlPayload); } catch {}
 	}, { signal });
 
-	form.addEventListener('submit', (e) => {
+	form.addEventListener('submit', async (e) => {
 		e.preventDefault();
 		if (uiState.isGenerating) {
 			// Actually cancel the backend task, don't just hide it visually
@@ -986,16 +1052,29 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (empty) empty.hidden = true;
 		stopTyping();
 		uiState.editingNodeId = null; uiState.editingDraft = ''; uiState.editingSaveMode = null;
-		const userNode = addMessageToChat(getCurrentChatId(), 'user', '', null, parts);
+
+		// Check if this is the first message (for AI title generation after chat completes)
+		const currentChat = getChatById(getCurrentChatId());
+		const isFirstMessage = currentChat && currentChat.graph && currentChat.graph.nodes &&
+			Object.values(currentChat.graph.nodes).filter(n => n.role === 'user').length === 0;
+
+		// Add user message immediately (shows in UI)
+		const userNode = await addMessageToChat(getCurrentChatId(), 'user', '', null, parts);
 		attachmentManager.clear();
 		const uploadBtn = root.querySelector('#chatUploadBtn');
 		if (uploadBtn) delete uploadBtn.dataset.count;
 		if (resizeInput) resizeInput();
 		rerender(); renderChatList(); setActiveCallback?.();
+
 		const sendNoReply = form.dataset.sendNoReply === '1';
 		delete form.dataset.sendNoReply;
 		if (!sendNoReply && userNode?.id) {
-			startReply(userNode.id);
+			startReply(userNode.id).finally(() => {
+				// Fire AI title generation after first message completes
+				if (isFirstMessage) {
+					triggerAiTitleGeneration(root, getCurrentChatId());
+				}
+			});
 		}
 		checkScroll();
 	}, { signal });

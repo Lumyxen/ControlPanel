@@ -41,8 +41,12 @@ namespace fs = std::filesystem;
 static std::string stemFromPath(const std::string& path) {
     return fs::path(path).stem().string();
 }
-static std::string modelIdFromPath(const std::string& path) {
-    return "llamacpp::" + stemFromPath(path);
+static std::string modelIdFromPath(const std::string& path, const std::string& modelsDir) {
+    // Extract the parent directory of the .gguf file, relative to modelsDir_
+    // This must match the ID format used in scanModels(): "llamacpp::<relative-dir>"
+    fs::path dir = fs::path(path).parent_path();
+    std::string relDir = fs::relative(dir, modelsDir).string();
+    return "llamacpp::" + relDir;
 }
 static std::string modelIdFromDirectory(const std::string& dir) {
     return "llamacpp::" + fs::path(dir).filename().string();
@@ -624,7 +628,7 @@ bool LlamaCppService::loadModel(const std::string& path) {
     n_ctx_           = static_cast<int>(ctx_size);
     n_batch_         = evalBatchSize;
     loadedModelPath_ = path;
-    loadedModelId_   = modelIdFromPath(path);
+    loadedModelId_   = modelIdFromPath(path, modelsDir_);
     modelLoaded_     = true;
 
     return true;
@@ -666,6 +670,176 @@ Json::Value LlamaCppService::buildMessages(const std::string& prompt,
         messages.append(msg);
     }
     return messages;
+}
+
+std::string LlamaCppService::generateTitle(const std::string& model,
+                                            const std::string& userMessage,
+                                            const std::string& systemPrompt) const {
+    // Build messages directly — do NOT use parseMessages since the conversation
+    // text contains "User:"/"Assistant:" lines that would be incorrectly split.
+    std::vector<std::pair<std::string, std::string>> messages;
+    if (!systemPrompt.empty()) {
+        messages.push_back({"system", systemPrompt});
+    }
+    messages.push_back({"user", userMessage});
+
+    std::string generatedTitle;
+    bool hasError = false;
+    std::atomic<bool> localAbort{false};
+
+    auto onChunk = [&generatedTitle, &localAbort](const std::string& chunk) -> bool {
+        if (localAbort.load()) return false;
+        // doInference sends content via makeContentChunk() which outputs
+        // JSON like {"choices":[{"delta":{"content":"..."}}]}
+        // It also sends heartbeat "" and "data:[DONE]\n\n" frames.
+        std::string line = chunk;
+
+        // Skip heartbeat empty chunks and SSE [DONE] frames
+        if (line.empty() || line.find("[DONE]") != std::string::npos) return true;
+
+        // Strip "data:" prefix if present
+        if (line.rfind("data:", 0) == 0) {
+            line = line.substr(6);
+            size_t start = line.find_first_not_of(" ");
+            if (start != std::string::npos) line = line.substr(start);
+        }
+
+        if (line.empty()) return true;
+
+        Json::CharReaderBuilder rb;
+        std::string errs;
+        std::istringstream ss(line);
+        Json::Value json;
+        if (Json::parseFromStream(rb, ss, &json, &errs)) {
+            // Parse nested content: choices[0].delta.content
+            if (json.isMember("choices") && json["choices"].isArray() && !json["choices"].empty()) {
+                const auto& choice = json["choices"][0];
+                if (choice.isMember("delta") && choice["delta"].isMember("content") &&
+                    choice["delta"]["content"].isString()) {
+                    generatedTitle += choice["delta"]["content"].asString();
+                }
+            }
+            // Fallback: also check for direct "content" field (legacy format)
+            else if (json.isMember("content") && json["content"].isString()) {
+                generatedTitle += json["content"].asString();
+            }
+        }
+        return true;
+    };
+
+    auto onError = [&hasError](const std::string& err) {
+        std::cerr << "[LlamaCpp] Title generation error: " << err << "\n";
+        hasError = true;
+    };
+
+    auto cancelCheck = [&localAbort]() -> bool {
+        return localAbort.load();
+    };
+
+    auto* self = const_cast<LlamaCppService*>(this);
+    bool concurrent = config_.getLlamacppTitleModelConcurrent();
+
+    // Save the current chat model ID
+    std::string savedChatModelId = self->loadedModelId_;
+    bool needsSwap = self->modelLoaded_ && self->loadedModelId_ != model;
+
+    if (needsSwap) {
+        std::cout << "[TitleGen] LlamaCpp: unloading chat model to load title model\n";
+    } else if (!self->modelLoaded_) {
+        std::cout << "[TitleGen] LlamaCpp: no model loaded, loading now\n";
+    } else {
+        std::cout << "[TitleGen] LlamaCpp: using already loaded model\n";
+    }
+
+    if (concurrent) {
+        // Concurrent mode: don't hold inferMutex_ during model swap/inference
+        // This allows other requests to proceed without blocking on the lock
+        self->cancelUnload();
+
+        if (!self->modelLoaded_ || needsSwap) {
+            if (!self->ensureModelLoaded(model)) {
+                onError("No llama.cpp model loaded");
+                std::cerr << "[TitleGen] LlamaCpp: ensureModelLoaded returned false\n";
+                return "";
+            }
+            std::cout << "[TitleGen] LlamaCpp: title model loaded\n";
+        }
+
+        self->doInference(messages, 0, 0.0, onChunk, onError, cancelCheck, false);
+        std::cout << "[TitleGen] LlamaCpp: doInference returned, rawTitle='" << generatedTitle << "'\n";
+
+        // Always restore the chat model if we swapped
+        if (needsSwap && !savedChatModelId.empty()) {
+            std::cout << "[TitleGen] LlamaCpp: restoring chat model: " << savedChatModelId << "\n";
+            self->ensureModelLoaded(savedChatModelId);
+        }
+    } else {
+        // Non-concurrent mode: hold inferMutex_ for the entire operation
+        std::unique_lock<std::mutex> lock(inferMutex_);
+        self->cancelUnload();
+
+        if (!self->modelLoaded_ || needsSwap) {
+            if (!self->ensureModelLoaded(model)) {
+                onError("No llama.cpp model loaded");
+                std::cerr << "[TitleGen] LlamaCpp: ensureModelLoaded returned false\n";
+                return "";
+            }
+            std::cout << "[TitleGen] LlamaCpp: title model loaded\n";
+        }
+
+        self->doInference(messages, 0, 0.0, onChunk, onError, cancelCheck, false);
+        std::cout << "[TitleGen] LlamaCpp: doInference returned, rawTitle='" << generatedTitle << "'\n";
+
+        // Always restore the chat model if we swapped
+        if (needsSwap && !savedChatModelId.empty()) {
+            std::cout << "[TitleGen] LlamaCpp: restoring chat model: " << savedChatModelId << "\n";
+            self->ensureModelLoaded(savedChatModelId);
+        }
+    }
+
+    if (hasError || generatedTitle.empty()) {
+        std::cerr << "[LlamaCpp] Failed to extract title from response (hasError=" << hasError
+                  << ", titleLen=" << generatedTitle.size() << ")\n";
+        return "";
+    }
+
+    // Strip out any reasoning/thinking tags (<think>...</think>, <think>...</think>, etc.)
+    auto stripTag = [&generatedTitle](const std::string& openTag, const std::string& closeTag) {
+        while (true) {
+            auto openPos = generatedTitle.find(openTag);
+            if (openPos == std::string::npos) break;
+            auto closePos = generatedTitle.find(closeTag, openPos);
+            if (closePos == std::string::npos) {
+                // No closing tag found - remove everything from open tag onwards
+                generatedTitle.erase(openPos);
+                break;
+            }
+            // Remove the entire tag
+            generatedTitle.erase(openPos, closePos + closeTag.size() - openPos);
+        }
+    };
+    stripTag("<think>", "</think>");
+    stripTag("<think>", "</think>");
+    stripTag("<reasoning>", "</reasoning>");
+
+    // Clean up the title - remove quotes, trim whitespace
+    if (generatedTitle.size() >= 2 && generatedTitle.front() == '"' && generatedTitle.back() == '"') {
+        generatedTitle = generatedTitle.substr(1, generatedTitle.size() - 2);
+    }
+
+    // Trim whitespace
+    size_t start = generatedTitle.find_first_not_of(" \t\n\r\"");
+    if (start == std::string::npos) return "";
+    size_t end = generatedTitle.find_last_not_of(" \t\n\r\"");
+    generatedTitle = generatedTitle.substr(start, end - start + 1);
+
+    // Truncate if too long (max 60 chars)
+    if (generatedTitle.length() > 60) {
+        generatedTitle = generatedTitle.substr(0, 57) + "...";
+    }
+
+    std::cout << "[LlamaCpp] Generated title: " << generatedTitle << "\n";
+    return generatedTitle;
 }
 
 std::vector<std::pair<std::string, std::string>>

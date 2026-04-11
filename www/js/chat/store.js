@@ -149,7 +149,7 @@ export function setLastSelectedModel(model) {
 
 // ── Messages ──────────────────────────────────────────────────────────────────
 
-export function addMessageToChat(chatId, role, content, attachments = null, parts = null) {
+export async function addMessageToChat(chatId, role, content, attachments = null, parts = null) {
 	const chat = getChatById(chatId);
 	if (!chat) return null;
 	const graph = ensureGraph(chat);
@@ -158,14 +158,16 @@ export function addMessageToChat(chatId, role, content, attachments = null, part
 	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts });
 
 	chat.updatedAt = Date.now();
-	if (computeThreadNodeIds(graph).length === 1 && role === "user") {
-		const titleText = parts
-			? parts.filter(p => p.type === "text").map(p => p.content).join(" ")
-			: String(content || "");
-		updateChatTitle(chatId, titleText);
-	}
-	saveChats();
+	await saveChatsAwaitable();
 	return node;
+}
+
+/**
+ * Awaitable version of saveChats - returns a promise that resolves after save completes.
+ */
+export async function saveChatsAwaitable() {
+	const payload = buildSavePayload();
+	await saveChatsData(payload);
 }
 
 export function addChildMessageToChat(chatId, parentId, role, content, attachments = null, parts = null, toolCalls = null) {

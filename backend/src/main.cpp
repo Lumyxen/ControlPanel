@@ -575,6 +575,63 @@ void runServer(Config& config, LmStudioService& lmstudioService,
         handleStopStream(req, res);
     });
 
+    // ── AI Title Generation ──────────────────────────────────────────────────
+    svr.Post("/api/chat/generate-title", [&](const httplib::Request& req, httplib::Response& res) {
+        addSecurityHeaders(res); addCorsHeaders(res, req);
+
+        Json::Value body;
+        if (!parseJsonBody(req.body, body, res)) return;
+
+        std::string message = body.get("message", "").asString();
+        if (message.empty()) {
+            res.status = 400;
+            res.set_content("{\"error\": \"Missing required field: message\"}", "application/json");
+            return;
+        }
+
+        std::string model = body.get("model", "").asString();
+        // Use the title-specific system prompt if provided, otherwise fall back to the one from the request
+        std::string systemPrompt = body.get("title_system_prompt", "").asString();
+        if (systemPrompt.empty()) {
+            systemPrompt = config.getAiTitleSystemPrompt();
+        }
+
+        // Determine which service to use based on model prefix
+        bool isLlamaCpp = model.rfind("llamacpp::", 0) == 0;
+
+        std::string title;
+        try {
+            if (isLlamaCpp) {
+                if (!svc) {
+                    res.status = 503;
+                    res.set_content("{\"error\": \"llama.cpp service not available\"}", "application/json");
+                    return;
+                }
+                title = svc->generateTitle(model, message, systemPrompt);
+            } else {
+                title = lmstudioService.generateTitle(model, message, systemPrompt);
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[TitleGen] Error: " << e.what() << "\n";
+            res.status = 500;
+            res.set_content("{\"error\": \"Title generation failed\"}", "application/json");
+            return;
+        }
+
+        if (title.empty()) {
+            res.status = 500;
+            res.set_content("{\"error\": \"Failed to generate title\"}", "application/json");
+            return;
+        }
+
+        Json::Value result;
+        result["title"] = title;
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        res.status = 200;
+        res.set_content(Json::writeString(wb, result), "application/json");
+    });
+
     // ── Task-based generation API ─────────────────────────────────────────────
     svr.Post("/api/tasks/generate", [&](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res); addCorsHeaders(res, req);

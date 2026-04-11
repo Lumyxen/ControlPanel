@@ -68,6 +68,11 @@ public:
     Json::Value buildMessages(const std::string& prompt,
                               const std::string& systemPrompt) const;
 
+    // Generate a concise chat title from user message using the LLM
+    std::string generateTitle(const std::string& model,
+                              const std::string& userMessage,
+                              const std::string& systemPrompt = "") const;
+
 private:
     std::string lmStudioUrl_ = "http://localhost:1234";
 

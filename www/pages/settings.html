@@ -97,6 +97,32 @@
                 <span class="toggle-track"></span>
             </label>
         </div>
+        <div class="option-row" style="margin-top: 1rem;">
+            <span style="font-weight:600;">AI-Generated Chat Titles</span>
+            <span class="option-hint">Automatically generate descriptive titles for new chats using AI</span>
+        </div>
+        <div class="option-row" style="padding-left: 1rem;">
+            <span>Enable AI titles</span>
+            <label class="toggle-switch" style="width: fit-content;">
+                <input id="ai-title-enabled" type="checkbox" checked />
+                <span class="toggle-track"></span>
+            </label>
+        </div>
+        <div class="option-row" style="padding-left: 1rem;">
+            <label for="ai-title-model-input">Title Model (leave empty to use chat model)</label>
+            <input id="ai-title-model-input" class="text-input" type="text" placeholder="e.g. lmstudio::qwen3-2b (empty = use chat model)" autocomplete="off" spellcheck="false" style="max-width: 400px;" />
+        </div>
+        <div class="option-row" style="padding-left: 1rem;">
+            <span>Concurrent title model loading (keep chat model loaded)</span>
+            <label class="toggle-switch" style="width: fit-content;">
+                <input id="llamacpp-title-model-concurrent" type="checkbox" />
+                <span class="toggle-track"></span>
+            </label>
+        </div>
+        <div class="option-row" style="padding-left: 1rem;">
+            <label for="ai-title-system-prompt-input">Title System Prompt</label>
+            <textarea id="ai-title-system-prompt-input" class="system-prompt-input" rows="4" placeholder="Enter a system prompt for title generation…"></textarea>
+        </div>
         <div class="input-group" style="margin-top: 0.75rem;">
             <button type="button" id="save-ai-settings" class="btn btn-primary">Save</button>
             <span id="ai-settings-status" class="option-hint" style="margin-left: 0.5rem;"></span>

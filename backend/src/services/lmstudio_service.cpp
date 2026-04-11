@@ -505,6 +505,68 @@ static Json::Value lmStudioGet(const std::string& url, long& httpCodeOut) {
     return result;
 }
 
+std::string LmStudioService::generateTitle(const std::string& model,
+                                            const std::string& userMessage,
+                                            const std::string& systemPrompt) const {
+    // Build messages for title generation using the provided system prompt
+    Json::Value messages(Json::arrayValue);
+    if (!systemPrompt.empty()) {
+        Json::Value sys;
+        sys["role"] = "system";
+        sys["content"] = systemPrompt;
+        messages.append(sys);
+    }
+
+    Json::Value user;
+    user["role"] = "user";
+    user["content"] = userMessage;
+    messages.append(user);
+
+    // Make a non-streaming request with low max_tokens and temperature=0
+    Json::Value body;
+    body["model"] = model;
+    body["messages"] = messages;
+    body["max_tokens"] = 30;
+    body["temperature"] = 0.0;
+
+    Json::Value response = makeRequest("/chat/completions", body);
+
+    if (response.isMember("error")) {
+        std::cerr << "[LmStudio] Title generation error: " << response["error"].asString() << "\n";
+        return "";
+    }
+
+    // Extract the title from response
+    if (response.isMember("choices") && response["choices"].isArray() && !response["choices"].empty()) {
+        const auto& choice = response["choices"][0];
+        if (choice.isMember("message") && choice["message"].isMember("content")) {
+            std::string title = choice["message"]["content"].asString();
+
+            // Clean up the title - remove quotes, trim whitespace
+            if (title.size() >= 2 && title.front() == '"' && title.back() == '"') {
+                title = title.substr(1, title.size() - 2);
+            }
+
+            // Trim whitespace
+            size_t start = title.find_first_not_of(" \t\n\r\"");
+            if (start == std::string::npos) return "";
+            size_t end = title.find_last_not_of(" \t\n\r\"");
+            title = title.substr(start, end - start + 1);
+
+            // Truncate if too long (max 60 chars)
+            if (title.length() > 60) {
+                title = title.substr(0, 57) + "...";
+            }
+
+            std::cout << "[LmStudio] Generated title: " << title << "\n";
+            return title;
+        }
+    }
+
+    std::cerr << "[LmStudio] Failed to extract title from response\n";
+    return "";
+}
+
 Json::Value LmStudioService::getModels() const {
     std::map<std::string, int> nativeCtxMap;
     {
