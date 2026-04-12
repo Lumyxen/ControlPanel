@@ -98,7 +98,7 @@ Core principles:
           logprobHistoryLow(false),
           aiTitleEnabled(true),
           aiTitleModel(""),
-          aiTitleSystemPrompt("Generate a short, informational title for this chat. Use 1-5 words. No quotes, or explanation."),
+          aiTitleSystemPrompt("Describe the chat in 1-3 words. No quotes, or explanation. Reason as minimally as possible"),
           llamacppTitleModelConcurrent(false),
           settingsPath(path) {}
 
