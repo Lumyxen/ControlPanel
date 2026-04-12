@@ -79,6 +79,7 @@ Edit `data/settings.json` with your settings:
 - `POST /api/chat` - Send a non-streaming chat message
 - `POST /api/chat/stream` - Send a streaming chat message (SSE)
 - `POST /api/chat/stop` - Stop an active chat stream
+- `POST /api/chat/generate-title` - Generate a title for a chat thread
 - `GET /api/models` - List available models (LM Studio & local llama.cpp)
 - `DELETE /api/models` - Delete a downloaded model from disk (body: `model_id`)
 - `GET /api/lmstudio/models` - List models from LM Studio only

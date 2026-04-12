@@ -35,9 +35,6 @@
 - TTS
 - STT
 - Model generation finish ETA (using EOS logprob)
-- Collapsable/Expandable BibTeX reference list
-  - Closed it by default
-- Download and Extracting progress bar on llama.cpp source downloading
 - llama.cpp hardware usage configuration
 - Tone down llama.cpp max compute usage to allow computer use during generation
   - Ability to return to maximum usage in settings
@@ -50,8 +47,6 @@
   - Setting to change both small and large models
 - Speculative Speculative Decoding
   - Setting to enable/disable this
-- Background AI generation (generates on the back-end, so switching chats or even closing the tab doesn't stop generation)
-- AI generated chat title
 - Tool calls inline in the text instead of being shoved at the top
   - Allow inlining inside of reasoning
 - Rework settings page to have tabs
