@@ -56,9 +56,11 @@ export function applyTokenHighlighting(contentEl, tokenLogprobs, settings) {
 
     for (let domIdx = 0; domIdx < domText.length; domIdx++) {
         const domCh = domText[domIdx];
+
         while (tokIdx < tokenText.length && tokenText[tokIdx] !== domCh) {
             tokIdx++;
         }
+
         if (tokIdx < tokenText.length && tokenText[tokIdx] === domCh) {
             // Find the logprob for this token character
             let lp = null;
@@ -99,23 +101,29 @@ export function applyTokenHighlighting(contentEl, tokenLogprobs, settings) {
     }
 
     // Collect all ranges first, then wrap from end to start
+    // Whitespace is never included in ranges, and ranges split at whitespace
     const ranges = [];
     let i = 0;
     while (i < domToTokenLogprob.length) {
+        // Skip all whitespace - never highlight it
+        if (/\s/.test(domText[i])) {
+            i++;
+            continue;
+        }
+        
         const lp = domToTokenLogprob[i];
         const cls = getHighlightClass(lp, settings);
         const tooltip = getTooltip(lp);
 
         if (cls || tooltip) {
             let end = i;
-            while (end + 1 < domToTokenLogprob.length && domToTokenLogprob[end + 1] === lp) {
+            // Extend range: same logprob AND non-whitespace only
+            while (end + 1 < domToTokenLogprob.length && 
+                   domToTokenLogprob[end + 1] === lp && 
+                   !/\s/.test(domText[end + 1])) {
                 end++;
             }
-            // Skip whitespace-only ranges
-            if (domText.slice(i, end + 1).trim().length === 0) {
-                i = end + 1;
-                continue;
-            }
+            
             ranges.push({ start: i, end, cls, tooltip, lp });
             i = end + 1;
         } else {

@@ -47,7 +47,6 @@ document.documentElement.style.visibility = '';
 import { initConnectionUI } from './connection-ui.js';
 import { initTheme } from './theme.js';
 import { initSettingsPage } from './settings/page.js';
-import { initSpaceMissionsPage } from './space-missions/index.js';
 import { initModelManager } from './model-manager.js';
 import * as SettingsStore from './settings-store.js';
 import { checkAndSuggest } from './backend-suggest.js';
@@ -85,7 +84,6 @@ function initPage(url, root) {
 		initChatPage(root, currentRoute, () => setActive(currentRoute(), getCurrentChatId()));
 		checkAndSuggest().catch(() => {});
 	}
-	if (url.includes('pages/space-missions.html')) initSpaceMissionsPage(root);
 }
 
 function refreshActiveState() {

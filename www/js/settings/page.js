@@ -413,7 +413,7 @@ async function initBackendSelector(root) {
 			const btn = document.createElement('button');
 			btn.type = 'button'; btn.className = 'btn btn-build';
 			btn._origText = isBuilt ? 'Rebuild' : 'Build'; btn.textContent = btn._origText;
-			btn.style.cssText = isBuilt ? 'font-size:0.75rem;padding:2px 8px;' : 'font-size:0.78rem;padding:3px 10px;';
+			btn.style.cssText = 'font-size:0.85rem;padding:6px 12px;';
 			btn.addEventListener('click', () => {
 				btn.disabled = true; btn.textContent = 'Building...'; btn.style.color = '';
 				startBuildInSettings(root, backend, tagInput?.value?.trim() || tag, btn).catch(() => { btn.disabled = false; btn.textContent = btn._origText; });
@@ -424,6 +424,7 @@ async function initBackendSelector(root) {
 				const removeBtn = document.createElement('button');
 				removeBtn.type = 'button'; removeBtn.className = 'btn btn-danger-sm btn-remove';
 				removeBtn.textContent = 'Remove';
+				removeBtn.style.cssText = 'font-size:0.85rem;padding:6px 12px;';
 				removeBtn.addEventListener('click', () => {
 					showRemoveConfirmation(root, backend, async () => {
 						removeBtn.disabled = true; removeBtn.textContent = 'Removing...';

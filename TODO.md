@@ -3,7 +3,6 @@
 # TODO
 ## Main Control Panel
 ### Planned Features
-- Space mission views (ISS, Artemis II, easy additions for future Artemis missions)
 - Advanced starry background for login page
 - Photos page
   - APK for mobile auto-backup
@@ -220,10 +219,7 @@
 
 ### To Fix
 #### UI
-- Build & Rebuild buttons are not equally sized
-  - Rebuild and remove buttons should be bigger
-- Emojis are not properly rendering
-- Logprobs highlighting newlines
+- None
 
 #### UX
 - LaTeX processing currently in an unfinished state
