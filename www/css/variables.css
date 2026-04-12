@@ -170,6 +170,9 @@ html[data-theme^="everforest-harddark-"] {
     --ef-bg3: #414b50;
     --ef-bg4: #495156;
     --ef-bg5: #4f5b58;
+    --ef-green-bg: #3c4841;
+    --ef-yellow-bg: #45443c;
+    --ef-red-bg: #493b40;
     --bg: var(--ef-bg-dim);
     --panel: var(--ef-bg0);
     --border: var(--ef-bg3);
@@ -184,6 +187,9 @@ html[data-theme^="everforest-dark-"] {
     --ef-bg3: #475258;
     --ef-bg4: #4f585e;
     --ef-bg5: #56635f;
+    --ef-green-bg: #425047;
+    --ef-yellow-bg: #4d4c43;
+    --ef-red-bg: #514045;
     --bg: var(--ef-bg-dim);
     --panel: var(--ef-bg0);
     --border: var(--ef-bg3);
@@ -198,6 +204,9 @@ html[data-theme^="everforest-softdark-"] {
     --ef-bg3: #4d5960;
     --ef-bg4: #555f66;
     --ef-bg5: #5c6a72;
+    --ef-green-bg: #48584e;
+    --ef-yellow-bg: #55544a;
+    --ef-red-bg: #59464c;
     --bg: var(--ef-bg-dim);
     --panel: var(--ef-bg0);
     --border: var(--ef-bg3);
@@ -231,6 +240,9 @@ html[data-theme^="everforest-hardlight-"] {
     --ef-bg3: #edeada;
     --ef-bg4: #e8e5d5;
     --ef-bg5: #bec5b2;
+    --ef-green-bg: #f3f5d9;
+    --ef-yellow-bg: #fef2d5;
+    --ef-red-bg: #ffe7de;
     --bg: var(--ef-bg-dim);
     --panel: var(--ef-bg0);
     --border: var(--ef-bg4);
@@ -245,6 +257,9 @@ html[data-theme^="everforest-light-"] {
     --ef-bg3: #e6e2cc;
     --ef-bg4: #e0dcc7;
     --ef-bg5: #bdc3af;
+    --ef-green-bg: #f0f1d2;
+    --ef-yellow-bg: #faedcd;
+    --ef-red-bg: #fde3da;
     --bg: var(--ef-bg-dim);
     --panel: var(--ef-bg0);
     --border: var(--ef-bg4);
@@ -259,6 +274,9 @@ html[data-theme^="everforest-softlight-"] {
     --ef-bg3: #ddd8be;
     --ef-bg4: #d8d3ba;
     --ef-bg5: #b9c0ab;
+    --ef-green-bg: #ebebd6;
+    --ef-yellow-bg: #f4e5ca;
+    --ef-red-bg: #f5d8d6;
     --bg: var(--ef-bg-dim);
     --panel: var(--ef-bg0);
     --border: var(--ef-bg4);

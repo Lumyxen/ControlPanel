@@ -31,8 +31,10 @@
 
 ## AI Chat-box
 ### Planned Features
+- Concurrent AI generations (spawn new llama.cpp instances per generation rather than a singular instance globally)
 - TTS
 - STT
+- Model generation finish ETA (using EOS logprob)
 - Collapsable/Expandable BibTeX reference list
   - Closed it by default
 - Download and Extracting progress bar on llama.cpp source downloading
@@ -88,7 +90,6 @@
   - Returns weather data and/or reports for that location and date
 - Sort chat history by time since last chatted
 - Diff formatting
-- Change notice styling that back-end and/or an API connection is offline or lost
 - Setting to change default model (already exists, but vastly improving on it)
 - Ensure tool placeholder in global system prompt also returns description of each tool
 - Be able to attach local directories
@@ -119,7 +120,6 @@
 - Agent swarm tool (Democratic (models work together to form 1 final product) and Leadership (1 main orchestrating AI) versions)
 - Deep research tool (responding only after finalising research after drafting, searching, calculating, etc)
 - Summarise tool (spawns an AI to read the file and summarise it, returning the summary)
-- Change tool list from system prompt into a centralised tool for the AI to search for available tools to use
 - Internet testing tool
   - Returns if WAN is available
   - If so, the WAN speeds (a speed test), latency, and jitter
@@ -228,10 +228,12 @@
 - Build & Rebuild buttons are not equally sized
   - Rebuild and remove buttons should be bigger
 - Emojis are not properly rendering
+- Logprobs highlighting newlines
 
 #### UX
 - LaTeX processing currently in an unfinished state
 - The build history gets cut off in build output element
+- User is able to click and interact with the chat before being redirected to the login page for re-auth
 ##### Firefox
 - ESC does not properly cancel message editing, requiring 2 presses of ESC
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
@@ -240,6 +242,7 @@
 - AI model should only be loaded on first inference, not on runtime
 - M-RoPE models do not work with current KV Cache reuse implementation
 - AI can not see their own confidence scores
+- All messages being loaded at once instead of only loading the chats when clicked.
 
 ## Password Manager
 ### Planned Features

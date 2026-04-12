@@ -14,7 +14,7 @@ import {
 } from './store.js';
 import { renderChatList } from './sidebar.js';
 import { updateContextUI, getModelMaxTokens, getModelContextLimitFromUI, estimateNodeTokens, estimatePartsTokens, estimateTokensForText } from './context.js';
-import { renderThread, showTyping, buildToolCallElement, patchMessageEditState } from './thread-ui.js';
+import { renderThread, showTyping, buildToolCallElement, patchMessageEditState, getSiblingNavState, createActionButton } from './thread-ui.js';
 import { InlineAttachmentManager } from './inline-attachment.js';
 import { parseMarkdown } from './markdown.js';
 import { preprocessLatexText, extractMath, injectMath } from './latex/index.js';
@@ -28,7 +28,7 @@ import { buildNodeTextForHistory, buildApiMessages, parseStreamReasoning } from 
 let chatPageAbort = null;
 
 // ── AI Title Generation (reusable) ────────────────────────────────────────────
-async function triggerAiTitleGeneration(root, chatId) {
+async function triggerAiTitleGeneration(root, chatId, onStateChange) {
 	const chat = getChatById(chatId);
 	if (!chat || chat.title !== "New Chat") return;
 
@@ -55,8 +55,8 @@ async function triggerAiTitleGeneration(root, chatId) {
 	}
 	if (!conversationText.trim()) return;
 
+	if (onStateChange) onStateChange(true);
 	try {
-		const timeout = AbortSignal.timeout(30000);
 		const result = await fetch('/api/chat/generate-title', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -65,7 +65,6 @@ async function triggerAiTitleGeneration(root, chatId) {
 				model: titleModel,
 				title_system_prompt: settings?.aiTitleSystemPrompt || '',
 			}),
-			signal: timeout,
 		});
 
 		if (result.ok) {
@@ -77,9 +76,9 @@ async function triggerAiTitleGeneration(root, chatId) {
 			}
 		}
 	} catch (err) {
-		if (err.name === 'TimeoutError') {
-			console.warn('[ChatPage] AI title generation timed out (30s)');
-		}
+		console.error('[ChatPage] AI title generation failed:', err);
+	} finally {
+		if (onStateChange) onStateChange(false);
 	}
 }
 
@@ -181,9 +180,11 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	const uiState = {
 		editingNodeId: null, editingDraft: '', editingSaveMode: null,
 		typingEl: null, typingTimeout: null, streamAbort: null,
-		flushResponse: null, isGenerating: false,
+		flushResponse: null, isGenerating: false, isTitleGenerating: false,
 		liveGeneratingNode: null, activeTaskId: null,
+		pendingReplyNodeId: null, pendingReplyIsFirst: false,
 		isScrolledUp: false,
+		isSubmitting: false,
 	};
 
 	const contentEl = messages.closest('.content') || messages;
@@ -269,7 +270,10 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 	input.addEventListener('keydown', (e) => {
 		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
 			e.preventDefault();
+			// Block during generation — no canceling
 			if (uiState.isGenerating) return;
+			// Debounce: prevent rapid-fire duplicate submissions
+			if (uiState.isSubmitting) return;
 			if (e.shiftKey) form.dataset.sendNoReply = '1';
 			form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
 		}
@@ -306,13 +310,71 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		if (uiState.typingEl) { const lr = uiState.typingEl.querySelector('.message-reasoning'); if (lr) lr.open = false; }
 	};
 
-	const stopTyping = () => {
+	const stopTyping = (preserveElement = false) => {
 		// Do NOT cancel backend generation - task persists independently
 		if (uiState.flushResponse)  { uiState.flushResponse(); uiState.flushResponse = null; }
 		if (uiState.streamAbort)    { uiState.streamAbort.abort(); uiState.streamAbort = null; }
 		if (uiState.typingTimeout)  { clearTimeout(uiState.typingTimeout); uiState.typingTimeout = null; }
-		if (uiState.typingEl)       { uiState.typingEl.remove(); uiState.typingEl = null; }
+		if (uiState.typingEl) {
+			if (!preserveElement) {
+				uiState.typingEl.remove();
+				uiState.typingEl = null;
+			}
+			// When preserveElement is true, keep uiState.typingEl so finalizeGeneratedMessage can use it
+		}
 		setGeneratingState(false);
+	};
+
+	/**
+	 * Smoothly finalize the preserved typing element into a proper message.
+	 * Finds the newly generated node in the graph and patches the element
+	 * with the correct node ID and menu, avoiding a full re-render flicker.
+	 */
+	const finalizeGeneratedMessage = () => {
+		const preservedEl = uiState.typingEl;
+		if (!preservedEl) return null;
+
+		const chatId = getCurrentChatId();
+		const chat = getChatById(chatId);
+		if (!chat) return null;
+
+		const graph = ensureGraph(chat);
+		const threadIds = computeThreadNodeIds(graph);
+		// The generated node is the last assistant node in the thread
+		let generatedNode = null;
+		for (let i = threadIds.length - 1; i >= 0; i--) {
+			const node = getNode(graph, threadIds[i]);
+			if (node && node.role === 'assistant') {
+				generatedNode = node;
+				break;
+			}
+		}
+		if (!generatedNode) return null;
+
+		// Patch the element with proper attributes
+		preservedEl.dataset.nodeId = generatedNode.id;
+
+		// Add the message menu
+		const nav = getSiblingNavState(graph, generatedNode.id);
+		const canResend = Boolean(generatedNode.parentId) && generatedNode.role !== 'system';
+		const menu = document.createElement('div');
+		menu.className = 'chat-message-menu';
+		menu.setAttribute('role', 'toolbar');
+		menu.setAttribute('aria-label', 'Message actions');
+		menu.append(
+			createActionButton({ action: 'branch-back',    label: 'Previous thread',                           title: 'Previous thread',                          iconName: 'chev-left',  disabled: !nav.canBack }),
+			createActionButton({ action: 'branch-forward', label: 'Next thread',                               title: 'Next thread',                              iconName: 'chev-right', disabled: !nav.canForward }),
+			createActionButton({ action: 'thread',         label: 'Create new thread from this message',       title: 'New thread',                               iconName: 'branch' }),
+			createActionButton({ action: 'edit',           label: 'Edit message',                              title: 'Edit',                                     iconName: 'edit' }),
+			createActionButton({ action: 'resend',         label: 'Regenerate from here',                      title: 'Regenerate',                               iconName: 'refresh',    disabled: !canResend }),
+			createActionButton({ action: 'delete',         label: 'Delete message',                            title: 'Delete (shift+click to delete only this)', iconName: 'trash' }),
+			createActionButton({ action: 'copy',           label: 'Copy raw message',                          title: 'Copy',                                     iconName: 'copy' })
+		);
+		preservedEl.appendChild(menu);
+
+		// Clear the reference so stopTyping doesn't try to remove it
+		uiState.typingEl = null;
+		return preservedEl;
 	};
 
 	signal.addEventListener('abort', () => {
@@ -595,10 +657,74 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 				return;
 			}
 
-			stopTyping();
+			// Preserve the generated message element to avoid flicker on completion
+			// First, update the DOM with any remaining content that wasn't rendered yet
+			// (the onDone callback processed data but didn't update the DOM)
+			if (uiState.typingEl && (rawStreamText || officialReasoningText || activeToolCalls.length > 0)) {
+				const { parsedContent, parsedReasoning } = parseStreamReasoning(rawStreamText);
+				let displayReasoning = officialReasoningText;
+				if (parsedReasoning) displayReasoning += (displayReasoning ? '\n\n' : '') + parsedReasoning.trim();
+
+				if (!uiState.typingEl.querySelector('.chat-message-content')) {
+					uiState.typingEl.innerHTML = '';
+					uiState.typingEl.className = 'chat-message assistant';
+				}
+				mc = uiState.typingEl.querySelector('.chat-message-content');
+				if (!mc) { mc = document.createElement('div'); mc.className = 'chat-message-content'; uiState.typingEl.appendChild(mc); }
+
+				// Update reasoning
+				if (displayReasoning) {
+					let re = mc.querySelector('.message-reasoning');
+					if (!re) {
+						re = document.createElement('details'); re.className = 'message-reasoning'; re.open = false;
+						re.innerHTML = '<summary>Thinking</summary><div class="reasoning-content"></div>';
+						mc.insertBefore(re, mc.firstChild);
+					}
+					const rc = re.querySelector('.reasoning-content');
+					if (rc) rc.textContent = displayReasoning;
+				}
+
+				// Force final LaTeX render
+				latexStreamProcessor.scheduleUpdate(rawStreamText, true);
+
+				// Update tool calls
+				const existingTCs = mc.querySelectorAll('.message-tool-call');
+				for (let j = 0; j < activeToolCalls.length; j++) {
+					const tc = activeToolCalls[j];
+					let tcEl = null;
+					for (const el of existingTCs) { if (el.dataset.toolCallId === tc.id) { tcEl = el; break; } }
+					if (!tcEl) {
+						tcEl = document.createElement('div');
+						tcEl.className = 'message-tool-call';
+						tcEl.dataset.toolCallId = tc.id;
+						const tw = mc.querySelector('.chat-message-text');
+						tw ? mc.insertBefore(tcEl, tw) : mc.appendChild(tcEl);
+					}
+					if (tc.output) {
+						const body = tcEl.querySelector('.tool-call-body');
+						if (body) {
+							const os = body.querySelector('.tool-call-section-label:last-of-type');
+							if (os) { const oc = os.nextElementSibling; if (oc && oc.classList.contains('tool-call-code')) oc.textContent = tc.output; }
+						}
+					}
+				}
+
+				// Apply token highlighting if present
+				if (tokenLogprobs.length > 0) {
+					const tw = mc.querySelector('.chat-message-text');
+					if (tw) applyTokenHighlighting(tw, tokenLogprobs, SettingsStore.get());
+				}
+			}
+			closeTypingReasoning();
+			stopTyping(true);
 			// Reload from backend (source of truth) instead of using stale local state
 			await loadChats();
-			rerender();
+			// Smoothly finalize the preserved element with proper node ID and menu
+			const finalized = finalizeGeneratedMessage();
+			if (!finalized) {
+				// Fallback to full re-render if we couldn't finalize
+				rerender();
+			}
 			renderChatList();
 			setActiveCallback?.();
 		} catch (err) {
@@ -1034,20 +1160,14 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 
 	form.addEventListener('submit', async (e) => {
 		e.preventDefault();
-		if (uiState.isGenerating) {
-			// Actually cancel the backend task, don't just hide it visually
-			const taskId = uiState.activeTaskId;
-			uiState.flushResponse = null; // prevent saving partial content — must happen BEFORE abort
-			uiState.streamAbort?.abort();
-			uiState.streamAbort = null;
-			if (taskId) cancelTask(taskId).catch(() => {});
-			stopTyping();
-			rerender();
-			setActiveCallback?.();
-			return;
-		}
+		// Block submissions while generation is running — no canceling, no queuing
+		if (uiState.isGenerating) return;
+
 		const parts = attachmentManager.extractParts();
 		if (!parts || parts.length === 0) return;
+		// Debounce: prevent rapid-fire duplicate submissions
+		if (uiState.isSubmitting) return;
+		uiState.isSubmitting = true;
 		ensureChatExists(setActiveCallback);
 		if (empty) empty.hidden = true;
 		stopTyping();
@@ -1070,11 +1190,16 @@ export async function initChatPage(root, currentRouteGetter, setActiveCallback) 
 		delete form.dataset.sendNoReply;
 		if (!sendNoReply && userNode?.id) {
 			startReply(userNode.id).finally(() => {
+				// Release the submit debounce guard once the reply completes
+				uiState.isSubmitting = false;
 				// Fire AI title generation after first message completes
 				if (isFirstMessage) {
 					triggerAiTitleGeneration(root, getCurrentChatId());
 				}
 			});
+		} else {
+			// No reply to generate — release the guard immediately
+			uiState.isSubmitting = false;
 		}
 		checkScroll();
 	}, { signal });

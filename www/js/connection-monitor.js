@@ -10,8 +10,8 @@ let retryInterval = null;
 let onConnectionChange = null;
 
 // Configuration
-const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
-const RETRY_INTERVAL = 3000; // 3 seconds
+export const HEALTH_CHECK_INTERVAL = 5000; // 5 seconds
+export const RETRY_INTERVAL = 3000; // 3 seconds
 
 /**
  * Check if backend is connected

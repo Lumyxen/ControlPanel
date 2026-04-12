@@ -6,11 +6,46 @@ import {
     retryConnection,
     startAutoRetry,
     stopAutoRetry,
+    RETRY_INTERVAL,
 } from './connection-monitor.js';
 
 // Modal state
 let connectionModal = null;
 let isConnectionModalVisible = false;
+let countdownTimer = null;
+let countdownValue = 0;
+let countdownOverlayRef = null;
+const RETRY_SECONDS = Math.round(RETRY_INTERVAL / 1000);
+
+function updateCountdownDisplay() {
+    if (!countdownOverlayRef) return;
+    const statusText = countdownOverlayRef.querySelector('#conn-modal-status-text');
+    if (!statusText) return;
+    const sec = countdownValue;
+    statusText.textContent = `Retrying automatically in ${sec} second${sec !== 1 ? 's' : ''}...`;
+}
+
+function startCountdown() {
+    countdownValue = RETRY_SECONDS;
+    updateCountdownDisplay();
+
+    if (countdownTimer) clearInterval(countdownTimer);
+
+    countdownTimer = setInterval(() => {
+        countdownValue--;
+        if (countdownValue <= 0) {
+            countdownValue = RETRY_SECONDS;
+        }
+        updateCountdownDisplay();
+    }, 1000);
+}
+
+function stopCountdown() {
+    if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+    }
+}
 
 /**
  * Initialize connection monitoring
@@ -45,14 +80,14 @@ function handleConnectionChange(isConnected) {
  */
 function showConnectionModal() {
     if (isConnectionModalVisible) return;
-    
+
     // Remove existing modal if any
     hideConnectionModal();
-    
+
     const overlay = document.createElement('div');
     overlay.className = 'connection-modal-overlay';
     overlay.id = 'connection-modal';
-    
+
     overlay.innerHTML = `
         <div class="connection-modal">
             <div class="connection-modal-header">
@@ -68,41 +103,46 @@ function showConnectionModal() {
             </div>
             <div class="connection-modal-status">
                 <span class="connection-modal-status-dot reconnecting"></span>
-                <span id="conn-modal-status-text">Auto-retrying every 3 seconds...</span>
+                <span id="conn-modal-status-text">Retrying automatically in ${RETRY_SECONDS} seconds...</span>
             </div>
         </div>
     `;
-    
+
     document.body.appendChild(overlay);
     connectionModal = overlay;
-    
+    countdownOverlayRef = overlay;
+
     // Add event listeners
     overlay.querySelector('#conn-modal-retry').addEventListener('click', async () => {
         const statusText = overlay.querySelector('#conn-modal-status-text');
         const statusDot = overlay.querySelector('.connection-modal-status-dot');
         statusText.textContent = 'Retrying now...';
         statusDot.className = 'connection-modal-status-dot reconnecting';
-        
+
         const connected = await retryConnection();
         if (connected) {
             hideConnectionModal();
         } else {
-            statusText.textContent = 'Still disconnected. Auto-retrying every 3 seconds...';
+            startCountdown();
         }
     });
-    
+
     overlay.querySelector('#conn-modal-cancel').addEventListener('click', () => {
         stopAutoRetry();
+        stopCountdown();
         hideConnectionModal();
     });
-    
+
     // Show modal with animation
     requestAnimationFrame(() => {
         overlay.classList.add('visible');
     });
-    
+
     isConnectionModalVisible = true;
-    
+
+    // Start countdown
+    startCountdown();
+
     // Start auto-retry
     startAutoRetry((connected) => {
         if (connected) {
@@ -116,11 +156,12 @@ function showConnectionModal() {
  */
 function hideConnectionModal() {
     if (!connectionModal) return;
-    
+
     stopAutoRetry();
-    
+    stopCountdown();
+
     connectionModal.classList.remove('visible');
-    
+
     setTimeout(() => {
         if (connectionModal && connectionModal.parentNode) {
             connectionModal.parentNode.removeChild(connectionModal);

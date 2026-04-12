@@ -523,6 +523,7 @@ function tryParseList(src) {
 					const text = currentLines.join('\n').trimEnd();
 					const parsed = parseListItem(text);
 					if (parsed) items.push(parsed);
+					currentLines = [];
 				}
 				break;
 			}

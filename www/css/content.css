@@ -563,20 +563,20 @@ input[type=range]:focus::-moz-range-thumb {
     position: relative;
 }
 
-/* Analytic mode colours */
+/* Analytic mode colours - on-theme */
 .token-highlighting-enabled .token-certain,
 .token-highlighting-enabled .chat-message-text > .token-certain {
-    background-color: rgba(76, 175, 80, 0.25);
+    background-color: color-mix(in srgb, var(--ctp-green) 20%, transparent);
 }
 
 .token-highlighting-enabled .token-moderate,
 .token-highlighting-enabled .chat-message-text > .token-moderate {
-    background-color: rgba(255, 193, 7, 0.30);
+    background-color: color-mix(in srgb, var(--ctp-yellow) 20%, transparent);
 }
 
 .token-highlighting-enabled .token-uncertain,
 .token-highlighting-enabled .chat-message-text > .token-uncertain {
-    background-color: rgba(244, 67, 54, 0.40);
+    background-color: color-mix(in srgb, var(--ctp-red) 20%, transparent);
 }
 
 /* Hover tooltip showing probability */
@@ -619,3 +619,20 @@ input[type=range]:focus::-moz-range-thumb {
     pointer-events: none;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
+
+/* Everforest theme support for token highlighting */
+html[data-theme^="everforest-"] .token-highlighting-enabled .token-certain,
+html[data-theme^="everforest-"] .token-highlighting-enabled .chat-message-text > .token-certain {
+    background-color: var(--ef-green-bg);
+}
+
+html[data-theme^="everforest-"] .token-highlighting-enabled .token-moderate,
+html[data-theme^="everforest-"] .token-highlighting-enabled .chat-message-text > .token-moderate {
+    background-color: var(--ef-yellow-bg);
+}
+
+html[data-theme^="everforest-"] .token-highlighting-enabled .token-uncertain,
+html[data-theme^="everforest-"] .token-highlighting-enabled .chat-message-text > .token-uncertain {
+    background-color: var(--ef-red-bg);
+}
+

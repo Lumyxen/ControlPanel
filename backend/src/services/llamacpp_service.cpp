@@ -11,6 +11,7 @@
 #include <cmath>
 #include <optional>
 #include <thread>
+#include <chrono>
 #include <set>
 #include <unistd.h>
 
@@ -752,26 +753,71 @@ std::string LlamaCppService::generateTitle(const std::string& model,
     }
 
     if (concurrent) {
-        // Concurrent mode: don't hold inferMutex_ during model swap/inference
-        // This allows other requests to proceed without blocking on the lock
+        // Concurrent mode: still need to hold inferMutex_ during model swaps
+        // and inference to prevent race conditions with chat inference.
+        // Use try_lock with a timeout loop to avoid blocking indefinitely.
+        // NOTE: We do NOT set inferAbort_ here — title generation should wait
+        // politely for running inference to complete, not abort it.
         self->cancelUnload();
 
+        // Helper lambda to acquire the mutex with timeout (no abort signal)
+        auto acquireLock = [](std::unique_lock<std::mutex>& lock) -> bool {
+            auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            while (std::chrono::steady_clock::now() < deadline) {
+                if (lock.try_lock()) {
+                    return true;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            return false;
+        };
+
+        // Phase 1: Load title model (if needed) while holding the mutex
         if (!self->modelLoaded_ || needsSwap) {
+            std::unique_lock<std::mutex> lock(inferMutex_, std::defer_lock);
+            if (!acquireLock(lock)) {
+                onError("Title generation timed out waiting for inference lock");
+                std::cerr << "[TitleGen] LlamaCpp: lock acquisition timed out\n";
+                return "";
+            }
+
             if (!self->ensureModelLoaded(model)) {
                 onError("No llama.cpp model loaded");
                 std::cerr << "[TitleGen] LlamaCpp: ensureModelLoaded returned false\n";
                 return "";
             }
             std::cout << "[TitleGen] LlamaCpp: title model loaded\n";
+            // Release the mutex after model load completes
+            lock.unlock();
         }
 
-        self->doInference(messages, 0, 0.0, onChunk, onError, cancelCheck, false);
+        // Phase 2: Run inference while holding the mutex
+        {
+            std::unique_lock<std::mutex> lock(inferMutex_, std::defer_lock);
+            if (!acquireLock(lock)) {
+                localAbort.store(true);
+                onError("Title generation timed out waiting for inference lock");
+                std::cerr << "[TitleGen] LlamaCpp: inference lock timed out\n";
+                return "";
+            }
+
+            self->doInference(messages, 0, 0.0, onChunk, onError, cancelCheck, false);
+            // Release the mutex after inference completes
+            lock.unlock();
+        }
         std::cout << "[TitleGen] LlamaCpp: doInference returned, rawTitle='" << generatedTitle << "'\n";
 
-        // Always restore the chat model if we swapped
+        // Phase 3: Restore chat model (if we swapped) while holding the mutex
         if (needsSwap && !savedChatModelId.empty()) {
+            std::unique_lock<std::mutex> lock(inferMutex_, std::defer_lock);
+            if (!acquireLock(lock)) {
+                std::cerr << "[TitleGen] LlamaCpp: WARNING - failed to restore chat model (lock timeout)\n";
+                return "";
+            }
+
             std::cout << "[TitleGen] LlamaCpp: restoring chat model: " << savedChatModelId << "\n";
             self->ensureModelLoaded(savedChatModelId);
+            lock.unlock();
         }
     } else {
         // Non-concurrent mode: hold inferMutex_ for the entire operation
