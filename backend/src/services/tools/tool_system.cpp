@@ -1,0 +1,1776 @@
+#include "services/tools/tool_system.h"
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <condition_variable>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <set>
+#include <sstream>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+#include <curl/curl.h>
+
+#ifndef _WIN32
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/select.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
+#include "server/http_utils.h"
+#include "services/mcp_registry.h"
+
+namespace fs = std::filesystem;
+
+namespace {
+
+using Clock = std::chrono::system_clock;
+
+Json::Int64 nowMillis() {
+    return static_cast<Json::Int64>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        Clock::now().time_since_epoch()).count());
+}
+
+std::string toLower(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+std::string trimCopy(const std::string& value) {
+    const auto start = value.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) {
+        return "";
+    }
+    const auto end = value.find_last_not_of(" \t\r\n");
+    return value.substr(start, end - start + 1);
+}
+
+std::string sanitizeIdentifier(const std::string& input) {
+    std::string output;
+    output.reserve(input.size());
+    for (char c : input) {
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_') {
+            output.push_back(c);
+        } else {
+            output.push_back('_');
+        }
+    }
+    return output.empty() ? "tool" : output;
+}
+
+Json::Value readJsonFile(const fs::path& path, const Json::Value& fallback = Json::Value()) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return fallback;
+    }
+
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    Json::Value root;
+    if (!Json::parseFromStream(reader, file, &root, &errors)) {
+        std::cerr << "[ToolSystem] Failed to parse " << path << ": " << errors << "\n";
+        return fallback;
+    }
+    return root;
+}
+
+void writeJsonFile(const fs::path& path, const Json::Value& value) {
+    fs::create_directories(path.parent_path());
+    std::ofstream file(path);
+    if (!file.is_open()) {
+        return;
+    }
+
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "    ";
+    std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+    writer->write(value, &file);
+}
+
+std::string jsonToString(const Json::Value& value) {
+    return writeJson(value);
+}
+
+Json::Value stringOrJson(const std::string& value) {
+    Json::Value parsed;
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream stream(value);
+    if (Json::parseFromStream(reader, stream, &parsed, &errors)) {
+        return parsed;
+    }
+    return Json::Value(value);
+}
+
+Json::Value makeArray(const std::vector<std::string>& values) {
+    Json::Value out(Json::arrayValue);
+    for (const auto& value : values) {
+        out.append(value);
+    }
+    return out;
+}
+
+std::string getStringArg(const Json::Value& value, const std::string& key, const std::string& fallback = "") {
+    if (value.isObject() && value.isMember(key) && value[key].isString()) {
+        return value[key].asString();
+    }
+    return fallback;
+}
+
+bool getBoolArg(const Json::Value& value, const std::string& key, bool fallback = false) {
+    if (value.isObject() && value.isMember(key) && value[key].isBool()) {
+        return value[key].asBool();
+    }
+    return fallback;
+}
+
+int getIntArg(const Json::Value& value, const std::string& key, int fallback = 0) {
+    if (value.isObject() && value.isMember(key) && value[key].isInt()) {
+        return value[key].asInt();
+    }
+    return fallback;
+}
+
+Json::Value deepMerge(Json::Value base, const Json::Value& overlay) {
+    if (!base.isObject() || !overlay.isObject()) {
+        return overlay;
+    }
+
+    for (const auto& key : overlay.getMemberNames()) {
+        if (base.isMember(key) && base[key].isObject() && overlay[key].isObject()) {
+            base[key] = deepMerge(base[key], overlay[key]);
+        } else {
+            base[key] = overlay[key];
+        }
+    }
+    return base;
+}
+
+std::string interpolateString(const std::string& input, const Json::Value& args) {
+    std::string output = input;
+    std::size_t position = 0;
+    while ((position = output.find("{{", position)) != std::string::npos) {
+        const std::size_t close = output.find("}}", position + 2);
+        if (close == std::string::npos) {
+            break;
+        }
+
+        const std::string token = trimCopy(output.substr(position + 2, close - position - 2));
+        std::string replacement;
+        if (token.rfind("args.", 0) == 0) {
+            const std::string key = token.substr(5);
+            if (args.isObject() && args.isMember(key)) {
+                const Json::Value& value = args[key];
+                if (value.isString()) {
+                    replacement = value.asString();
+                } else if (value.isBool()) {
+                    replacement = value.asBool() ? "true" : "false";
+                } else if (value.isNumeric()) {
+                    replacement = writeJson(value);
+                } else {
+                    replacement = jsonToString(value);
+                }
+            }
+        }
+        output.replace(position, close - position + 2, replacement);
+        position += replacement.size();
+    }
+    return output;
+}
+
+Json::Value interpolateJson(Json::Value value, const Json::Value& args) {
+    if (value.isString()) {
+        return Json::Value(interpolateString(value.asString(), args));
+    }
+    if (value.isArray()) {
+        for (auto& item : value) {
+            item = interpolateJson(item, args);
+        }
+        return value;
+    }
+    if (value.isObject()) {
+        for (const auto& key : value.getMemberNames()) {
+            value[key] = interpolateJson(value[key], args);
+        }
+    }
+    return value;
+}
+
+Json::Value splitCsv(const std::string& csv) {
+    Json::Value values(Json::arrayValue);
+    std::stringstream stream(csv);
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        item = trimCopy(item);
+        if (!item.empty()) {
+            values.append(item);
+        }
+    }
+    return values;
+}
+
+std::string joinTags(const Json::Value& value) {
+    if (!value.isArray()) {
+        return "";
+    }
+    std::string output;
+    for (const auto& item : value) {
+        if (!item.isString()) {
+            continue;
+        }
+        if (!output.empty()) {
+            output += " ";
+        }
+        output += item.asString();
+    }
+    return output;
+}
+
+size_t curlWriteToString(void* contents, size_t size, size_t nmemb, void* userp) {
+    const size_t total = size * nmemb;
+    static_cast<std::string*>(userp)->append(static_cast<char*>(contents), total);
+    return total;
+}
+
+Json::Value parseMaybeJson(const std::string& body) {
+    Json::Value parsed;
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream stream(body);
+    if (Json::parseFromStream(reader, stream, &parsed, &errors)) {
+        return parsed;
+    }
+    return Json::Value(body);
+}
+
+Json::Value extractByPath(const Json::Value& root, const std::string& path) {
+    if (path.empty()) {
+        return root;
+    }
+
+    const Json::Value* current = &root;
+    std::stringstream stream(path);
+    std::string token;
+    while (std::getline(stream, token, '.')) {
+        token = trimCopy(token);
+        if (token.empty() || !current->isObject() || !current->isMember(token)) {
+            return Json::Value();
+        }
+        current = &(*current)[token];
+    }
+    return *current;
+}
+
+enum class ApprovalStatus {
+    Pending,
+    Approved,
+    Denied,
+    Cancelled,
+};
+
+std::string approvalStatusToString(ApprovalStatus status) {
+    switch (status) {
+        case ApprovalStatus::Pending: return "pending";
+        case ApprovalStatus::Approved: return "approved";
+        case ApprovalStatus::Denied: return "denied";
+        case ApprovalStatus::Cancelled: return "cancelled";
+    }
+    return "unknown";
+}
+
+struct ApprovalRequestState {
+    std::string id;
+    std::string taskId;
+    std::string toolCallId;
+    std::string modelToolName;
+    std::string canonicalToolId;
+    std::string title;
+    std::string packId;
+    std::string executor;
+    std::string riskTier;
+    Json::Value input = Json::Value(Json::objectValue);
+    Json::Int64 createdAt = nowMillis();
+    Json::Int64 resolvedAt = 0;
+    ApprovalStatus status = ApprovalStatus::Pending;
+    std::string note;
+
+    mutable std::mutex mutex;
+    std::condition_variable cv;
+};
+
+struct ToolDefinition {
+    std::string canonicalId;
+    std::string packId;
+    std::string toolId;
+    std::string modelName;
+    std::string title;
+    std::string description;
+    std::string executor;
+    std::string sourceType;
+    std::string rootPath;
+    Json::Value inputSchema = Json::Value(Json::objectValue);
+    Json::Value selection = Json::Value(Json::objectValue);
+    Json::Value policy = Json::Value(Json::objectValue);
+    Json::Value config = Json::Value(Json::objectValue);
+    bool defaultEnabled = false;
+    bool alwaysVisible = false;
+    bool listedInCatalog = true;
+    bool listedInPackSummary = true;
+};
+
+struct ToolPackRecord {
+    std::string id;
+    std::string title;
+    std::string version;
+    std::string description;
+    std::string sourceType;
+    std::string rootPath;
+    bool defaultEnabled = false;
+    bool synthetic = false;
+    std::vector<std::string> toolIds;
+};
+
+struct ToolSession {
+    std::string taskId;
+    std::string chatId;
+    Json::Value toolScope = Json::Value(Json::objectValue);
+    Json::Value legacyTools = Json::Value(Json::arrayValue);
+    std::unordered_set<std::string> enabledPackIds;
+    std::unordered_set<std::string> loadedToolIds;
+    std::function<void(const std::string&)> onStatusChange;
+};
+
+struct SandboxResult {
+    bool success = false;
+    int exitCode = -1;
+    bool timedOut = false;
+    std::string stdoutText;
+    std::string stderrText;
+    std::string error;
+};
+
+class SandboxRuntime {
+public:
+    Json::Value health() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        refreshUnlocked();
+
+        Json::Value result(Json::objectValue);
+        result["available"] = available_;
+        result["binary"] = binaryPath_;
+        result["reason"] = reason_;
+        return result;
+    }
+
+    SandboxResult execute(const Json::Value& sandboxConfig, const Json::Value& args) {
+        SandboxResult result;
+#ifdef _WIN32
+        result.error = "Sandbox execution is only implemented on Linux in phase one";
+        return result;
+#else
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            refreshUnlocked();
+            if (!available_) {
+                result.error = reason_.empty() ? "bubblewrap is unavailable" : reason_;
+                return result;
+            }
+        }
+
+        const std::string command = getStringArg(sandboxConfig, "command");
+        if (command.empty()) {
+            result.error = "Sandbox tool is missing sandbox.command";
+            return result;
+        }
+
+        Json::Value argsArray = sandboxConfig.isMember("args") ? sandboxConfig["args"] : Json::Value(Json::arrayValue);
+        argsArray = interpolateJson(argsArray, args);
+        const std::string workspaceRoot = getStringArg(sandboxConfig, "workspaceRoot");
+        const bool allowNetwork = getBoolArg(sandboxConfig, "allowNetwork", false);
+        const int timeoutMs = std::max(1000, getIntArg(sandboxConfig, "timeoutMs", 15000));
+
+        fs::path tempDir;
+        try {
+            tempDir = fs::temp_directory_path() / ("ctrlpanel-sandbox-" + std::to_string(nowMillis()));
+            fs::create_directories(tempDir);
+        } catch (const std::exception& exception) {
+            result.error = std::string("Failed to create sandbox temp dir: ") + exception.what();
+            return result;
+        }
+
+        const fs::path homeDir = tempDir / "home";
+        const fs::path tmpDir = tempDir / "tmp";
+        fs::create_directories(homeDir);
+        fs::create_directories(tmpDir);
+
+        std::vector<std::string> commandPieces;
+        commandPieces.push_back(binaryPath_);
+        commandPieces.push_back("--die-with-parent");
+        commandPieces.push_back("--unshare-ipc");
+        commandPieces.push_back("--unshare-pid");
+        commandPieces.push_back("--unshare-uts");
+        if (!allowNetwork) {
+            commandPieces.push_back("--unshare-net");
+        }
+        commandPieces.push_back("--proc");
+        commandPieces.push_back("/proc");
+        commandPieces.push_back("--dev");
+        commandPieces.push_back("/dev");
+
+        for (const auto& dir : {"/usr", "/bin", "/lib", "/lib64", "/etc"}) {
+            if (fs::exists(dir)) {
+                commandPieces.push_back("--ro-bind");
+                commandPieces.push_back(dir);
+                commandPieces.push_back(dir);
+            }
+        }
+
+        commandPieces.push_back("--tmpfs");
+        commandPieces.push_back("/tmp");
+        commandPieces.push_back("--dir");
+        commandPieces.push_back("/workspace");
+        commandPieces.push_back("--setenv");
+        commandPieces.push_back("HOME");
+        commandPieces.push_back("/home/sandbox");
+        commandPieces.push_back("--chdir");
+        commandPieces.push_back("/workspace");
+        commandPieces.push_back("--bind");
+        commandPieces.push_back(homeDir.string());
+        commandPieces.push_back("/home/sandbox");
+
+        if (!workspaceRoot.empty()) {
+            commandPieces.push_back("--bind");
+            commandPieces.push_back(interpolateString(workspaceRoot, args));
+            commandPieces.push_back("/workspace");
+        }
+
+        commandPieces.push_back("--");
+        commandPieces.push_back("/bin/sh");
+        commandPieces.push_back("-lc");
+
+        std::string shellCommand = interpolateString(command, args);
+        for (const auto& argValue : argsArray) {
+            if (!argValue.isString()) {
+                continue;
+            }
+            shellCommand += " ";
+            shellCommand += interpolateString(argValue.asString(), args);
+        }
+        commandPieces.push_back(shellCommand);
+
+        std::vector<char*> argv;
+        argv.reserve(commandPieces.size() + 1);
+        for (auto& piece : commandPieces) {
+            argv.push_back(piece.data());
+        }
+        argv.push_back(nullptr);
+
+        int stdoutPipe[2] = {-1, -1};
+        int stderrPipe[2] = {-1, -1};
+        if (pipe(stdoutPipe) != 0 || pipe(stderrPipe) != 0) {
+            result.error = "Failed to create sandbox pipes";
+            if (stdoutPipe[0] >= 0) close(stdoutPipe[0]);
+            if (stdoutPipe[1] >= 0) close(stdoutPipe[1]);
+            if (stderrPipe[0] >= 0) close(stderrPipe[0]);
+            if (stderrPipe[1] >= 0) close(stderrPipe[1]);
+            fs::remove_all(tempDir);
+            return result;
+        }
+
+        const pid_t pid = fork();
+        if (pid < 0) {
+            result.error = "Failed to fork sandbox process";
+            close(stdoutPipe[0]); close(stdoutPipe[1]);
+            close(stderrPipe[0]); close(stderrPipe[1]);
+            fs::remove_all(tempDir);
+            return result;
+        }
+
+        if (pid == 0) {
+            dup2(stdoutPipe[1], STDOUT_FILENO);
+            dup2(stderrPipe[1], STDERR_FILENO);
+            close(stdoutPipe[0]);
+            close(stdoutPipe[1]);
+            close(stderrPipe[0]);
+            close(stderrPipe[1]);
+            execvp(argv[0], argv.data());
+            std::perror("execvp bwrap");
+            _exit(127);
+        }
+
+        close(stdoutPipe[1]);
+        close(stderrPipe[1]);
+
+        fcntl(stdoutPipe[0], F_SETFL, fcntl(stdoutPipe[0], F_GETFL, 0) | O_NONBLOCK);
+        fcntl(stderrPipe[0], F_SETFL, fcntl(stderrPipe[0], F_GETFL, 0) | O_NONBLOCK);
+
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+        bool stdoutOpen = true;
+        bool stderrOpen = true;
+        int status = 0;
+        while (stdoutOpen || stderrOpen) {
+            fd_set readSet;
+            FD_ZERO(&readSet);
+            int maxFd = -1;
+            if (stdoutOpen) {
+                FD_SET(stdoutPipe[0], &readSet);
+                maxFd = std::max(maxFd, stdoutPipe[0]);
+            }
+            if (stderrOpen) {
+                FD_SET(stderrPipe[0], &readSet);
+                maxFd = std::max(maxFd, stderrPipe[0]);
+            }
+
+            auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - std::chrono::steady_clock::now());
+            if (remaining.count() <= 0) {
+                result.timedOut = true;
+                kill(pid, SIGKILL);
+                break;
+            }
+
+            timeval timeout;
+            timeout.tv_sec = remaining.count() / 1000;
+            timeout.tv_usec = (remaining.count() % 1000) * 1000;
+
+            const int selectResult = select(maxFd + 1, &readSet, nullptr, nullptr, &timeout);
+            if (selectResult < 0) {
+                result.error = "Sandbox select() failed";
+                kill(pid, SIGKILL);
+                break;
+            }
+
+            auto drainPipe = [](int fd, bool& open, std::string& output) {
+                char buffer[4096];
+                for (;;) {
+                    const ssize_t bytes = read(fd, buffer, sizeof(buffer));
+                    if (bytes > 0) {
+                        output.append(buffer, static_cast<std::size_t>(bytes));
+                        continue;
+                    }
+                    if (bytes == 0) {
+                        open = false;
+                    }
+                    break;
+                }
+            };
+
+            if (stdoutOpen && FD_ISSET(stdoutPipe[0], &readSet)) {
+                drainPipe(stdoutPipe[0], stdoutOpen, result.stdoutText);
+            }
+            if (stderrOpen && FD_ISSET(stderrPipe[0], &readSet)) {
+                drainPipe(stderrPipe[0], stderrOpen, result.stderrText);
+            }
+
+            const pid_t waitResult = waitpid(pid, &status, WNOHANG);
+            if (waitResult == pid && !stdoutOpen && !stderrOpen) {
+                break;
+            }
+        }
+
+        waitpid(pid, &status, 0);
+        close(stdoutPipe[0]);
+        close(stderrPipe[0]);
+        fs::remove_all(tempDir);
+
+        if (result.timedOut) {
+            result.exitCode = 124;
+            result.error = "Sandbox command timed out";
+            return result;
+        }
+
+        if (WIFEXITED(status)) {
+            result.exitCode = WEXITSTATUS(status);
+            result.success = result.exitCode == 0;
+        } else if (WIFSIGNALED(status)) {
+            result.exitCode = 128 + WTERMSIG(status);
+            result.error = "Sandbox command terminated by signal";
+        }
+
+        if (!result.success && result.error.empty() && !result.stderrText.empty()) {
+            result.error = trimCopy(result.stderrText);
+        }
+        return result;
+#endif
+    }
+
+private:
+    void refreshUnlocked() const {
+        if (checked_) {
+            return;
+        }
+        checked_ = true;
+#ifdef _WIN32
+        available_ = false;
+        reason_ = "bubblewrap is only supported on Linux in phase one";
+        return;
+#else
+        const std::array<const char*, 4> candidates = {"/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap", "bwrap"};
+        for (const char* candidate : candidates) {
+            if (std::strchr(candidate, '/')) {
+                if (fs::exists(candidate)) {
+                    available_ = true;
+                    binaryPath_ = candidate;
+                    reason_.clear();
+                    return;
+                }
+            } else if (std::system("command -v bwrap >/dev/null 2>&1") == 0) {
+                available_ = true;
+                binaryPath_ = "bwrap";
+                reason_.clear();
+                return;
+            }
+        }
+        available_ = false;
+        reason_ = "bubblewrap (bwrap) was not found in PATH";
+#endif
+    }
+
+    mutable std::mutex mutex_;
+    mutable bool checked_ = false;
+    mutable bool available_ = false;
+    mutable std::string binaryPath_;
+    mutable std::string reason_;
+};
+
+struct ToolSystemConfig {
+    Json::Value root = Json::Value(Json::objectValue);
+    std::unordered_set<std::string> disabledPackIds;
+};
+
+ToolSystemConfig parseToolingConfig(const fs::path& path) {
+    ToolSystemConfig config;
+    config.root = readJsonFile(path, Json::Value(Json::objectValue));
+    const Json::Value disabled = config.root.get("disabledPackIds", Json::Value(Json::arrayValue));
+    if (disabled.isArray()) {
+        for (const auto& value : disabled) {
+            if (value.isString()) {
+                config.disabledPackIds.insert(value.asString());
+            }
+        }
+    }
+    return config;
+}
+
+Json::Value normalizeScope(const Json::Value& input) {
+    Json::Value scope = input.isObject() ? input : Json::Value(Json::objectValue);
+    if (!scope.isMember("enabledPackIds") || !scope["enabledPackIds"].isArray()) {
+        scope["enabledPackIds"] = Json::Value(Json::arrayValue);
+    }
+    return scope;
+}
+
+std::unordered_set<std::string> scopeToSet(const Json::Value& scope) {
+    std::unordered_set<std::string> result;
+    if (!scope.isObject()) {
+        return result;
+    }
+    const Json::Value enabled = scope.get("enabledPackIds", Json::Value(Json::arrayValue));
+    if (!enabled.isArray()) {
+        return result;
+    }
+    for (const auto& item : enabled) {
+        if (item.isString()) {
+            result.insert(item.asString());
+        }
+    }
+    return result;
+}
+
+} // namespace
+
+struct ToolSystem::Impl {
+    explicit Impl(const RuntimePaths& inPaths, McpRegistry* registry)
+        : paths(inPaths), mcpRegistry(registry) {}
+
+    RuntimePaths paths;
+    McpRegistry* mcpRegistry = nullptr;
+    mutable std::mutex mutex;
+    ToolSystemConfig toolingConfig;
+    SandboxRuntime sandbox;
+    std::unordered_map<std::string, ToolPackRecord> packs;
+    std::vector<std::string> packOrder;
+    std::unordered_map<std::string, ToolDefinition> toolsByCanonicalId;
+    std::unordered_map<std::string, std::string> modelNameToCanonicalId;
+    std::unordered_map<std::string, ToolSession> sessions;
+    std::unordered_map<std::string, std::shared_ptr<ApprovalRequestState>> approvals;
+
+    void clearUnlocked() {
+        packs.clear();
+        packOrder.clear();
+        toolsByCanonicalId.clear();
+        modelNameToCanonicalId.clear();
+    }
+
+    void registerPackUnlocked(const ToolPackRecord& pack) {
+        packs[pack.id] = pack;
+        packOrder.push_back(pack.id);
+    }
+
+    void registerToolUnlocked(const ToolDefinition& tool) {
+        toolsByCanonicalId[tool.canonicalId] = tool;
+        modelNameToCanonicalId[tool.modelName] = tool.canonicalId;
+        auto packIt = packs.find(tool.packId);
+        if (packIt != packs.end()) {
+            packIt->second.toolIds.push_back(tool.canonicalId);
+        }
+    }
+
+    void installControlPlaneToolsUnlocked() {
+        ToolPackRecord pack;
+        pack.id = "system-control";
+        pack.title = "Internal Tool Control Plane";
+        pack.version = "1";
+        pack.description = "Synthetic harness tools for catalog search and deferred schema loading.";
+        pack.sourceType = "system";
+        pack.rootPath = "";
+        pack.defaultEnabled = false;
+        pack.synthetic = true;
+        registerPackUnlocked(pack);
+
+        auto makePolicy = []() {
+            Json::Value policy(Json::objectValue);
+            policy["riskTier"] = "read";
+            policy["approvalMode"] = "auto";
+            policy["network"] = false;
+            policy["idempotent"] = true;
+            return policy;
+        };
+
+        auto makeSelection = [](const std::string& summary, const std::string& whenToUse, const std::string& whenNotToUse) {
+            Json::Value selection(Json::objectValue);
+            selection["summary"] = summary;
+            selection["tags"] = Json::Value(Json::arrayValue);
+            selection["whenToUse"] = whenToUse;
+            selection["whenNotToUse"] = whenNotToUse;
+            return selection;
+        };
+
+        ToolDefinition search;
+        search.canonicalId = "system/search_tool_catalog";
+        search.packId = pack.id;
+        search.toolId = "search_tool_catalog";
+        search.modelName = "search_tool_catalog";
+        search.title = "Search Tool Catalog";
+        search.description = "Search the internal tool catalog and return compact descriptors for relevant tools. Use this before attempting to load real tool schemas.";
+        search.executor = "native";
+        search.sourceType = "system";
+        search.alwaysVisible = true;
+        search.listedInCatalog = false;
+        search.listedInPackSummary = false;
+        search.policy = makePolicy();
+        search.selection = makeSelection(
+            "Search available tools by capability, task intent, and constraints.",
+            "Use when the current active tool list does not contain the capability you need.",
+            "Do not use when you already have the exact tool definition loaded.");
+        search.inputSchema["type"] = "object";
+        search.inputSchema["additionalProperties"] = false;
+        search.inputSchema["properties"]["query"]["type"] = "string";
+        search.inputSchema["properties"]["intent"]["type"] = "string";
+        search.inputSchema["properties"]["constraints"]["type"] = "object";
+        search.inputSchema["properties"]["limit"]["type"] = "integer";
+        Json::Value searchRequired(Json::arrayValue);
+        searchRequired.append("query");
+        search.inputSchema["required"] = searchRequired;
+        search.config["native"]["handler"] = "search_tool_catalog";
+        registerToolUnlocked(search);
+
+        ToolDefinition load;
+        load.canonicalId = "system/load_tool_definitions";
+        load.packId = pack.id;
+        load.toolId = "load_tool_definitions";
+        load.modelName = "load_tool_definitions";
+        load.title = "Load Tool Definitions";
+        load.description = "Load specific tool schemas into the active tool set for this task. Only previously discovered, in-scope tools can be loaded.";
+        load.executor = "native";
+        load.sourceType = "system";
+        load.alwaysVisible = true;
+        load.listedInCatalog = false;
+        load.listedInPackSummary = false;
+        load.policy = makePolicy();
+        load.selection = makeSelection(
+            "Load selected tool definitions into the active tool set.",
+            "Use after catalog search identifies the tools you need for the current task.",
+            "Do not use to explore capabilities; search the catalog first.");
+        load.inputSchema["type"] = "object";
+        load.inputSchema["additionalProperties"] = false;
+        load.inputSchema["properties"]["tool_ids"]["type"] = "array";
+        load.inputSchema["properties"]["tool_ids"]["items"]["type"] = "string";
+        Json::Value loadRequired(Json::arrayValue);
+        loadRequired.append("tool_ids");
+        load.inputSchema["required"] = loadRequired;
+        load.config["native"]["handler"] = "load_tool_definitions";
+        registerToolUnlocked(load);
+
+        ToolPackRecord diagnosticPack;
+        diagnosticPack.id = "diagnostic-test-tools";
+        diagnosticPack.title = "Diagnostic Test Tools";
+        diagnosticPack.version = "1";
+        diagnosticPack.description = "Opt-in no-op tools for verifying tool-call wiring in the UI.";
+        diagnosticPack.sourceType = "system";
+        diagnosticPack.rootPath = "";
+        diagnosticPack.defaultEnabled = false;
+        diagnosticPack.synthetic = true;
+        registerPackUnlocked(diagnosticPack);
+
+        ToolDefinition test;
+        test.canonicalId = "system/test_return_true";
+        test.packId = diagnosticPack.id;
+        test.toolId = "test_return_true";
+        test.modelName = "test_return_true";
+        test.title = "Test Return True";
+        test.description = "Diagnostic no-op tool that always returns the JSON boolean true. Use it to verify tool-calling and tool event rendering in the UI.";
+        test.executor = "native";
+        test.sourceType = "system";
+        test.alwaysVisible = true;
+        test.listedInCatalog = false;
+        test.listedInPackSummary = true;
+        test.policy = makePolicy();
+        test.selection = makeSelection(
+            "Return the JSON boolean true without performing any side effects.",
+            "Use when you need to verify that tool invocation, event streaming, or inline tool rendering is wired correctly.",
+            "Do not use when a real tool is needed to accomplish the user's task.");
+        test.inputSchema["type"] = "object";
+        test.inputSchema["additionalProperties"] = false;
+        test.config["native"]["handler"] = "test_return_true";
+        registerToolUnlocked(test);
+    }
+
+    void loadManifestPackUnlocked(const fs::path& packDir, const std::string& fallbackSourceType) {
+        const fs::path packPath = packDir / "pack.json";
+        if (!fs::exists(packPath)) {
+            return;
+        }
+
+        const Json::Value packJson = readJsonFile(packPath, Json::Value());
+        if (!packJson.isObject()) {
+            return;
+        }
+
+        const std::string packId = getStringArg(packJson, "id");
+        const std::string title = getStringArg(packJson, "title");
+        const std::string version = getStringArg(packJson, "version");
+        const std::string description = getStringArg(packJson, "description");
+        const std::string sourceType = getStringArg(packJson, "sourceType", fallbackSourceType);
+        if (packId.empty() || title.empty() || version.empty() || description.empty() || sourceType.empty()) {
+            std::cerr << "[ToolSystem] Skipping malformed pack at " << packDir << "\n";
+            return;
+        }
+        if (toolingConfig.disabledPackIds.find(packId) != toolingConfig.disabledPackIds.end()) {
+            std::cout << "[ToolSystem] Pack disabled by tooling config: " << packId << "\n";
+            return;
+        }
+
+        ToolPackRecord pack;
+        pack.id = packId;
+        pack.title = title;
+        pack.version = version;
+        pack.description = description;
+        pack.sourceType = sourceType;
+        pack.defaultEnabled = packJson.get("defaultEnabled", sourceType != "mcp").asBool();
+        pack.rootPath = packDir.string();
+        registerPackUnlocked(pack);
+
+        Json::Value packDefaults = packJson.get("defaults", Json::Value(Json::objectValue));
+
+        const fs::path toolsDir = packDir / "tools";
+        if (!fs::exists(toolsDir)) {
+            return;
+        }
+
+        for (const auto& entry : fs::directory_iterator(toolsDir)) {
+            if (!entry.is_regular_file() || entry.path().extension() != ".json") {
+                continue;
+            }
+
+            const Json::Value toolJson = readJsonFile(entry.path(), Json::Value());
+            if (!toolJson.isObject()) {
+                continue;
+            }
+
+            const std::string toolId = sanitizeIdentifier(getStringArg(toolJson, "id"));
+            const std::string toolTitle = getStringArg(toolJson, "title");
+            const std::string toolDescription = getStringArg(toolJson, "description");
+            const std::string executor = getStringArg(toolJson, "executor");
+            if (toolId.empty() || toolTitle.empty() || toolDescription.empty() || executor.empty() ||
+                !toolJson.isMember("inputSchema") || !toolJson.isMember("selection") || !toolJson.isMember("policy")) {
+                std::cerr << "[ToolSystem] Skipping malformed tool manifest: " << entry.path() << "\n";
+                continue;
+            }
+
+            const Json::Value selection = toolJson["selection"];
+            const Json::Value policy = deepMerge(packDefaults.get("policy", Json::Value(Json::objectValue)), toolJson["policy"]);
+            if (!selection.isObject() ||
+                !selection.isMember("summary") ||
+                !selection.isMember("tags") ||
+                !selection.isMember("whenToUse") ||
+                !selection.isMember("whenNotToUse")) {
+                std::cerr << "[ToolSystem] Tool selection metadata is incomplete: " << entry.path() << "\n";
+                continue;
+            }
+            if (!policy.isObject() ||
+                !policy.isMember("riskTier") ||
+                !policy.isMember("approvalMode") ||
+                !policy.isMember("network") ||
+                !policy.isMember("idempotent")) {
+                std::cerr << "[ToolSystem] Tool policy metadata is incomplete: " << entry.path() << "\n";
+                continue;
+            }
+
+            ToolDefinition tool;
+            tool.canonicalId = pack.id + "/" + toolId;
+            tool.packId = pack.id;
+            tool.toolId = toolId;
+            tool.modelName = sanitizeIdentifier(pack.id) + "__" + toolId;
+            tool.title = toolTitle;
+            tool.description = toolDescription;
+            tool.executor = executor;
+            tool.sourceType = sourceType;
+            tool.rootPath = entry.path().string();
+            tool.inputSchema = toolJson["inputSchema"];
+            tool.selection = selection;
+            tool.policy = policy;
+            tool.defaultEnabled = pack.defaultEnabled;
+            tool.config = toolJson.get(executor, Json::Value(Json::objectValue));
+            registerToolUnlocked(tool);
+        }
+    }
+
+    void loadManifestRootsUnlocked() {
+        for (const auto& root : {paths.systemPackRoot, paths.userPackRoot}) {
+            if (root.empty() || !fs::exists(root)) {
+                continue;
+            }
+            for (const auto& entry : fs::directory_iterator(root)) {
+                if (!entry.is_directory()) {
+                    continue;
+                }
+                loadManifestPackUnlocked(entry.path(), root == paths.userPackRoot ? "user" : "system");
+            }
+        }
+    }
+
+    void importMcpVirtualPacksUnlocked() {
+        if (!mcpRegistry) {
+            return;
+        }
+
+        const Json::Value descriptors = mcpRegistry->listBridgedTools();
+        std::unordered_map<std::string, ToolPackRecord> pendingPacks;
+        for (const auto& item : descriptors) {
+            if (!item.isObject()) {
+                continue;
+            }
+
+            const std::string packId = getStringArg(item, "packId");
+            const std::string canonicalId = getStringArg(item, "canonicalId");
+            if (packId.empty() || canonicalId.empty()) {
+                continue;
+            }
+
+            if (pendingPacks.find(packId) == pendingPacks.end()) {
+                ToolPackRecord pack;
+                pack.id = packId;
+                pack.title = getStringArg(item, "packTitle", packId);
+                pack.version = "mcp";
+                pack.description = getStringArg(item, "packDescription", "MCP virtual tool pack");
+                pack.sourceType = "mcp";
+                pack.rootPath = "";
+                pack.defaultEnabled = false;
+                pack.synthetic = true;
+                pendingPacks[packId] = pack;
+            }
+
+            ToolDefinition tool;
+            tool.canonicalId = canonicalId;
+            tool.packId = packId;
+            tool.toolId = getStringArg(item, "toolId");
+            tool.modelName = sanitizeIdentifier(packId) + "__" + sanitizeIdentifier(tool.toolId);
+            tool.title = getStringArg(item, "title", tool.toolId);
+            tool.description = getStringArg(item, "description");
+            tool.executor = "mcp";
+            tool.sourceType = "mcp";
+            tool.defaultEnabled = false;
+            tool.inputSchema = item.get("inputSchema", Json::Value(Json::objectValue));
+            tool.selection["summary"] = tool.description.empty() ? tool.title : tool.description;
+            tool.selection["tags"] = Json::Value(Json::arrayValue);
+            tool.selection["whenToUse"] = "Use when this external MCP capability matches the current task.";
+            tool.selection["whenNotToUse"] = "Do not use when an already-loaded internal tool is a better fit.";
+            tool.policy["riskTier"] = "read";
+            tool.policy["approvalMode"] = "auto";
+            tool.policy["network"] = false;
+            tool.policy["idempotent"] = true;
+            tool.config["mcp"]["serverName"] = item.get("serverName", "");
+            tool.config["mcp"]["toolName"] = item.get("toolName", "");
+            registerToolUnlocked(tool);
+        }
+
+        for (const auto& [packId, pack] : pendingPacks) {
+            if (packs.find(packId) == packs.end()) {
+                registerPackUnlocked(pack);
+            }
+        }
+    }
+
+    void loadAllUnlocked() {
+        clearUnlocked();
+        toolingConfig = parseToolingConfig(paths.toolingConfigPath);
+        installControlPlaneToolsUnlocked();
+        loadManifestRootsUnlocked();
+        if (mcpRegistry) {
+            mcpRegistry->loadFromFile(paths.mcpConfigPath);
+        }
+        importMcpVirtualPacksUnlocked();
+    }
+
+    std::unordered_set<std::string> defaultEnabledPacksUnlocked() const {
+        std::unordered_set<std::string> result;
+        for (const auto& packId : packOrder) {
+            const auto it = packs.find(packId);
+            if (it != packs.end() &&
+                it->second.defaultEnabled &&
+                it->second.sourceType != "mcp" &&
+                !it->second.synthetic) {
+                result.insert(packId);
+            }
+        }
+        return result;
+    }
+
+    bool isAlwaysVisibleInSessionUnlocked(const ToolSession& session, const ToolDefinition& tool) const {
+        if (!tool.alwaysVisible) {
+            return false;
+        }
+        return session.enabledPackIds.find(tool.packId) != session.enabledPackIds.end();
+    }
+
+    bool isToolActiveInSessionUnlocked(const ToolSession& session, const ToolDefinition& tool) const {
+        if (isAlwaysVisibleInSessionUnlocked(session, tool)) {
+            return true;
+        }
+        return session.loadedToolIds.find(tool.canonicalId) != session.loadedToolIds.end();
+    }
+
+    bool isToolInScopeUnlocked(const ToolSession& session, const ToolDefinition& tool) const {
+        if (tool.packId == "system-control") {
+            return true;
+        }
+        return session.enabledPackIds.find(tool.packId) != session.enabledPackIds.end();
+    }
+
+    Json::Value makeFunctionTool(const ToolDefinition& tool) const {
+        Json::Value entry(Json::objectValue);
+        entry["type"] = "function";
+        entry["function"]["name"] = tool.modelName;
+        entry["function"]["description"] = tool.description;
+        entry["function"]["parameters"] = tool.inputSchema;
+        return entry;
+    }
+
+    std::optional<ToolDefinition> findToolByModelNameUnlocked(const ToolSession& session, const std::string& modelName) const {
+        const auto it = modelNameToCanonicalId.find(modelName);
+        if (it == modelNameToCanonicalId.end()) {
+            return std::nullopt;
+        }
+        const auto toolIt = toolsByCanonicalId.find(it->second);
+        if (toolIt == toolsByCanonicalId.end()) {
+            return std::nullopt;
+        }
+        if (!isToolActiveInSessionUnlocked(session, toolIt->second)) {
+            return std::nullopt;
+        }
+        return toolIt->second;
+    }
+
+    Json::Value buildCatalogResultsUnlocked(const std::string& query, const ToolSession* session, int limit) const {
+        Json::Value results(Json::arrayValue);
+        const std::string loweredQuery = toLower(trimCopy(query));
+        const int cappedLimit = std::clamp(limit <= 0 ? 8 : limit, 1, 50);
+
+        struct Match {
+            int score = 0;
+            Json::Value descriptor;
+        };
+        std::vector<Match> matches;
+        matches.reserve(toolsByCanonicalId.size());
+
+        for (const auto& [canonicalId, tool] : toolsByCanonicalId) {
+            if (!tool.listedInCatalog) {
+                continue;
+            }
+            if (session && !isToolInScopeUnlocked(*session, tool)) {
+                continue;
+            }
+
+            const std::string haystack = toLower(
+                tool.title + " " +
+                tool.description + " " +
+                getStringArg(tool.selection, "summary") + " " +
+                getStringArg(tool.selection, "whenToUse") + " " +
+                joinTags(tool.selection["tags"]));
+
+            int score = 1;
+            if (!loweredQuery.empty()) {
+                if (haystack.find(loweredQuery) == std::string::npos) {
+                    continue;
+                }
+                if (toLower(tool.title).find(loweredQuery) != std::string::npos) score += 5;
+                if (toLower(tool.description).find(loweredQuery) != std::string::npos) score += 4;
+                if (toLower(getStringArg(tool.selection, "summary")).find(loweredQuery) != std::string::npos) score += 3;
+                if (toLower(joinTags(tool.selection["tags"])).find(loweredQuery) != std::string::npos) score += 2;
+            }
+
+            Json::Value descriptor(Json::objectValue);
+            descriptor["tool_id"] = tool.canonicalId;
+            descriptor["model_name"] = tool.modelName;
+            descriptor["title"] = tool.title;
+            descriptor["description"] = tool.description;
+            descriptor["summary"] = tool.selection.get("summary", "");
+            descriptor["pack_id"] = tool.packId;
+            descriptor["source_type"] = tool.sourceType;
+            descriptor["executor"] = tool.executor;
+            descriptor["risk_tier"] = tool.policy.get("riskTier", "read");
+            descriptor["tags"] = tool.selection.get("tags", Json::Value(Json::arrayValue));
+            descriptor["when_to_use"] = tool.selection.get("whenToUse", "");
+            descriptor["when_not_to_use"] = tool.selection.get("whenNotToUse", "");
+            matches.push_back({score, descriptor});
+        }
+
+        std::sort(matches.begin(), matches.end(), [](const Match& left, const Match& right) {
+            return left.score > right.score;
+        });
+
+        for (int index = 0; index < static_cast<int>(matches.size()) && index < cappedLimit; ++index) {
+            results.append(matches[index].descriptor);
+        }
+        return results;
+    }
+
+    Json::Value buildPackSummariesUnlocked() const {
+        Json::Value packsJson(Json::arrayValue);
+        const Json::Value sandboxHealth = sandbox.health();
+
+        for (const auto& packId : packOrder) {
+            const auto packIt = packs.find(packId);
+            if (packIt == packs.end()) {
+                continue;
+            }
+            const ToolPackRecord& pack = packIt->second;
+            if (pack.synthetic && pack.id == "system-control") {
+                continue;
+            }
+
+            Json::Value summary(Json::objectValue);
+            summary["id"] = pack.id;
+            summary["title"] = pack.title;
+            summary["version"] = pack.version;
+            summary["description"] = pack.description;
+            summary["sourceType"] = pack.sourceType;
+            summary["defaultEnabled"] = pack.defaultEnabled;
+            summary["toolCount"] = static_cast<int>(pack.toolIds.size());
+
+            std::set<std::string> executors;
+            for (const auto& toolId : pack.toolIds) {
+                const auto toolIt = toolsByCanonicalId.find(toolId);
+                if (toolIt != toolsByCanonicalId.end()) {
+                    executors.insert(toolIt->second.executor);
+                }
+            }
+            Json::Value executorArray(Json::arrayValue);
+            for (const auto& executor : executors) {
+                executorArray.append(executor);
+            }
+            summary["executors"] = executorArray;
+
+            Json::Value health(Json::objectValue);
+            health["available"] = true;
+            if (executors.find("sandbox") != executors.end()) {
+                health["sandbox"] = sandboxHealth;
+                if (!sandboxHealth.get("available", false).asBool()) {
+                    health["available"] = false;
+                }
+            }
+            summary["health"] = health;
+            packsJson.append(summary);
+        }
+        return packsJson;
+    }
+
+    Json::Value buildApprovalJson(const ApprovalRequestState& approval) const {
+        Json::Value json(Json::objectValue);
+        json["id"] = approval.id;
+        json["taskId"] = approval.taskId;
+        json["toolCallId"] = approval.toolCallId;
+        json["toolName"] = approval.modelToolName;
+        json["canonicalToolId"] = approval.canonicalToolId;
+        json["title"] = approval.title;
+        json["packId"] = approval.packId;
+        json["executor"] = approval.executor;
+        json["riskTier"] = approval.riskTier;
+        json["input"] = approval.input;
+        json["status"] = approvalStatusToString(approval.status);
+        json["note"] = approval.note;
+        json["createdAt"] = approval.createdAt;
+        json["resolvedAt"] = approval.resolvedAt;
+        return json;
+    }
+
+    Json::Value makeToolEvent(
+        const std::string& eventName,
+        Json::Value toolCall,
+        const Json::Value& extra = Json::Value(Json::objectValue)) const {
+        Json::Value event(Json::objectValue);
+        event["type"] = "tool_event";
+        event["event"] = eventName;
+        event["tool_call"] = toolCall;
+        if (extra.isObject()) {
+            for (const auto& key : extra.getMemberNames()) {
+                event[key] = extra[key];
+            }
+        }
+        return event;
+    }
+
+    ExecutionResult makeExecutionFailure(const std::string& modelToolName, const std::string& toolCallId, const std::string& error) const {
+        ExecutionResult result;
+        result.success = false;
+        result.modelOutput = jsonToString(Json::Value(error));
+        result.toolCall["id"] = toolCallId;
+        result.toolCall["name"] = modelToolName;
+        result.toolCall["status"] = "failed";
+        result.toolCall["error"] = error;
+        return result;
+    }
+
+    Json::Value executeNative(ToolSession& session, const ToolDefinition& tool, const Json::Value& args) {
+        const std::string handler = getStringArg(tool.config["native"], "handler");
+
+        if (handler == "search_tool_catalog") {
+            Json::Value result(Json::objectValue);
+            result["query"] = args.get("query", "");
+            result["results"] = buildCatalogResultsUnlocked(
+                args.get("query", "").asString(),
+                &session,
+                args.get("limit", 8).asInt());
+            return result;
+        }
+
+        if (handler == "load_tool_definitions") {
+            Json::Value result(Json::objectValue);
+            Json::Value loaded(Json::arrayValue);
+            Json::Value skipped(Json::arrayValue);
+            Json::Value rejected(Json::arrayValue);
+            const Json::Value toolIds = args.get("tool_ids", Json::Value(Json::arrayValue));
+            if (!toolIds.isArray()) {
+                result["error"] = "tool_ids must be an array";
+                return result;
+            }
+
+            for (const auto& item : toolIds) {
+                if (!item.isString()) {
+                    continue;
+                }
+                const std::string canonicalId = item.asString();
+                const auto toolIt = toolsByCanonicalId.find(canonicalId);
+                if (toolIt == toolsByCanonicalId.end() || !toolIt->second.listedInCatalog) {
+                    Json::Value rejection(Json::objectValue);
+                    rejection["tool_id"] = canonicalId;
+                    rejection["reason"] = "unknown_tool";
+                    rejected.append(rejection);
+                    continue;
+                }
+                if (!isToolInScopeUnlocked(session, toolIt->second)) {
+                    Json::Value rejection(Json::objectValue);
+                    rejection["tool_id"] = canonicalId;
+                    rejection["reason"] = "out_of_scope";
+                    rejected.append(rejection);
+                    continue;
+                }
+                if (session.loadedToolIds.insert(canonicalId).second) {
+                    loaded.append(canonicalId);
+                } else {
+                    skipped.append(canonicalId);
+                }
+            }
+
+            result["loaded"] = loaded;
+            result["skipped"] = skipped;
+            result["rejected"] = rejected;
+            result["active_tools"] = static_cast<int>(session.loadedToolIds.size());
+            return result;
+        }
+
+        if (handler == "test_return_true") {
+            return Json::Value(true);
+        }
+
+        Json::Value error(Json::objectValue);
+        error["error"] = "Unknown native tool handler: " + handler;
+        return error;
+    }
+
+    Json::Value executeHttp(const ToolDefinition& tool, const Json::Value& args) const {
+        Json::Value config = interpolateJson(tool.config["http"], args);
+        const std::string url = getStringArg(config, "url");
+        if (url.empty()) {
+            Json::Value error(Json::objectValue);
+            error["error"] = "HTTP tool is missing http.url";
+            return error;
+        }
+
+        CURL* curl = curl_easy_init();
+        if (!curl) {
+            Json::Value error(Json::objectValue);
+            error["error"] = "Failed to initialize CURL";
+            return error;
+        }
+
+        std::string responseBody;
+        struct curl_slist* headers = nullptr;
+        const std::string method = getStringArg(config, "method", "GET");
+        Json::Value headersJson = config.get("headers", Json::Value(Json::objectValue));
+        for (const auto& key : headersJson.getMemberNames()) {
+            if (headersJson[key].isString()) {
+                headers = curl_slist_append(headers, (key + ": " + headersJson[key].asString()).c_str());
+            }
+        }
+
+        const Json::Value bodyJson = config.get("body", Json::Value());
+        std::string bodyStr;
+        if (!bodyJson.isNull()) {
+            if (!bodyJson.isObject() && !bodyJson.isArray()) {
+                bodyStr = bodyJson.asString();
+            } else {
+                bodyStr = jsonToString(bodyJson);
+                headers = curl_slist_append(headers, "Content-Type: application/json");
+            }
+        }
+
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWriteToString);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, std::max(1000, getIntArg(config, "timeoutMs", 15000)));
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method.c_str());
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+        curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+        if (!bodyStr.empty()) {
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, bodyStr.c_str());
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(bodyStr.size()));
+        }
+
+        const CURLcode code = curl_easy_perform(curl);
+        long httpStatus = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpStatus);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+
+        Json::Value result(Json::objectValue);
+        result["http_status"] = static_cast<int>(httpStatus);
+        if (code != CURLE_OK) {
+            result["error"] = std::string("HTTP request failed: ") + curl_easy_strerror(code);
+            return result;
+        }
+
+        const Json::Value parsed = parseMaybeJson(responseBody);
+        result["body"] = parsed;
+        const Json::Value extracted = extractByPath(parsed, getStringArg(config, "responsePath"));
+        if (!extracted.isNull()) {
+            result["output"] = extracted;
+        }
+        return result;
+    }
+
+    Json::Value executeSandbox(const ToolDefinition& tool, const Json::Value& args) {
+        Json::Value sandboxConfig = tool.config["sandbox"];
+        sandboxConfig = interpolateJson(sandboxConfig, args);
+        const SandboxResult sandboxResult = sandbox.execute(sandboxConfig, args);
+
+        Json::Value result(Json::objectValue);
+        result["success"] = sandboxResult.success;
+        result["exit_code"] = sandboxResult.exitCode;
+        result["timed_out"] = sandboxResult.timedOut;
+        result["stdout"] = sandboxResult.stdoutText;
+        result["stderr"] = sandboxResult.stderrText;
+        if (!sandboxResult.error.empty()) {
+            result["error"] = sandboxResult.error;
+        }
+        return result;
+    }
+
+    Json::Value executeMcp(const ToolDefinition& tool, const Json::Value& args) const {
+        if (!mcpRegistry) {
+            Json::Value error(Json::objectValue);
+            error["error"] = "No MCP registry configured";
+            return error;
+        }
+
+        const std::string serverName = getStringArg(tool.config["mcp"], "serverName");
+        const std::string toolName = getStringArg(tool.config["mcp"], "toolName");
+        return mcpRegistry->callBridgedTool(serverName, toolName, args);
+    }
+
+    std::string modelOutputFromResult(const Json::Value& result) const {
+        if (result.isString()) {
+            return result.asString();
+        }
+        if (result.isObject() && result.isMember("output")) {
+            if (result["output"].isString()) {
+                return result["output"].asString();
+            }
+            return jsonToString(result["output"]);
+        }
+        if (result.isObject() && result.isMember("stdout") && result["stdout"].isString() &&
+            !result["stdout"].asString().empty()) {
+            return result["stdout"].asString();
+        }
+        if (result.isArray()) {
+            std::string text;
+            for (const auto& item : result) {
+                if (item.isObject() && item.get("type", "").asString() == "text") {
+                    text += item.get("text", "").asString();
+                }
+            }
+            if (!text.empty()) {
+                return text;
+            }
+        }
+        return jsonToString(result);
+    }
+};
+
+ToolSystem::ToolSystem(const RuntimePaths& paths, McpRegistry* mcpRegistry)
+    : impl_(std::make_unique<Impl>(paths, mcpRegistry)) {}
+
+ToolSystem::~ToolSystem() = default;
+
+void ToolSystem::initialize() {
+    reload();
+}
+
+void ToolSystem::reload() {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->loadAllUnlocked();
+}
+
+void ToolSystem::beginTaskSession(const SessionOptions& options) {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+
+    ToolSession session;
+    session.taskId = options.taskId;
+    session.chatId = options.chatId;
+    session.toolScope = normalizeScope(options.toolScope);
+    session.legacyTools = options.legacyTools.isArray() ? options.legacyTools : Json::Value(Json::arrayValue);
+    session.enabledPackIds = scopeToSet(session.toolScope);
+    if (session.enabledPackIds.empty()) {
+        session.enabledPackIds = impl_->defaultEnabledPacksUnlocked();
+    }
+    session.onStatusChange = options.onStatusChange;
+    impl_->sessions[options.taskId] = std::move(session);
+}
+
+void ToolSystem::endTaskSession(const std::string& taskId) {
+    std::vector<std::shared_ptr<ApprovalRequestState>> pending;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        impl_->sessions.erase(taskId);
+        for (auto& [approvalId, approval] : impl_->approvals) {
+            if (approval && approval->taskId == taskId) {
+                pending.push_back(approval);
+            }
+        }
+    }
+
+    for (const auto& approval : pending) {
+        std::lock_guard<std::mutex> approvalLock(approval->mutex);
+        if (approval->status == ApprovalStatus::Pending) {
+            approval->status = ApprovalStatus::Cancelled;
+            approval->resolvedAt = nowMillis();
+            approval->note = "Task session ended";
+            approval->cv.notify_all();
+        }
+    }
+}
+
+Json::Value ToolSystem::getModelToolsForTask(const std::string& taskId) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+
+    Json::Value tools(Json::arrayValue);
+    const auto sessionIt = impl_->sessions.find(taskId);
+    if (sessionIt == impl_->sessions.end()) {
+        return tools;
+    }
+
+    const ToolSession& session = sessionIt->second;
+    for (const auto& [canonicalId, tool] : impl_->toolsByCanonicalId) {
+        if (impl_->isToolActiveInSessionUnlocked(session, tool)) {
+            tools.append(impl_->makeFunctionTool(tool));
+        }
+    }
+
+    for (const auto& legacyTool : session.legacyTools) {
+        tools.append(legacyTool);
+    }
+
+    return tools;
+}
+
+bool ToolSystem::requiresApproval(const std::string& taskId, const std::string& modelToolName) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    const auto sessionIt = impl_->sessions.find(taskId);
+    if (sessionIt == impl_->sessions.end()) {
+        return false;
+    }
+    const auto toolOpt = impl_->findToolByModelNameUnlocked(sessionIt->second, modelToolName);
+    if (!toolOpt.has_value()) {
+        return false;
+    }
+    return toolOpt->policy.get("approvalMode", "auto").asString() == "prompt";
+}
+
+ToolSystem::ExecutionResult ToolSystem::executeToolCall(
+    const std::string& taskId,
+    const std::string& modelToolName,
+    const std::string& toolCallId,
+    const Json::Value& arguments,
+    std::function<bool(const Json::Value&)> emitEvent,
+    std::function<bool()> cancelCheck) {
+    std::shared_ptr<ApprovalRequestState> approval;
+    ToolDefinition tool;
+    ToolSession* sessionPtr = nullptr;
+
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        const auto sessionIt = impl_->sessions.find(taskId);
+        if (sessionIt == impl_->sessions.end()) {
+            return impl_->makeExecutionFailure(modelToolName, toolCallId, "Unknown tool session");
+        }
+        sessionPtr = &sessionIt->second;
+        const auto toolOpt = impl_->findToolByModelNameUnlocked(*sessionPtr, modelToolName);
+        if (!toolOpt.has_value()) {
+            return impl_->makeExecutionFailure(modelToolName, toolCallId, "Tool is not loaded in the active session");
+        }
+        tool = *toolOpt;
+    }
+
+    Json::Value toolCall(Json::objectValue);
+    toolCall["id"] = toolCallId;
+    toolCall["name"] = modelToolName;
+    toolCall["canonicalId"] = tool.canonicalId;
+    toolCall["title"] = tool.title;
+    toolCall["packId"] = tool.packId;
+    toolCall["executor"] = tool.executor;
+    toolCall["riskTier"] = tool.policy.get("riskTier", "read");
+    toolCall["approvalMode"] = tool.policy.get("approvalMode", "auto");
+    toolCall["input"] = arguments;
+    toolCall["status"] = "queued";
+
+    const bool needsApproval = tool.policy.get("approvalMode", "auto").asString() == "prompt";
+    if (needsApproval) {
+        approval = std::make_shared<ApprovalRequestState>();
+        approval->id = "approval_" + std::to_string(nowMillis()) + "_" + sanitizeIdentifier(toolCallId);
+        approval->taskId = taskId;
+        approval->toolCallId = toolCallId;
+        approval->modelToolName = modelToolName;
+        approval->canonicalToolId = tool.canonicalId;
+        approval->title = tool.title;
+        approval->packId = tool.packId;
+        approval->executor = tool.executor;
+        approval->riskTier = tool.policy.get("riskTier", "read").asString();
+        approval->input = arguments;
+        {
+            std::lock_guard<std::mutex> lock(impl_->mutex);
+            impl_->approvals[approval->id] = approval;
+        }
+
+        toolCall["status"] = "waiting_approval";
+        toolCall["approval"]["id"] = approval->id;
+        toolCall["approval"]["status"] = "pending";
+        if (emitEvent) {
+            emitEvent(impl_->makeToolEvent("approval_required", toolCall));
+        }
+        if (sessionPtr->onStatusChange) {
+            sessionPtr->onStatusChange("waiting_approval");
+        }
+
+        std::unique_lock<std::mutex> approvalLock(approval->mutex);
+        while (approval->status == ApprovalStatus::Pending) {
+            approval->cv.wait_for(approvalLock, std::chrono::milliseconds(200));
+            if (cancelCheck && cancelCheck()) {
+                approval->status = ApprovalStatus::Cancelled;
+                approval->resolvedAt = nowMillis();
+                approval->note = "Task cancelled";
+                break;
+            }
+        }
+        approvalLock.unlock();
+
+        if (sessionPtr->onStatusChange) {
+            sessionPtr->onStatusChange("running");
+        }
+
+        toolCall["approval"] = impl_->buildApprovalJson(*approval);
+        if (approval->status == ApprovalStatus::Denied || approval->status == ApprovalStatus::Cancelled) {
+            toolCall["status"] = approval->status == ApprovalStatus::Denied ? "denied" : "cancelled";
+            toolCall["error"] = approval->status == ApprovalStatus::Denied
+                ? "Tool execution denied by user"
+                : "Tool execution cancelled";
+            if (emitEvent) {
+                emitEvent(impl_->makeToolEvent(
+                    approval->status == ApprovalStatus::Denied ? "denied" : "cancelled",
+                    toolCall));
+            }
+
+            ExecutionResult denied;
+            denied.success = false;
+            denied.modelOutput = jsonToString(Json::Value(toolCall["error"].asString()));
+            denied.toolCall = toolCall;
+            return denied;
+        }
+
+        toolCall["status"] = "approved";
+        if (emitEvent) {
+            emitEvent(impl_->makeToolEvent("approved", toolCall));
+        }
+    }
+
+    toolCall["status"] = "executing";
+    if (emitEvent) {
+        emitEvent(impl_->makeToolEvent("executing", toolCall));
+    }
+
+    Json::Value rawResult;
+    if (tool.executor == "native") {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        rawResult = impl_->executeNative(*sessionPtr, tool, arguments);
+    } else if (tool.executor == "http") {
+        rawResult = impl_->executeHttp(tool, arguments);
+    } else if (tool.executor == "sandbox") {
+        rawResult = impl_->executeSandbox(tool, arguments);
+    } else if (tool.executor == "mcp") {
+        rawResult = impl_->executeMcp(tool, arguments);
+    } else {
+        rawResult["error"] = "Unsupported executor: " + tool.executor;
+    }
+
+    if ((rawResult.isObject() && rawResult.isMember("error")) ||
+        (rawResult.isObject() && rawResult.isMember("success") && !rawResult["success"].asBool())) {
+        toolCall["status"] = "failed";
+        if (rawResult.isMember("error")) {
+            toolCall["error"] = rawResult["error"];
+        }
+        toolCall["output"] = rawResult;
+        if (emitEvent) {
+            emitEvent(impl_->makeToolEvent("failed", toolCall));
+        }
+
+        ExecutionResult failure;
+        failure.success = false;
+        failure.modelOutput = rawResult.isMember("error")
+            ? rawResult["error"].asString()
+            : jsonToString(rawResult);
+        failure.toolCall = toolCall;
+        return failure;
+    }
+
+    toolCall["status"] = "completed";
+    toolCall["output"] = rawResult;
+    if (emitEvent) {
+        emitEvent(impl_->makeToolEvent("completed", toolCall));
+    }
+
+    ExecutionResult success;
+    success.success = true;
+    success.modelOutput = impl_->modelOutputFromResult(rawResult);
+    success.toolCall = toolCall;
+    return success;
+}
+
+Json::Value ToolSystem::getPackSummaries() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    Json::Value result(Json::objectValue);
+    result["packs"] = impl_->buildPackSummariesUnlocked();
+    result["sandbox"] = impl_->sandbox.health();
+    return result;
+}
+
+Json::Value ToolSystem::getCatalog(const std::string& query, const Json::Value& scope, int limit) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+
+    ToolSession tempSession;
+    tempSession.enabledPackIds = scopeToSet(normalizeScope(scope));
+    if (tempSession.enabledPackIds.empty()) {
+        tempSession.enabledPackIds = impl_->defaultEnabledPacksUnlocked();
+    }
+
+    Json::Value result(Json::objectValue);
+    result["query"] = query;
+    result["results"] = impl_->buildCatalogResultsUnlocked(query, &tempSession, limit);
+    return result;
+}
+
+Json::Value ToolSystem::getSandboxHealth() const {
+    return impl_->sandbox.health();
+}
+
+Json::Value ToolSystem::getToolingConfig() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    return impl_->toolingConfig.root;
+}
+
+Json::Value ToolSystem::listApprovals(const std::string& taskId) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    Json::Value approvals(Json::arrayValue);
+    for (const auto& [approvalId, approval] : impl_->approvals) {
+        if (!approval) {
+            continue;
+        }
+        if (!taskId.empty() && approval->taskId != taskId) {
+            continue;
+        }
+        approvals.append(impl_->buildApprovalJson(*approval));
+    }
+    return approvals;
+}
+
+Json::Value ToolSystem::resolveApproval(const std::string& approvalId, bool approved, const std::string& note) {
+    std::shared_ptr<ApprovalRequestState> approval;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex);
+        const auto it = impl_->approvals.find(approvalId);
+        if (it == impl_->approvals.end()) {
+            Json::Value error(Json::objectValue);
+            error["error"] = "Approval not found";
+            return error;
+        }
+        approval = it->second;
+    }
+
+    {
+        std::lock_guard<std::mutex> approvalLock(approval->mutex);
+        if (approval->status != ApprovalStatus::Pending) {
+            return impl_->buildApprovalJson(*approval);
+        }
+        approval->status = approved ? ApprovalStatus::Approved : ApprovalStatus::Denied;
+        approval->resolvedAt = nowMillis();
+        approval->note = note;
+    }
+    approval->cv.notify_all();
+    return impl_->buildApprovalJson(*approval);
+}

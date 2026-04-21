@@ -47,38 +47,41 @@ if(CMAKE_CROSSCOMPILING)
         URL https://github.com/curl/curl/archive/curl-8_11_0.tar.gz
     )
     FetchContent_MakeAvailable(curl)
+
+    # OpenSSL for CryptoService (target architecture)
+    # Prefer target-arch library paths; headers can come from either target
+    # sysroot include or generic /usr/include (headers are arch-independent).
+    find_path(OPENSSL_INCLUDE_DIR
+        NAMES openssl/evp.h
+        PATHS
+            /usr/aarch64-linux-gnu/include
+            /usr/include
+    )
+    find_library(OPENSSL_SSL_LIBRARY
+        NAMES ssl libssl
+        PATHS
+            /usr/aarch64-linux-gnu/lib
+            /usr/lib/aarch64-linux-gnu
+        NO_DEFAULT_PATH
+    )
+    find_library(OPENSSL_CRYPTO_LIBRARY
+        NAMES crypto libcrypto
+        PATHS
+            /usr/aarch64-linux-gnu/lib
+            /usr/lib/aarch64-linux-gnu
+        NO_DEFAULT_PATH
+    )
+
+    if(NOT OPENSSL_INCLUDE_DIR OR NOT OPENSSL_SSL_LIBRARY OR NOT OPENSSL_CRYPTO_LIBRARY)
+        message(FATAL_ERROR
+            "OpenSSL for aarch64 was not found. Install target OpenSSL dev packages "
+            "(for example: libssl-dev-arm64-cross or libssl-dev:arm64), then retry.")
+    endif()
 else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(JSONCPP REQUIRED jsoncpp)
     pkg_check_modules(LIBCURL REQUIRED libcurl)
 endif()
-
-# =============================================================================
-# llama.cpp headers only (for type definitions — no linking, no building)
-# =============================================================================
-# We need llama.h / ggml-backend.h so our code can reference the C API types
-# (llama_model_params, llama_context_params, etc.) without linking the lib.
-# All actual symbols are resolved at runtime via dlopen/dlsym.
-#
-# FetchContent_MakeAvailable would call add_subdirectory and build llama.cpp
-# into the binary — that's exactly what we don't want. FetchContent_Populate
-# only downloads the source tree without configuring or building anything.
-# CMP0169 OLD suppresses the deprecation warning for this usage.
-
-cmake_policy(SET CMP0169 OLD)
-
-message(STATUS "Downloading llama.cpp headers via HTTP archive...")
-FetchContent_Declare(
-    llama_cpp_headers
-    DOWNLOAD_EXTRACT_TIMESTAMP true
-    URL https://github.com/ggml-org/llama.cpp/archive/b8749.tar.gz
-)
-FetchContent_GetProperties(llama_cpp_headers)
-if(NOT llama_cpp_headers_POPULATED)
-    FetchContent_Populate(llama_cpp_headers)
-endif()
-
-set(LLAMA_HEADERS_DIR "${llama_cpp_headers_SOURCE_DIR}")
 
 # =============================================================================
 # Embed frontend
@@ -102,10 +105,6 @@ endif()
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/src)
 include_directories("${CMAKE_SOURCE_DIR}/third_party/httplib")
-include_directories("${LLAMA_HEADERS_DIR}/include")
-include_directories("${LLAMA_HEADERS_DIR}/ggml/include")
-# Also include the root so llama.h is findable
-include_directories("${LLAMA_HEADERS_DIR}")
 
 set(EMBED_H   "${CMAKE_BINARY_DIR}/embedded_frontend.h")
 set(EMBED_CPP "${CMAKE_BINARY_DIR}/embedded_frontend.cpp")
@@ -121,6 +120,7 @@ include_directories("${CMAKE_BINARY_DIR}")
 
 set(SOURCES
     src/main.cpp
+    src/app/server_app.cpp
     src/services/lmstudio_service.cpp
     src/services/llamacpp_service.cpp
     src/services/huggingface_service.cpp
@@ -129,7 +129,10 @@ set(SOURCES
     src/services/mcp_client.cpp
     src/services/mcp_stdio_client.cpp
     src/services/mcp_registry.cpp
+    src/services/tools/tool_system.cpp
     src/services/crypto_service.cpp
+    src/server/http_utils.cpp
+    src/server/api_routes.cpp
     src/controllers/lmstudio_controller.cpp
     src/controllers/config_controller.cpp
     src/controllers/auth_controller.cpp
@@ -147,8 +150,15 @@ if(CMAKE_CROSSCOMPILING)
     add_executable(ctrlpanel_arm ${SOURCES})
     target_include_directories(ctrlpanel_arm PRIVATE
         "${jsoncpp_SOURCE_DIR}/include"
-        "${curl_SOURCE_DIR}/include")
-    target_link_libraries(ctrlpanel_arm jsoncpp_static libcurl pthread dl)
+        "${curl_SOURCE_DIR}/include"
+        "${OPENSSL_INCLUDE_DIR}")
+    target_link_libraries(ctrlpanel_arm
+        jsoncpp_static
+        libcurl
+        pthread
+        dl
+        "${OPENSSL_SSL_LIBRARY}"
+        "${OPENSSL_CRYPTO_LIBRARY}")
     install(TARGETS ctrlpanel_arm DESTINATION bin)
 
 else()

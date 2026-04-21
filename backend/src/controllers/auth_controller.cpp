@@ -1,42 +1,107 @@
-// backend/src/controllers/auth_controller.cpp
 #include "controllers/auth_controller.h"
-#include <openssl/rand.h>
-#include <fstream>
-#include <iostream>
-#include <sstream>
 
-// Forward declarations from main.cpp
-void addSecurityHeaders(httplib::Response& res);
-void addCorsHeaders(httplib::Response& res, const httplib::Request& req);
+#include <fstream>
+#include <sstream>
+#include <utility>
+
+#include <openssl/rand.h>
+
+#include "server/http_utils.h"
+
+namespace {
+
+constexpr const char* kAuthSentinel = "ctrlpanel-v1-auth-ok";
+
+bool parseEncryptedJsonString(const std::string& json, Json::Value& out) {
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream stream(json);
+    return Json::parseFromStream(reader, stream, &out, &errors);
+}
+
+} // namespace
+
+std::string extractSessionToken(const httplib::Request& req) {
+    if (req.has_header("X-Session-Token")) {
+        return req.get_header_value("X-Session-Token");
+    }
+
+    if (req.has_param("token")) {
+        return req.get_param_value("token");
+    }
+
+    Json::Value body;
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream stream(req.body);
+    if (Json::parseFromStream(reader, stream, &body, &errors) && body.isMember("sessionToken")) {
+        return body["sessionToken"].asString();
+    }
+
+    return "";
+}
+
+bool requireValidSession(const httplib::Request& req, httplib::Response& res, AuthStore* store) {
+    const std::string token = extractSessionToken(req);
+    if (token.empty() || !SessionManager::instance().isValid(token)) {
+        setJsonError(res, 401, "Not authenticated");
+        return false;
+    }
+
+    if (store && store->getAesKey().empty()) {
+        setJsonError(res, 401, "Not authenticated");
+        return false;
+    }
+
+    return true;
+}
 
 AuthStore::AuthStore(const std::string& path) : filePath_(path) {
     loadFromDisk();
 }
 
-void AuthStore::loadFromDisk() {
-    std::lock_guard<std::mutex> lock(mutex_);
+Json::Value AuthStore::readStateUnlocked() const {
     std::ifstream file(filePath_);
     if (!file.is_open()) {
-        setup_ = false;
-        return;
+        return Json::Value(Json::objectValue);
     }
 
-    Json::CharReaderBuilder builder;
-    std::string errs;
+    Json::CharReaderBuilder reader;
+    std::string errors;
     Json::Value root;
-    if (!Json::parseFromStream(builder, file, &root, &errs)) {
-        setup_ = false;
-        return;
+    if (!Json::parseFromStream(reader, file, &root, &errors) || !root.isObject()) {
+        return Json::Value(Json::objectValue);
     }
+
+    return root;
+}
+
+bool AuthStore::writeStateUnlocked(const Json::Value& state) const {
+    std::ofstream file(filePath_);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "    ";
+    std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+    writer->write(state, &file);
+    return true;
+}
+
+void AuthStore::loadFromDisk() {
+    std::scoped_lock lock(mutex_, keyMutex_);
+
+    const Json::Value root = readStateUnlocked();
+    setup_ = false;
+    salt_.clear();
+    aesKey_.clear();
 
     if (root.isMember("salt") && root["salt"].isString() && !root["salt"].asString().empty()) {
         salt_ = CryptoService::fromHex(root["salt"].asString());
-        setup_ = true;
-    } else {
-        setup_ = false;
+        setup_ = !salt_.empty();
     }
 
-    // Restore AES key if persisted on disk
     if (root.isMember("aesKey") && root["aesKey"].isString() && !root["aesKey"].asString().empty()) {
         aesKey_ = CryptoService::fromHex(root["aesKey"].asString());
     }
@@ -48,115 +113,77 @@ bool AuthStore::isSetup() const {
 }
 
 bool AuthStore::setupPassword(const std::string& password, int iterations) {
-    // Generate random 32-byte salt
-    salt_.resize(32);
-    if (RAND_bytes(salt_.data(), 32) != 1) {
-        std::cerr << "[AuthStore] RAND_bytes failed for salt\n";
+    std::vector<uint8_t> salt(32);
+    if (RAND_bytes(salt.data(), static_cast<int>(salt.size())) != 1) {
         return false;
     }
 
-    auto key = CryptoService::deriveKey(password, salt_, iterations);
+    const auto key = CryptoService::deriveKey(password, salt, iterations);
+    const std::string sentinelEnvelope = CryptoService::encrypt(kAuthSentinel, key);
 
-    // Encrypt sentinel to verify
-    std::string sentinelJson = CryptoService::encrypt(
-        "ctrlpanel-v1-auth-ok", key);
-
-    // Parse sentinel
-    Json::CharReaderBuilder rb;
-    std::string errs;
     Json::Value sentinel;
-    std::istringstream ss(sentinelJson);
-    if (!Json::parseFromStream(rb, ss, &sentinel, &errs)) return false;
+    if (!parseEncryptedJsonString(sentinelEnvelope, sentinel)) {
+        return false;
+    }
 
-    // Save salt + sentinel + AES key to disk
+    Json::Value state(Json::objectValue);
+    state["salt"] = CryptoService::toHex(salt);
+    state["sentinel"] = sentinel;
+    state["aesKey"] = CryptoService::toHex(key);
+
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        Json::Value data;
-        data["salt"] = CryptoService::toHex(salt_);
-        data["sentinel"] = sentinel;
-        data["aesKey"] = CryptoService::toHex(key);
+        std::scoped_lock lock(mutex_, keyMutex_);
+        if (setup_) {
+            return false;
+        }
+        if (!writeStateUnlocked(state)) {
+            return false;
+        }
 
-        std::ofstream file(filePath_);
-        if (!file.is_open()) return false;
-
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "    ";
-        std::unique_ptr<Json::StreamWriter> writer(wb.newStreamWriter());
-        writer->write(data, &file);
-
+        salt_ = std::move(salt);
+        aesKey_ = key;
         setup_ = true;
     }
 
-    // Store the key in memory
-    {
-        std::lock_guard<std::mutex> lock(keyMutex_);
-        aesKey_ = key;
-        std::cout << "[AuthStore] AES key stored (" << key.size() << " bytes)\n";
-    }
-
-    std::cout << "[AuthStore] Password setup completed\n";
     return true;
 }
 
 bool AuthStore::verifyPassword(const std::string& password) {
+    Json::Value state;
     std::vector<uint8_t> salt;
-    bool isSetup;
+
     {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (!setup_ || salt_.empty()) {
+            return false;
+        }
         salt = salt_;
-        isSetup = setup_;
+        state = readStateUnlocked();
     }
 
-    if (!isSetup || salt.empty()) return false;
-
-    auto key = CryptoService::deriveKey(password, salt);
-
-    // Load sentinel from disk
-    Json::CharReaderBuilder rb;
-    std::string errs;
-    Json::Value root;
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        std::ifstream file(filePath_);
-        if (!file.is_open()) return false;
-        if (!Json::parseFromStream(rb, file, &root, &errs)) return false;
-    }
-
-    if (!root.isMember("sentinel") || !root["sentinel"].isObject()) return false;
-
-    try {
-        std::string decrypted = CryptoService::decryptWithKey(root["sentinel"], key);
-        if (decrypted != "ctrlpanel-v1-auth-ok") return false;
-    } catch (const std::exception&) {
+    if (!state.isMember("sentinel") || !state["sentinel"].isObject()) {
         return false;
     }
 
-    // Store the key in memory
+    const auto key = CryptoService::deriveKey(password, salt);
+    try {
+        if (CryptoService::decryptWithKey(state["sentinel"], key) != kAuthSentinel) {
+            return false;
+        }
+    } catch (...) {
+        return false;
+    }
+
+    state["aesKey"] = CryptoService::toHex(key);
+
     {
-        std::lock_guard<std::mutex> lock(keyMutex_);
+        std::scoped_lock lock(mutex_, keyMutex_);
+        if (!writeStateUnlocked(state)) {
+            return false;
+        }
         aesKey_ = key;
     }
 
-    // Persist the AES key to disk so it survives server restarts
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        Json::CharReaderBuilder rb2;
-        std::string errs2;
-        Json::Value root;
-        std::ifstream inFile(filePath_);
-        if (Json::parseFromStream(rb2, inFile, &root, &errs2)) {
-            root["aesKey"] = CryptoService::toHex(key);
-            std::ofstream outFile(filePath_);
-            if (outFile.is_open()) {
-                Json::StreamWriterBuilder wb;
-                wb["indentation"] = "    ";
-                std::unique_ptr<Json::StreamWriter> writer(wb.newStreamWriter());
-                writer->write(root, &outFile);
-            }
-        }
-    }
-
-    std::cout << "[AuthStore] Login verified\n";
     return true;
 }
 
@@ -166,158 +193,92 @@ std::vector<uint8_t> AuthStore::getAesKey() {
 }
 
 std::string AuthStore::encryptData(const std::string& plaintext) {
-    std::vector<uint8_t> key;
-    {
-        std::lock_guard<std::mutex> lock(keyMutex_);
-        key = aesKey_;
-    }
+    const auto key = getAesKey();
     if (key.empty()) {
-        throw std::runtime_error("No AES key — not authenticated");
+        throw std::runtime_error("No AES key loaded");
     }
     return CryptoService::encrypt(plaintext, key);
 }
 
 std::string AuthStore::decryptData(const Json::Value& encrypted) {
-    std::vector<uint8_t> key;
-    {
-        std::lock_guard<std::mutex> lock(keyMutex_);
-        key = aesKey_;
-    }
+    const auto key = getAesKey();
     if (key.empty()) {
-        throw std::runtime_error("No AES key — not authenticated");
+        throw std::runtime_error("No AES key loaded");
     }
     return CryptoService::decryptWithKey(encrypted, key);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HTTP handlers
-// ─────────────────────────────────────────────────────────────────────────────
-
-static bool parseJsonBody(const std::string& body, Json::Value& out, httplib::Response& res) {
-    Json::CharReaderBuilder rb;
-    std::string errs;
-    std::istringstream ss(body);
-    if (!Json::parseFromStream(rb, ss, &out, &errs)) {
-        res.status = 400;
-        res.set_content("{\"error\":\"Invalid JSON\"}", "application/json");
-        return false;
-    }
-    return true;
-}
-
-void handleGetAuth(const httplib::Request& req, httplib::Response& res,
-                   AuthStore& store) {
-    addSecurityHeaders(res); addCorsHeaders(res, req);
-
+void handleGetAuth(const httplib::Request&, httplib::Response& res, AuthStore& store) {
     Json::Value result;
     result["setup"] = store.isSetup();
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    res.set_content(Json::writeString(wb, result), "application/json");
+    setJson(res, result);
 }
 
-void handleSetupAuth(const httplib::Request& req, httplib::Response& res,
-                     AuthStore& store) {
-    addSecurityHeaders(res); addCorsHeaders(res, req);
-
+void handleSetupAuth(const httplib::Request& req, httplib::Response& res, AuthStore& store) {
     Json::Value body;
-    if (!parseJsonBody(req.body, body, res)) return;
-
-    if (!body.isMember("password") || body["password"].asString().empty()) {
-        res.status = 400;
-        res.set_content("{\"error\":\"Password is required\"}", "application/json");
+    if (!parseJsonBody(req.body, body, res)) {
         return;
     }
 
-    std::string password = body["password"].asString();
-    int iterations = body.get("iterations", 310000).asInt();
+    const std::string password = body.get("password", "").asString();
+    const int iterations = body.get("iterations", 310000).asInt();
+
+    if (password.empty()) {
+        setJsonError(res, 400, "Password is required");
+        return;
+    }
 
     if (store.isSetup()) {
-        res.status = 409;
-        res.set_content("{\"error\":\"Password already set. Use change-password endpoint.\"}", "application/json");
+        setJsonError(res, 409, "Password already set");
         return;
     }
 
     if (!store.setupPassword(password, iterations)) {
-        res.status = 500;
-        res.set_content("{\"error\":\"Failed to setup password\"}", "application/json");
+        setJsonError(res, 500, "Failed to setup password");
         return;
     }
 
-    // Create a session
-    std::string token = SessionManager::instance().createSession();
-
     Json::Value result;
     result["success"] = true;
-    result["sessionToken"] = token;
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    res.set_content(Json::writeString(wb, result), "application/json");
+    result["sessionToken"] = SessionManager::instance().createSession();
+    setJson(res, result);
 }
 
-void handleLoginAuth(const httplib::Request& req, httplib::Response& res,
-                     AuthStore& store) {
-    addSecurityHeaders(res); addCorsHeaders(res, req);
-
+void handleLoginAuth(const httplib::Request& req, httplib::Response& res, AuthStore& store) {
     Json::Value body;
-    if (!parseJsonBody(req.body, body, res)) return;
-
-    if (!body.isMember("password") || body["password"].asString().empty()) {
-        res.status = 400;
-        res.set_content("{\"error\":\"Password is required\"}", "application/json");
+    if (!parseJsonBody(req.body, body, res)) {
         return;
     }
 
-    std::string password = body["password"].asString();
+    const std::string password = body.get("password", "").asString();
+    if (password.empty()) {
+        setJsonError(res, 400, "Password is required");
+        return;
+    }
 
     if (!store.verifyPassword(password)) {
-        res.status = 401;
-        res.set_content("{\"error\":\"Incorrect password\"}", "application/json");
+        setJsonError(res, 401, "Incorrect password");
         return;
     }
-
-    // Create a session
-    std::string token = SessionManager::instance().createSession();
 
     Json::Value result;
     result["success"] = true;
-    result["sessionToken"] = token;
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    res.set_content(Json::writeString(wb, result), "application/json");
+    result["sessionToken"] = SessionManager::instance().createSession();
+    setJson(res, result);
 }
 
 void handleLogoutAuth(const httplib::Request& req, httplib::Response& res) {
-    addSecurityHeaders(res); addCorsHeaders(res, req);
-
-    std::string token;
-    if (req.has_header("X-Session-Token")) {
-        token = req.get_header_value("X-Session-Token");
-    } else {
-        Json::Value body;
-        Json::CharReaderBuilder rb;
-        std::string errs;
-        std::istringstream ss(req.body);
-        if (Json::parseFromStream(rb, ss, &body, &errs) && body.isMember("sessionToken")) {
-            token = body["sessionToken"].asString();
-        }
-    }
-
+    const std::string token = extractSessionToken(req);
     if (!token.empty()) {
         SessionManager::instance().revoke(token);
     }
 
     Json::Value result;
     result["success"] = true;
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    res.set_content(Json::writeString(wb, result), "application/json");
+    setJson(res, result);
 }
 
-void handleValidateAuth(const httplib::Request& req, httplib::Response& res,
-                        AuthStore& store) {
-    addSecurityHeaders(res); addCorsHeaders(res, req);
-
+void handleValidateAuth(const httplib::Request& req, httplib::Response& res, AuthStore& store) {
     std::string token;
     if (req.has_header("X-Session-Token")) {
         token = req.get_header_value("X-Session-Token");
@@ -325,17 +286,12 @@ void handleValidateAuth(const httplib::Request& req, httplib::Response& res,
         token = req.get_param_value("token");
     }
 
-    if (!token.empty() && SessionManager::instance().isValid(token)) {
-        if (!store.getAesKey().empty()) {
-            Json::Value result;
-            result["valid"] = true;
-            Json::StreamWriterBuilder wb;
-            wb["indentation"] = "";
-            res.set_content(Json::writeString(wb, result), "application/json");
-            return;
-        }
+    if (!token.empty() && SessionManager::instance().isValid(token) && !store.getAesKey().empty()) {
+        Json::Value result;
+        result["valid"] = true;
+        setJson(res, result);
+        return;
     }
 
-    res.status = 401;
-    res.set_content("{\"error\":\"Invalid session\"}", "application/json");
+    setJsonError(res, 401, "Invalid session");
 }

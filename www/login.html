@@ -6,150 +6,10 @@
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<title>Control Panel — Unlock</title>
+	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%232d3a31'/%3E%3Cpath d='M20 18h24v8H28v12h12v8H20z' fill='%23d3c6aa'/%3E%3C/svg%3E" />
 	<link rel="stylesheet" href="css/variables.css" />
 	<link rel="stylesheet" href="css/base.css" />
-	<style>
-		/* ── Apply theme before paint ─────────────────────────────────────── */
-		html, body { height: 100%; margin: 0; overflow: hidden; }
-
-		/* ── Starfield canvas ─────────────────────────────────────────────── */
-		#starfield {
-			position: fixed;
-			inset: 0;
-			z-index: 0;
-			pointer-events: none;
-		}
-
-		/* ── Login container ──────────────────────────────────────────────── */
-		.auth-wrap {
-			position: relative;
-			z-index: 1;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			min-height: 100vh;
-			padding: 24px;
-		}
-
-		.auth-card {
-			width: 100%;
-			max-width: 380px;
-			background: var(--panel);
-			border: 1px solid var(--border);
-			padding: 32px;
-			display: flex;
-			flex-direction: column;
-			gap: 20px;
-			box-shadow: 0 8px 40px rgba(0,0,0,0.4);
-		}
-
-		/* ── Mode banner ──────────────────────────────────────────────────── */
-		.mode-banner {
-			display: flex;
-			align-items: center;
-			gap: 10px;
-			padding: 8px 12px;
-			font-size: 0.78rem;
-			font-weight: 600;
-			text-transform: uppercase;
-			letter-spacing: 0.08em;
-			border: 1px solid;
-			width: fit-content;
-		}
-
-		.mode-banner.mode-unlock {
-			color: var(--ef-aqua, var(--ctp-teal, #83c092));
-			border-color: color-mix(in srgb, var(--ef-aqua, var(--ctp-teal, #83c092)) 40%, transparent);
-			background: color-mix(in srgb, var(--ef-aqua, var(--ctp-teal, #83c092)) 8%, transparent);
-		}
-
-		.mode-banner.mode-setup {
-			color: var(--ef-yellow, var(--ctp-yellow, #dbbc7f));
-			border-color: color-mix(in srgb, var(--ef-yellow, var(--ctp-yellow, #dbbc7f)) 40%, transparent);
-			background: color-mix(in srgb, var(--ef-yellow, var(--ctp-yellow, #dbbc7f)) 8%, transparent);
-		}
-
-		#mode-icon {
-			width: 14px;
-			height: 14px;
-			flex-shrink: 0;
-			display: block;
-		}
-
-		/* ── Header ───────────────────────────────────────────────────────── */
-		.auth-header { display: flex; flex-direction: column; gap: 6px; }
-
-		#auth-title {
-			margin: 0;
-			font-size: 1.3rem;
-			font-weight: 700;
-			color: var(--text);
-		}
-
-		#auth-subtitle {
-			margin: 0;
-			font-size: 0.875rem;
-			color: var(--muted);
-			line-height: 1.5;
-		}
-
-		/* ── Error box ────────────────────────────────────────────────────── */
-		#error-box {
-			padding: 10px 12px;
-			font-size: 0.85rem;
-			color: var(--ef-red, var(--ctp-red, #e67e80));
-			background: color-mix(in srgb, var(--ef-red, var(--ctp-red, #e67e80)) 10%, transparent);
-			border: 1px solid color-mix(in srgb, var(--ef-red, var(--ctp-red, #e67e80)) 30%, transparent);
-			border-left: 3px solid var(--ef-red, var(--ctp-red, #e67e80));
-		}
-
-		/* ── Fields ───────────────────────────────────────────────────────── */
-		.field-group { display: flex; flex-direction: column; gap: 8px; }
-
-		.field-group label {
-			font-size: 0.82rem;
-			color: var(--muted);
-			font-weight: 500;
-		}
-
-		.field-group input[type="password"] {
-			appearance: none;
-			background: var(--bg);
-			border: 1px solid var(--border);
-			color: var(--text);
-			font: inherit;
-			font-size: 0.95rem;
-			padding: 10px 12px;
-			width: 100%;
-			box-sizing: border-box;
-			transition: border-color 0.15s ease, box-shadow 0.15s ease;
-		}
-
-		.field-group input[type="password"]:focus {
-			outline: none;
-			border-color: var(--accent);
-			box-shadow: 0 0 0 1px var(--accent);
-		}
-
-		/* ── Submit button ────────────────────────────────────────────────── */
-		#submit-btn {
-			appearance: none;
-			background: var(--accent);
-			border: 1px solid var(--accent);
-			color: var(--bg);
-			font: inherit;
-			font-size: 0.95rem;
-			font-weight: 600;
-			padding: 11px 16px;
-			cursor: pointer;
-			width: 100%;
-			transition: opacity 0.15s ease;
-			border-radius: var(--radius-none);
-		}
-
-		#submit-btn:hover { opacity: 0.88; }
-		#submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-	</style>
+	<link rel="stylesheet" href="css/login.css" />
 
 	<script>
 		(function () {
@@ -161,7 +21,7 @@
 	</script>
 </head>
 
-<body>
+<body class="login-page">
 	<canvas id="starfield" aria-hidden="true"></canvas>
 
 	<div class="auth-wrap">
@@ -190,7 +50,7 @@
 
 			<!-- Form -->
 			<form id="auth-form" novalidate>
-				<div style="display:flex;flex-direction:column;gap:14px;">
+				<div class="auth-form-fields">
 					<div class="field-group">
 						<label for="password">Password</label>
 						<input
@@ -221,56 +81,6 @@
 			</form>
 		</div>
 	</div>
-
-	<script>
-		/* ── Starfield canvas ──────────────────────────────────────────────── */
-		(function () {
-			const canvas = document.getElementById('starfield');
-			if (!canvas) return;
-			const ctx    = canvas.getContext('2d');
-			let stars    = [];
-			const COUNT  = 160;
-
-			function resize() {
-				canvas.width  = window.innerWidth;
-				canvas.height = window.innerHeight;
-			}
-
-			function makeStars() {
-				stars = [];
-				for (let i = 0; i < COUNT; i++) {
-					stars.push({
-						x:     Math.random() * canvas.width,
-						y:     Math.random() * canvas.height,
-						r:     Math.random() * 1.4 + 0.15,
-						a:     Math.random() * 0.65 + 0.2,
-						da:    (Math.random() - 0.5) * 0.008,
-						speed: Math.random() * 0.006 + 0.001,
-					});
-				}
-			}
-
-			function draw() {
-				ctx.clearRect(0, 0, canvas.width, canvas.height);
-				for (const s of stars) {
-					s.a = Math.max(0.05, Math.min(0.9, s.a + s.da));
-					if (s.a <= 0.05 || s.a >= 0.9) s.da *= -1;
-					ctx.beginPath();
-					ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-					/* Use everforest fg colour with opacity */
-					ctx.fillStyle = `rgba(211, 198, 170, ${s.a})`;
-					ctx.fill();
-				}
-				requestAnimationFrame(draw);
-			}
-
-			resize();
-			makeStars();
-			draw();
-
-			window.addEventListener('resize', function () { resize(); makeStars(); });
-		})();
-	</script>
 
 	<script type="module" src="js/login.js?v=2"></script>
 </body>

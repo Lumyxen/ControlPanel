@@ -1,32 +1,37 @@
 #pragma once
-// backend/include/services/llamacpp_service.h
 
-#include <string>
-#include <vector>
 #include <functional>
-#include <mutex>
-#include <atomic>
-#include <condition_variable>
-#include <filesystem>
-#include <thread>
-#include <cstdint>
-#include <optional>
 #include <json/json.h>
+#include <mutex>
+#include <string>
+#include <tuple>
+#include <vector>
 
-struct LlamaApi;
 class Config;
-class McpRegistry;
+class ToolSystem;
 
 struct ModelInfo {
-    std::string id;              // directory name, e.g. "llamacpp::qwen3-8b"
-    std::string name;            // display name
-    std::string directory;       // full path to model directory
-    std::string ggufPath;        // path to the .gguf file
-    std::string mmprojPath;      // path to .mmproj (empty if none)
-    std::string tokenizerPath;   // path to .tiktoken or vocab.json (empty if none)
-    int contextLength;           // from config or default
-    int maxTokens;
-    bool loaded;
+    std::string id;
+    std::string name;
+    std::string directory;
+    std::string ggufPath;
+    std::string mmprojPath;
+    std::string tokenizerPath;
+    int contextLength = 8192;
+    int maxTokens = 8192;
+    bool loaded = false;
+    bool usesMrope = false;
+};
+
+struct LlamaServerStatus {
+    bool running = false;
+    bool ready = false;
+    std::string activeBackend;
+    int pid = 0;
+    int parallelSlots = 1;
+    int maxLoadedModels = 1;
+    int loadedModels = 0;
+    Json::Value loadedModelIds = Json::Value(Json::arrayValue);
 };
 
 class LlamaCppService {
@@ -36,56 +41,40 @@ public:
                     Config& config);
     ~LlamaCppService();
 
-    LlamaCppService(const LlamaCppService&)            = delete;
+    LlamaCppService(const LlamaCppService&) = delete;
     LlamaCppService& operator=(const LlamaCppService&) = delete;
 
-    // ── State ─────────────────────────────────────────────────────────────────
-
-    // Defined in .cpp — LlamaApi is forward-declared here (incomplete type)
-    bool        isReady()          const;
-    std::string getLoadedModelId() const { return loadedModelId_; }
-    std::string getActiveBackend() const { return activeBackend_; }
-
-    // ── Backend management ────────────────────────────────────────────────────
+    bool isReady() const;
+    std::string getLoadedModelId() const;
+    std::string getActiveBackend() const;
+    LlamaServerStatus getServerStatus() const;
+    void markConfigDirty();
 
     std::vector<std::string> availableBackends() const;
+    static std::vector<std::string> listAvailableBackends(const std::string& libsDir);
     static std::vector<std::string> detectHardwareBackends();
+    static std::string resolveBackendPreference(const std::string& preference,
+                                                const std::vector<std::string>& availableBackends);
     std::string resolveBackend(const std::string& preference) const;
 
-    // Load a different backend .so. Waits for any running inference,
-    // unloads the current model, closes the old lib, opens the new one,
-    // and re-loads the model if one was previously loaded.
     bool switchBackend(const std::string& backendName);
-
-    // Unload the current library (public so the delete endpoint can call it
-    // when the active backend is removed).
     void unloadLib();
-
-    // ── Model lifecycle (public so the reload-model API endpoint can call them) ──
-
-    // Reload the model picking up config changes
     bool reloadModel();
-
-    // Unload the current model (keeps the backend .so loaded).
     void unloadModel();
-
-    // Scan modelsDir for the first .gguf and load it.
+    bool unloadModel(const std::string& modelId);
     bool ensureModelLoaded(const std::string& modelId = "");
 
-    // ── Models ────────────────────────────────────────────────────────────────
-
-    // Scan modelsDir for model directories and return metadata
     std::vector<ModelInfo> scanModels() const;
+    static std::vector<ModelInfo> scanModelDirectory(const std::string& modelsDir,
+                                                     int contextLength = 8192,
+                                                     const std::string& loadedModelPath = "");
     Json::Value getModels() const;
     Json::Value buildMessages(const std::string& prompt,
                               const std::string& systemPrompt) const;
 
-    // Generate a concise chat title from user message using the LLM
     std::string generateTitle(const std::string& model,
                               const std::string& userMessage,
-                              const std::string& systemPrompt = "") const;
-
-    // ── Streaming ─────────────────────────────────────────────────────────────
+                              const std::string& systemPrompt = "");
 
     void streamingChatWithCallback(
         const std::string& model,
@@ -104,10 +93,11 @@ public:
         const std::string& model,
         Json::Value messages,
         const Json::Value& tools,
+        const std::string& taskId,
         int maxTokens,
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
-        McpRegistry* registry,
+        ToolSystem* toolSystem,
         double temperature = -1.0,
         int numCtx = 0,
         std::function<bool()> cancelCheck = nullptr,
@@ -115,108 +105,70 @@ public:
     );
 
 private:
+    struct StartupConfig {
+        std::string backend;
+        int parallelSlots = 1;
+        int maxLoadedModels = 1;
+        int ctxSize = 0;
+        int batchSize = 2048;
+        int gpuLayers = 0;
+        int threads = 0;
+        int threadsBatch = 0;
+        int sleepIdleSeconds = -1;
+        bool flashAttn = true;
+        bool cachePrompt = true;
+        std::string kvCacheType = "f16";
+
+        bool operator==(const StartupConfig& other) const;
+        bool operator!=(const StartupConfig& other) const;
+    };
+
     std::string modelsDir_;
     std::string libsDir_;
-    Config&     config_;
+    Config& config_;
 
-    void*       dlHandle_      = nullptr;
-    LlamaApi*   api_           = nullptr;
+    mutable std::mutex stateMutex_;
+    StartupConfig activeConfig_;
     std::string activeBackend_;
-
-    void*       model_         = nullptr;
-    void*       ctx_           = nullptr;
-    std::string loadedModelPath_;
+    std::string activePresetSignature_;
     std::string loadedModelId_;
-    bool        modelLoaded_   = false;
-    int         n_ctx_         = 8192;
-    int         n_batch_       = 2048;
+    Json::Value loadedModelIds_ = Json::Value(Json::arrayValue);
+    std::string serverBaseUrl_;
+    int serverPort_ = 0;
+    int serverPid_ = 0;
+    bool serverRunning_ = false;
+    bool configDirty_ = true;
 
-    void*       clipCtx_       = nullptr;
-    bool        visionEnabled_ = false;
-
-    // KV cache reuse vector storing the context of evaluated tokens
-    mutable std::vector<int32_t> kvCacheTokens_;
-
-    mutable std::mutex              inferMutex_;
-
-    // ── Automatic model unloading ──────────────────────────────────────────────
-    std::mutex              unloadMutex_;
-    std::condition_variable unloadCv_;
-    std::thread             unloadThread_;
-    bool                    unloadThreadRunning_ = false;
-    std::chrono::steady_clock::time_point unloadTime_;
-    bool                    unloadScheduled_ = false;
-
-    void scheduleUnload();
-    void cancelUnload();
-    void unloadWorker();
-
-    // ── Service-level abort flag ──────────────────────────────────────────────
-    // Set to true by a new inference request before it acquires inferMutex_,
-    // signalling the running inference to stop ASAP.  Cleared to false once the
-    // new request owns the lock and is ready to start its own inference.
-    //
-    // doInference checks this via the combinedCancel predicate before every
-    // call to api_->decode(), so the running inference exits within a single
-    // decode call (~milliseconds) rather than waiting for the current full
-    // generation to complete.
-    mutable std::atomic<bool>       inferAbort_{false};
-
-    bool loadLib(const std::string& backendName);
-    bool loadModel(const std::string& path = "");
-
-    // Find the .gguf file in a model directory
+    std::string normalizeModelId(const std::string& modelId) const;
+    std::string normalizeLoadedModelPath(const std::string& ggufPath) const;
     std::string findGgufInDirectory(const std::string& dir) const;
 
-    std::filesystem::path libPath(const std::string& name) const;
+    StartupConfig buildStartupConfigLocked(const std::string& preferenceOverride = "") const;
+    bool ensureServerRunning();
+    bool ensureServerRunningLocked();
+    bool startServerLocked(const StartupConfig& desired);
+    void stopServerLocked();
+    bool isServerProcessAliveLocked();
+    bool waitForRouterLocked(int timeoutMs);
 
-    std::vector<std::pair<std::string, std::string>>
-    parseMessages(const std::string& prompt,
-                  const std::string& systemPrompt) const;
+    std::string buildRouterPresetLocked() const;
+    std::string presetPath() const;
+    std::string logsDir() const;
+    std::string backendInstallDir(const std::string& backend) const;
+    std::string backendBinaryPath(const std::string& backend) const;
 
-    void doInference(
-        const std::vector<std::pair<std::string, std::string>>& messages,
-        int maxTokens, double temperature,
+    bool refreshLoadedModelStateLocked();
+    Json::Value routerModelsJson() const;
+    Json::Value getJson(const std::string& endpoint, long timeoutSeconds = 5) const;
+    Json::Value postJson(const std::string& endpoint,
+                         const Json::Value& body,
+                         long timeoutSeconds = 60) const;
+
+    Json::Value parseConversationHistory(const std::string& prompt) const;
+    std::string streamOneRound(
+        const Json::Value& requestBody,
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
-        std::function<bool()> cancelCheck = nullptr,
-        bool emitLogprobs = false
+        std::vector<std::tuple<std::string, std::string, std::string>>& toolCallsOut
     ) const;
-
-    /**
-     * Like doInference but collects and returns the full generated text
-     * instead of streaming it.  Used by the tool-call loop so we can inspect
-     * the model's output before deciding whether to forward it to the client.
-     *
-     * @param cancelCheck  Optional predicate polled each token; return true to abort.
-     * @param onError      Called once on hard errors.
-     * @return             The full generated text (decoded from tokens).
-     */
-    std::string doInferenceCollect(
-        const std::vector<std::pair<std::string, std::string>>& messages,
-        int maxTokens, double temperature,
-        std::function<bool()> cancelCheck,
-        std::function<void(const std::string&)> onError
-    ) const;
-
-    /**
-     * Like doInferenceCollect but also streams tokens live to the client
-     * via onChunk.  Used by the tool-call loop so the user sees real-time
-     * streaming while we simultaneously buffer for tool-call detection.
-     *
-     * @param cancelCheck  Optional predicate polled each token; return true to abort.
-     * @param onError      Called once on hard errors.
-     * @return             The full generated text (decoded from tokens).
-     */
-    std::string doInferenceCollectWithStreaming(
-        const std::vector<std::pair<std::string, std::string>>& messages,
-        int maxTokens, double temperature,
-        std::function<bool(const std::string&)> onChunk,
-        std::function<void(const std::string&)> onError,
-        std::function<bool()> cancelCheck,
-        bool emitLogprobs = false
-    ) const;
-
-    static std::string makeContentChunk(const std::string& text, std::optional<float> logprob = std::nullopt);
-    static std::vector<uint8_t> decodeBase64Image(const std::string& dataUrl);
 };

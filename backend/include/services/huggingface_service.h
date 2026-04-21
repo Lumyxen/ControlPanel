@@ -3,75 +3,73 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <memory>
 #include <json/json.h>
 #include <curl/curl.h>
 
 struct HfModelInfo {
-    std::string id;            // e.g. "bartowski/Qwen3-8B-GGUF"
-    std::string name;          // e.g. "Qwen3-8B-GGUF"
-    std::string author;        // e.g. "bartowski"
-    std::string description;
-    int downloads = 0;
-    int likes = 0;
-    std::string pipeline_tag;  // e.g. "text-generation", "image-text-to-text"
-    std::vector<std::string> tags;
-    std::vector<std::string> filenames; // list of .gguf files in the repo
-    bool hasMmproj = false;
-    bool hasTokenizer = false;
+std::string id; // e.g. "bartowski/Qwen3-8B-GGUF"
+std::string name; // e.g. "Qwen3-8B-GGUF"
+std::string author; // e.g. "bartowski"
+std::string description;
+int downloads = 0;
+int likes = 0;
+std::string pipeline_tag; // e.g. "text-generation", "image-text-to-text"
+std::vector<std::string> tags;
+std::vector<std::string> filenames; // list of .gguf files in the repo
+bool hasMmproj = false;
+bool hasTokenizer = false;
 };
 
 struct HfSearchFilters {
-    std::string search;        // free-text search query
-    std::string author;        // filter by author/organization
-    std::string pipeline;      // e.g. "text-generation", "image-text-to-text"
-    bool imageSupport = false; // models with vision capabilities
-    bool audioSupport = false; // models with audio capabilities
-    int limit = 20;            // max results
-    std::string sort = "downloads"; // "downloads", "likes", "createdAt", "trending"
+std::string search; // free-text search query
+std::string author; // filter by author/organization
+std::string pipeline; // e.g. "text-generation", "image-text-to-text"
+bool imageSupport = false; // models with vision capabilities
+bool audioSupport = false; // models with audio capabilities
+int limit = 20; // max results
+std::string sort = "downloads"; // "downloads", "likes", "createdAt", "trending"
 };
 
 struct DownloadProgress {
-    enum Status {
-        InProgress,
-        Completed,
-        Failed
-    };
-    Status status = InProgress;
-    std::string modelId;       // e.g. "bartowski/Qwen3-8B-GGUF"
-    std::string directoryName; // e.g. "qwen3-8b"
-    long long totalBytes = 0;
-    long long downloadedBytes = 0;
-    long long completedBytesFromPreviousFiles = 0; // bytes from already-completed files in multi-file download
-    std::string currentFile;   // current file being downloaded
-    int filesDownloaded = 0;
-    int totalFiles = 0;
-    std::string errorMessage;
-    double percent() const {
-        return totalBytes > 0 ? (100.0 * downloadedBytes / totalBytes) : 0.0;
-    }
+enum Status {
+InProgress,
+Completed,
+Failed
+};
+Status status = InProgress;
+std::string modelId; // e.g. "bartowski/Qwen3-8B-GGUF"
+std::string directoryName; // e.g. "qwen3-8b"
+long long totalBytes = 0;
+long long downloadedBytes = 0;
+long long completedBytesFromPreviousFiles = 0; // bytes from already-completed files in multi-file download
+std::string currentFile; // current file being downloaded
+int filesDownloaded = 0;
+int totalFiles = 0;
+std::string errorMessage;
+double percent() const { return totalBytes > 0 ? (100.0 * downloadedBytes / totalBytes) : 0.0; }
 };
 
 struct DownloadJob {
-    enum Status { Idle, InProgress, Completed, Failed };
-    std::string id;            // unique job ID
-    std::string modelId;
-    std::string directoryName;
-    Status status = Idle;
-    long long totalBytes = 0;
-    long long downloadedBytes = 0;
-    std::string currentFile;
-    int filesDownloaded = 0;
-    int totalFiles = 0;
-    std::string errorMessage;
-    double percent() const {
-        return totalBytes > 0 ? (100.0 * downloadedBytes / totalBytes) : 0.0;
-    }
+enum Status { Idle, InProgress, Completed, Failed };
+std::string id; // unique job ID
+std::string modelId;
+std::string directoryName;
+Status status = Idle;
+long long totalBytes = 0;
+long long downloadedBytes = 0;
+std::string currentFile;
+int filesDownloaded = 0;
+int totalFiles = 0;
+std::string errorMessage;
+double percent() const { return totalBytes > 0 ? (100.0 * downloadedBytes / totalBytes) : 0.0; }
 };
 
-class HuggingFaceService {
+class HuggingFaceService : public std::enable_shared_from_this<HuggingFaceService> {
 public:
-    HuggingFaceService();
-    ~HuggingFaceService();
+static std::shared_ptr<HuggingFaceService> create();
+HuggingFaceService();
+~HuggingFaceService();
 
     // Search models on HuggingFace
     Json::Value searchModels(const HfSearchFilters& filters) const;

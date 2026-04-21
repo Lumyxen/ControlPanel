@@ -6,7 +6,7 @@
 #include <functional>
 #include <json/json.h>
 
-class McpRegistry;
+class ToolSystem;
 
 struct StreamContext {
     std::function<bool(const std::string&)> onChunk;
@@ -50,10 +50,11 @@ public:
         const std::string&  model,
         Json::Value         messages,
         const Json::Value&  tools,
+        const std::string&  taskId,
         int                 maxTokens,
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
-        McpRegistry*        registry,
+        ToolSystem*         toolSystem,
         double              temperature   = -1.0,
         int                 numCtx        = 0,
         std::function<bool()> cancelCheck = nullptr,

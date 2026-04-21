@@ -59,6 +59,10 @@ static int hfProgressCallback(void* clientp, curl_off_t dltotal, curl_off_t dlno
 // Constructor / Destructor
 // =============================================================================
 
+std::shared_ptr<HuggingFaceService> HuggingFaceService::create() {
+return std::shared_ptr<HuggingFaceService>(new HuggingFaceService());
+}
+
 HuggingFaceService::HuggingFaceService() = default;
 HuggingFaceService::~HuggingFaceService() = default;
 
@@ -404,13 +408,14 @@ std::string HuggingFaceService::startDownload(
         jobs_[jobId] = job;
     }
 
-    cancelToken_.clear();
-    std::thread(&HuggingFaceService::downloadWorker, this,
-                jobId, modelId, directoryName, modelsDir,
-                ggufPath, mmprojPath, tokenizerPath).detach();
+cancelToken_.clear();
+auto self = shared_from_this();
+std::thread(&HuggingFaceService::downloadWorker, self,
+jobId, modelId, directoryName, modelsDir,
+ggufPath, mmprojPath, tokenizerPath).detach();
 
-    std::cout << "[HuggingFace] Started download job " << jobId << " for " << modelId << "\n";
-    return jobId;
+std::cout << "[HuggingFace] Started download job " << jobId << " for " << modelId << "\n";
+return jobId;
 }
 
 DownloadJob HuggingFaceService::getDownloadStatus(const std::string& jobId) const {

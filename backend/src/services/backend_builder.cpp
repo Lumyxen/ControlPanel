@@ -1,6 +1,8 @@
 // backend/src/services/backend_builder.cpp
 #include "services/backend_builder.h"
 
+#include <algorithm>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -8,9 +10,11 @@
 #include <string>
 #include <cstdlib>
 #include <cstdint>
+#include <vector>
 #include <curl/curl.h>
 
 #ifndef _WIN32
+#include <sys/wait.h>
 #include <unistd.h>
 #endif
 
@@ -99,9 +103,11 @@ project(llama_backend_build CXX C)
 
 set(BUILD_SHARED_LIBS    ON  CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_SERVER   OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_COMMON   OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_SERVER   ON  CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_COMMON   ON  CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TOOLS    ON  CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_WEBUI    OFF CACHE BOOL "" FORCE)
 set(GGML_METAL           OFF CACHE BOOL "" FORCE)
 set(GGML_OPENCL          OFF CACHE BOOL "" FORCE)
 set(GGML_SYCL            OFF CACHE BOOL "" FORCE)
@@ -128,6 +134,65 @@ static int runCmd(const std::string& cmd, const std::string& logPath) {
     return system((cmd + " >> \"" + logPath + "\" 2>&1").c_str());
 }
 
+static int runCmdStreaming(const std::string& cmd,
+                           const std::string& logPath,
+                           const std::function<void(const std::string&)>& onLine = {}) {
+#ifdef _WIN32
+    FILE* pipe = _popen((cmd + " 2>&1").c_str(), "r");
+#else
+    FILE* pipe = popen((cmd + " 2>&1").c_str(), "r");
+#endif
+    if (!pipe) {
+        std::ofstream(logPath, std::ios::app)
+            << "[BackendBuilder] Failed to spawn command: " << cmd << "\n";
+        return 1;
+    }
+
+    std::ofstream log(logPath, std::ios::app);
+    char buffer[4096];
+    std::string pending;
+    while (std::fgets(buffer, static_cast<int>(sizeof(buffer)), pipe)) {
+        pending += buffer;
+        std::size_t newlinePos = std::string::npos;
+        while ((newlinePos = pending.find('\n')) != std::string::npos) {
+            std::string line = pending.substr(0, newlinePos + 1);
+            pending.erase(0, newlinePos + 1);
+            if (log.is_open()) {
+                log << line;
+                log.flush();
+            }
+            if (onLine) {
+                while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) {
+                    line.pop_back();
+                }
+                onLine(line);
+            }
+        }
+    }
+
+    if (!pending.empty()) {
+        if (log.is_open()) {
+            log << pending;
+            log.flush();
+        }
+        if (onLine) {
+            while (!pending.empty() && (pending.back() == '\n' || pending.back() == '\r')) {
+                pending.pop_back();
+            }
+            onLine(pending);
+        }
+    }
+
+#ifdef _WIN32
+    return _pclose(pipe);
+#else
+    const int status = pclose(pipe);
+    if (status == -1) return 1;
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    return status;
+#endif
+}
+
 static bool hasCommand(const std::string& cmd) {
 #ifdef _WIN32
     return system(("where " + cmd + " > NUL 2>&1").c_str()) == 0;
@@ -138,6 +203,7 @@ static bool hasCommand(const std::string& cmd) {
 
 struct DownloadCtx {
     std::ofstream* logStream;
+    std::function<void(int)> onPercent;
     int lastPercent = -1;
 };
 
@@ -151,19 +217,25 @@ static int DownloadProgressCallback(void* clientp, curl_off_t dltotal, curl_off_
     DownloadCtx* ctx = static_cast<DownloadCtx*>(clientp);
     if (dltotal > 0) {
         int percent = static_cast<int>((dlnow * 100) / dltotal);
+        if (percent != ctx->lastPercent) {
+            if (ctx->onPercent) ctx->onPercent(percent);
+        }
         // Log every 2% to make the progress bar smooth while preventing IO spam
         if (percent != ctx->lastPercent && (percent % 2 == 0 || percent == 100)) {
             if (ctx->logStream && ctx->logStream->is_open()) {
                 *(ctx->logStream) << "[download " << percent << "% complete]\n";
                 ctx->logStream->flush();
             }
-            ctx->lastPercent = percent;
         }
+        if (percent != ctx->lastPercent) ctx->lastPercent = percent;
     }
     return 0;
 }
 
-static int downloadWithProgress(const std::string& url, const std::string& outputPath, const std::string& logPath) {
+static int downloadWithProgress(const std::string& url,
+                                const std::string& outputPath,
+                                const std::string& logPath,
+                                const std::function<void(int)>& onPercent = {}) {
     CURL* curl = curl_easy_init();
     if (!curl) return 1;
 
@@ -176,6 +248,7 @@ static int downloadWithProgress(const std::string& url, const std::string& outpu
     std::ofstream logFile(logPath, std::ios::app);
     DownloadCtx ctx;
     ctx.logStream = &logFile;
+    ctx.onPercent = onPercent;
 
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
@@ -198,6 +271,56 @@ static int downloadWithProgress(const std::string& url, const std::string& outpu
         return 1;
     }
     return 0;
+}
+
+static int clampPercent(int value) {
+    return std::clamp(value, 0, 100);
+}
+
+static int interpolatePercent(int start, int end, int percent) {
+    const int clamped = clampPercent(percent);
+    return start + ((end - start) * clamped + 50) / 100;
+}
+
+static int parseBuildProgressLine(const std::string& line) {
+    const std::size_t open = line.find('[');
+    if (open == std::string::npos) return -1;
+    const std::size_t close = line.find(']', open + 1);
+    if (close == std::string::npos) return -1;
+
+    const std::size_t pct = line.find('%', open + 1);
+    if (pct != std::string::npos && pct < close) {
+        const std::size_t digitsStart = line.find_first_of("0123456789", open + 1);
+        if (digitsStart != std::string::npos && digitsStart < pct) {
+            try {
+                const int parsed = std::stoi(line.substr(digitsStart, pct - digitsStart));
+                if (parsed >= 0 && parsed <= 100) return parsed;
+            } catch (...) {}
+        }
+    }
+
+    const std::size_t slash = line.find('/', open + 1);
+    if (slash != std::string::npos && slash < close) {
+        const std::size_t currentStart = line.find_first_of("0123456789", open + 1);
+        const std::size_t currentEnd = currentStart == std::string::npos
+            ? std::string::npos
+            : line.find_first_not_of("0123456789", currentStart);
+        const std::size_t totalStart = line.find_first_of("0123456789", slash + 1);
+        const std::size_t totalEnd = totalStart == std::string::npos
+            ? std::string::npos
+            : line.find_first_not_of("0123456789", totalStart);
+        if (currentStart != std::string::npos && totalStart != std::string::npos) {
+            try {
+                const int current = std::stoi(line.substr(currentStart, currentEnd - currentStart));
+                const int total = std::stoi(line.substr(totalStart, totalEnd - totalStart));
+                if (current >= 0 && total > 0) {
+                    return clampPercent((current * 100) / total);
+                }
+            } catch (...) {}
+        }
+    }
+
+    return -1;
 }
 
 std::string BackendBuilder::findRocmClang() {
@@ -477,7 +600,43 @@ int BackendBuilder::build(const std::string& backend,
                             const std::string& libsDir,
                             const std::string& buildCacheDir,
                             const std::string& logPath,
-                            const std::string& llamaTag) {
+                            const std::string& llamaTag,
+                            ProgressCallback progressCallback) {
+    struct StageDef {
+        const char* key;
+        const char* label;
+        int index;
+        int startPercent;
+        int endPercent;
+    };
+
+    const StageDef prepareStage      {"prepare", "Preparing build",      1,  0,   5};
+    const StageDef downloadStage     {"download","Downloading source",   2,  5,  25};
+    const StageDef extractStage      {"extract", "Extracting source",    3, 25,  35};
+    const StageDef sourceStage       {"source",  "Preparing source tree",4, 35,  45};
+    const StageDef configureStage    {"configure","Configuring build",   5, 45,  60};
+    const StageDef buildStage        {"build",   "Compiling llama.cpp",  6, 60,  95};
+    const StageDef installStage      {"install", "Installing runtime",   7, 95, 100};
+
+    const auto emitStage = [&](const StageDef& stage,
+                               int stagePercent = -1,
+                               bool determinate = false,
+                               const std::string& labelOverride = std::string()) {
+        if (!progressCallback) return;
+        BackendBuildProgress progress;
+        progress.stage = stage.key;
+        progress.stageLabel = labelOverride.empty() ? stage.label : labelOverride;
+        progress.stageIndex = stage.index;
+        progress.stageCount = kBackendBuildStageCount;
+        progress.stagePercent = determinate ? clampPercent(stagePercent) : -1;
+        progress.overallPercent = determinate && progress.stagePercent >= 0
+            ? interpolatePercent(stage.startPercent, stage.endPercent, progress.stagePercent)
+            : stage.startPercent;
+        progress.determinate = determinate;
+        progressCallback(progress);
+    };
+
+    emitStage(prepareStage);
 
     const std::string prereqErr = checkPrerequisites(backend);
     if (!prereqErr.empty()) {
@@ -489,12 +648,13 @@ int BackendBuilder::build(const std::string& backend,
 
     const fs::path srcDir   = fs::path(buildCacheDir) / backend;
     const fs::path cmakeBin = srcDir / "cmake_build";
-    const fs::path outDir   = fs::path(libsDir);
+    const fs::path outDir   = fs::path(libsDir) / backend;
     const fs::path tarPath  = srcDir / ("llama.cpp-" + llamaTag + ".tar.gz");
     const std::string url   = "https://github.com/ggml-org/llama.cpp/archive/" + llamaTag + ".tar.gz";
 
     fs::create_directories(srcDir);
     fs::create_directories(outDir);
+    emitStage(prepareStage, 100, true);
 
     {
         std::ofstream log(logPath, std::ios::trunc);
@@ -506,29 +666,38 @@ int BackendBuilder::build(const std::string& backend,
 
     // ── Download source ───────────────────────────────────────────────────────
     if (!fs::exists(tarPath)) {
+        emitStage(downloadStage, 0, true);
         std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Downloading source from " << url << "\n";
-        if (downloadWithProgress(url, tarPath.string(), logPath) != 0) {
+        if (downloadWithProgress(url, tarPath.string(), logPath, [&](int percent) {
+            emitStage(downloadStage, percent, true);
+        }) != 0) {
             std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Download failed\n";
             return 1;
         }
+        emitStage(downloadStage, 100, true, "Source download complete");
     } else {
         std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Using cached source archive\n";
+        emitStage(downloadStage, 100, true, "Using cached source archive");
     }
 
     // ── Extract source ────────────────────────────────────────────────────────
     const fs::path extractDir = srcDir / ("llama.cpp-" + llamaTag);
     if (!fs::exists(extractDir)) {
+        emitStage(extractStage);
         std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Extracting source\n";
         if (runCmd("tar -xzf \"" + tarPath.string() + "\" -C \"" + srcDir.string() + "\"", logPath) != 0) {
             std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Extraction failed\n";
             return 1;
         }
+        emitStage(extractStage, 100, true, "Source extracted");
     } else {
         std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Using cached extracted source\n";
+        emitStage(extractStage, 100, true, "Using cached extracted source");
     }
 
     // Move the extracted directory to a standard name
     const fs::path llamaSrcDir = srcDir / "llama_src";
+    emitStage(sourceStage);
     if (!fs::exists(llamaSrcDir)) {
         try {
             fs::rename(extractDir, llamaSrcDir);
@@ -537,13 +706,16 @@ int BackendBuilder::build(const std::string& backend,
             return 1;
         }
     }
+    emitStage(sourceStage, 50, true);
 
     if (writeCMakeLists(srcDir.string(), backend, llamaTag).empty()) {
         std::ofstream(logPath, std::ios::app) << "[BackendBuilder] Failed to write CMakeLists.txt\n";
         return 1;
     }
+    emitStage(sourceStage, 100, true, "Source tree ready");
 
     // ── cmake configure ───────────────────────────────────────────────────────
+    emitStage(configureStage);
     int ret = runCmd(
         "cd \"" + srcDir.string() + "\" && cmake -B \"" + cmakeBin.string() + "\""
         " -S \""       + srcDir.string()  + "\""
@@ -552,68 +724,99 @@ int BackendBuilder::build(const std::string& backend,
         +                compilerEnv(backend),
         logPath);
     if (ret != 0) { std::cerr << "[BackendBuilder] cmake configure failed\n"; return ret; }
+    emitStage(configureStage, 100, true, "Build configured");
 
     // ── cmake build (memory and CPU aware parallel) ────────────────────────
     const int optimalJobs = calculateOptimalJobs();
     std::cout << "[BackendBuilder] Building with " << optimalJobs << " parallel jobs\n";
-    ret = runCmd("cmake --build \"" + cmakeBin.string() + "\" --target llama --parallel " + std::to_string(optimalJobs), logPath);
+    emitStage(buildStage, 0, true);
+    ret = runCmdStreaming(
+        "cmake --build \"" + cmakeBin.string() + "\" --target llama-server --parallel " +
+        std::to_string(optimalJobs),
+        logPath,
+        [&](const std::string& line) {
+            const int percent = parseBuildProgressLine(line);
+            if (percent >= 0) emitStage(buildStage, percent, true);
+        });
     if (ret != 0) { std::cerr << "[BackendBuilder] cmake build failed\n"; return ret; }
+    emitStage(buildStage, 100, true, "Compilation complete");
 
-    // ── Copy libraries natively using C++ filesystem ──────────────────────────
+    // ── Copy runtime natively using C++ filesystem ───────────────────────────
     try {
+        emitStage(installStage, 0, true);
+        if (fs::exists(outDir)) {
+            fs::remove_all(outDir);
+        }
+        fs::create_directories(outDir);
+        emitStage(installStage, 5, true);
+
+        std::vector<fs::path> filesToCopy;
+        filesToCopy.reserve(64);
+
         for (const auto& entry : fs::recursive_directory_iterator(cmakeBin)) {
             if (entry.is_regular_file() || entry.is_symlink()) {
-                const std::string ext = entry.path().extension().string();
-                if (ext == ".so" || ext == ".dll" || ext == ".dylib") {
-                    // Ignore transient cmake check files
-                    if (entry.path().string().find("CMakeFiles") == std::string::npos) {
-                        fs::path dest = outDir / entry.path().filename();
-                        
-                        // Explicitly unlink the destination first to prevent 
-                        // segmentations faults if the library is currently dlopen'd.
-                        if (fs::exists(dest)) {
-                            fs::remove(dest);
-                        }
-                        
-                        fs::copy_file(entry.path(), dest, fs::copy_options::overwrite_existing);
-                    }
+                const fs::path filePath = entry.path();
+                const std::string fileName = filePath.filename().string();
+                const std::string ext = filePath.extension().string();
+
+                if (filePath.string().find("CMakeFiles") != std::string::npos) {
+                    continue;
                 }
+
+                const bool isSharedLib = ext == ".so" || ext == ".dll" || ext == ".dylib";
+                const bool isServerBinary = fileName == "llama-server" || fileName == "llama-server.exe";
+                if (!isSharedLib && !isServerBinary) {
+                    continue;
+                }
+                filesToCopy.push_back(filePath);
             }
+        }
+
+        bool binaryFound = false;
+        const std::size_t totalFiles = filesToCopy.size();
+        std::size_t copiedFiles = 0;
+        for (const auto& filePath : filesToCopy) {
+            const std::string fileName = filePath.filename().string();
+            fs::path dest = outDir / fileName;
+            if (fs::exists(dest)) {
+                fs::remove(dest);
+            }
+            fs::copy_file(filePath, dest, fs::copy_options::overwrite_existing);
+            if (fileName == "llama-server" || fileName == "llama-server.exe") {
+                binaryFound = true;
+            }
+            copiedFiles += 1;
+            const int percent = totalFiles == 0
+                ? 100
+                : 10 + static_cast<int>((copiedFiles * 90) / totalFiles);
+            emitStage(installStage, percent, true);
+        }
+
+        if (!binaryFound) {
+            std::ofstream(logPath, std::ios::app)
+                << "[BackendBuilder] ERROR: llama-server binary file missing\n";
+            return 1;
         }
     } catch (const std::exception& e) {
         std::ofstream(logPath, std::ios::app) << "[BackendBuilder] File copy failed: " << e.what() << "\n";
         return 1;
     }
 
-    // ── Rename libllama library ───────────────────────────────────────────────
-    // This allows multiple backends to exist without overwriting the core llama lib.
-    fs::path rawLib;
-    fs::path renamedLib;
-    
-    for (const char* ext : {".so", ".dll", ".dylib"}) {
-        if (fs::exists(outDir / ("libllama" + std::string(ext)))) {
-            rawLib = outDir / ("libllama" + std::string(ext));
-            renamedLib = outDir / ("libllama_" + backend + ext);
-            break;
-        } else if (fs::exists(outDir / ("llama" + std::string(ext)))) { 
-            // Windows/MSVC sometimes outputs without the 'lib' prefix
-            rawLib = outDir / ("llama" + std::string(ext));
-            renamedLib = outDir / ("libllama_" + backend + ext);
-            break;
-        }
-    }
-
-    if (!rawLib.empty()) {
-        if (fs::exists(renamedLib)) fs::remove(renamedLib);
-        fs::rename(rawLib, renamedLib);
-    } else {
-        std::ofstream(logPath, std::ios::app) << "[BackendBuilder] ERROR: libllama library file missing\n";
-        return 1;
-    }
-
     {
         std::ofstream log(logPath, std::ios::app);
-        log << "[BackendBuilder] Success: " << renamedLib.string() << "\n";
+        log << "[BackendBuilder] Success: " << outDir.string() << "\n";
+    }
+
+    if (progressCallback) {
+        progressCallback(BackendBuildProgress{
+            .stage = "complete",
+            .stageLabel = "Build complete",
+            .stageIndex = kBackendBuildStageCount,
+            .stageCount = kBackendBuildStageCount,
+            .stagePercent = 100,
+            .overallPercent = 100,
+            .determinate = true,
+        });
     }
 
     try {

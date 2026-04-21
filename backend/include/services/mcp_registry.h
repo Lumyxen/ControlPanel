@@ -44,6 +44,9 @@ public:
     /** OpenAI-format tools array aggregated from all live servers. */
     Json::Value getAggregatedTools() const;
 
+    /** Tool metadata used by the internal tool system's MCP bridge. */
+    Json::Value listBridgedTools() const;
+
     /**
      * Route a tool call to the owning server.
      * @param qualifiedName  "<server_name>__<tool_name>"
@@ -51,6 +54,11 @@ public:
      */
     Json::Value callTool(const std::string& qualifiedName,
                          const Json::Value& arguments);
+
+    Json::Value callBridgedTool(
+        const std::string& serverName,
+        const std::string& toolName,
+        const Json::Value& arguments);
 
     size_t liveCount() const;
 

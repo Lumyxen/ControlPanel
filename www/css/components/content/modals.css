@@ -1,0 +1,46 @@
+/* www/css/components/content/modals.css */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: color-mix(in srgb, var(--bg) 70%, transparent);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.modal-overlay.visible {
+    opacity: 1;
+}
+
+.modal-dialog {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-none);
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 8px 32px color-mix(in srgb, var(--bg) 80%, transparent);
+}
+
+.modal-title {
+    margin: 0 0 12px;
+    font-size: 1.1rem;
+    color: var(--text);
+}
+
+.modal-message {
+    margin: 0 0 20px;
+    font-size: 0.9rem;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}

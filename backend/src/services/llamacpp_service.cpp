@@ -1,275 +1,712 @@
 #include "services/llamacpp_service.h"
-#include "services/llama_api.h"
-#include "services/mcp_registry.h"
-#include "config/config.h"
+#include "services/tools/tool_system.h"
 
-#include <filesystem>
-#include <iostream>
-#include <sstream>
+#include "config/config.h"
+#include "server/http_utils.h"
+#include "services/mcp_registry.h"
+
+#include <curl/curl.h>
+
 #include <algorithm>
-#include <cstring>
-#include <cmath>
-#include <optional>
-#include <thread>
+#include <array>
 #include <chrono>
+#include <cstdint>
+#include <csignal>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <optional>
 #include <set>
-#include <unistd.h>
+#include <sstream>
+#include <thread>
+#include <tuple>
 
 #ifndef _WIN32
-#  include <dlfcn.h>
-#else
-#  define RTLD_NOW   0
-#  define RTLD_LOCAL 0
-inline void* dlopen(const char*, int)  { return nullptr; }
-inline void* dlsym(void*, const char*) { return nullptr; }
-inline int   dlclose(void*)            { return 0; }
-inline const char* dlerror()           { return "dlopen not supported on Windows"; }
+#include <arpa/inet.h>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 namespace fs = std::filesystem;
 
-#define RESOLVE(field, sym)                                             \
-    do {                                                                \
-        void* _p = dlsym(dlHandle_, sym);                              \
-        if (!_p) {                                                      \
-            std::cerr << "[LlamaCpp] dlsym(\"" sym "\") failed: "      \
-                      << dlerror() << "\n";                            \
-            return false;                                               \
-        }                                                               \
-        std::memcpy(&api_->field, &_p, sizeof(_p));                    \
-    } while (0)
+namespace {
 
-static std::string stemFromPath(const std::string& path) {
-    return fs::path(path).stem().string();
-}
-static std::string modelIdFromPath(const std::string& path, const std::string& modelsDir) {
-    // Extract the parent directory of the .gguf file, relative to modelsDir_
-    // This must match the ID format used in scanModels(): "llamacpp::<relative-dir>"
-    fs::path dir = fs::path(path).parent_path();
-    std::string relDir = fs::relative(dir, modelsDir).string();
-    return "llamacpp::" + relDir;
-}
-static std::string modelIdFromDirectory(const std::string& dir) {
-    return "llamacpp::" + fs::path(dir).filename().string();
+constexpr int kTitleGenerationMaxTokens = 24;
+constexpr std::string_view kMropeMetadataSuffix = ".rope.dimension_sections";
+
+struct StreamContext {
+    std::function<bool(const std::string&)> onChunk;
+    std::string buffer;
+
+    struct ToolCallAccum {
+        std::string id;
+        std::string name;
+        std::string argumentsJson;
+    };
+
+    std::vector<ToolCallAccum> toolCalls;
+    std::string finishReason;
+};
+
+std::vector<Json::Value> buildNormalizedContentDeltas(
+    const Json::Value& choice,
+    const Json::Value& delta) {
+    std::vector<Json::Value> normalized;
+
+    const std::string deltaContent =
+        delta.isMember("content") && delta["content"].isString()
+            ? delta["content"].asString()
+            : "";
+
+    if (deltaContent.empty()) {
+        return normalized;
+    }
+
+    const Json::Value* logprobEntries = nullptr;
+    if (choice.isMember("logprobs") && choice["logprobs"].isObject() &&
+        choice["logprobs"].isMember("content") && choice["logprobs"]["content"].isArray()) {
+        logprobEntries = &choice["logprobs"]["content"];
+    }
+
+    if (logprobEntries && !logprobEntries->empty()) {
+        std::string reconstructed;
+        bool appended = false;
+
+        for (const auto& entry : *logprobEntries) {
+            if (!entry.isObject()) {
+                continue;
+            }
+
+            const std::string token = entry.get("token", "").asString();
+            if (token.empty()) {
+                continue;
+            }
+
+            Json::Value normalizedDelta(Json::objectValue);
+            normalizedDelta["content"] = token;
+            if (entry.isMember("logprob")) {
+                normalizedDelta["logprob"] = entry["logprob"];
+            }
+            normalized.push_back(normalizedDelta);
+            reconstructed += token;
+            appended = true;
+        }
+
+        if (appended && (deltaContent.empty() || reconstructed == deltaContent)) {
+            return normalized;
+        }
+
+        normalized.clear();
+    }
+
+    if (!deltaContent.empty()) {
+        Json::Value normalizedDelta(Json::objectValue);
+        normalizedDelta["content"] = deltaContent;
+        if (delta.isMember("logprob")) {
+            normalizedDelta["logprob"] = delta["logprob"];
+        } else if (logprobEntries && logprobEntries->size() == 1 &&
+                   (*logprobEntries)[0].isObject() &&
+                   (*logprobEntries)[0].isMember("logprob")) {
+            normalizedDelta["logprob"] = (*logprobEntries)[0]["logprob"];
+        }
+        normalized.push_back(normalizedDelta);
+    }
+
+    return normalized;
 }
 
-fs::path LlamaCppService::libPath(const std::string& name) const {
-    return fs::path(libsDir_) / ("libllama_" + name + ".so");
+bool emitNormalizedDelta(StreamContext* ctx, const Json::Value& normalizedDelta) {
+    if (normalizedDelta.empty()) {
+        return true;
+    }
+
+    Json::Value normalizedChoice(Json::objectValue);
+    normalizedChoice["delta"] = normalizedDelta;
+
+    Json::Value normalizedJson(Json::objectValue);
+    normalizedJson["choices"].append(normalizedChoice);
+
+    Json::StreamWriterBuilder writer;
+    writer["indentation"] = "";
+    return !ctx->onChunk ||
+        ctx->onChunk("data: " + Json::writeString(writer, normalizedJson) + "\n\n");
 }
 
-// =============================================================================
-// Model directory helpers
-// =============================================================================
+size_t writeCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+    static_cast<std::string*>(userp)->append(static_cast<char*>(contents), size * nmemb);
+    return size * nmemb;
+}
 
-std::string LlamaCppService::findGgufInDirectory(const std::string& dir) const {
-    if (!fs::is_directory(dir)) return "";
+bool readExact(std::ifstream& stream, void* buffer, std::size_t size) {
+    if (size == 0) {
+        return true;
+    }
+    stream.read(static_cast<char*>(buffer), static_cast<std::streamsize>(size));
+    return static_cast<std::size_t>(stream.gcount()) == size;
+}
+
+template <typename T>
+bool readExact(std::ifstream& stream, T& value) {
+    static_assert(std::is_trivially_copyable_v<T>);
+    return readExact(stream, &value, sizeof(T));
+}
+
+bool skipBytes(std::ifstream& stream, std::uint64_t size) {
+    if (size > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max())) {
+        return false;
+    }
+    stream.seekg(static_cast<std::streamoff>(size), std::ios::cur);
+    return static_cast<bool>(stream);
+}
+
+bool readGgufString(std::ifstream& stream, std::string& out) {
+    std::uint64_t size = 0;
+    if (!readExact(stream, size)) {
+        return false;
+    }
+    if (size > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+        return false;
+    }
+    out.resize(static_cast<std::size_t>(size));
+    return readExact(stream, out.data(), out.size());
+}
+
+bool skipGgufString(std::ifstream& stream) {
+    std::uint64_t size = 0;
+    return readExact(stream, size) && skipBytes(stream, size);
+}
+
+std::size_t ggufPrimitiveSize(std::int32_t type) {
+    switch (type) {
+        case 0:  // GGUF_TYPE_UINT8
+        case 1:  // GGUF_TYPE_INT8
+        case 7:  // GGUF_TYPE_BOOL
+            return 1;
+        case 2:  // GGUF_TYPE_UINT16
+        case 3:  // GGUF_TYPE_INT16
+            return 2;
+        case 4:  // GGUF_TYPE_UINT32
+        case 5:  // GGUF_TYPE_INT32
+        case 6:  // GGUF_TYPE_FLOAT32
+            return 4;
+        case 10: // GGUF_TYPE_UINT64
+        case 11: // GGUF_TYPE_INT64
+        case 12: // GGUF_TYPE_FLOAT64
+            return 8;
+        default:
+            return 0;
+    }
+}
+
+bool skipGgufValue(std::ifstream& stream, std::int32_t type) {
+    if (type == 8) { // GGUF_TYPE_STRING
+        return skipGgufString(stream);
+    }
+
+    if (type == 9) { // GGUF_TYPE_ARRAY
+        std::int32_t elementType = -1;
+        std::uint64_t count = 0;
+        if (!readExact(stream, elementType) || !readExact(stream, count)) {
+            return false;
+        }
+
+        if (elementType == 8) { // GGUF_TYPE_STRING
+            for (std::uint64_t index = 0; index < count; ++index) {
+                if (!skipGgufString(stream)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        if (elementType == 9) { // GGUF_TYPE_ARRAY
+            for (std::uint64_t index = 0; index < count; ++index) {
+                if (!skipGgufValue(stream, 9)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        const std::size_t elementSize = ggufPrimitiveSize(elementType);
+        if (elementSize == 0) {
+            return false;
+        }
+        if (count > std::numeric_limits<std::uint64_t>::max() / elementSize) {
+            return false;
+        }
+        return skipBytes(stream, count * elementSize);
+    }
+
+    const std::size_t primitiveSize = ggufPrimitiveSize(type);
+    return primitiveSize != 0 && skipBytes(stream, primitiveSize);
+}
+
+bool ggufUsesMrope(const fs::path& path) {
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream.is_open()) {
+        return false;
+    }
+
+    std::array<char, 4> magic{};
+    if (!readExact(stream, magic.data(), magic.size()) ||
+        magic[0] != 'G' || magic[1] != 'G' || magic[2] != 'U' || magic[3] != 'F') {
+        return false;
+    }
+
+    std::uint32_t version = 0;
+    std::int64_t tensorCount = 0;
+    std::int64_t kvCount = 0;
+    if (!readExact(stream, version) ||
+        !readExact(stream, tensorCount) ||
+        !readExact(stream, kvCount)) {
+        return false;
+    }
+
+    if (version == 0 || version > 3 || tensorCount < 0 || kvCount < 0) {
+        return false;
+    }
+
+    for (std::int64_t index = 0; index < kvCount; ++index) {
+        std::string key;
+        std::int32_t type = -1;
+        if (!readGgufString(stream, key) || !readExact(stream, type)) {
+            return false;
+        }
+        if (std::string_view(key).ends_with(kMropeMetadataSuffix)) {
+            return true;
+        }
+        if (!skipGgufValue(stream, type)) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+std::size_t countMropeModels(const std::vector<ModelInfo>& models) {
+    return static_cast<std::size_t>(std::count_if(
+        models.begin(),
+        models.end(),
+        [](const ModelInfo& model) { return model.usesMrope; }));
+}
+
+bool isShardFile(const fs::path& path) {
+    const std::string stem = path.stem().string();
+    return stem.find("-00001-of-") != std::string::npos || stem.find("-00002-of-") != std::string::npos;
+}
+
+std::string shardBaseName(const fs::path& path) {
+    std::string stem = path.stem().string();
+    const std::size_t marker = stem.find("-00001-of-");
+    if (marker != std::string::npos) {
+        return stem.substr(0, marker);
+    }
+    const std::size_t altMarker = stem.find("-00002-of-");
+    if (altMarker != std::string::npos) {
+        return stem.substr(0, altMarker);
+    }
+    return stem;
+}
+
+bool isMmprojFile(const fs::path& path) {
+    if (path.extension() != ".gguf") {
+        return false;
+    }
+    const std::string name = path.filename().string();
+    return name.find("mmproj") != std::string::npos;
+}
+
+std::optional<std::string> findTokenizerPath(const fs::path& dir) {
+    if (!fs::exists(dir) || !fs::is_directory(dir)) {
+        return std::nullopt;
+    }
 
     for (const auto& entry : fs::directory_iterator(dir)) {
-        if (entry.path().extension() == ".gguf") {
-            const std::string fname = entry.path().filename().string();
-            // Skip mmproj files — they are projector files, not model files
-            if (fname.find("mmproj") != std::string::npos) continue;
-            return entry.path().string();
-        }
-    }
-    return "";
-}
-
-std::vector<ModelInfo> LlamaCppService::scanModels() const {
-    std::vector<ModelInfo> models;
-
-    if (!fs::exists(modelsDir_) || !fs::is_directory(modelsDir_)) {
-        return models;
-    }
-
-    // Read model state without locking — slightly stale values are fine
-    // for a scan operation, and this avoids self-deadlock when called
-    // from ensureModelLoaded() (which is called while inferMutex_ is
-    // already held by streamingChatWithCallback / streamingChatWithTools).
-    bool isModelLoaded = modelLoaded_;
-    std::string loadedPath = loadedModelPath_;
-    int nCtx = n_ctx_;
-
-    // Recursive scan to support provider/model-quant/ directory structure
-    std::set<fs::path> scannedDirs; // avoid scanning a parent if we already found a .gguf in a child
-    for (auto it = fs::recursive_directory_iterator(modelsDir_);
-         it != fs::recursive_directory_iterator(); ++it) {
-
-        if (!it->is_directory()) continue;
-
-        const fs::path& dirPath = it->path();
-
-        // Skip if a subdirectory of an already-scanned directory
-        bool skip = false;
-        for (const auto& scanned : scannedDirs) {
-            if (dirPath.string().rfind(scanned.string(), 0) == 0 && dirPath != scanned) {
-                skip = true;
-                break;
-            }
-        }
-        if (skip) {
-            it.disable_recursion_pending();
+        if (!entry.is_regular_file()) {
             continue;
         }
 
-        // Find the .gguf file in this directory
-        std::string ggufPath = findGgufInDirectory(dirPath.string());
-        if (ggufPath.empty()) continue; // No valid model file here — may be in a subdirectory
-
-        // Found a model directory — record it and skip children
-        scannedDirs.insert(dirPath);
-
-        const std::string dirName = dirPath.filename().string();
-        const std::string relDir = fs::relative(dirPath, modelsDir_).string();
-
-        // Look for optional .mmproj (vision projector)
-        std::string mmprojPath;
-        for (const auto& f : fs::directory_iterator(dirPath)) {
-            if (f.path().extension() == ".gguf") {
-                const std::string fname = f.path().filename().string();
-                if (fname.find("mmproj") != std::string::npos) {
-                    mmprojPath = f.path().string();
-                    break;
-                }
-            }
+        const std::string name = entry.path().filename().string();
+        if (name == "tokenizer.json" || name == "tokenizer_config.json" ||
+            name == "vocab.json" || name == "special_tokens_map.json" ||
+            name.find(".tiktoken") != std::string::npos) {
+            return entry.path().string();
         }
-
-        // Look for optional tokenizer file (.tiktoken, tokenizer.json, or vocab.json)
-        std::string tokenizerPath;
-        for (const auto& f : fs::directory_iterator(dirPath)) {
-            const std::string fname = f.path().filename().string();
-            if (fname == "tokenizer.json" || fname == "tokenizer_config.json" ||
-                fname == "vocab.json" || fname == "special_tokens_map.json" ||
-                fname.find(".tiktoken") != std::string::npos) {
-                tokenizerPath = f.path().string();
-                break;
-            }
-        }
-
-        ModelInfo info;
-        info.id = "llamacpp::" + relDir;
-        info.name = relDir;
-        info.directory = dirPath;
-        info.ggufPath = ggufPath;
-        info.mmprojPath = mmprojPath;
-        info.tokenizerPath = tokenizerPath;
-        info.contextLength = nCtx;
-        info.maxTokens = 8192;
-        info.loaded = (isModelLoaded && loadedPath == ggufPath);
-
-        models.push_back(std::move(info));
     }
 
-    return models;
+    return std::nullopt;
 }
 
-// =============================================================================
-// isReady
-// =============================================================================
+std::optional<std::string> findMmprojPath(const fs::path& dir) {
+    if (!fs::exists(dir) || !fs::is_directory(dir)) {
+        return std::nullopt;
+    }
 
-bool LlamaCppService::isReady() const {
-    return modelLoaded_ && api_ && api_->loaded;
+    for (const auto& entry : fs::directory_iterator(dir)) {
+        if (entry.is_regular_file() && isMmprojFile(entry.path())) {
+            return entry.path().string();
+        }
+    }
+
+    return std::nullopt;
 }
 
-// =============================================================================
-// Constructor / Destructor
-// =============================================================================
+void trimWhitespace(std::string& value) {
+    const std::size_t start = value.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) {
+        value.clear();
+        return;
+    }
+
+    const std::size_t end = value.find_last_not_of(" \t\r\n");
+    value = value.substr(start, end - start + 1);
+}
+
+size_t writeCallbackStream(char* contents, size_t size, size_t nmemb, void* userp) {
+    StreamContext* ctx = static_cast<StreamContext*>(userp);
+    const size_t realSize = size * nmemb;
+    ctx->buffer.append(contents, realSize);
+
+    size_t pos = 0;
+    while ((pos = ctx->buffer.find('\n')) != std::string::npos) {
+        std::string line = ctx->buffer.substr(0, pos);
+        ctx->buffer.erase(0, pos + 1);
+
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        if (line.rfind("data: ", 0) != 0) {
+            continue;
+        }
+
+        const std::string data = line.substr(6);
+        if (data == "[DONE]") {
+            continue;
+        }
+
+        Json::Value parsed;
+        Json::CharReaderBuilder reader;
+        std::string errors;
+        std::istringstream stream(data);
+        if (!Json::parseFromStream(reader, stream, &parsed, &errors)) {
+            if (ctx->onChunk && !ctx->onChunk(line + "\n\n")) {
+                return 0;
+            }
+            continue;
+        }
+
+        if (parsed.isMember("error")) {
+            Json::StreamWriterBuilder writer;
+            writer["indentation"] = "";
+            if (ctx->onChunk &&
+                !ctx->onChunk("data: " + Json::writeString(writer, parsed) + "\n\n")) {
+                return 0;
+            }
+            ctx->finishReason = "_api_error_";
+            continue;
+        }
+
+        if (!parsed.isMember("choices") || !parsed["choices"].isArray() || parsed["choices"].empty()) {
+            continue;
+        }
+
+        const Json::Value& choice = parsed["choices"][0];
+        if (choice.isMember("finish_reason") && !choice["finish_reason"].isNull()) {
+            ctx->finishReason = choice["finish_reason"].asString();
+        }
+        if (!choice.isMember("delta")) {
+            continue;
+        }
+
+        const Json::Value& delta = choice["delta"];
+        if (delta.isMember("tool_calls") && delta["tool_calls"].isArray()) {
+            for (const auto& toolCall : delta["tool_calls"]) {
+                const int index = toolCall.get("index", 0).asInt();
+                while (static_cast<int>(ctx->toolCalls.size()) <= index) {
+                    ctx->toolCalls.push_back({});
+                }
+
+                auto& accum = ctx->toolCalls[index];
+                if (toolCall.isMember("id") && toolCall["id"].isString()) {
+                    accum.id = toolCall["id"].asString();
+                }
+                if (toolCall.isMember("function")) {
+                    const Json::Value& function = toolCall["function"];
+                    if (function.isMember("name") && function["name"].isString()) {
+                        accum.name += function["name"].asString();
+                    }
+                    if (function.isMember("arguments") && function["arguments"].isString()) {
+                        accum.argumentsJson += function["arguments"].asString();
+                    }
+                }
+            }
+            continue;
+        }
+
+        const std::string reasoningField =
+            delta.isMember("reasoning_content") ? "reasoning_content" :
+            delta.isMember("reasoning") ? "reasoning" : "";
+        if (!reasoningField.empty() && delta[reasoningField].isString() &&
+            !delta[reasoningField].asString().empty()) {
+            Json::Value reasoningDelta(Json::objectValue);
+            reasoningDelta["reasoning"] = delta[reasoningField].asString();
+            if (!emitNormalizedDelta(ctx, reasoningDelta)) {
+                return 0;
+            }
+        }
+
+        for (const auto& normalizedDelta : buildNormalizedContentDeltas(choice, delta)) {
+            if (!emitNormalizedDelta(ctx, normalizedDelta)) {
+                return 0;
+            }
+        }
+    }
+
+    return realSize;
+}
+
+int progressCallback(void* clientp,
+                     curl_off_t,
+                     curl_off_t,
+                     curl_off_t,
+                     curl_off_t) {
+    StreamContext* ctx = static_cast<StreamContext*>(clientp);
+    if (ctx->onChunk && !ctx->onChunk("")) {
+        return 1;
+    }
+    return 0;
+}
+
+#ifndef _WIN32
+int chooseFreePort() {
+    int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return 18080;
+    }
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+
+    if (::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+        ::close(fd);
+        return 18080;
+    }
+
+    socklen_t len = sizeof(addr);
+    if (::getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &len) != 0) {
+        ::close(fd);
+        return 18080;
+    }
+
+    const int port = ntohs(addr.sin_port);
+    ::close(fd);
+    return port > 0 ? port : 18080;
+}
+#else
+int chooseFreePort() {
+    return 18080;
+}
+#endif
+
+} // namespace
+
+bool LlamaCppService::StartupConfig::operator==(const StartupConfig& other) const {
+    return backend == other.backend &&
+           parallelSlots == other.parallelSlots &&
+           maxLoadedModels == other.maxLoadedModels &&
+           ctxSize == other.ctxSize &&
+           batchSize == other.batchSize &&
+           gpuLayers == other.gpuLayers &&
+           threads == other.threads &&
+           threadsBatch == other.threadsBatch &&
+           sleepIdleSeconds == other.sleepIdleSeconds &&
+           flashAttn == other.flashAttn &&
+           cachePrompt == other.cachePrompt &&
+           kvCacheType == other.kvCacheType;
+}
+
+bool LlamaCppService::StartupConfig::operator!=(const StartupConfig& other) const {
+    return !(*this == other);
+}
 
 LlamaCppService::LlamaCppService(const std::string& modelsDir,
                                  const std::string& libsDir,
                                  Config& config)
-    : modelsDir_(modelsDir), libsDir_(libsDir), config_(config)
-{
-    api_ = new LlamaApi();
+    : modelsDir_(modelsDir),
+      libsDir_(libsDir),
+      config_(config) {
     fs::create_directories(libsDir_);
+    fs::create_directories(logsDir());
 
-    const std::string pref     = config_.getLlamacppBackend();
-    const std::string resolved = resolveBackend(pref);
-
-    if (!loadLib(resolved) && resolved != "cpu") {
-        std::cerr << "[LlamaCpp] Failed to load '" << resolved << "' — trying cpu\n";
-        loadLib("cpu");
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    const StartupConfig desired = buildStartupConfigLocked();
+    if (desired.backend != "none") {
+        startServerLocked(desired);
     }
-
-    unloadThreadRunning_ = true;
-    unloadThread_ = std::thread(&LlamaCppService::unloadWorker, this);
 }
 
 LlamaCppService::~LlamaCppService() {
-    {
-        std::unique_lock<std::mutex> lock(unloadMutex_);
-        unloadThreadRunning_ = false;
-        unloadCv_.notify_all();
-    }
-    if (unloadThread_.joinable()) unloadThread_.join();
-
-    unloadLib();
-    delete api_;
-    api_ = nullptr;
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    stopServerLocked();
 }
 
-// =============================================================================
-// Automatic unloading
-// =============================================================================
-
-void LlamaCppService::scheduleUnload() {
-    int keepAlive = config_.getLlamacppModelKeepAlive();
-    if (keepAlive == -1) {
-        return; // Infinite
+std::string LlamaCppService::normalizeModelId(const std::string& modelId) const {
+    if (modelId.rfind("llamacpp::", 0) == 0) {
+        return modelId.substr(10);
     }
-
-    std::unique_lock<std::mutex> lock(unloadMutex_);
-    if (keepAlive == 0) {
-        unloadTime_ = std::chrono::steady_clock::now();
-    } else {
-        unloadTime_ = std::chrono::steady_clock::now() + std::chrono::minutes(keepAlive);
-    }
-    unloadScheduled_ = true;
-    unloadCv_.notify_one();
+    return modelId;
 }
 
-void LlamaCppService::cancelUnload() {
-    std::unique_lock<std::mutex> lock(unloadMutex_);
-    unloadScheduled_ = false;
-    unloadCv_.notify_one();
+std::string LlamaCppService::normalizeLoadedModelPath(const std::string& ggufPath) const {
+    if (ggufPath.empty()) {
+        return "";
+    }
+    const fs::path path(ggufPath);
+    const fs::path parent = path.parent_path();
+    if (parent == fs::path(modelsDir_)) {
+        return "llamacpp::" + path.stem().string();
+    }
+    return "llamacpp::" + fs::relative(parent, modelsDir_).generic_string();
 }
 
-void LlamaCppService::unloadWorker() {
-    std::unique_lock<std::mutex> lock(unloadMutex_);
-    while (unloadThreadRunning_) {
-        if (!unloadScheduled_) {
-            unloadCv_.wait(lock);
+std::string LlamaCppService::findGgufInDirectory(const std::string& dir) const {
+    const fs::path dirPath(dir);
+    if (!fs::exists(dirPath) || !fs::is_directory(dirPath)) {
+        return "";
+    }
+
+    for (const auto& entry : fs::directory_iterator(dirPath)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".gguf" && !isMmprojFile(entry.path())) {
+            return entry.path().string();
+        }
+    }
+
+    return "";
+}
+
+std::vector<ModelInfo> LlamaCppService::scanModelDirectory(const std::string& modelsDir,
+                                                           int contextLength,
+                                                           const std::string& loadedModelPath) {
+    std::vector<ModelInfo> models;
+    const fs::path root(modelsDir);
+    if (!fs::exists(root) || !fs::is_directory(root)) {
+        return models;
+    }
+
+    std::set<std::string> seenIds;
+    auto addModel = [&](const std::string& relId,
+                        const fs::path& ggufPath,
+                        const std::optional<std::string>& mmprojPath,
+                        const std::optional<std::string>& tokenizerPath) {
+        if (relId.empty() || !seenIds.insert(relId).second) {
+            return;
+        }
+
+        ModelInfo info;
+        info.id = "llamacpp::" + relId;
+        info.name = relId;
+        info.directory = ggufPath.parent_path().string();
+        info.ggufPath = ggufPath.string();
+        info.mmprojPath = mmprojPath.value_or("");
+        info.tokenizerPath = tokenizerPath.value_or("");
+        info.contextLength = contextLength > 0 ? contextLength : 8192;
+        info.maxTokens = 8192;
+        info.loaded = !loadedModelPath.empty() && loadedModelPath == info.ggufPath;
+        info.usesMrope = ggufUsesMrope(ggufPath);
+        models.push_back(std::move(info));
+    };
+
+    for (const auto& entry : fs::directory_iterator(root)) {
+        if (!entry.is_regular_file() || entry.path().extension() != ".gguf" || isMmprojFile(entry.path())) {
             continue;
         }
 
-        auto status = unloadCv_.wait_until(lock, unloadTime_);
-        if (!unloadThreadRunning_) break;
+        const std::string relId = isShardFile(entry.path())
+            ? shardBaseName(entry.path())
+            : entry.path().stem().string();
+        addModel(relId, entry.path(), std::nullopt, findTokenizerPath(root));
+    }
 
-        if (status == std::cv_status::timeout && unloadScheduled_) {
-            unloadScheduled_ = false;
-            lock.unlock();
+    std::error_code ec;
+    for (auto it = fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::recursive_directory_iterator();
+         it.increment(ec)) {
+        if (ec || !it->is_directory()) {
+            continue;
+        }
 
-            std::unique_lock<std::mutex> inferLock(inferMutex_, std::try_to_lock);
-            if (inferLock.owns_lock()) {
-                if (modelLoaded_) {
-                    std::cout << "[LlamaCpp] Model automatically unloaded after timeout.\n";
-                    unloadModel();
-                }
+        const fs::path dir = it->path();
+        if (dir == root) {
+            continue;
+        }
+
+        std::vector<fs::path> ggufs;
+        for (const auto& file : fs::directory_iterator(dir)) {
+            if (file.is_regular_file() && file.path().extension() == ".gguf" && !isMmprojFile(file.path())) {
+                ggufs.push_back(file.path());
             }
+        }
+        if (ggufs.empty()) {
+            continue;
+        }
 
-            lock.lock();
+        std::sort(ggufs.begin(), ggufs.end());
+        const std::string relDir = fs::relative(dir, root).generic_string();
+        const auto mmprojPath = findMmprojPath(dir);
+        const auto tokenizerPath = findTokenizerPath(dir);
+
+        const bool looksSharded =
+            ggufs.size() > 1 &&
+            std::all_of(ggufs.begin(), ggufs.end(), [](const fs::path& path) { return isShardFile(path); });
+
+        if (ggufs.size() == 1 || looksSharded) {
+            addModel(relDir, ggufs.front(), mmprojPath, tokenizerPath);
+            it.disable_recursion_pending();
+            continue;
+        }
+
+        for (const auto& gguf : ggufs) {
+            addModel((fs::path(relDir) / gguf.stem()).generic_string(), gguf, std::nullopt, tokenizerPath);
         }
     }
+
+    std::sort(models.begin(), models.end(), [](const ModelInfo& a, const ModelInfo& b) {
+        return a.id < b.id;
+    });
+    return models;
 }
 
-// =============================================================================
-// Backend management
-// =============================================================================
+std::vector<ModelInfo> LlamaCppService::scanModels() const {
+    return scanModelDirectory(
+        modelsDir_,
+        config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 8192);
+}
 
 std::vector<std::string> LlamaCppService::availableBackends() const {
+    return listAvailableBackends(libsDir_);
+}
+
+std::vector<std::string> LlamaCppService::listAvailableBackends(const std::string& libsDir) {
     std::vector<std::string> out;
-    for (const char* b : {"cpu", "cuda", "rocm", "vulkan"})
-        if (fs::exists(libPath(b))) out.push_back(b);
+    for (const char* backend : {"cpu", "cuda", "rocm", "vulkan"}) {
+        const fs::path baseDir = fs::path(libsDir) / backend;
+        if (fs::exists(baseDir / "llama-server") || fs::exists(baseDir / "llama-server.exe")) {
+            out.push_back(backend);
+        }
+    }
     return out;
 }
 
@@ -277,15 +714,24 @@ std::vector<std::string> LlamaCppService::detectHardwareBackends() {
     std::vector<std::string> out;
 #ifndef _WIN32
     bool hasCuda = false;
-    for (int i = 0; i < 8; ++i)
-        if (access(("/dev/nvidia" + std::to_string(i)).c_str(), F_OK) == 0) { hasCuda = true; break; }
-    if (!hasCuda)
+    for (int i = 0; i < 8; ++i) {
+        if (access(("/dev/nvidia" + std::to_string(i)).c_str(), F_OK) == 0) {
+            hasCuda = true;
+            break;
+        }
+    }
+    if (!hasCuda) {
         hasCuda = (system("nvidia-smi --query-gpu=name --format=csv,noheader > /dev/null 2>&1") == 0);
-    if (hasCuda) out.push_back("cuda");
+    }
+    if (hasCuda) {
+        out.push_back("cuda");
+    }
 
     bool hasAmdDiscreteGpu = false;
     if (access("/dev/kfd", F_OK) == 0) {
-        FILE* fp = popen("lspci | grep -i 'VGA.*\\[AMD/ATI\\]' | grep -iE 'RX|Radeon Pro|Radeon VII|Radeon Instinct' | grep -v 'Vega Graphics'", "r");
+        FILE* fp = popen(
+            "lspci | grep -i 'VGA.*\\[AMD/ATI\\]' | grep -iE 'RX|Radeon Pro|Radeon VII|Radeon Instinct' | grep -v 'Vega Graphics'",
+            "r");
         if (fp) {
             char buffer[256];
             if (fgets(buffer, sizeof(buffer), fp) != nullptr) {
@@ -294,1377 +740,1088 @@ std::vector<std::string> LlamaCppService::detectHardwareBackends() {
             pclose(fp);
         }
     }
-    if (hasAmdDiscreteGpu) out.push_back("rocm");
+    if (hasAmdDiscreteGpu) {
+        out.push_back("rocm");
+    }
 
-    {
-        void* vk = dlopen("libvulkan.so.1", RTLD_LAZY | RTLD_LOCAL);
-        if (!vk) vk = dlopen("libvulkan.so", RTLD_LAZY | RTLD_LOCAL);
-        if (vk) { out.push_back("vulkan"); dlclose(vk); }
+    void* vk = dlopen("libvulkan.so.1", RTLD_LAZY | RTLD_LOCAL);
+    if (!vk) {
+        vk = dlopen("libvulkan.so", RTLD_LAZY | RTLD_LOCAL);
+    }
+    if (vk) {
+        out.push_back("vulkan");
+        dlclose(vk);
     }
 #endif
     return out;
+}
+
+std::string LlamaCppService::resolveBackendPreference(
+    const std::string& preference,
+    const std::vector<std::string>& availableBackends) {
+    const auto has = [&](const std::string& backend) {
+        return std::find(availableBackends.begin(), availableBackends.end(), backend) != availableBackends.end();
+    };
+
+    if (preference == "cpu") {
+        return has("cpu") ? "cpu" : "none";
+    }
+    if (preference != "auto" && has(preference)) {
+        return preference;
+    }
+    for (const char* backend : {"cuda", "rocm", "vulkan"}) {
+        if (has(backend)) {
+            return backend;
+        }
+    }
+    return has("cpu") ? "cpu" : "none";
 }
 
 std::string LlamaCppService::resolveBackend(const std::string& preference) const {
-    auto avail = availableBackends();
-    auto has   = [&](const std::string& b) {
-        return std::find(avail.begin(), avail.end(), b) != avail.end();
-    };
-    if (preference == "cpu") return "cpu";
-    if (preference != "auto") {
-        if (has(preference)) return preference;
-        std::cerr << "[LlamaCpp] Preferred backend '" << preference
-                  << "' not available — falling back to auto\n";
-    }
-    for (const char* b : {"cuda", "rocm", "vulkan"})
-        if (has(b)) return b;
-    return "cpu";
+    return resolveBackendPreference(preference, availableBackends());
 }
 
-// =============================================================================
-// dlopen / dlclose
-// =============================================================================
-
-bool LlamaCppService::loadLib(const std::string& backendName) {
-    const fs::path so = libPath(backendName);
-    if (!fs::exists(so)) {
-        std::cerr << "[LlamaCpp] Library not found: " << so.string() << "\n";
+bool LlamaCppService::isServerProcessAliveLocked() {
+#ifdef _WIN32
+    return false;
+#else
+    if (serverPid_ <= 0) {
         return false;
     }
 
-#ifndef RTLD_DEEPBIND
-#define RTLD_DEEPBIND 0
+    int status = 0;
+    const pid_t result = waitpid(serverPid_, &status, WNOHANG);
+    if (result == 0) {
+        return kill(serverPid_, 0) == 0;
+    }
+
+    serverPid_ = 0;
+    serverRunning_ = false;
+    loadedModelId_.clear();
+    loadedModelIds_ = Json::Value(Json::arrayValue);
+    return false;
+#endif
+}
+
+LlamaCppService::StartupConfig LlamaCppService::buildStartupConfigLocked(
+    const std::string& preferenceOverride) const {
+    StartupConfig cfg;
+    cfg.backend = resolveBackendPreference(
+        preferenceOverride.empty() ? config_.getLlamacppBackend() : preferenceOverride,
+        availableBackends());
+    cfg.parallelSlots = std::max(1, config_.getLlamacppEffectiveMaxConcurrentInstances());
+    cfg.maxLoadedModels = std::clamp(config_.getLlamacppMaxLoadedModels(), 0, 100);
+    cfg.ctxSize = config_.getLlamacppCtxSize();
+    cfg.batchSize = std::max(1, config_.getLlamacppEvalBatchSize());
+    cfg.gpuLayers = std::max(0, config_.getLlamacppGpuLayers());
+    cfg.threads = std::max(0, config_.getLlamacppThreads());
+    cfg.threadsBatch = std::max(0, config_.getLlamacppThreadsBatch());
+    cfg.flashAttn = config_.getLlamacppFlashAttn();
+    cfg.cachePrompt = config_.getLlamacppKvCacheReuse();
+    if (cfg.cachePrompt) {
+        const auto models = scanModelDirectory(
+            modelsDir_,
+            config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 8192);
+        if (countMropeModels(models) > 0) {
+            cfg.cachePrompt = false;
+        }
+    }
+    cfg.kvCacheType = config_.getLlamacppKvCacheType();
+
+    const int keepAliveMinutes = config_.getLlamacppModelKeepAlive();
+    cfg.sleepIdleSeconds = keepAliveMinutes < 0 ? -1 : keepAliveMinutes * 60;
+    return cfg;
+}
+
+std::string LlamaCppService::presetPath() const {
+    return (fs::path(modelsDir_).parent_path() / "llamacpp-router-models.ini").string();
+}
+
+std::string LlamaCppService::logsDir() const {
+    return (fs::path(libsDir_).parent_path() / "logs").string();
+}
+
+std::string LlamaCppService::backendInstallDir(const std::string& backend) const {
+    return (fs::path(libsDir_) / backend).string();
+}
+
+std::string LlamaCppService::backendBinaryPath(const std::string& backend) const {
+    const fs::path dir = fs::path(backendInstallDir(backend));
+#ifdef _WIN32
+    return (dir / "llama-server.exe").string();
+#else
+    return (dir / "llama-server").string();
+#endif
+}
+
+std::string LlamaCppService::buildRouterPresetLocked() const {
+    const auto models = scanModelDirectory(
+        modelsDir_,
+        config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 8192);
+
+    std::ostringstream preset;
+    std::ostringstream signature;
+    preset << "version = 1\n\n";
+
+    for (const auto& model : models) {
+        const std::string modelId = normalizeModelId(model.id);
+        preset << "[" << modelId << "]\n";
+        preset << "model = " << model.ggufPath << "\n";
+        if (!model.mmprojPath.empty()) {
+            preset << "mmproj = " << model.mmprojPath << "\n";
+        }
+        preset << "\n";
+
+        signature << modelId << "|" << model.ggufPath << "|" << model.mmprojPath << "\n";
+    }
+
+    std::ofstream file(presetPath(), std::ios::trunc);
+    if (file.is_open()) {
+        file << preset.str();
+    }
+
+    return signature.str();
+}
+
+bool LlamaCppService::waitForRouterLocked(int timeoutMs) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (!isServerProcessAliveLocked()) {
+            return false;
+        }
+
+        const Json::Value result = getJson("/models", 2);
+        if (!result.isMember("error")) {
+            return true;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    }
+    return false;
+}
+
+bool LlamaCppService::startServerLocked(const StartupConfig& desired) {
+#ifdef _WIN32
+    (void)desired;
+    serverRunning_ = false;
+    return false;
+#else
+    if (desired.backend == "none") {
+        return false;
+    }
+
+    const std::string binary = backendBinaryPath(desired.backend);
+    if (!fs::exists(binary)) {
+        std::cerr << "[LlamaCpp] Missing backend runtime: " << binary << "\n";
+        return false;
+    }
+
+    activePresetSignature_ = buildRouterPresetLocked();
+    serverPort_ = chooseFreePort();
+    serverBaseUrl_ = "http://127.0.0.1:" + std::to_string(serverPort_);
+
+    if (config_.getLlamacppKvCacheReuse() && !desired.cachePrompt) {
+        const auto models = scanModelDirectory(
+            modelsDir_,
+            config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 8192);
+        const std::size_t mropeModelCount = countMropeModels(models);
+        if (mropeModelCount > 0) {
+            std::cout << "[LlamaCpp] Disabling KV cache reuse for "
+                      << mropeModelCount
+                      << " M-RoPE model(s); llama-server prompt-cache reuse is not safe for them\n";
+        }
+    }
+
+    fs::create_directories(logsDir());
+    const std::string logPath =
+        (fs::path(logsDir()) / ("llama-server-" + desired.backend + ".log")).string();
+    const int logFd = ::open(logPath.c_str(), O_CREAT | O_WRONLY | O_APPEND, 0644);
+    if (logFd < 0) {
+        std::cerr << "[LlamaCpp] Failed to open log file: " << logPath << "\n";
+        return false;
+    }
+
+    std::vector<std::string> args{
+        binary,
+        "--host", "127.0.0.1",
+        "--port", std::to_string(serverPort_),
+        "--models-preset", presetPath(),
+        "--no-webui",
+        "--parallel", std::to_string(desired.parallelSlots),
+        "--models-max", std::to_string(desired.maxLoadedModels),
+        "--reasoning-format", "deepseek",
+        "--slots",
+    };
+
+    if (desired.ctxSize > 0) {
+        args.insert(args.end(), {"--ctx-size", std::to_string(desired.ctxSize)});
+    }
+    if (desired.batchSize > 0) {
+        args.insert(args.end(), {"--batch-size", std::to_string(desired.batchSize)});
+    }
+    if (desired.gpuLayers > 0) {
+        args.insert(args.end(), {"--n-gpu-layers", std::to_string(desired.gpuLayers)});
+    }
+    if (desired.threads > 0) {
+        args.insert(args.end(), {"--threads", std::to_string(desired.threads)});
+    }
+    if (desired.threadsBatch > 0) {
+        args.insert(args.end(), {"--threads-batch", std::to_string(desired.threadsBatch)});
+    }
+    if (!desired.kvCacheType.empty()) {
+        args.insert(args.end(), {"--cache-type-k", desired.kvCacheType});
+        args.insert(args.end(), {"--cache-type-v", desired.kvCacheType});
+    }
+
+    args.insert(args.end(), {"--flash-attn", desired.flashAttn ? "on" : "off"});
+    args.push_back(desired.cachePrompt ? "--cache-prompt" : "--no-cache-prompt");
+    if (desired.sleepIdleSeconds >= 0) {
+        args.insert(args.end(), {"--sleep-idle-seconds", std::to_string(desired.sleepIdleSeconds)});
+    }
+
+    std::vector<char*> argv;
+    argv.reserve(args.size() + 1);
+    for (auto& arg : args) {
+        argv.push_back(arg.data());
+    }
+    argv.push_back(nullptr);
+
+    const pid_t pid = fork();
+    if (pid < 0) {
+        ::close(logFd);
+        std::cerr << "[LlamaCpp] fork() failed\n";
+        return false;
+    }
+
+    if (pid == 0) {
+        ::dup2(logFd, STDOUT_FILENO);
+        ::dup2(logFd, STDERR_FILENO);
+        ::close(logFd);
+        ::chdir(backendInstallDir(desired.backend).c_str());
+        ::setsid();
+        ::execv(binary.c_str(), argv.data());
+        std::perror("execv llama-server");
+        _exit(127);
+    }
+
+    ::close(logFd);
+
+    serverPid_ = static_cast<int>(pid);
+    serverRunning_ = true;
+    configDirty_ = false;
+    activeBackend_ = desired.backend;
+    activeConfig_ = desired;
+    loadedModelId_.clear();
+    loadedModelIds_ = Json::Value(Json::arrayValue);
+
+    if (!waitForRouterLocked(10000)) {
+        std::cerr << "[LlamaCpp] llama-server failed to become ready (" << desired.backend << ")\n";
+        stopServerLocked();
+        return false;
+    }
+
+    refreshLoadedModelStateLocked();
+    std::cout << "[LlamaCpp] Started router on " << serverBaseUrl_ << " using backend " << activeBackend_ << "\n";
+    return true;
+#endif
+}
+
+void LlamaCppService::stopServerLocked() {
+#ifndef _WIN32
+    if (!isServerProcessAliveLocked()) {
+        serverRunning_ = false;
+        return;
+    }
+
+    const pid_t pid = static_cast<pid_t>(serverPid_);
+    kill(pid, SIGTERM);
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        int status = 0;
+        const pid_t result = waitpid(pid, &status, WNOHANG);
+        if (result == pid) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    int status = 0;
+    if (waitpid(pid, &status, WNOHANG) == 0) {
+        kill(pid, SIGKILL);
+        waitpid(pid, &status, 0);
+    }
 #endif
 
-    // Pre-load GGML dependencies with RTLD_GLOBAL so they're shared across
-    // backend switches. GGML's backend registry is a process-lifetime singleton
-    // that cannot be safely torn down, so all GGML libs must stay loaded.
-    static bool ggmlLoaded = false;
-    if (!ggmlLoaded) {
-        const fs::path libsDir = so.parent_path();
-        for (const char* ggmlLib : {"libggml.so", "libggml-base.so", "libggml-cpu.so",
-                                     "libggml-hip.so", "libggml-cuda.so", "libggml-vulkan.so"}) {
-            fs::path ggmlPath = libsDir / ggmlLib;
-            if (fs::exists(ggmlPath)) {
-                void* h = dlopen(ggmlPath.c_str(), RTLD_LAZY | RTLD_GLOBAL);
-                (void)h; // intentionally leaked — GGML must stay loaded
-            }
-        }
-        ggmlLoaded = true;
-    }
-
-    void* handle = dlopen(so.c_str(), RTLD_LAZY | RTLD_GLOBAL);
-    if (!handle) {
-        std::cerr << "[LlamaCpp] dlopen('" << so.string() << "') failed: "
-                  << dlerror() << "\n";
-        return false;
-    }
-
-    *api_ = LlamaApi{};
-    dlHandle_ = handle;
-
-    RESOLVE(backend_init,                 "llama_backend_init");
-    RESOLVE(backend_free,                 "llama_backend_free");
-    RESOLVE(log_set,                      "llama_log_set");
-    RESOLVE(model_default_params,         "llama_model_default_params");
-    RESOLVE(model_load_from_file,         "llama_model_load_from_file");
-    RESOLVE(model_free,                   "llama_model_free");
-    RESOLVE(model_get_vocab,              "llama_model_get_vocab");
-    RESOLVE(context_default_params,       "llama_context_default_params");
-    RESOLVE(init_from_model,              "llama_init_from_model");
-    RESOLVE(free,                         "llama_free");
-    RESOLVE(batch_init,                   "llama_batch_init");
-    RESOLVE(batch_free,                   "llama_batch_free");
-    RESOLVE(decode,                       "llama_decode");
-    RESOLVE(get_memory,                   "llama_get_memory");
-    RESOLVE(memory_clear,                 "llama_memory_clear");
-    RESOLVE(tokenize,                     "llama_tokenize");
-    RESOLVE(token_to_piece,               "llama_token_to_piece");
-    RESOLVE(vocab_is_eog,                 "llama_vocab_is_eog");
-    RESOLVE(chat_apply_template,          "llama_chat_apply_template");
-    RESOLVE(sampler_chain_default_params, "llama_sampler_chain_default_params");
-    RESOLVE(sampler_chain_init,           "llama_sampler_chain_init");
-    RESOLVE(sampler_chain_add,            "llama_sampler_chain_add");
-    RESOLVE(sampler_init_penalties,       "llama_sampler_init_penalties");
-    RESOLVE(sampler_init_top_p,           "llama_sampler_init_top_p");
-    RESOLVE(sampler_init_min_p,           "llama_sampler_init_min_p");
-    RESOLVE(sampler_init_temp,            "llama_sampler_init_temp");
-    RESOLVE(sampler_init_dist,            "llama_sampler_init_dist");
-    RESOLVE(sampler_sample,               "llama_sampler_sample");
-    RESOLVE(sampler_free,                 "llama_sampler_free");
-
-    // Optional symbols — resolved gracefully; absence does not abort loading.
-    {
-        void* p = dlsym(handle, "llama_memory_seq_rm");
-        if (p) std::memcpy(&api_->memory_seq_rm, &p, sizeof(p));
-        
-        p = dlsym(handle, "llama_kv_cache_seq_rm");
-        if (p) std::memcpy(&api_->kv_cache_seq_rm, &p, sizeof(p));
-        
-        p = dlsym(handle, "llama_kv_cache_clear");
-        if (p) std::memcpy(&api_->kv_cache_clear, &p, sizeof(p));
-    }
-
-    {
-        void* p = dlsym(handle, "llama_kv_cache_defrag");
-        if (p) std::memcpy(&api_->kv_cache_defrag, &p, sizeof(p));
-        p = dlsym(handle, "llama_kv_cache_update");
-        if (p) std::memcpy(&api_->kv_cache_update, &p, sizeof(p));
-    }
-
-    {
-        void* p;
-        p = dlsym(handle, "ggml_backend_reg_count");
-        if (p) std::memcpy(&api_->ggml_backend_reg_count, &p, sizeof(p));
-        p = dlsym(handle, "ggml_backend_reg_get");
-        if (p) std::memcpy(&api_->ggml_backend_reg_get,   &p, sizeof(p));
-        p = dlsym(handle, "ggml_backend_reg_name");
-        if (p) std::memcpy(&api_->ggml_backend_reg_name,  &p, sizeof(p));
-    }
-
-    // Logprob symbols — optional; absence means logprob highlighting disabled.
-    {
-        void* p = dlsym(handle, "llama_get_logits");
-        if (p) std::memcpy(&api_->get_logits, &p, sizeof(p));
-        p = dlsym(handle, "llama_get_logits_count");
-        if (p) std::memcpy(&api_->get_logits_count, &p, sizeof(p));
-        p = dlsym(handle, "llama_n_vocab");
-        if (p) std::memcpy(&api_->n_vocab_from_vocab, &p, sizeof(p));
-    }
-
-    api_->loaded   = true;
-    activeBackend_ = backendName;
-
-    api_->log_set([](ggml_log_level level, const char* text, void*) {
-        if (level == GGML_LOG_LEVEL_ERROR) std::cerr << "[LlamaCpp] " << text;
-    }, nullptr);
-
-    api_->backend_init();
-
-    std::cout << "[LlamaCpp] Loaded backend: " << backendName
-              << " (" << so.filename().string() << ")\n";
-    return true;
+    serverPid_ = 0;
+    serverRunning_ = false;
+    loadedModelId_.clear();
+    loadedModelIds_ = Json::Value(Json::arrayValue);
 }
 
-void LlamaCppService::unloadLib() {
-    unloadModel();
-    if (api_) {
-        if (api_->loaded && api_->log_set) api_->log_set(nullptr, nullptr);
-        if (api_->loaded && api_->backend_free) api_->backend_free();
-        *api_ = LlamaApi{};
-    }
-    // Do NOT dlclose — GGML's backend registry is a process-lifetime singleton.
-    // dlclose would invalidate function pointers held by the registry.
-    dlHandle_ = nullptr;
-    activeBackend_.clear();
-}
+bool LlamaCppService::ensureServerRunningLocked() {
+    const StartupConfig desired = buildStartupConfigLocked();
+    const std::string presetSignature = buildRouterPresetLocked();
 
-// =============================================================================
-// Backend switch
-// =============================================================================
+    const bool processAlive = isServerProcessAliveLocked();
+    const bool needsRestart =
+        !processAlive ||
+        configDirty_ ||
+        desired != activeConfig_ ||
+        presetSignature != activePresetSignature_;
 
-bool LlamaCppService::switchBackend(const std::string& backendName) {
-    std::cout << "[LlamaCpp] Switching backend to: " << backendName << "\n";
-
-    // Signal any running inference to abort before blocking on the mutex.
-    inferAbort_.store(true);
-    std::unique_lock<std::mutex> lock(inferMutex_);
-    inferAbort_.store(false);
-
-    cancelUnload();
-    struct UnloadGuard {
-        LlamaCppService* svc;
-        ~UnloadGuard() { svc->scheduleUnload(); }
-    } ug{this};
-
-    // If the same backend is already loaded, just ensure the model is loaded
-    if (backendName == activeBackend_ && api_->loaded) {
-        if (!modelLoaded_ && !loadedModelPath_.empty()) {
-            return loadModel(loadedModelPath_);
-        }
+    if (!needsRestart) {
+        activePresetSignature_ = presetSignature;
         return true;
     }
 
-    const std::string prevPath = loadedModelPath_;
+    stopServerLocked();
+    activePresetSignature_ = presetSignature;
+    return startServerLocked(desired);
+}
 
-    unloadLib();
+bool LlamaCppService::ensureServerRunning() {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return ensureServerRunningLocked();
+}
 
-    if (!loadLib(backendName)) {
-        std::cerr << "[LlamaCpp] Failed to load '" << backendName << "'\n";
-        if (backendName != "cpu") {
-            std::cerr << "[LlamaCpp] Falling back to cpu\n";
-            loadLib("cpu");
+void LlamaCppService::markConfigDirty() {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    configDirty_ = true;
+}
+
+Json::Value LlamaCppService::getJson(const std::string& endpoint, long timeoutSeconds) const {
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        Json::Value error(Json::objectValue);
+        error["error"] = "Failed to init CURL";
+        return error;
+    }
+
+    std::string response;
+    const std::string url = serverBaseUrl_ + endpoint;
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeoutSeconds);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 0L);
+
+    const CURLcode result = curl_easy_perform(curl);
+    long httpCode = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+    curl_easy_cleanup(curl);
+
+    Json::Value parsed;
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream stream(response);
+
+    if (result != CURLE_OK) {
+        parsed["error"] = std::string("Connection error: ") + curl_easy_strerror(result);
+        return parsed;
+    }
+    if (httpCode != 200) {
+        if (Json::parseFromStream(reader, stream, &parsed, &errors) && parsed.isMember("error")) {
+            return parsed;
+        }
+        parsed["error"] = "HTTP " + std::to_string(httpCode);
+        return parsed;
+    }
+    if (!Json::parseFromStream(reader, stream, &parsed, &errors)) {
+        parsed["error"] = "Failed to parse response";
+        parsed["raw"] = response;
+    }
+    return parsed;
+}
+
+Json::Value LlamaCppService::postJson(const std::string& endpoint,
+                                      const Json::Value& body,
+                                      long timeoutSeconds) const {
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        Json::Value error(Json::objectValue);
+        error["error"] = "Failed to init CURL";
+        return error;
+    }
+
+    Json::StreamWriterBuilder writer;
+    writer["indentation"] = "";
+    const std::string jsonBody = Json::writeString(writer, body);
+
+    std::string response;
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "Expect:");
+
+    const std::string url = serverBaseUrl_ + endpoint;
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(jsonBody.size()));
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, jsonBody.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeoutSeconds);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 0L);
+
+    const CURLcode result = curl_easy_perform(curl);
+    long httpCode = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    Json::Value parsed;
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream stream(response);
+
+    if (result != CURLE_OK) {
+        parsed["error"] = std::string("Connection error: ") + curl_easy_strerror(result);
+        return parsed;
+    }
+    if (httpCode != 200) {
+        if (Json::parseFromStream(reader, stream, &parsed, &errors) && parsed.isMember("error")) {
+            return parsed;
+        }
+        parsed["error"] = "HTTP " + std::to_string(httpCode);
+        parsed["raw"] = response;
+        return parsed;
+    }
+    if (!Json::parseFromStream(reader, stream, &parsed, &errors)) {
+        parsed["error"] = "Failed to parse response";
+        parsed["raw"] = response;
+    }
+    return parsed;
+}
+
+Json::Value LlamaCppService::routerModelsJson() const {
+    auto* self = const_cast<LlamaCppService*>(this);
+    if (!self->ensureServerRunning()) {
+        Json::Value error(Json::objectValue);
+        error["error"] = "llama-server unavailable";
+        return error;
+    }
+    return getJson("/models", 5);
+}
+
+bool LlamaCppService::refreshLoadedModelStateLocked() {
+    if (!serverRunning_ || !isServerProcessAliveLocked()) {
+        loadedModelId_.clear();
+        loadedModelIds_ = Json::Value(Json::arrayValue);
+        return false;
+    }
+
+    const Json::Value result = getJson("/models", 5);
+    if (result.isMember("error")) {
+        loadedModelId_.clear();
+        loadedModelIds_ = Json::Value(Json::arrayValue);
+        return false;
+    }
+
+    Json::Value loadedIds(Json::arrayValue);
+    std::string primary;
+    if (result.isMember("data") && result["data"].isArray()) {
+        for (const auto& model : result["data"]) {
+            if (!model.isObject() || !model.isMember("id")) {
+                continue;
+            }
+
+            const std::string status =
+                model.isMember("status") && model["status"].isObject()
+                    ? model["status"].get("value", "").asString()
+                    : "";
+            if (status == "loaded") {
+                const std::string modelId = "llamacpp::" + model["id"].asString();
+                loadedIds.append(modelId);
+                if (primary.empty()) {
+                    primary = modelId;
+                }
+            }
         }
     }
 
-    if (!api_->loaded) return false;
+    loadedModelIds_ = loadedIds;
+    loadedModelId_ = primary;
+    return !primary.empty();
+}
 
-    if (!prevPath.empty()) {
-        return loadModel(prevPath);
+bool LlamaCppService::isReady() const {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    auto* self = const_cast<LlamaCppService*>(this);
+    if (!self->ensureServerRunningLocked()) {
+        return false;
     }
-    return true;
+    return self->refreshLoadedModelStateLocked();
+}
+
+std::string LlamaCppService::getLoadedModelId() const {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return loadedModelId_;
+}
+
+std::string LlamaCppService::getActiveBackend() const {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return activeBackend_.empty() ? resolveBackend(config_.getLlamacppBackend()) : activeBackend_;
+}
+
+LlamaServerStatus LlamaCppService::getServerStatus() const {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    auto* self = const_cast<LlamaCppService*>(this);
+    self->ensureServerRunningLocked();
+    self->refreshLoadedModelStateLocked();
+
+    LlamaServerStatus status;
+    status.running = self->serverRunning_ && self->isServerProcessAliveLocked();
+    status.ready = !self->loadedModelId_.empty();
+    status.activeBackend = self->activeBackend_;
+    status.pid = self->serverPid_;
+    status.parallelSlots = self->activeConfig_.parallelSlots > 0 ? self->activeConfig_.parallelSlots : 1;
+    status.maxLoadedModels = self->activeConfig_.maxLoadedModels;
+    status.loadedModels = static_cast<int>(self->loadedModelIds_.size());
+    status.loadedModelIds = self->loadedModelIds_;
+    return status;
+}
+
+bool LlamaCppService::switchBackend(const std::string& backendName) {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    configDirty_ = true;
+    const StartupConfig desired = buildStartupConfigLocked(backendName);
+    if (desired.backend == "none") {
+        return false;
+    }
+
+    stopServerLocked();
+    if (startServerLocked(desired)) {
+        return true;
+    }
+
+    if (backendName != "cpu") {
+        const StartupConfig fallback = buildStartupConfigLocked("cpu");
+        if (fallback.backend != "none") {
+            return startServerLocked(fallback);
+        }
+    }
+    return false;
+}
+
+void LlamaCppService::unloadLib() {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    stopServerLocked();
 }
 
 bool LlamaCppService::reloadModel() {
-    inferAbort_.store(true);
-    std::unique_lock<std::mutex> lock(inferMutex_);
-    inferAbort_.store(false);
-
-    cancelUnload();
-    struct UnloadGuard {
-        LlamaCppService* svc;
-        ~UnloadGuard() { svc->scheduleUnload(); }
-    } ug{this};
-
-    unloadModel();
-    return ensureModelLoaded();
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    configDirty_ = true;
+    stopServerLocked();
+    return ensureServerRunningLocked();
 }
 
-// =============================================================================
-// Model loading
-// =============================================================================
-
 bool LlamaCppService::ensureModelLoaded(const std::string& modelId) {
-    if (modelLoaded_) {
-        if (!modelId.empty() && loadedModelId_ != modelId) {
-            std::cout << "[LlamaCpp] Requested model '" << modelId
-                      << "' differs from loaded '" << loadedModelId_
-                      << "' — reloading\n";
-            unloadModel();
-        } else {
-            return true;
-        }
+    if (!ensureServerRunning()) {
+        return false;
     }
-    if (!api_->loaded) return false;
 
-    auto models = scanModels();
-    if (models.empty()) return false;
-
-    if (!modelId.empty()) {
-        for (const auto& info : models) {
-            if (info.id == modelId) {
-                std::cout << "[LlamaCpp] Loading requested model: " << info.ggufPath << "\n";
-                return loadModel(info.ggufPath);
-            }
+    std::string target = normalizeModelId(modelId);
+    if (target.empty()) {
+        const auto models = scanModels();
+        if (models.empty()) {
+            return false;
         }
-        std::cerr << "[LlamaCpp] Requested model '" << modelId << "' not found — loading first available\n";
+        target = normalizeModelId(models.front().id);
     }
-    return loadModel(models[0].ggufPath);
+
+    Json::Value body(Json::objectValue);
+    body["model"] = target;
+    const Json::Value response = postJson("/models/load", body, 120);
+    if (response.isMember("error")) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return refreshLoadedModelStateLocked();
 }
 
 void LlamaCppService::unloadModel() {
-    if (ctx_ && api_->loaded && api_->free) {
-        api_->free(static_cast<llama_context*>(ctx_));
-        ctx_ = nullptr;
+    const Json::Value models = routerModelsJson();
+    if (!models.isMember("data") || !models["data"].isArray()) {
+        return;
     }
-    if (model_ && api_->loaded && api_->model_free) {
-        api_->model_free(static_cast<llama_model*>(model_));
-        model_ = nullptr;
+
+    for (const auto& model : models["data"]) {
+        const std::string status =
+            model.isMember("status") && model["status"].isObject()
+                ? model["status"].get("value", "").asString()
+                : "";
+        if (status == "loaded" || status == "loading" || status == "sleeping") {
+            unloadModel("llamacpp::" + model.get("id", "").asString());
+        }
     }
-    modelLoaded_ = false;
-    loadedModelId_.clear();
-    kvCacheTokens_.clear();
 }
 
-bool LlamaCppService::loadModel(const std::string& path) {
-    if (!api_->loaded) return false;
-
-    std::cout << "[LlamaCpp] Loading model: " << path << "\n";
-
-    int gpuLayers = config_.getLlamacppGpuLayers();
-    if (activeBackend_ == "cpu" && gpuLayers > 0) {
-        gpuLayers = 0;
-    }
-
-    llama_model_params mparams = api_->model_default_params();
-    mparams.n_gpu_layers       = gpuLayers;
-
-    auto* m = api_->model_load_from_file(path.c_str(), mparams);
-    if (!m) {
-        std::cerr << "[LlamaCpp] Failed to load model: " << path << "\n";
+bool LlamaCppService::unloadModel(const std::string& modelId) {
+    if (!ensureServerRunning()) {
         return false;
     }
 
-    const int    cfgCtxSize      = config_.getLlamacppCtxSize();
-    const int    evalBatchSize   = std::max(1, config_.getLlamacppEvalBatchSize());
-    const bool   flashAttn       = config_.getLlamacppFlashAttn();
-    const unsigned int hwThreads = std::thread::hardware_concurrency();
-
-    uint32_t n_threads = config_.getLlamacppThreads() > 0
-        ? static_cast<uint32_t>(config_.getLlamacppThreads())
-        : std::max(1u, hwThreads / 2);
-    uint32_t n_threads_batch = config_.getLlamacppThreadsBatch() > 0
-        ? static_cast<uint32_t>(config_.getLlamacppThreadsBatch())
-        : hwThreads;
-    uint32_t ctx_size = cfgCtxSize > 0 ? static_cast<uint32_t>(cfgCtxSize) : 8192;
-
-    llama_context_params cparams = api_->context_default_params();
-    cparams.n_ctx           = ctx_size;
-    cparams.n_batch         = static_cast<uint32_t>(evalBatchSize);
-    cparams.n_ubatch        = static_cast<uint32_t>(evalBatchSize);
-    cparams.n_threads       = n_threads;
-    cparams.n_threads_batch = n_threads_batch;
-    cparams.flash_attn_type = flashAttn ? LLAMA_FLASH_ATTN_TYPE_ENABLED
-                                        : LLAMA_FLASH_ATTN_TYPE_AUTO;
-
-    std::string kvTypeStr = config_.getLlamacppKvCacheType();
-    ggml_type kvType = GGML_TYPE_F16;
-    if (kvTypeStr == "q8_0") kvType = GGML_TYPE_Q8_0;
-    else if (kvTypeStr == "q4_0") kvType = GGML_TYPE_Q4_0;
-    
-    cparams.type_k = kvType;
-    cparams.type_v = kvType;
-
-    auto* c = api_->init_from_model(m, cparams);
-    if (!c) {
-        std::cerr << "[LlamaCpp] Failed to create context\n";
-        api_->model_free(m);
+    Json::Value body(Json::objectValue);
+    body["model"] = normalizeModelId(modelId);
+    const Json::Value response = postJson("/models/unload", body, 120);
+    if (response.isMember("error")) {
         return false;
     }
 
-    unloadModel();
-
-    model_           = m;
-    ctx_             = c;
-    n_ctx_           = static_cast<int>(ctx_size);
-    n_batch_         = evalBatchSize;
-    loadedModelPath_ = path;
-    loadedModelId_   = modelIdFromPath(path, modelsDir_);
-    modelLoaded_     = true;
-
-    return true;
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return refreshLoadedModelStateLocked();
 }
-
-// =============================================================================
-// getModels / buildMessages / parseMessages
-// =============================================================================
 
 Json::Value LlamaCppService::getModels() const {
-    Json::Value out;
-    out["data"] = Json::Value(Json::arrayValue);
+    std::vector<ModelInfo> localModels = scanModelDirectory(
+        modelsDir_,
+        config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 8192);
 
-    auto models = scanModels();
-    for (const auto& info : models) {
-        Json::Value m;
-        m["id"]             = info.id;
-        m["name"]           = info.name;
-        m["source"]         = "llamacpp";
-        m["context_length"] = info.contextLength;
-        m["max_tokens"]     = info.maxTokens;
-        m["loaded"]         = info.loaded;
-        m["has_tokenizer"]  = !info.tokenizerPath.empty();
-        m["has_mmproj"]     = !info.mmprojPath.empty();
-        out["data"].append(m);
+    Json::Value routerModels = routerModelsJson();
+    std::map<std::string, std::string> statusById;
+    if (routerModels.isMember("data") && routerModels["data"].isArray()) {
+        for (const auto& model : routerModels["data"]) {
+            if (!model.isObject() || !model.isMember("id")) {
+                continue;
+            }
+            statusById[model["id"].asString()] =
+                model.isMember("status") && model["status"].isObject()
+                    ? model["status"].get("value", "").asString()
+                    : "";
+        }
     }
-    return out;
+
+    Json::Value result(Json::objectValue);
+    result["data"] = Json::Value(Json::arrayValue);
+    for (auto& model : localModels) {
+        const auto it = statusById.find(normalizeModelId(model.id));
+        if (it != statusById.end()) {
+            model.loaded = it->second == "loaded";
+        }
+
+        Json::Value entry(Json::objectValue);
+        entry["id"] = model.id;
+        entry["name"] = model.name;
+        entry["source"] = "llamacpp";
+        entry["context_length"] = model.contextLength;
+        entry["max_tokens"] = model.maxTokens;
+        entry["loaded"] = model.loaded;
+        entry["has_tokenizer"] = !model.tokenizerPath.empty();
+        entry["has_mmproj"] = !model.mmprojPath.empty();
+        entry["uses_mrope"] = model.usesMrope;
+        result["data"].append(entry);
+    }
+    return result;
+}
+
+Json::Value LlamaCppService::parseConversationHistory(const std::string& prompt) const {
+    Json::Value messages(Json::arrayValue);
+    std::vector<std::string> lines;
+    std::string current;
+    std::istringstream stream(prompt);
+    std::string line;
+
+    while (std::getline(stream, line)) {
+        if ((line.find("User:") == 0 || line.find("Assistant:") == 0) && !current.empty()) {
+            lines.push_back(current);
+            current = line;
+        } else {
+            if (!current.empty()) {
+                current += "\n";
+            }
+            current += line;
+        }
+    }
+    if (!current.empty()) {
+        lines.push_back(current);
+    }
+
+    if (lines.empty() && !prompt.empty()) {
+        Json::Value message(Json::objectValue);
+        message["role"] = "user";
+        message["content"] = prompt;
+        messages.append(message);
+        return messages;
+    }
+
+    for (const std::string& rawLine : lines) {
+        std::string trimmed = rawLine;
+        trimWhitespace(trimmed);
+        if (trimmed.empty()) {
+            continue;
+        }
+
+        Json::Value message(Json::objectValue);
+        if (trimmed.rfind("User:", 0) == 0) {
+            message["role"] = "user";
+            std::string content = trimmed.substr(5);
+            trimWhitespace(content);
+            message["content"] = content;
+        } else if (trimmed.rfind("Assistant:", 0) == 0) {
+            message["role"] = "assistant";
+            std::string content = trimmed.substr(10);
+            trimWhitespace(content);
+            message["content"] = content;
+        } else {
+            message["role"] = "user";
+            message["content"] = trimmed;
+        }
+        messages.append(message);
+    }
+
+    return messages;
 }
 
 Json::Value LlamaCppService::buildMessages(const std::string& prompt,
-                                            const std::string& systemPrompt) const {
+                                           const std::string& systemPrompt) const {
     Json::Value messages(Json::arrayValue);
     if (!systemPrompt.empty()) {
-        Json::Value sys; sys["role"] = "system"; sys["content"] = systemPrompt;
-        messages.append(sys);
+        Json::Value system(Json::objectValue);
+        system["role"] = "system";
+        system["content"] = systemPrompt;
+        messages.append(system);
     }
-    for (const auto&[role, content] : parseMessages(prompt, "")) {
-        Json::Value msg; msg["role"] = role; msg["content"] = content;
-        messages.append(msg);
+    const Json::Value conversation = parseConversationHistory(prompt);
+    for (const auto& message : conversation) {
+        messages.append(message);
     }
     return messages;
 }
 
 std::string LlamaCppService::generateTitle(const std::string& model,
-                                            const std::string& userMessage,
-                                            const std::string& systemPrompt) const {
-    // Build messages directly — do NOT use parseMessages since the conversation
-    // text contains "User:"/"Assistant:" lines that would be incorrectly split.
-    std::vector<std::pair<std::string, std::string>> messages;
-    if (!systemPrompt.empty()) {
-        messages.push_back({"system", systemPrompt});
-    }
-    messages.push_back({"user", userMessage});
-
-    std::string generatedTitle;
-    bool hasError = false;
-    std::atomic<bool> localAbort{false};
-
-    auto onChunk = [&generatedTitle, &localAbort](const std::string& chunk) -> bool {
-        if (localAbort.load()) return false;
-        // doInference sends content via makeContentChunk() which outputs
-        // JSON like {"choices":[{"delta":{"content":"..."}}]}
-        // It also sends heartbeat "" and "data:[DONE]\n\n" frames.
-        std::string line = chunk;
-
-        // Skip heartbeat empty chunks and SSE [DONE] frames
-        if (line.empty() || line.find("[DONE]") != std::string::npos) return true;
-
-        // Strip "data:" prefix if present
-        if (line.rfind("data:", 0) == 0) {
-            line = line.substr(6);
-            size_t start = line.find_first_not_of(" ");
-            if (start != std::string::npos) line = line.substr(start);
-        }
-
-        if (line.empty()) return true;
-
-        Json::CharReaderBuilder rb;
-        std::string errs;
-        std::istringstream ss(line);
-        Json::Value json;
-        if (Json::parseFromStream(rb, ss, &json, &errs)) {
-            // Parse nested content: choices[0].delta.content
-            if (json.isMember("choices") && json["choices"].isArray() && !json["choices"].empty()) {
-                const auto& choice = json["choices"][0];
-                if (choice.isMember("delta") && choice["delta"].isMember("content") &&
-                    choice["delta"]["content"].isString()) {
-                    generatedTitle += choice["delta"]["content"].asString();
-                }
-            }
-            // Fallback: also check for direct "content" field (legacy format)
-            else if (json.isMember("content") && json["content"].isString()) {
-                generatedTitle += json["content"].asString();
-            }
-        }
-        return true;
-    };
-
-    auto onError = [&hasError](const std::string& err) {
-        std::cerr << "[LlamaCpp] Title generation error: " << err << "\n";
-        hasError = true;
-    };
-
-    auto cancelCheck = [&localAbort]() -> bool {
-        return localAbort.load();
-    };
-
-    auto* self = const_cast<LlamaCppService*>(this);
-    bool concurrent = config_.getLlamacppTitleModelConcurrent();
-
-    // Save the current chat model ID
-    std::string savedChatModelId = self->loadedModelId_;
-    bool needsSwap = self->modelLoaded_ && self->loadedModelId_ != model;
-
-    if (needsSwap) {
-        std::cout << "[TitleGen] LlamaCpp: unloading chat model to load title model\n";
-    } else if (!self->modelLoaded_) {
-        std::cout << "[TitleGen] LlamaCpp: no model loaded, loading now\n";
-    } else {
-        std::cout << "[TitleGen] LlamaCpp: using already loaded model\n";
-    }
-
-    if (concurrent) {
-        // Concurrent mode: still need to hold inferMutex_ during model swaps
-        // and inference to prevent race conditions with chat inference.
-        // Use try_lock with a timeout loop to avoid blocking indefinitely.
-        // NOTE: We do NOT set inferAbort_ here — title generation should wait
-        // politely for running inference to complete, not abort it.
-        self->cancelUnload();
-
-        // Helper lambda to acquire the mutex with timeout (no abort signal)
-        auto acquireLock = [](std::unique_lock<std::mutex>& lock) -> bool {
-            auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-            while (std::chrono::steady_clock::now() < deadline) {
-                if (lock.try_lock()) {
-                    return true;
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            }
-            return false;
-        };
-
-        // Phase 1: Load title model (if needed) while holding the mutex
-        if (!self->modelLoaded_ || needsSwap) {
-            std::unique_lock<std::mutex> lock(inferMutex_, std::defer_lock);
-            if (!acquireLock(lock)) {
-                onError("Title generation timed out waiting for inference lock");
-                std::cerr << "[TitleGen] LlamaCpp: lock acquisition timed out\n";
-                return "";
-            }
-
-            if (!self->ensureModelLoaded(model)) {
-                onError("No llama.cpp model loaded");
-                std::cerr << "[TitleGen] LlamaCpp: ensureModelLoaded returned false\n";
-                return "";
-            }
-            std::cout << "[TitleGen] LlamaCpp: title model loaded\n";
-            // Release the mutex after model load completes
-            lock.unlock();
-        }
-
-        // Phase 2: Run inference while holding the mutex
-        {
-            std::unique_lock<std::mutex> lock(inferMutex_, std::defer_lock);
-            if (!acquireLock(lock)) {
-                localAbort.store(true);
-                onError("Title generation timed out waiting for inference lock");
-                std::cerr << "[TitleGen] LlamaCpp: inference lock timed out\n";
-                return "";
-            }
-
-            self->doInference(messages, 0, 0.0, onChunk, onError, cancelCheck, false);
-            // Release the mutex after inference completes
-            lock.unlock();
-        }
-        std::cout << "[TitleGen] LlamaCpp: doInference returned, rawTitle='" << generatedTitle << "'\n";
-
-        // Phase 3: Restore chat model (if we swapped) while holding the mutex
-        if (needsSwap && !savedChatModelId.empty()) {
-            std::unique_lock<std::mutex> lock(inferMutex_, std::defer_lock);
-            if (!acquireLock(lock)) {
-                std::cerr << "[TitleGen] LlamaCpp: WARNING - failed to restore chat model (lock timeout)\n";
-                return "";
-            }
-
-            std::cout << "[TitleGen] LlamaCpp: restoring chat model: " << savedChatModelId << "\n";
-            self->ensureModelLoaded(savedChatModelId);
-            lock.unlock();
-        }
-    } else {
-        // Non-concurrent mode: hold inferMutex_ for the entire operation
-        std::unique_lock<std::mutex> lock(inferMutex_);
-        self->cancelUnload();
-
-        if (!self->modelLoaded_ || needsSwap) {
-            if (!self->ensureModelLoaded(model)) {
-                onError("No llama.cpp model loaded");
-                std::cerr << "[TitleGen] LlamaCpp: ensureModelLoaded returned false\n";
-                return "";
-            }
-            std::cout << "[TitleGen] LlamaCpp: title model loaded\n";
-        }
-
-        self->doInference(messages, 0, 0.0, onChunk, onError, cancelCheck, false);
-        std::cout << "[TitleGen] LlamaCpp: doInference returned, rawTitle='" << generatedTitle << "'\n";
-
-        // Always restore the chat model if we swapped
-        if (needsSwap && !savedChatModelId.empty()) {
-            std::cout << "[TitleGen] LlamaCpp: restoring chat model: " << savedChatModelId << "\n";
-            self->ensureModelLoaded(savedChatModelId);
-        }
-    }
-
-    if (hasError || generatedTitle.empty()) {
-        std::cerr << "[LlamaCpp] Failed to extract title from response (hasError=" << hasError
-                  << ", titleLen=" << generatedTitle.size() << ")\n";
+                                           const std::string& userMessage,
+                                           const std::string& systemPrompt) {
+    if (!ensureServerRunning()) {
         return "";
     }
 
-    // Strip out any reasoning/thinking tags (<think>...</think>, <think>...</think>, etc.)
-    auto stripTag = [&generatedTitle](const std::string& openTag, const std::string& closeTag) {
-        while (true) {
-            auto openPos = generatedTitle.find(openTag);
-            if (openPos == std::string::npos) break;
-            auto closePos = generatedTitle.find(closeTag, openPos);
-            if (closePos == std::string::npos) {
-                // No closing tag found - remove everything from open tag onwards
-                generatedTitle.erase(openPos);
-                break;
-            }
-            // Remove the entire tag
-            generatedTitle.erase(openPos, closePos + closeTag.size() - openPos);
-        }
-    };
-    stripTag("<think>", "</think>");
-    stripTag("<think>", "</think>");
-    stripTag("<reasoning>", "</reasoning>");
-
-    // Clean up the title - remove quotes, trim whitespace
-    if (generatedTitle.size() >= 2 && generatedTitle.front() == '"' && generatedTitle.back() == '"') {
-        generatedTitle = generatedTitle.substr(1, generatedTitle.size() - 2);
+    Json::Value messages(Json::arrayValue);
+    if (!systemPrompt.empty()) {
+        Json::Value system(Json::objectValue);
+        system["role"] = "system";
+        system["content"] = systemPrompt;
+        messages.append(system);
     }
 
-    // Trim whitespace
-    size_t start = generatedTitle.find_first_not_of(" \t\n\r\"");
-    if (start == std::string::npos) return "";
-    size_t end = generatedTitle.find_last_not_of(" \t\n\r\"");
-    generatedTitle = generatedTitle.substr(start, end - start + 1);
+    Json::Value user(Json::objectValue);
+    user["role"] = "user";
+    user["content"] = userMessage;
+    messages.append(user);
 
-    // Truncate if too long (max 60 chars)
-    if (generatedTitle.length() > 60) {
-        generatedTitle = generatedTitle.substr(0, 57) + "...";
+    Json::Value body(Json::objectValue);
+    body["model"] = normalizeModelId(model);
+    body["messages"] = messages;
+    body["max_tokens"] = kTitleGenerationMaxTokens;
+    body["temperature"] = 0.0;
+    // Title generation should be one short answer with reasoning disabled,
+    // not a stop-sequence hack that tries to catch injected thinking tags.
+    body["chat_template_kwargs"]["enable_thinking"] = false;
+    body["thinking_budget_tokens"] = 0;
+    Json::Value stop(Json::arrayValue);
+    stop.append("\n");
+    body["stop"] = stop;
+
+    const Json::Value response = postJson("/v1/chat/completions", body, 120);
+    if (response.isMember("error")) {
+        std::cerr << "[LlamaCpp] Title generation error: " << response["error"].asString() << "\n";
+        return "";
     }
 
-    std::cout << "[LlamaCpp] Generated title: " << generatedTitle << "\n";
-    return generatedTitle;
+    if (!response.isMember("choices") || !response["choices"].isArray() || response["choices"].empty()) {
+        return "";
+    }
+
+    const Json::Value& choice = response["choices"][0];
+    if (!choice.isMember("message") || !choice["message"].isObject()) {
+        return "";
+    }
+
+    std::string title = choice["message"].get("content", "").asString();
+    trimWhitespace(title);
+    if (title.size() >= 2 && title.front() == '"' && title.back() == '"') {
+        title = title.substr(1, title.size() - 2);
+    }
+    trimWhitespace(title);
+    if (title.size() > 60) {
+        title = title.substr(0, 57) + "...";
+    }
+    return title;
 }
 
-std::vector<std::pair<std::string, std::string>>
-LlamaCppService::parseMessages(const std::string& prompt,
-                                const std::string& systemPrompt) const {
-    std::vector<std::pair<std::string, std::string>> result;
-    if (!systemPrompt.empty()) result.push_back({"system", systemPrompt});
-
-    std::istringstream stream(prompt);
-    std::string line, current;
-    std::string currentRole;
-
-    auto flush = [&]() {
-        if (current.empty()) return;
-        size_t s = current.find_first_not_of(" \t\n\r");
-        if (s != std::string::npos) current = current.substr(s);
-        size_t e = current.find_last_not_of(" \t\n\r");
-        if (e != std::string::npos) current = current.substr(0, e + 1);
-        if (!current.empty() && !currentRole.empty())
-            result.push_back({currentRole, current});
-        current.clear();
-        currentRole.clear();
-    };
-
-    while (std::getline(stream, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.find("User:") == 0) {
-            flush();
-            currentRole = "user";
-            current = line.substr(5);
-        } else if (line.find("Assistant:") == 0) {
-            flush();
-            currentRole = "assistant";
-            current = line.substr(10);
-        } else {
-            if (!currentRole.empty()) current += "\n" + line;
-        }
-    }
-    flush();
-
-    if (result.empty() && !prompt.empty()) {
-        std::string trimmed = prompt;
-        size_t s = trimmed.find_first_not_of(" \t\n\r");
-        if (s != std::string::npos) trimmed = trimmed.substr(s);
-        if (!trimmed.empty()) result.push_back({"user", trimmed});
-    }
-    return result;
-}
-
-// =============================================================================
-// Chunk helpers
-// =============================================================================
-
-std::string LlamaCppService::makeContentChunk(const std::string& text, std::optional<float> logprob) {
-    std::string escaped;
-    escaped.reserve(text.size() + 4);
-    for (unsigned char c : text) {
-        switch (c) {
-            case '"':  escaped += "\\\""; break;
-            case '\\': escaped += "\\\\"; break;
-            case '\n': escaped += "\\n";  break;
-            case '\r': escaped += "\\r";  break;
-            case '\t': escaped += "\\t";  break;
-            default:
-                if (c < 0x20) { char buf[8]; snprintf(buf, sizeof(buf), "\\u%04x", c); escaped += buf; }
-                else escaped += static_cast<char>(c);
-        }
-    }
-
-    std::string chunk = "{\"choices\":[{\"delta\":{\"content\":\"" + escaped + "\"}}]}";
-    if (logprob.has_value()) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "\"logprob\":%.6f,", logprob.value());
-        size_t pos = chunk.find("\"delta\":{");
-        if (pos != std::string::npos)
-            chunk.insert(pos + 9, buf);
-    }
-    return "data: " + chunk + "\n\n";
-}
-
-std::vector<uint8_t> LlamaCppService::decodeBase64Image(const std::string& dataUrl) {
-    const size_t commaPos = dataUrl.find(',');
-    const std::string b64 = (commaPos != std::string::npos) ? dataUrl.substr(commaPos + 1) : dataUrl;
-    uint8_t dt[256]; std::fill(dt, dt + 256, uint8_t(0xFF));
-    for (int i = 0; i < 26; ++i) { dt[uint8_t('A'+i)] = uint8_t(i); dt[uint8_t('a'+i)] = uint8_t(26+i); }
-    for (int i = 0; i < 10; ++i)   dt[uint8_t('0'+i)] = uint8_t(52+i);
-    dt[uint8_t('+')] = 62; dt[uint8_t('/')] = 63;
-    std::vector<uint8_t> out; out.reserve(b64.size() * 3 / 4);
-    uint32_t buf = 0; int bits = 0;
-    for (unsigned char c : b64) {
-        if (c == '=') break;
-        if (dt[c] == 0xFF) continue;
-        buf = (buf << 6) | uint32_t(dt[c]); bits += 6;
-        if (bits >= 8) { bits -= 8; out.push_back(uint8_t((buf >> bits) & 0xFF)); }
-    }
-    return out;
-}
-
-// =============================================================================
-// Tool-call helpers
-// =============================================================================
-
-static std::string buildToolSystemPromptAppendix(const Json::Value& tools) {
-    if (!tools.isArray() || tools.empty()) return "";
-
-    std::string out;
-    out += "\n\n## Available Tools\n\n";
-    out += "You have access to the following tools. To call a tool, respond with a "
-           "JSON object on its own line in this exact format:\n"
-           "{\"tool_call\": {\"name\": \"<tool_name>\", \"arguments\": {<args>}}}\n\n"
-           "After you emit a tool_call JSON object, stop generating. "
-           "The tool result will be provided and you can continue.\n\n"
-           "### Tool Definitions\n\n";
-
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-
-    for (const auto& tool : tools) {
-        if (!tool.isMember("function")) continue;
-        const Json::Value& fn = tool["function"];
-        out += "- **" + fn.get("name", "").asString() + "**: "
-             + fn.get("description", "").asString() + "\n";
-        if (fn.isMember("parameters")) {
-            out += "  Parameters: " + Json::writeString(wb, fn["parameters"]) + "\n";
-        }
-        out += "\n";
-    }
-    return out;
-}
-
-static bool extractToolCall(const std::string& text,
-                             std::string& nameOut,
-                             std::string& argsJsonOut) {
-    const std::string marker = "\"tool_call\"";
-    size_t pos = text.find(marker);
-    while (pos != std::string::npos) {
-        size_t braceStart = text.rfind('{', pos);
-        if (braceStart == std::string::npos) {
-            pos = text.find(marker, pos + 1);
-            continue;
-        }
-        int depth = 0;
-        size_t braceEnd = std::string::npos;
-        for (size_t i = braceStart; i < text.size(); ++i) {
-            if (text[i] == '{') ++depth;
-            else if (text[i] == '}') {
-                --depth;
-                if (depth == 0) { braceEnd = i; break; }
-            }
-        }
-        if (braceEnd == std::string::npos) {
-            pos = text.find(marker, pos + 1);
-            continue;
-        }
-
-        std::string candidate = text.substr(braceStart, braceEnd - braceStart + 1);
-        Json::Value parsed;
-        Json::CharReaderBuilder rb;
-        std::string errs;
-        std::istringstream ss(candidate);
-        if (Json::parseFromStream(rb, ss, &parsed, &errs) && parsed.isMember("tool_call")) {
-            const Json::Value& tc = parsed["tool_call"];
-            nameOut = tc.get("name", "").asString();
-            if (!nameOut.empty()) {
-                Json::StreamWriterBuilder wb;
-                wb["indentation"] = "";
-                argsJsonOut = tc.isMember("arguments")
-                    ? Json::writeString(wb, tc["arguments"])
-                    : "{}";
-                return true;
-            }
-        }
-        pos = text.find(marker, pos + 1);
-    }
-    return false;
-}
-
-// =============================================================================
-// doInference
-//
-// The cancelCheck predicate combines:
-//   • the caller-supplied per-stream ctx->cancelled flag, AND
-//   • inferAbort_ — the service-level abort flag set when a new inference
-//     request arrives and signals the running one to exit the mutex ASAP.
-// =============================================================================
-
-void LlamaCppService::doInference(
-    const std::vector<std::pair<std::string, std::string>>& messages,
-    int maxTokens, double temperature,
+std::string LlamaCppService::streamOneRound(
+    const Json::Value& requestBody,
     std::function<bool(const std::string&)> onChunk,
     std::function<void(const std::string&)> onError,
-    std::function<bool()> cancelCheck,
-    bool emitLogprobs
-) const {
-    if (!api_->loaded || !model_ || !ctx_) { onError("No backend or model loaded"); return; }
-    if (maxTokens <= 0) maxTokens = 8192;
-
-    const llama_vocab* vocab = api_->model_get_vocab(static_cast<llama_model*>(model_));
-    auto* ctx = static_cast<llama_context*>(ctx_);
-    const int maxInput = n_ctx_ - 4;
-    if (maxInput <= 0) { onError("Context too small"); return; }
-
-    auto curMsgs = messages;
-    size_t firstNonSystem = 0;
-    while (firstNonSystem < curMsgs.size() && curMsgs[firstNonSystem].first == "system")
-        firstNonSystem++;
-
-    std::string formattedPrompt;
-    std::vector<llama_token> inputTokens;
-
-    while (true) {
-        std::vector<std::string> store; store.reserve(curMsgs.size());
-        std::vector<llama_chat_message> chatMsgs; chatMsgs.reserve(curMsgs.size());
-        for (const auto&[role, content] : curMsgs) {
-            store.push_back(content);
-            chatMsgs.push_back({role.c_str(), store.back().c_str()});
-        }
-        int tl = api_->chat_apply_template(nullptr, chatMsgs.data(), chatMsgs.size(), true, nullptr, 0);
-        if (tl < 0) { onError("llama_chat_apply_template failed"); return; }
-        std::vector<char> buf(static_cast<size_t>(tl) + 1, '\0');
-        api_->chat_apply_template(nullptr, chatMsgs.data(), chatMsgs.size(), true,
-                                  buf.data(), static_cast<int32_t>(buf.size()));
-        formattedPrompt = std::string(buf.data(), static_cast<size_t>(tl));
-
-        int reqTok = api_->tokenize(vocab, formattedPrompt.c_str(),
-                                    static_cast<int32_t>(formattedPrompt.size()),
-                                    nullptr, 0, false, true);
-        if (reqTok < 0) reqTok = -reqTok;
-        if (reqTok <= maxInput || curMsgs.size() <= firstNonSystem + 1) {
-            inputTokens.resize(reqTok);
-            int n = api_->tokenize(vocab, formattedPrompt.c_str(),
-                                   static_cast<int32_t>(formattedPrompt.size()),
-                                   inputTokens.data(), static_cast<int32_t>(inputTokens.size()),
-                                   false, true);
-            if (n < 0) n = -n;
-            inputTokens.resize(static_cast<size_t>(n));
-            if (n > maxInput) inputTokens.erase(inputTokens.begin(), inputTokens.begin() + (n - maxInput));
-            break;
-        }
-        curMsgs.erase(curMsgs.begin() + firstNonSystem);
+    std::vector<std::tuple<std::string, std::string, std::string>>& toolCallsOut) const {
+    auto* self = const_cast<LlamaCppService*>(this);
+    if (!self->ensureServerRunning()) {
+        onError("llama.cpp server unavailable");
+        return "_internal_error_";
     }
 
-    int remainCtx = n_ctx_ - static_cast<int>(inputTokens.size()) - 1;
-    if (maxTokens > remainCtx) maxTokens = remainCtx;
-    if (maxTokens <= 0) { onError("Prompt fills entire context window"); return; }
-
-    std::cout << "[LlamaCpp] Inference started (input tokens: " << inputTokens.size() << ")\n";
-
-    int matchLen = 0;
-    if (config_.getLlamacppKvCacheReuse()) {
-        while (matchLen < static_cast<int>(inputTokens.size()) && 
-               matchLen < static_cast<int>(kvCacheTokens_.size()) && 
-               inputTokens[matchLen] == kvCacheTokens_[matchLen]) {
-            matchLen++;
-        }
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        onError("Failed to init CURL");
+        return "_internal_error_";
     }
 
-    // Helper lambda to safely clear the KV cache
-    auto clear_cache = [&]() {
-        if (api_->memory_clear && api_->get_memory) {
-            api_->memory_clear(api_->get_memory(ctx), true);
-        } else if (api_->kv_cache_clear) {
-            api_->kv_cache_clear(ctx);
-        } else if (api_->kv_cache_seq_rm) {
-            api_->kv_cache_seq_rm(ctx, -1, -1, -1);
-        }
-        kvCacheTokens_.clear();
-    };
+    Json::Value body = requestBody;
+    body["model"] = normalizeModelId(body.get("model", "").asString());
 
-    if (matchLen == 0) {
-        clear_cache();
-        std::cout << "[LlamaCpp] KV cache cleared\n";
-    } else if (matchLen < static_cast<int>(kvCacheTokens_.size())) {
-        // Partial match: the llama.cpp memory module keeps the "last position"
-        // counter at the old max even after seq_rm, which breaks M-RoPE
-        // (requires X < Y for positions).  Always clear the whole cache
-        // to avoid position conflicts.
-        clear_cache();
-        matchLen = 0;
-        std::cout << "[LlamaCpp] KV cache cleared (partial match not safe for M-RoPE)\n";
-    } else {
-        std::cout << "[LlamaCpp] KV cache fully reused (" << matchLen << " tokens)\n";
+    Json::StreamWriterBuilder writer;
+    writer["indentation"] = "";
+    const std::string jsonBody = Json::writeString(writer, body);
+
+    const std::string url = serverBaseUrl_ + "/v1/chat/completions";
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "Accept: text/event-stream");
+    headers = curl_slist_append(headers, "Expect:");
+
+    StreamContext ctx;
+    ctx.onChunk = std::move(onChunk);
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(jsonBody.size()));
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, jsonBody.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallbackStream);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);
+    curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 120L);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progressCallback);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &ctx);
+
+    const CURLcode result = curl_easy_perform(curl);
+    long httpCode = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    if (result == CURLE_WRITE_ERROR || result == CURLE_ABORTED_BY_CALLBACK) {
+        return "_cancelled_";
     }
 
-    llama_batch batch = api_->batch_init(n_batch_, 0, 1);
-    int nProcessed = matchLen;
-
-    // ── Prefill loop ──────────────────────────────────────────────────────────
-    while (nProcessed < static_cast<int>(inputTokens.size())) {
-        // Heartbeat: lets the onChunk wrapper detect connection drop
-        if (!onChunk("")) {
-            api_->batch_free(batch);
-            return;
-        }
-        // Explicit cancel check before the blocking decode
-        if (cancelCheck && cancelCheck()) {
-            std::cout << "[LlamaCpp] Cancelled during prefill\n";
-            api_->batch_free(batch);
-            return;
-        }
-
-        int cs = std::min(n_batch_, static_cast<int>(inputTokens.size()) - nProcessed);
-        batch.n_tokens = cs;
-        for (int i = 0; i < cs; ++i) {
-            batch.token[i]     = inputTokens[nProcessed + i];
-            batch.pos[i]       = nProcessed + i;
-            batch.n_seq_id[i]  = 1;
-            batch.seq_id[i][0] = 0;
-            batch.logits[i]    = 0;
-        }
-        if (nProcessed + cs == static_cast<int>(inputTokens.size())) batch.logits[cs-1] = 1;
-
-        if (api_->decode(ctx, batch) != 0) {
-            if (nProcessed == matchLen && matchLen > 0) {
-                // If it fails on the very first batch of a resumed prefill, it's almost certainly
-                // the M-RoPE position-tracker bug where max_pos wasn't decremented by seq_rm.
-                // We catch this, completely clear the KV cache, and retry full prompt processing.
-                std::cout << "[LlamaCpp] decode failed on KV cache resume (likely M-RoPE constraint). Clearing cache and retrying full prefill.\n";
-                clear_cache();
-                matchLen = 0;
-                nProcessed = 0;
-                continue; // restart the loop
-            }
-            
-            onError("llama_decode (prefill) failed");
-            api_->batch_free(batch);
-            clear_cache();
-            return;
-        }
-
-        for (int i = 0; i < cs; ++i) {
-            kvCacheTokens_.push_back(batch.token[i]);
-        }
-
-        // Cancel check after decode
-        if (cancelCheck && cancelCheck()) {
-            std::cout << "[LlamaCpp] Cancelled after prefill decode\n";
-            api_->batch_free(batch);
-            return;
-        }
-
-        nProcessed += cs;
+    if (result != CURLE_OK) {
+        onError(std::string("Connection error: ") + curl_easy_strerror(result));
+        return "_internal_error_";
     }
 
-    const float temp = temperature > 0.0 ? static_cast<float>(temperature) : 0.7f;
-    const float pr   = static_cast<float>(config_.getLlamacppRepeatPenalty());
-    const float topP = static_cast<float>(config_.getLlamacppTopP());
-    const float minP = static_cast<float>(config_.getLlamacppMinP());
-
-    llama_sampler* sampler = api_->sampler_chain_init(api_->sampler_chain_default_params());
-    api_->sampler_chain_add(sampler, api_->sampler_init_penalties(64, pr,   0.0f, 0.0f));
-    api_->sampler_chain_add(sampler, api_->sampler_init_top_p(topP, 1));
-    api_->sampler_chain_add(sampler, api_->sampler_init_min_p(minP, 1));
-    api_->sampler_chain_add(sampler, api_->sampler_init_temp(temp));
-    api_->sampler_chain_add(sampler, api_->sampler_init_dist(LLAMA_DEFAULT_SEED));
-
-    // ── Generation loop ───────────────────────────────────────────────────────
-    int nGen = 0; bool cancelled = false;
-    while (nGen < maxTokens && !cancelled) {
-        // 1. Heartbeat
-        if (!onChunk("")) { cancelled = true; break; }
-        // 2. Fast cancel check
-        if (cancelCheck && cancelCheck()) { cancelled = true; break; }
-
-        // Extract logits BEFORE the sampler modifies them
-        std::optional<float> tokenLogprob;
-        float* rawLogits = nullptr;
-        if (emitLogprobs) {
-            rawLogits = api_->get_logits(ctx);
-        }
-
-        llama_token tok = api_->sampler_sample(sampler, ctx, -1);
-        if (api_->vocab_is_eog(vocab, tok)) break;
-
-        // Compute logprob from the raw (pre-sampler) logits
-        if (emitLogprobs && rawLogits && api_->n_vocab_from_vocab && vocab) {
-            const int32_t vs = api_->n_vocab_from_vocab(vocab);
-            if (vs > 0 && vs < 1000000 && tok >= 0 && tok < vs) {
-                const float effTemp = (temp > 0.0f) ? temp : 1.0f;
-                float ml = -1e30f;
-                for (int32_t i = 0; i < vs; ++i) {
-                    float scaled = rawLogits[i] / effTemp;
-                    if (scaled > ml) ml = scaled;
+    if (httpCode != 200) {
+        std::string cleanMsg;
+        if (!ctx.buffer.empty()) {
+            Json::Value errJson;
+            Json::CharReaderBuilder reader;
+            std::string errors;
+            std::istringstream stream(ctx.buffer);
+            if (Json::parseFromStream(reader, stream, &errJson, &errors) && errJson.isMember("error")) {
+                const Json::Value& errorObj = errJson["error"];
+                if (errorObj.isObject()) {
+                    cleanMsg = errorObj.get("message", "").asString();
+                } else if (errorObj.isString()) {
+                    cleanMsg = errorObj.asString();
                 }
-                double lse = 0.0;
-                for (int32_t i = 0; i < vs; ++i) {
-                    lse += std::exp(static_cast<double>(rawLogits[i] / effTemp - ml));
-                }
-                lse = std::log(lse) + ml;
-                const double scaledLogit = static_cast<double>(rawLogits[tok] / effTemp);
-                tokenLogprob = static_cast<float>((scaledLogit - lse) / std::log(2.0));
-                if (nGen < 3) std::cout << "[LlamaCpp] Logprob[" << nGen << "]: " << tokenLogprob.value() << "\n";
             }
         }
-
-        char piece[256];
-        int np = api_->token_to_piece(vocab, tok, piece, sizeof(piece)-1, 0, false);
-        if (np < 0) np = 0;
-
-        // 3. Cancel before decode
-        if (cancelCheck && cancelCheck()) { cancelled = true; break; }
-
-        batch.n_tokens    = 1;
-        batch.token[0]    = tok;
-        batch.pos[0]      = static_cast<int>(inputTokens.size()) + nGen;
-        batch.n_seq_id[0] = 1;
-        batch.seq_id[0][0] = 0;
-        batch.logits[0]   = 1;  // Always compute logits for next iteration
-
-        if (api_->decode(ctx, batch) != 0) {
-            onError("llama_decode (generation) failed");
-            kvCacheTokens_.clear();
-            break;
+        if (cleanMsg.empty()) {
+            cleanMsg = "HTTP " + std::to_string(httpCode);
         }
-
-        if (np > 0) {
-            piece[np] = '\0';
-            if (!onChunk(makeContentChunk(std::string(piece, static_cast<size_t>(np)), tokenLogprob))) {
-                cancelled = true; break;
-            }
-        }
-        
-        kvCacheTokens_.push_back(tok);
-
-        // 4. Cancel after decode
-        if (cancelCheck && cancelCheck()) { cancelled = true; break; }
-
-        ++nGen;
+        onError(cleanMsg);
+        return "_internal_error_";
     }
 
-    api_->sampler_free(sampler);
-    api_->batch_free(batch);
-
-    if (!cancelled) onChunk("data:[DONE]\n\n");
-
-    std::cout << "[LlamaCpp] Inference " << (cancelled ? "cancelled" : "completed")
-              << " (generated " << nGen << " tokens)\n";
+    for (const auto& toolCall : ctx.toolCalls) {
+        toolCallsOut.emplace_back(toolCall.id, toolCall.name, toolCall.argumentsJson);
+    }
+    return ctx.finishReason;
 }
-
-// =============================================================================
-// doInferenceCollect — runs inference and returns the full generated text.
-// Used ONLY for intermediate tool-detection rounds, never the final round.
-// =============================================================================
-
-std::string LlamaCppService::doInferenceCollect(
-    const std::vector<std::pair<std::string, std::string>>& messages,
-    int maxTokens, double temperature,
-    std::function<bool()> cancelCheck,
-    std::function<void(const std::string&)> onError
-) const {
-    std::string collected;
-
-    auto onChunk = [&](const std::string& chunk) -> bool {
-        if (cancelCheck && cancelCheck()) return false;
-        if (!chunk.empty() && chunk != "data:[DONE]\n\n") {
-            const std::string prefix = "data: ";
-            if (chunk.size() > prefix.size() && chunk.substr(0, prefix.size()) == prefix) {
-                std::string jsonStr = chunk.substr(prefix.size());
-                while (!jsonStr.empty() && (jsonStr.back() == '\n' || jsonStr.back() == '\r'))
-                    jsonStr.pop_back();
-                Json::Value parsed;
-                Json::CharReaderBuilder rb;
-                std::string errs;
-                std::istringstream ss(jsonStr);
-                if (Json::parseFromStream(rb, ss, &parsed, &errs)) {
-                    if (parsed.isMember("choices") && parsed["choices"].isArray()
-                            && !parsed["choices"].empty()) {
-                        const auto& delta = parsed["choices"][0]["delta"];
-                        if (delta.isMember("content") && delta["content"].isString())
-                            collected += delta["content"].asString();
-                    }
-                }
-            }
-        }
-        return true;
-    };
-
-    doInference(messages, maxTokens, temperature, onChunk, onError, cancelCheck);
-    return collected;
-}
-
-// =============================================================================
-// doInferenceCollectWithStreaming — runs inference, streams tokens live to the
-// client AND collects the full text for tool-call detection.
-// Returns the collected text.
-// =============================================================================
-
-std::string LlamaCppService::doInferenceCollectWithStreaming(
-    const std::vector<std::pair<std::string, std::string>>& messages,
-    int maxTokens, double temperature,
-    std::function<bool(const std::string&)> onChunk,
-    std::function<void(const std::string&)> onError,
-    std::function<bool()> cancelCheck,
-    bool emitLogprobs
-) const {
-    std::string collected;
-
-    auto innerOnChunk = [&](const std::string& chunk) -> bool {
-        if (cancelCheck && cancelCheck()) return false;
-        // Forward to client live
-        if (!onChunk(chunk)) return false;
-        // Also collect for tool detection
-        if (!chunk.empty() && chunk != "data: [DONE]\n\n") {
-            const std::string prefix = "data: ";
-            if (chunk.size() > prefix.size() && chunk.substr(0, prefix.size()) == prefix) {
-                std::string jsonStr = chunk.substr(prefix.size());
-                while (!jsonStr.empty() && (jsonStr.back() == '\n' || jsonStr.back() == '\r'))
-                    jsonStr.pop_back();
-                Json::Value parsed;
-                Json::CharReaderBuilder rb;
-                std::string errs;
-                std::istringstream ss(jsonStr);
-                if (Json::parseFromStream(rb, ss, &parsed, &errs)) {
-                    if (parsed.isMember("choices") && parsed["choices"].isArray()
-                            && !parsed["choices"].empty()) {
-                        const auto& delta = parsed["choices"][0]["delta"];
-                        if (delta.isMember("content") && delta["content"].isString())
-                            collected += delta["content"].asString();
-                    }
-                }
-            }
-        }
-        return true;
-    };
-
-    doInference(messages, maxTokens, temperature, innerOnChunk, onError, cancelCheck, emitLogprobs);
-    return collected;
-}
-
-// =============================================================================
-// Public streaming entry points
-// =============================================================================
 
 void LlamaCppService::streamingChatWithCallback(
-    const std::string& model, const std::string& prompt, int maxTokens,
+    const std::string& model,
+    const std::string& prompt,
+    int maxTokens,
     std::function<bool(const std::string&)> onChunk,
     std::function<void(const std::string&)> onError,
-    const std::string& systemPrompt, double temperature, int,
+    const std::string& systemPrompt,
+    double temperature,
+    int numCtx,
     std::function<bool()> cancelCheck,
-    bool emitLogprobs)
-{
-    inferAbort_.store(true);
-    std::unique_lock<std::mutex> lock(inferMutex_);
-    inferAbort_.store(false);  // We own the lock; clear the flag for our run.
-
-    cancelUnload();
-    struct UnloadGuard {
-        LlamaCppService* svc;
-        ~UnloadGuard() { svc->scheduleUnload(); }
-    } ug{this};
-
-    if (!modelLoaded_) {
-        if (!ensureModelLoaded(model)) { onError("No llama.cpp model loaded"); return; }
+    bool emitLogprobs) {
+    Json::Value body(Json::objectValue);
+    body["model"] = model;
+    body["messages"] = buildMessages(prompt, systemPrompt);
+    body["max_tokens"] = maxTokens;
+    body["stream"] = true;
+    body["reasoning_format"] = "deepseek";
+    body["top_p"] = config_.getLlamacppTopP();
+    body["min_p"] = config_.getLlamacppMinP();
+    body["repeat_penalty"] = config_.getLlamacppRepeatPenalty();
+    if (temperature >= 0.0) {
+        body["temperature"] = temperature;
+    }
+    if (numCtx > 0) {
+        body["n_ctx"] = numCtx;
+    }
+    if (emitLogprobs) {
+        body["logprobs"] = true;
     }
 
-    auto combinedCancel =[this, &cancelCheck]() -> bool {
-        return inferAbort_.load() || (cancelCheck && cancelCheck());
-    };
+    std::vector<std::tuple<std::string, std::string, std::string>> unused;
+    const std::string finishReason = streamOneRound(
+        body,
+        [&](const std::string& chunk) {
+            if (cancelCheck && cancelCheck()) {
+                return false;
+            }
+            return onChunk ? onChunk(chunk) : true;
+        },
+        onError,
+        unused);
 
-    doInference(parseMessages(prompt, systemPrompt), maxTokens, temperature,
-                onChunk, onError, combinedCancel, emitLogprobs);
+    if (finishReason != "_cancelled_" && onChunk) {
+        onChunk("data: [DONE]\n\n");
+    }
 }
 
 void LlamaCppService::streamingChatWithTools(
-    const std::string& model, Json::Value messages, const Json::Value& tools, int maxTokens,
+    const std::string& model,
+    Json::Value messages,
+    const Json::Value& tools,
+    const std::string& taskId,
+    int maxTokens,
     std::function<bool(const std::string&)> onChunk,
     std::function<void(const std::string&)> onError,
-    McpRegistry* registry, double temperature, int,
+    ToolSystem* toolSystem,
+    double temperature,
+    int numCtx,
     std::function<bool()> cancelCheck,
-    bool emitLogprobs)
-{
-    inferAbort_.store(true);
-    std::unique_lock<std::mutex> lock(inferMutex_);
-    inferAbort_.store(false);
-
-    cancelUnload();
-    struct UnloadGuard {
-        LlamaCppService* svc;
-        ~UnloadGuard() { svc->scheduleUnload(); }
-    } ug{this};
-
-    if (!modelLoaded_) {
-        if (!ensureModelLoaded(model)) { onError("No llama.cpp model loaded"); return; }
-    }
-
-    auto combinedCancel =[this, &cancelCheck]() -> bool {
-        return inferAbort_.load() || (cancelCheck && cancelCheck());
-    };
-
-    const bool hasTools = tools.isArray() && !tools.empty() && registry;
-
-    // ── Convert OpenAI messages JSON array to (role, content) pairs ──────────
-    auto buildPairs =[](const Json::Value& msgs) {
-        std::vector<std::pair<std::string, std::string>> pairs;
-        for (const auto& msg : msgs) {
-            const std::string role = msg.get("role", "user").asString();
-            std::string text;
-            const Json::Value& cv = msg["content"];
-            if (cv.isString()) {
-                text = cv.asString();
-            } else if (cv.isArray()) {
-                for (const auto& part : cv) {
-                    if (part.get("type", "").asString() == "text")
-                        text += part.get("text", "").asString();
-                }
-            }
-            if (role == "tool") {
-                if (!text.empty())
-                    pairs.push_back({"user", "[Tool result]\n" + text});
-            } else {
-                pairs.push_back({role, text});
-            }
-        }
-        return pairs;
-    };
-
-    // ── No tools (or no registry): stream directly, live ─────────────────────
-    if (!hasTools) {
-        std::vector<std::pair<std::string,std::string>> textMessages;
-        std::vector<std::vector<uint8_t>> allImageData;
-
-        for (const auto& msg : messages) {
-            const std::string role = msg.get("role", "user").asString();
-            std::string text;
-            const Json::Value& cv = msg["content"];
-            if (cv.isString()) {
-                text = cv.asString();
-            } else if (cv.isArray()) {
-                for (const auto& part : cv) {
-                    const std::string type = part.get("type","").asString();
-                    if (type == "text") { text += part.get("text","").asString(); }
-                    else if (type == "image_url") {
-                        const std::string url = part["image_url"].get("url","").asString();
-                        if (!url.empty()) {
-                            auto bytes = decodeBase64Image(url);
-                            if (!bytes.empty()) { allImageData.push_back(std::move(bytes)); text += "<image>\n"; }
-                        }
-                    }
-                }
-            }
-            textMessages.push_back({role, text});
-        }
-
-        if (!allImageData.empty()) {
-            onError("Image content received but vision support is not available in the dlopen backend.");
+    bool emitLogprobs) {
+    for (;;) {
+        if (cancelCheck && cancelCheck()) {
             return;
         }
 
-        doInference(textMessages, maxTokens, temperature, onChunk, onError, combinedCancel, emitLogprobs);
-        return;
-    }
+        const Json::Value currentTools = (toolSystem && !taskId.empty())
+            ? toolSystem->getModelToolsForTask(taskId)
+            : tools;
+        const bool hasTools = currentTools.isArray() && !currentTools.empty();
 
-    // ── Augment system prompt with tool schemas ───────────────────────────────
-    const std::string toolAppendix = buildToolSystemPromptAppendix(tools);
+        Json::Value body(Json::objectValue);
+        body["model"] = model;
+        body["messages"] = messages;
+        body["max_tokens"] = maxTokens;
+        body["stream"] = true;
+        body["reasoning_format"] = "deepseek";
+        body["top_p"] = config_.getLlamacppTopP();
+        body["min_p"] = config_.getLlamacppMinP();
+        body["repeat_penalty"] = config_.getLlamacppRepeatPenalty();
+        if (temperature >= 0.0) {
+            body["temperature"] = temperature;
+        }
+        if (numCtx > 0) {
+            body["n_ctx"] = numCtx;
+        }
+        if (emitLogprobs && !hasTools) {
+            body["logprobs"] = true;
+        }
 
-    Json::Value augmentedMessages = messages;
-    bool foundSystem = false;
-    for (auto& msg : augmentedMessages) {
-        if (msg.get("role", "").asString() == "system") {
-            msg["content"] = msg.get("content", "").asString() + toolAppendix;
-            foundSystem = true;
+        if (hasTools) {
+            body["tools"] = currentTools;
+            body["tool_choice"] = "auto";
+            body["parse_tool_calls"] = true;
+            body["parallel_tool_calls"] = true;
+        }
+
+        std::vector<std::tuple<std::string, std::string, std::string>> toolCalls;
+        const std::string finishReason = streamOneRound(
+            body,
+            [&](const std::string& chunk) {
+                if (cancelCheck && cancelCheck()) {
+                    return false;
+                }
+                return onChunk ? onChunk(chunk) : true;
+            },
+            onError,
+            toolCalls);
+
+        if (finishReason == "_cancelled_" || finishReason == "_internal_error_" || finishReason == "_api_error_") {
+            return;
+        }
+
+        if (toolCalls.empty()) {
             break;
         }
-    }
-    if (!foundSystem) {
-        Json::Value sysMsg;
-        sysMsg["role"]    = "system";
-        sysMsg["content"] = "You are a helpful assistant." + toolAppendix;
-        Json::Value newMessages(Json::arrayValue);
-        newMessages.append(sysMsg);
-        for (const auto& m : augmentedMessages)
-            newMessages.append(m);
-        augmentedMessages = newMessages;
-    }
 
-    // ── Tool-call loop ────────────────────────────────────────────────────────
-    static constexpr int kMaxToolRounds = 10;
+        Json::Value assistantMsg(Json::objectValue);
+        assistantMsg["role"] = "assistant";
+        assistantMsg["content"] = Json::Value();
+        assistantMsg["tool_calls"] = Json::Value(Json::arrayValue);
 
-    for (int round = 0; round < kMaxToolRounds; ++round) {
-        if (combinedCancel()) return;
-        auto pairs = buildPairs(augmentedMessages);
-
-        std::string errorMsg;
-        std::string response = doInferenceCollectWithStreaming(
-            pairs, maxTokens, temperature, onChunk,
-            [&](const std::string& err) { errorMsg = err; },
-            combinedCancel, emitLogprobs);
-
-        if (!errorMsg.empty()) { onError(errorMsg); return; }
-
-        std::string toolName, toolArgsJson;
-        if (extractToolCall(response, toolName, toolArgsJson)) {
-        	std::cout << "[LlamaCpp] Tool call detected: " << toolName << "\n";
-
-        	if (combinedCancel()) return;
-
-        	if (onChunk) {
-        		Json::Value retractObj;
-        		retractObj["type"] = "retract";
-        		Json::StreamWriterBuilder wb;
-        		wb["indentation"] = "";
-        		if (!onChunk("data: " + Json::writeString(wb, retractObj) + "\n\n")) return;
-        	}
-
-        	if (onChunk) {
-        		Json::Value fakeChoice;
-        		fakeChoice["delta"]["reasoning"] = "\n*Executing tool: " + toolName + "*\n";
-        		Json::Value fakeJson;
-        		fakeJson["choices"].append(fakeChoice);
-        		Json::StreamWriterBuilder wb;
-        		wb["indentation"] = "";
-        		if (!onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n")) return;
-        	}
-
-        	if (onChunk) {
-        		Json::Value toolCallEvent;
-        		toolCallEvent["type"] = "tool_execution";
-        		toolCallEvent["tool_call"]["id"]        = "llamacpp_" + std::to_string(round);
-        		toolCallEvent["tool_call"]["name"]      = toolName;
-        		toolCallEvent["tool_call"]["arguments"] = toolArgsJson;
-        		toolCallEvent["tool_call"]["output"]    = "";
-        		Json::StreamWriterBuilder wb;
-        		wb["indentation"] = "";
-        		if (!onChunk("data: " + Json::writeString(wb, toolCallEvent) + "\n\n")) return;
-        	}
-
-        	Json::Value args(Json::objectValue);
-        	if (!toolArgsJson.empty()) {
-        		Json::CharReaderBuilder rb;
-        		std::string errs;
-        		std::istringstream ss(toolArgsJson);
-        		Json::parseFromStream(rb, ss, &args, &errs);
-        	}
-
-        	if (combinedCancel()) return;
-
-        	Json::Value result = registry->callTool(toolName, args);
-        	std::string resultStr;
-        	if (result.isArray()) {
-        		for (const auto& item : result) {
-        			if (item.get("type", "").asString() == "text")
-        				resultStr += item.get("text", "").asString();
-        		}
-        	} else {
-        		Json::StreamWriterBuilder wb;
-        		wb["indentation"] = "";
-        		resultStr = Json::writeString(wb, result);
-        	}
-
-        	if (onChunk) {
-        		Json::Value toolEvent;
-        		toolEvent["type"] = "tool_execution";
-        		toolEvent["tool_call"]["id"]        = "llamacpp_" + std::to_string(round);
-        		toolEvent["tool_call"]["name"]      = toolName;
-        		toolEvent["tool_call"]["arguments"] = toolArgsJson;
-        		toolEvent["tool_call"]["output"]    = resultStr;
-        		Json::StreamWriterBuilder wb;
-        		wb["indentation"] = "";
-        		if (!onChunk("data: " + Json::writeString(wb, toolEvent) + "\n\n")) return;
-        	}
-
-            Json::Value assistantMsg;
-            assistantMsg["role"]    = "assistant";
-            assistantMsg["content"] = response;
-            augmentedMessages.append(assistantMsg);
-
-            Json::Value toolResultMsg;
-            toolResultMsg["role"]         = "tool";
-            toolResultMsg["tool_call_id"] = "llamacpp_" + std::to_string(round);
-            toolResultMsg["content"]      = resultStr;
-            augmentedMessages.append(toolResultMsg);
-
-            continue; // next round
+        for (const auto& [id, name, argumentsJson] : toolCalls) {
+            Json::Value toolCall(Json::objectValue);
+            toolCall["id"] = id;
+            toolCall["type"] = "function";
+            toolCall["function"]["name"] = name;
+            toolCall["function"]["arguments"] = argumentsJson;
+            assistantMsg["tool_calls"].append(toolCall);
         }
+        messages.append(assistantMsg);
 
-        std::cout << "[LlamaCpp] No tool call — response already streamed live\n";
-        if (onChunk) onChunk("data:[DONE]\n\n");
-        return;
+        for (const auto& [id, name, argumentsJson] : toolCalls) {
+            if (onChunk) {
+                Json::Value thinking(Json::objectValue);
+                thinking["choices"][0]["delta"]["reasoning"] = "\n*Executing tool: " + name + "*\n";
+                Json::StreamWriterBuilder writer;
+                writer["indentation"] = "";
+                if (!onChunk("data: " + Json::writeString(writer, thinking) + "\n\n")) {
+                    return;
+                }
+
+            }
+
+            std::string resultStr;
+            if (toolSystem && !taskId.empty()) {
+                Json::Value args(Json::objectValue);
+                if (!argumentsJson.empty()) {
+                    Json::CharReaderBuilder reader;
+                    std::string errors;
+                    std::istringstream stream(argumentsJson);
+                    Json::parseFromStream(reader, stream, &args, &errors);
+                }
+
+                const auto execution = toolSystem->executeToolCall(
+                    taskId,
+                    name,
+                    id,
+                    args,
+                    [onChunk](const Json::Value& event) {
+                        if (!onChunk) {
+                            return true;
+                        }
+                        return onChunk("data: " + writeJson(event) + "\n\n");
+                    },
+                    cancelCheck);
+                resultStr = execution.modelOutput;
+                if (resultStr.empty()) {
+                    resultStr = "{}";
+                }
+            } else {
+                resultStr = "{\"error\":\"Legacy raw tools are not executable without a task-scoped tool session\"}";
+            }
+
+            Json::Value toolResult(Json::objectValue);
+            toolResult["role"] = "tool";
+            toolResult["tool_call_id"] = id;
+            toolResult["content"] = resultStr;
+            messages.append(toolResult);
+        }
     }
 
-    if (onChunk) onChunk("data:[DONE]\n\n");
+    if (onChunk) {
+        onChunk("data: [DONE]\n\n");
+    }
 }

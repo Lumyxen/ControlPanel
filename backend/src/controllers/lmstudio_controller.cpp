@@ -1,434 +1,509 @@
-// backend/src/controllers/lmstudio_controller.cpp
 #include "controllers/lmstudio_controller.h"
-#include "services/mcp_registry.h"
-#include <json/json.h>
-#include <sstream>
-#include <mutex>
-#include <deque>
-#include <thread>
-#include <future>
+
 #include <chrono>
-#include <iostream>
-#include <atomic>
+#include <deque>
+#include <future>
+#include <mutex>
+#include <sstream>
+#include <thread>
 #include <unordered_map>
-#include <shared_mutex>
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Stream state registry for explicit cancellation
-// ─────────────────────────────────────────────────────────────────────────────
+#include "server/http_utils.h"
+#include "services/llamacpp_service.h"
+#include "services/mcp_registry.h"
+#include "services/tools/tool_system.h"
 
-struct StreamingCtx {
-    std::deque<std::string> chunks;
-    std::mutex              mutex;
-    bool                    done  = false;
-    std::atomic<bool>       cancelled{false};
-    std::string             error;
-    std::chrono::steady_clock::time_point last_write = std::chrono::steady_clock::now();
+namespace {
 
-    // FIX: Track the worker future so cleanup can detect when the inference
-    // thread has actually finished, and the content_provider can avoid racing
-    // on ctx state during teardown.
-    std::shared_ptr<std::future<void>> workerFuture;
+Json::Int64 nowMillis() {
+    return static_cast<Json::Int64>(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count());
+}
+
+struct ScopeGuard {
+    std::function<void()> fn;
+    bool active = true;
+
+    ~ScopeGuard() {
+        if (active && fn) {
+            fn();
+        }
+    }
+
+    void dismiss() { active = false; }
 };
 
-static std::unordered_map<std::string, std::shared_ptr<StreamingCtx>> g_active_streams;
-static std::shared_mutex g_active_streams_mutex;
+struct StreamSession {
+    mutable std::mutex mutex;
+    std::deque<std::string> chunks;
+    std::string error;
+    bool done = false;
+    bool closed = false;
+    std::chrono::steady_clock::time_point lastWrite = std::chrono::steady_clock::now();
+    std::shared_ptr<std::future<void>> workerFuture;
+    std::atomic<bool> cancelled{false};
+};
 
-// ─────────────────────────────────────────────────────────────────────────────
-// handleStopStream
-// ─────────────────────────────────────────────────────────────────────────────
-
-void handleStopStream(const httplib::Request& req, httplib::Response& res) {
-    try {
-        Json::Value body;
-        Json::CharReaderBuilder reader;
-        std::string errs;
-        std::istringstream stream(req.body);
-        if (!Json::parseFromStream(reader, stream, &body, &errs)) {
-            res.status = 400;
-            res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
-            return;
-        }
-
-        std::string stream_id = body.isMember("stream_id") ? body["stream_id"].asString() : "";
-        if (!stream_id.empty()) {
-            std::shared_lock<std::shared_mutex> lock(g_active_streams_mutex);
-            auto it = g_active_streams.find(stream_id);
-            if (it != g_active_streams.end()) {
-                it->second->cancelled.store(true);
-                std::cout << "[Streaming] Explicitly cancelled stream " << stream_id << "\n";
-            }
-        }
-        res.status = 200;
-        res.set_content("{\"status\": \"stopped\"}", "application/json");
-    } catch (const std::exception& e) {
-        res.status = 500;
-        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
+class StreamRegistry {
+public:
+    static StreamRegistry& instance() {
+        static StreamRegistry registry;
+        return registry;
     }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// handleChat  (non-streaming, lmstudio only)
-// ─────────────────────────────────────────────────────────────────────────────
-
-void handleChat(const httplib::Request& req, httplib::Response& res, LmStudioService& service) {
-    try {
-        Json::Value body;
-        Json::CharReaderBuilder reader;
-        std::string errs;
-        std::istringstream stream(req.body);
-        if (!Json::parseFromStream(reader, stream, &body, &errs)) {
-            res.status = 400;
-            res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
-            return;
+    void start() {
+        stop_.store(false);
+        if (!cleanupThread_.joinable()) {
+            cleanupThread_ = std::thread([this]() { cleanupLoop(); });
         }
-        if (!body.isMember("model") || !body.isMember("prompt")) {
-            res.status = 400;
-            res.set_content("{\"error\": \"Missing required fields: model, prompt\"}", "application/json");
-            return;
-        }
-
-        std::string model        = body["model"].asString();
-        std::string prompt       = body["prompt"].asString();
-        int maxTokens            = body.isMember("max_tokens")    ? body["max_tokens"].asInt()     : 8192;
-        std::string systemPrompt = body.isMember("system_prompt") ? body["system_prompt"].asString(): "";
-        double temperature       = body.isMember("temperature")   ? body["temperature"].asDouble() : -1.0;
-
-        auto response = service.chat(model, prompt, maxTokens, systemPrompt, temperature);
-        res.status = 200;
-        res.set_content(response.toStyledString(), "application/json");
-    } catch (const std::exception& e) {
-        res.status = 500;
-        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
     }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// handleStreaming
-// ─────────────────────────────────────────────────────────────────────────────
+    void stop() {
+        stop_.store(true);
+        if (cleanupThread_.joinable()) {
+            cleanupThread_.join();
+        }
+    }
 
-void handleStreaming(const httplib::Request& req, httplib::Response& res,
-                     LmStudioService& service, McpRegistry* registry,
-                     LlamaCppService* llamaCppService) {
-    try {
-        Json::Value body;
-        Json::CharReaderBuilder reader;
-        std::string errs;
-        std::istringstream stream(req.body);
-        if (!Json::parseFromStream(reader, stream, &body, &errs)) {
-            res.status = 400;
-            res.set_content("{\"error\": \"Invalid JSON\"}", "application/json");
+    void put(const std::string& streamId, const std::shared_ptr<StreamSession>& session) {
+        if (streamId.empty()) {
             return;
         }
-        if (!body.isMember("model") || !body.isMember("prompt")) {
-            res.status = 400;
-            res.set_content("{\"error\": \"Missing required fields: model, prompt\"}", "application/json");
+        std::lock_guard<std::mutex> lock(mutex_);
+        sessions_[streamId] = session;
+    }
+
+    void erase(const std::string& streamId) {
+        if (streamId.empty()) {
             return;
         }
+        std::lock_guard<std::mutex> lock(mutex_);
+        sessions_.erase(streamId);
+    }
 
-        const bool hasPrebuiltMessages = body.isMember("messages") && body["messages"].isArray()
-                                         && !body["messages"].empty();
-
-        std::string model        = body["model"].asString();
-        std::string prompt       = body["prompt"].asString();
-        int maxTokens            = body.isMember("max_tokens")     ? body["max_tokens"].asInt()      : 8192;
-        std::string systemPrompt = body.isMember("system_prompt")  ? body["system_prompt"].asString(): "";
-        double temperature       = body.isMember("temperature")    ? body["temperature"].asDouble()  : -1.0;
-        int contextWindow        = body.isMember("context_window") ? body["context_window"].asInt()  : 0;
-        std::string stream_id    = body.isMember("stream_id")      ? body["stream_id"].asString()    : "";
-        bool emitLogprobs        = body.isMember("logprobs")       ? body["logprobs"].asBool()       : false;
-
-        Json::Value prebuiltMessages(Json::arrayValue);
-        if (hasPrebuiltMessages) {
-            if (!systemPrompt.empty()) {
-                Json::Value sysMsg;
-                sysMsg["role"]    = "system";
-                sysMsg["content"] = systemPrompt;
-                prebuiltMessages.append(sysMsg);
-            }
-            for (const auto& m : body["messages"])
-                prebuiltMessages.append(m);
-        }
-
-        Json::Value tools = body.isMember("tools")
-            ? body["tools"]
-            : Json::Value(Json::arrayValue);
-
-        if (registry && registry->liveCount() > 0) {
-            Json::Value mcpTools = registry->getAggregatedTools();
-            for (const auto& t : mcpTools)
-                tools.append(t);
-            std::cout << "[Streaming] Injected " << mcpTools.size()
-                      << " MCP tool(s) into request\n";
-        }
-
-        res.set_header("Content-Type",  "text/event-stream");
-        res.set_header("Cache-Control", "no-cache");
-        res.set_header("Connection",    "keep-alive");
-
-        auto ctx = std::make_shared<StreamingCtx>();
-
-        if (!stream_id.empty()) {
-            std::unique_lock<std::shared_mutex> lock(g_active_streams_mutex);
-            g_active_streams[stream_id] = ctx;
-        }
-
-        const bool isLlamaCpp = model.rfind("llamacpp::", 0) == 0;
-
-        // ── Shared onChunk / onError lambdas ──────────────────────────────────
-        // Both backends use these same lambdas to queue chunks and errors.
-        // onChunk returns false immediately when cancelled — this propagates
-        // back through doInference and stops token generation within one decode.
-        auto onChunk = [ctx](const std::string& chunk) -> bool {
-            if (ctx->cancelled.load()) return false;
-            if (!chunk.empty()) {
-                std::lock_guard<std::mutex> lock(ctx->mutex);
-                ctx->chunks.push_back(chunk);
-            }
-            return true;
-        };
-        auto onError = [ctx](const std::string& err) {
-            if (ctx->cancelled.load()) return;
-            std::lock_guard<std::mutex> lock(ctx->mutex);
-            ctx->error = err;
-            ctx->done  = true;
-        };
-        auto cancelCheck = [ctx]() -> bool {
-            return ctx->cancelled.load();
-        };
-
-        if (isLlamaCpp) {
-            // ── llama.cpp path ────────────────────────────────────────────────
-            if (!llamaCppService) {
-                res.status = 503;
-                res.set_content("{\"error\": \"llama.cpp service not available\"}", "application/json");
+    void cancel(const std::string& streamId) {
+        std::shared_ptr<StreamSession> session;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            const auto it = sessions_.find(streamId);
+            if (it == sessions_.end()) {
                 return;
             }
-
-            Json::Value llamaMessages = hasPrebuiltMessages
-                ? prebuiltMessages
-                : llamaCppService->buildMessages(prompt, systemPrompt);
-
-            // FIX: Use std::async instead of a detached std::thread so the
-            // future can be stored and checked during cleanup.  The inference
-            // thread is no longer "fire and forget" — its lifetime is tied to
-            // the StreamingCtx via workerFuture.
-            auto future = std::make_shared<std::future<void>>(
-                std::async(std::launch::async,
-                    [ctx, llamaCppService, model, llamaMessages, tools,
-                     maxTokens, temperature, contextWindow, registry,
-                     onChunk, onError, cancelCheck, emitLogprobs]() mutable {
-                        llamaCppService->streamingChatWithTools(
-                            model, llamaMessages, tools,
-                            maxTokens, onChunk, onError, registry,
-                            temperature, contextWindow, cancelCheck, emitLogprobs);
-
-                        std::lock_guard<std::mutex> lock(ctx->mutex);
-                        ctx->done = true;
-                    }
-                )
-            );
-            ctx->workerFuture = future;
-
-        } else {
-            // ── lmstudio path ─────────────────────────────────────────────────
-            const bool useTools = tools.isArray() && !tools.empty();
-
-            auto future = std::make_shared<std::future<void>>(
-                std::async(std::launch::async,
-                    [ctx, &service, registry, model, prompt, maxTokens,
-                     systemPrompt, temperature, contextWindow, tools,
-                     useTools, hasPrebuiltMessages, prebuiltMessages,
-                     onChunk, onError, cancelCheck, emitLogprobs]() mutable {
-                        if (useTools || hasPrebuiltMessages) {
-                            Json::Value messages = hasPrebuiltMessages
-                                ? prebuiltMessages
-                                : service.buildMessages(prompt, systemPrompt);
-                            service.streamingChatWithTools(
-                                model, messages, tools, maxTokens,
-                                onChunk, onError, registry, temperature, contextWindow,
-                                cancelCheck, emitLogprobs);
-                        } else {
-                            service.streamingChatWithCallback(
-                                model, prompt, maxTokens, onChunk, onError,
-                                systemPrompt, temperature, contextWindow,
-                                cancelCheck, emitLogprobs);
-                        }
-
-                        std::lock_guard<std::mutex> lock(ctx->mutex);
-                        ctx->done = true;
-                    }
-                )
-            );
-            ctx->workerFuture = future;
+            session = it->second;
         }
 
-        // ── SSE content provider ──────────────────────────────────────────────
-        //
-        // FIX 1: Heartbeat interval reduced from 500 ms to 100 ms.
-        //        This halves the worst-case delay between a client disconnecting
-        //        and the server detecting it via a failed sink.write(), which in
-        //        turn sets ctx->cancelled and stops the inference thread.
-        //
-        // FIX 2: sink.is_writable() is checked at the top of every provider
-        //        call (unchanged from before) AND the heartbeat is attempted
-        //        more frequently so TCP-level disconnects are caught sooner.
-        //
-        // FIX 3: When the provider finishes (either done or cancelled), it
-        //        waits up to 2 s for the worker future to complete.  This
-        //        prevents the StreamingCtx from being destroyed while the
-        //        inference thread is still writing to ctx->chunks.
-        res.set_content_provider(
-            "text/event-stream",
-            [ctx](size_t /*offset*/, httplib::DataSink& sink) -> bool {
-                // Already cancelled — stop immediately
-                if (ctx->cancelled.load()) {
-                    return false;
+        session->cancelled.store(true);
+        std::lock_guard<std::mutex> sessionLock(session->mutex);
+        session->done = true;
+    }
+
+private:
+    void cleanupLoop() {
+        while (!stop_.load()) {
+            for (int index = 0; index < 60 && !stop_.load(); ++index) {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
+
+            const auto now = std::chrono::steady_clock::now();
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (auto it = sessions_.begin(); it != sessions_.end();) {
+                std::lock_guard<std::mutex> sessionLock(it->second->mutex);
+                const auto age = std::chrono::duration_cast<std::chrono::seconds>(now - it->second->lastWrite).count();
+                const bool removable = (it->second->done || it->second->cancelled.load()) && age > 3600;
+                if (removable) {
+                    it = sessions_.erase(it);
+                } else {
+                    ++it;
                 }
+            }
+        }
+    }
 
-                // Detect client disconnect
-                if (!sink.is_writable()) {
-                    ctx->cancelled.store(true);
-                    std::cout << "[Streaming] Client disconnected; cancelling inference\n";
-                    return false;
-                }
+    std::atomic<bool> stop_{false};
+    std::thread cleanupThread_;
+    std::mutex mutex_;
+    std::unordered_map<std::string, std::shared_ptr<StreamSession>> sessions_;
+};
 
-                std::string to_write;
-                bool is_done = false;
+std::string takeErrorFrame(const std::shared_ptr<StreamSession>& session) {
+    std::lock_guard<std::mutex> lock(session->mutex);
+    if (session->error.empty()) {
+        return "";
+    }
 
-                {
-                    std::lock_guard<std::mutex> lock(ctx->mutex);
+    Json::Value error(Json::objectValue);
+    error["error"] = session->error;
+    session->error.clear();
+    return "data: " + writeJson(error) + "\n\n";
+}
 
-                    if (!ctx->error.empty()) {
-                        Json::Value errObj;
-                        errObj["error"] = ctx->error;
-                        Json::StreamWriterBuilder wb;
-                        wb["indentation"] = "";
-                        std::string errChunk = "data: " + Json::writeString(wb, errObj) + "\n\n";
-                        sink.write(errChunk.data(), errChunk.size());
-                        sink.done();
-                        return true;
+Json::Value buildPreparedMessages(const Json::Value& body, const std::string& systemPrompt) {
+    Json::Value messages(Json::arrayValue);
+    if (!systemPrompt.empty()) {
+        Json::Value system(Json::objectValue);
+        system["role"] = "system";
+        system["content"] = systemPrompt;
+        messages.append(system);
+    }
+    for (const auto& message : body["messages"]) {
+        messages.append(message);
+    }
+    return messages;
+}
+
+} // namespace
+
+void startStreamCleanupLoop() {
+    StreamRegistry::instance().start();
+}
+
+void stopStreamCleanupLoop() {
+    StreamRegistry::instance().stop();
+}
+
+void handleStopStream(const httplib::Request& req, httplib::Response& res) {
+    Json::Value body;
+    if (!parseJsonBody(req.body, body, res)) {
+        return;
+    }
+
+    const std::string streamId = body.get("stream_id", "").asString();
+    if (!streamId.empty()) {
+        StreamRegistry::instance().cancel(streamId);
+    }
+
+    Json::Value result(Json::objectValue);
+    result["status"] = "stopped";
+    setJson(res, result);
+}
+
+void handleChat(const httplib::Request& req, httplib::Response& res, LmStudioService& service) {
+    Json::Value body;
+    if (!parseJsonBody(req.body, body, res)) {
+        return;
+    }
+
+    if (!body.isMember("model") || !body.isMember("prompt")) {
+        setJsonError(res, 400, "Missing required fields: model, prompt");
+        return;
+    }
+
+    const Json::Value response = service.chat(
+        body["model"].asString(),
+        body["prompt"].asString(),
+        body.get("max_tokens", 8192).asInt(),
+        body.get("system_prompt", "").asString(),
+        body.get("temperature", -1.0).asDouble());
+    setJson(res, response);
+}
+
+void handleStreaming(
+    const httplib::Request& req,
+    httplib::Response& res,
+    LmStudioService& service,
+    McpRegistry* registry,
+    ToolSystem* toolSystem,
+    LlamaCppService* llamaCppService) {
+    Json::Value body;
+    if (!parseJsonBody(req.body, body, res)) {
+        return;
+    }
+
+    if (!body.isMember("model") || !body.isMember("prompt")) {
+        setJsonError(res, 400, "Missing required fields: model, prompt");
+        return;
+    }
+
+    const bool hasPrebuiltMessages =
+        body.isMember("messages") && body["messages"].isArray() && !body["messages"].empty();
+
+    const std::string model = body["model"].asString();
+    const std::string prompt = body["prompt"].asString();
+    const int maxTokens = body.get("max_tokens", 8192).asInt();
+    const std::string systemPrompt = body.get("system_prompt", "").asString();
+    const double temperature = body.get("temperature", -1.0).asDouble();
+    const int contextWindow = body.get("context_window", 0).asInt();
+    const std::string streamId = body.get("stream_id", "").asString();
+    const bool emitLogprobs = body.get("logprobs", false).asBool();
+
+    Json::Value tools = body.isMember("tools") ? body["tools"] : Json::Value(Json::arrayValue);
+    const Json::Value toolScope = body.get("tool_scope", Json::Value(Json::objectValue));
+
+    const bool isLlamaCpp = model.rfind("llamacpp::", 0) == 0;
+    if (isLlamaCpp) {
+        if (!llamaCppService) {
+            setJsonError(res, 503, "llama.cpp service not available");
+            return;
+        }
+    }
+
+    auto session = std::make_shared<StreamSession>();
+    StreamRegistry::instance().put(streamId, session);
+    ScopeGuard unregisterOnExit{[streamId]() { StreamRegistry::instance().erase(streamId); }};
+    const std::string toolSessionId = streamId.empty()
+        ? "stream_" + std::to_string(nowMillis())
+        : streamId;
+
+    if (toolSystem) {
+        ToolSystem::SessionOptions options;
+        options.taskId = toolSessionId;
+        options.toolScope = toolScope;
+        options.legacyTools = tools;
+        toolSystem->beginTaskSession(options);
+    }
+
+    auto onChunk = [session](const std::string& chunk) -> bool {
+        if (session->cancelled.load()) {
+            return false;
+        }
+        if (!chunk.empty()) {
+            std::lock_guard<std::mutex> lock(session->mutex);
+            session->chunks.push_back(chunk);
+        }
+        return !session->cancelled.load();
+    };
+
+    auto onError = [session](const std::string& error) {
+        if (session->cancelled.load()) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(session->mutex);
+        session->error = error;
+        session->done = true;
+    };
+
+    auto cancelCheck = [session]() {
+        return session->cancelled.load();
+    };
+
+    const Json::Value preparedMessages = hasPrebuiltMessages
+        ? buildPreparedMessages(body, systemPrompt)
+        : Json::Value(Json::arrayValue);
+
+    session->workerFuture = std::make_shared<std::future<void>>(std::async(
+        std::launch::async,
+        [session,
+         &service,
+         registry,
+         llamaCppService,
+         isLlamaCpp,
+         model,
+         prompt,
+         maxTokens,
+         systemPrompt,
+         temperature,
+         contextWindow,
+         emitLogprobs,
+         tools,
+         hasPrebuiltMessages,
+         onChunk,
+         onError,
+         cancelCheck,
+         preparedMessages,
+         toolSystem,
+         toolSessionId]() mutable {
+            struct SessionGuard {
+                ToolSystem* toolSystem = nullptr;
+                std::string toolSessionId;
+                ~SessionGuard() {
+                    if (toolSystem && !toolSessionId.empty()) {
+                        toolSystem->endTaskSession(toolSessionId);
                     }
-
-                    if (ctx->chunks.empty()) {
-                        is_done = ctx->done;
+                }
+            } sessionGuard{toolSystem, toolSessionId};
+            try {
+                if (isLlamaCpp) {
+                    Json::Value messages = hasPrebuiltMessages
+                        ? preparedMessages
+                        : llamaCppService->buildMessages(prompt, systemPrompt);
+                    llamaCppService->streamingChatWithTools(
+                        model,
+                        messages,
+                        tools,
+                        toolSessionId,
+                        maxTokens,
+                        onChunk,
+                        onError,
+                        toolSystem,
+                        temperature,
+                        contextWindow,
+                        cancelCheck,
+                        emitLogprobs);
+                } else {
+                    const bool useTools = tools.isArray() && !tools.empty();
+                    if (toolSystem || useTools || hasPrebuiltMessages) {
+                        Json::Value messages = hasPrebuiltMessages
+                            ? preparedMessages
+                            : service.buildMessages(prompt, systemPrompt);
+                        service.streamingChatWithTools(
+                            model,
+                            messages,
+                            tools,
+                            toolSessionId,
+                            maxTokens,
+                            onChunk,
+                            onError,
+                            toolSystem,
+                            temperature,
+                            contextWindow,
+                            cancelCheck,
+                            emitLogprobs);
                     } else {
-                        while (!ctx->chunks.empty()) {
-                            to_write += ctx->chunks.front();
-                            ctx->chunks.pop_front();
-                        }
+                        service.streamingChatWithCallback(
+                            model,
+                            prompt,
+                            maxTokens,
+                            onChunk,
+                            onError,
+                            systemPrompt,
+                            temperature,
+                            contextWindow,
+                            cancelCheck,
+                            emitLogprobs);
                     }
                 }
-
-                auto now = std::chrono::steady_clock::now();
-
-                if (!to_write.empty()) {
-                    if (!sink.write(to_write.data(), to_write.size())) {
-                        // Write failed — client dropped the connection
-                        ctx->cancelled.store(true);
-                        std::cout << "[Streaming] Write failed; cancelling inference\n";
-                        return false;
-                    }
-                    ctx->last_write = now;
-                }
-
-                if (is_done) {
-                    sink.done();
-                } else if (to_write.empty()) {
-                    // FIX: Heartbeat every 100 ms (was 500 ms).
-                    // Sending a no-op SSE comment serves two purposes:
-                    //   1. Keeps the TCP connection alive (anti-idle timeout).
-                    //   2. Detects a dropped client faster — write() failure
-                    //      is the primary signal for client disconnect.
-                    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        now - ctx->last_write).count();
-                    if (elapsed >= 100) {
-                        if (!sink.write(":\n\n", 3)) {
-                            ctx->cancelled.store(true);
-                            std::cout << "[Streaming] Heartbeat write failed; cancelling inference\n";
-                            return false;
-                        }
-                        ctx->last_write = now;
-                    }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                }
-
-                return !ctx->cancelled.load();
-            },
-            [ctx, stream_id](bool /*success*/) {
-                // FIX: Ensure ctx->cancelled is set so the worker exits its
-                // inference loop even if the provider exited for a non-error
-                // reason (e.g. sink.done() was called normally).  This is a
-                // no-op when inference already finished cleanly.
-                ctx->cancelled.store(true);
-
-                // Wait for the worker future with a short timeout so the ctx
-                // shared_ptr isn't destroyed beneath a still-running thread.
-                if (ctx->workerFuture && ctx->workerFuture->valid()) {
-                    auto status = ctx->workerFuture->wait_for(std::chrono::seconds(5));
-                    if (status != std::future_status::ready) {
-                        std::cerr << "[Streaming] Worker did not finish within timeout "
-                                     "after stream closed (stream_id=" << stream_id << ")\n";
-                    }
-                }
-
-                if (!stream_id.empty()) {
-                    std::unique_lock<std::shared_mutex> lock(g_active_streams_mutex);
-                    g_active_streams.erase(stream_id);
-                }
+            } catch (const std::exception& exception) {
+                onError(exception.what());
+            } catch (...) {
+                onError("Streaming generation failed");
             }
-        );
 
-    } catch (const std::exception& e) {
-        res.status = 500;
-        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
-    }
+            std::lock_guard<std::mutex> lock(session->mutex);
+            session->done = true;
+        }));
+
+    res.set_header("Cache-Control", "no-cache");
+    res.set_header("Connection", "keep-alive");
+    res.set_content_provider(
+        "text/event-stream",
+        [session](std::size_t, httplib::DataSink& sink) -> bool {
+            if (session->cancelled.load()) {
+                return false;
+            }
+            if (!sink.is_writable()) {
+                session->cancelled.store(true);
+                return false;
+            }
+
+            const std::string errorFrame = takeErrorFrame(session);
+            if (!errorFrame.empty()) {
+                if (!sink.write(errorFrame.data(), errorFrame.size())) {
+                    session->cancelled.store(true);
+                    return false;
+                }
+                sink.done();
+                return false;
+            }
+
+            std::string payload;
+            bool done = false;
+            bool shouldHeartbeat = false;
+            {
+                std::lock_guard<std::mutex> lock(session->mutex);
+                while (!session->chunks.empty()) {
+                    payload += session->chunks.front();
+                    session->chunks.pop_front();
+                }
+
+                done = session->done;
+                const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - session->lastWrite).count();
+                shouldHeartbeat = payload.empty() && !done && elapsed >= 100;
+            }
+
+            if (!payload.empty()) {
+                if (!sink.write(payload.data(), payload.size())) {
+                    session->cancelled.store(true);
+                    return false;
+                }
+                std::lock_guard<std::mutex> lock(session->mutex);
+                session->lastWrite = std::chrono::steady_clock::now();
+            } else if (shouldHeartbeat) {
+                if (!sink.write(":\n\n", 3)) {
+                    session->cancelled.store(true);
+                    return false;
+                }
+                std::lock_guard<std::mutex> lock(session->mutex);
+                session->lastWrite = std::chrono::steady_clock::now();
+            }
+
+            if (done) {
+                sink.done();
+                return false;
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            return true;
+        },
+        [session, streamId](bool) {
+            session->cancelled.store(true);
+            {
+                std::lock_guard<std::mutex> lock(session->mutex);
+                session->closed = true;
+            }
+
+            if (session->workerFuture && session->workerFuture->valid()) {
+                session->workerFuture->wait_for(std::chrono::seconds(5));
+            }
+
+            StreamRegistry::instance().erase(streamId);
+        });
+
+    unregisterOnExit.dismiss();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// handleLmStudioModels
-// ─────────────────────────────────────────────────────────────────────────────
-
-void handleLmStudioModels(const httplib::Request& /*req*/, httplib::Response& res,
-                          LmStudioService& service) {
-    try {
-        Json::Value models = service.getModels();
-        res.status = 200;
-        res.set_content(models.toStyledString(), "application/json");
-    } catch (const std::exception& e) {
-        res.status = 500;
-        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
-    }
+void handleLmStudioModels(const httplib::Request&, httplib::Response& res, LmStudioService& service) {
+    setJson(res, service.getModels());
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// handleModels  — merges LM Studio + llama.cpp model lists
-// ─────────────────────────────────────────────────────────────────────────────
+void handleModels(
+    const httplib::Request&,
+    httplib::Response& res,
+    LmStudioService& service,
+    const std::string& llamaCppModelsDir,
+    int llamaCppContextLength,
+    LlamaCppService* llamaCppService) {
+    Json::Value combined(Json::objectValue);
+    combined["data"] = Json::Value(Json::arrayValue);
 
-void handleModels(const httplib::Request& /*req*/, httplib::Response& res,
-                  LmStudioService& service, LlamaCppService* llamaCppService) {
-    try {
-        Json::Value combined;
-        combined["data"] = Json::Value(Json::arrayValue);
-
-        Json::Value lmsModels = service.getModels();
-        if (lmsModels.isMember("data") && lmsModels["data"].isArray()) {
-            for (const auto& m : lmsModels["data"])
-                combined["data"].append(m);
+    const Json::Value lmstudioModels = service.getModels();
+    if (lmstudioModels.isMember("data") && lmstudioModels["data"].isArray()) {
+        for (const auto& model : lmstudioModels["data"]) {
+            combined["data"].append(model);
         }
-
-        if (llamaCppService) {
-            Json::Value lcpModels = llamaCppService->getModels();
-            if (lcpModels.isMember("data") && lcpModels["data"].isArray()) {
-                for (const auto& m : lcpModels["data"])
-                    combined["data"].append(m);
-            }
-        }
-
-        res.status = 200;
-        res.set_content(combined.toStyledString(), "application/json");
-    } catch (const std::exception& e) {
-        res.status = 500;
-        res.set_content("{\"error\": \"" + std::string(e.what()) + "\"}", "application/json");
     }
+
+    Json::Value llamaModels(Json::objectValue);
+    bool usedLiveService = false;
+    if (llamaCppService) {
+        llamaModels = llamaCppService->getModels();
+        usedLiveService = !llamaModels.isMember("error");
+    }
+
+    if (!usedLiveService) {
+        llamaModels["data"] = Json::Value(Json::arrayValue);
+        const auto scanned = LlamaCppService::scanModelDirectory(
+            llamaCppModelsDir,
+            llamaCppContextLength > 0 ? llamaCppContextLength : 8192);
+        for (const auto& model : scanned) {
+            Json::Value entry(Json::objectValue);
+            entry["id"] = model.id;
+            entry["name"] = model.name;
+            entry["source"] = "llamacpp";
+            entry["context_length"] = model.contextLength;
+            entry["max_tokens"] = model.maxTokens;
+            entry["loaded"] = model.loaded;
+            entry["has_tokenizer"] = !model.tokenizerPath.empty();
+            entry["has_mmproj"] = !model.mmprojPath.empty();
+            llamaModels["data"].append(entry);
+        }
+    }
+
+    if (llamaModels.isMember("data") && llamaModels["data"].isArray()) {
+        for (const auto& model : llamaModels["data"]) {
+            combined["data"].append(model);
+        }
+    }
+
+    setJson(res, combined);
 }

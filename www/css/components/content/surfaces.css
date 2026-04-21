@@ -1,0 +1,42 @@
+/* www/css/components/content/surfaces.css */
+.card {
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--panel) 85%, transparent);
+    padding: 16px;
+    display: grid;
+    gap: 12px;
+}
+
+.card-title {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.card-desc {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--muted);
+}
+
+.option-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    align-items: start;
+    gap: 12px;
+}
+
+@media (max-width: 520px) {
+    .option-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.option-hint {
+    font-size: 0.8rem;
+    color: var(--muted);
+    grid-column: 2;
+}
+
+.option-hint a {
+    color: var(--accent);
+}

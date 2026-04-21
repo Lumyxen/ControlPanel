@@ -1,0 +1,245 @@
+// www/js/chat/generation.js
+// Pure helper functions for building conversation payloads sent to the AI backend.
+// These functions have no side-effects and do not touch the DOM.
+
+import { getNode } from './graph.js';
+import { getNodeTextContent } from './message-parts.js';
+
+// ─── buildNodeTextForHistory ──────────────────────────────────────────────────
+// Converts a single graph node into a flat string for the legacy prompt history.
+
+export function buildNodeTextForHistory(node) {
+	if (!node) return '';
+	let nodeContent = '';
+
+	if (node.parts && Array.isArray(node.parts)) {
+		const attachmentInfos = [];
+
+		for (const part of node.parts) {
+			if (part.type === 'attachment') {
+				const isImage = part.isImage ? ' (image)' : '';
+				let info = `[Attachment: ${part.name} (${part.size} bytes)${isImage}]`;
+
+				if (part.data && !part.isImage) {
+					try {
+						const b64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
+						if (b64Match) {
+							const chunk = b64Match[1].slice(0, 13336);
+							const binaryString = atob(chunk);
+							const bytes = new Uint8Array(binaryString.length);
+							for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+							const textContent = new TextDecoder('utf-8').decode(bytes).slice(0, 10000);
+							info += `\n[File Content:]\n${textContent}`;
+						}
+					} catch (e) { console.warn('Could not read file content:', e); }
+				}
+				attachmentInfos.push(info);
+			}
+		}
+
+		nodeContent = getNodeTextContent(node);
+		if (attachmentInfos.length > 0) nodeContent += '\n' + attachmentInfos.join('\n');
+	} else if (node.content) {
+		nodeContent = getNodeTextContent(node);
+	}
+
+	if (node.reasoning) nodeContent = `<think>\n${node.reasoning}\n</think>\n\n` + nodeContent;
+
+	// Fix: was `Array.isArray(node.toolCalls && node.toolCalls.length > 0)` which always returned false
+	if (node.toolCalls && Array.isArray(node.toolCalls) && node.toolCalls.length > 0) {
+		let toolsText = '';
+		for (const tc of node.toolCalls) {
+			const inputValue = tc.input ?? tc.arguments ?? '';
+			const inputStr = typeof inputValue === 'object' ? JSON.stringify(inputValue) : String(inputValue || '');
+			const outputStr = typeof tc.output === 'object' ? JSON.stringify(tc.output) : String(tc.output || '');
+			toolsText += `\n[Tool Execution: ${tc.title || tc.name}]\nInput: ${inputStr}\nOutput: ${outputStr}\n`;
+		}
+		nodeContent += toolsText;
+	}
+
+	return nodeContent;
+}
+
+function buildAssistantHistoryText(node, settings = null) {
+	let textContent = buildNodeTextForHistory(node);
+	const includeLogprobs = settings && (
+		settings.logprobHistoryHigh || settings.logprobHistoryMedium || settings.logprobHistoryLow
+	);
+
+	if (includeLogprobs && node?.tokenLogprobs && node.tokenLogprobs.length > 0) {
+		const logprobNote = buildLogprobAnnotation(node.tokenLogprobs, settings);
+		if (logprobNote) {
+			textContent += '\n\n' + logprobNote;
+		}
+	}
+
+	return textContent;
+}
+
+// ─── buildConversationHistory ────────────────────────────────────────────────
+// Converts ordered thread node IDs into the flat prompt history format still
+// used by the backend task submission/title generation paths.
+
+export function buildConversationHistory(graph, nodeIds, settings = null) {
+	let history = '';
+
+	for (const nodeId of nodeIds) {
+		const node = getNode(graph, nodeId);
+		if (!node || (node.role !== 'user' && node.role !== 'assistant')) continue;
+
+		const nodeText = node.role === 'assistant'
+			? buildAssistantHistoryText(node, settings)
+			: buildNodeTextForHistory(node);
+		if (!nodeText) continue;
+
+		history += `${node.role === 'user' ? 'User' : 'Assistant'}: ${nodeText}\n\n`;
+	}
+
+	return history.trim();
+}
+
+// ─── buildLogprobAnnotation ──────────────────────────────────────────────────
+// Builds a text annotation showing token confidence levels for selected tokens.
+// Used to include logprob info in the conversation history for the AI to see.
+
+function buildLogprobAnnotation(tokenLogprobs, settings) {
+	// Logprob thresholds (log base 2): -0.32 ≈ 80%, -1.0 ≈ 50%
+	const HIGH_THRESHOLD    = -0.32;
+	const MEDIUM_THRESHOLD  = -1.0;
+
+	const includeHigh    = settings?.logprobHistoryHigh ?? false;
+	const includeMedium  = settings?.logprobHistoryMedium ?? false;
+	const includeLow     = settings?.logprobHistoryLow ?? false;
+
+	// If nothing is enabled, skip
+	if (!includeHigh && !includeMedium && !includeLow) return null;
+
+	const annotated = [];
+	let totalTokens = 0;
+	let flaggedTokens = 0;
+
+	for (const { text, logprob } of tokenLogprobs) {
+		totalTokens++;
+		if (logprob == null || isNaN(logprob)) continue;
+
+		const prob = Math.pow(2, logprob) * 100;
+		const pct = Math.round(prob);
+
+		let level = null;
+		if (logprob >= HIGH_THRESHOLD)   level = 'HIGH';
+		else if (logprob >= MEDIUM_THRESHOLD) level = 'MEDIUM';
+		else level = 'LOW';
+
+		if ((level === 'HIGH' && !includeHigh) ||
+			(level === 'MEDIUM' && !includeMedium) ||
+			(level === 'LOW' && !includeLow)) continue;
+
+		flaggedTokens++;
+		annotated.push({ text, level, pct });
+	}
+
+	if (annotated.length === 0) return null;
+
+	// Build a structured annotation
+	let annotation = `\n<logprob_confidence total_tokens=${totalTokens} flagged=${flaggedTokens}>\n`;
+	for (const { text, level, pct } of annotated) {
+		// Use angle brackets to avoid markdown conflicts
+		const escaped = text.replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+		annotation += `[${escaped}](${level}=${pct}%) `;
+	}
+	annotation += '\n</logprob_confidence>\n';
+	return annotation;
+}
+
+// ─── buildApiMessages ─────────────────────────────────────────────────────────
+// Converts an array of node IDs into structured OpenAI-format messages.
+// Returns a multimodal array when any user message contains image attachments.
+//
+// @param {Object} [settings] - Optional settings object with logprobHistory* flags
+
+export function buildApiMessages(graph, nodeIds, settings = null) {
+	const apiMessages = [];
+
+	// Determine which logprob levels to include
+	const includeLogprobs = settings && (
+		settings.logprobHistoryHigh || settings.logprobHistoryMedium || settings.logprobHistoryLow
+	);
+
+	for (const nodeId of nodeIds) {
+		const node = getNode(graph, nodeId);
+		if (!node) continue;
+		const role = node.role === 'user' ? 'user' : 'assistant';
+
+		if (role === 'assistant') {
+			let textContent = includeLogprobs
+				? buildAssistantHistoryText(node, settings)
+				: buildNodeTextForHistory(node);
+
+			if (textContent) apiMessages.push({ role, content: textContent });
+			continue;
+		}
+
+		// User messages: may contain image attachments → multimodal content blocks
+		if (node.parts && Array.isArray(node.parts)) {
+			const textParts = [];
+			const contentBlocks = [];
+			let hasImages = false;
+
+			for (const part of node.parts) {
+				if (part.type === 'text' && part.content) {
+					textParts.push(part.content);
+				} else if (part.type === 'attachment') {
+					if (part.isImage && part.data) {
+						hasImages = true;
+						contentBlocks.push({ type: 'image_url', image_url: { url: part.data } });
+					} else if (!part.isImage && part.data) {
+						try {
+							const b64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
+							if (b64Match) {
+								const chunk = b64Match[1].slice(0, 13336);
+								const binary = atob(chunk);
+								const bytes = new Uint8Array(binary.length);
+								for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+								const text = new TextDecoder('utf-8').decode(bytes).slice(0, 10000);
+								textParts.push(`\n[File: ${part.name}]\n${text}`);
+							}
+						} catch (e) { console.warn('[generation] Could not decode file attachment:', e); }
+					}
+				}
+			}
+
+			const combinedText = textParts.join('');
+			if (hasImages) {
+				if (combinedText) contentBlocks.push({ type: 'text', text: combinedText });
+				apiMessages.push({ role, content: contentBlocks });
+			} else if (combinedText) {
+				apiMessages.push({ role, content: combinedText });
+			}
+		} else if (node.content) {
+			apiMessages.push({ role, content: node.content });
+		}
+	}
+
+	return apiMessages;
+}
+
+// ─── parseStreamReasoning ─────────────────────────────────────────────────────
+// Extracts content and reasoning from a raw stream text containing <think> blocks.
+
+export function parseStreamReasoning(rawText) {
+	let parsedContent  = '';
+	let parsedReasoning = '';
+	let currentStr = rawText;
+
+	while (true) {
+		const startIdx = currentStr.indexOf('<think>');
+		if (startIdx === -1) { parsedContent += currentStr; break; }
+		parsedContent += currentStr.substring(0, startIdx);
+		const endIdx = currentStr.indexOf('</think>', startIdx + 7);
+		if (endIdx === -1) { parsedReasoning += currentStr.substring(startIdx + 7); break; }
+		parsedReasoning += currentStr.substring(startIdx + 7, endIdx) + '\n\n';
+		currentStr = currentStr.substring(endIdx + 8);
+	}
+
+	return { parsedContent, parsedReasoning };
+}

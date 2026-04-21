@@ -6,31 +6,36 @@
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<title>Control Panel</title>
+	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%232d3a31'/%3E%3Cpath d='M20 18h24v8H28v12h12v8H20z' fill='%23d3c6aa'/%3E%3C/svg%3E" />
 	<link rel="stylesheet" href="css/variables.css" />
 	<link rel="stylesheet" href="css/base.css" />
 	<link rel="stylesheet" href="css/layout.css" />
 	<link rel="stylesheet" href="css/sidebar.css" />
 	<link rel="stylesheet" href="css/content.css" />
 	<link rel="stylesheet" href="css/chat.css" />
-	<link rel="stylesheet" href="css/bibliography.css" />
 	<link rel="stylesheet" href="css/connection-monitor.css" />
-	<link rel="stylesheet" href="css/latex.css" />
-	<link rel="stylesheet" href="css/latex.css" />
-	<!-- KaTeX Styles -->
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+	<link rel="stylesheet" href="css/settings.css" />
+	<style>
+		html[data-auth-pending="true"],
+		html[data-auth-redirecting="true"] {
+			cursor: progress;
+		}
+
+		html[data-auth-pending="true"] body,
+		html[data-auth-redirecting="true"] body {
+			pointer-events: none;
+			user-select: none;
+		}
+	</style>
 
 	<!--
 		Auth pre-check — runs synchronously before any rendering.
 
 		We cannot do the full async auth check (which includes asking peer tabs
 		via BroadcastChannel) from an inline script, so instead:
-		  1. Hide the page immediately to prevent any content flash.
-		  2. Apply the saved theme so there is no colour flash either.
-		  3. If the session key is already in sessionStorage (same tab refresh,
-		     or the key was already synced by a previous load), skip straight
-		     to showing the page. The async module (app.js) will handle the
-		     BroadcastChannel sync for the "no key yet" case and either reveal
-		     the page or redirect.
+		  1. Apply the saved theme before first paint.
+		  2. Keep the app hidden and non-interactive until boot/main.js either
+		     validates the session or redirects to login.
 	-->
 	<script>
 		(function () {
@@ -40,13 +45,8 @@
 				if (t) document.documentElement.setAttribute('data-theme', t);
 			} catch (_) {}
 
-			// Hide page until the async auth check in app.js completes.
-			// app.js sets visibility back to '' after confirming the key.
-			// If the key is already present (refreshed tab), unhide immediately
-			// so there is zero visible delay for the common case.
-			if (!sessionStorage.getItem('ctrlpanel:sessionToken')) {
-				document.documentElement.style.visibility = 'hidden';
-			}
+			document.documentElement.setAttribute('data-auth-pending', 'true');
+			document.documentElement.style.visibility = 'hidden';
 		})();
 	</script>
 
@@ -175,7 +175,6 @@
 	</aside>
 	<main id="content" class="content" data-fragment="main"></main>
 	<!-- App Scripts -->
-	<script defer src="js/latex/engines/katex.min.js"></script>
 	<script type="module" src="js/app.js?v=2"></script>
 	<script src="js/browser-detect.js?v=2"></script>
 </body>

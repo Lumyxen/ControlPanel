@@ -199,6 +199,36 @@ Json::Value McpRegistry::getAggregatedTools() const {
     return tools;
 }
 
+Json::Value McpRegistry::listBridgedTools() const {
+    Json::Value tools(Json::arrayValue);
+
+    for (auto& entry : const_cast<McpRegistry*>(this)->entries_) {
+        if (!isClientReady(entry)) {
+            continue;
+        }
+
+        const std::string packId = "mcp_" + sanitizeName(entry.name);
+        Json::Value serverTools = listToolsForEntry(entry);
+        for (const auto& tool : serverTools) {
+            Json::Value descriptor(Json::objectValue);
+            const std::string toolName = tool["function"].get("name", "").asString();
+            descriptor["serverName"] = entry.name;
+            descriptor["toolName"] = toolName;
+            descriptor["toolId"] = sanitizeName(toolName);
+            descriptor["canonicalId"] = packId + "/" + sanitizeName(toolName);
+            descriptor["packId"] = packId;
+            descriptor["packTitle"] = entry.name;
+            descriptor["packDescription"] = "Virtual MCP pack imported from " + entry.name;
+            descriptor["title"] = toolName;
+            descriptor["description"] = tool["function"].get("description", "").asString();
+            descriptor["inputSchema"] = tool["function"].get("parameters", Json::Value(Json::objectValue));
+            tools.append(descriptor);
+        }
+    }
+
+    return tools;
+}
+
 // ── callTool ──────────────────────────────────────────────────────────────────
 
 Json::Value McpRegistry::callTool(const std::string& qualifiedName,
@@ -228,6 +258,23 @@ Json::Value McpRegistry::callTool(const std::string& qualifiedName,
 
     Json::Value err;
     err["error"] = "No live MCP client found for '" + qualifiedName + "'";
+    return err;
+}
+
+Json::Value McpRegistry::callBridgedTool(
+    const std::string& serverName,
+    const std::string& toolName,
+    const Json::Value& arguments) {
+    for (auto& entry : entries_) {
+        if (entry.name == serverName && isClientReady(entry)) {
+            std::cout << "[McpRegistry] Bridged call " << serverName
+                      << "/" << toolName << "\n";
+            return callToolForEntry(entry, toolName, arguments);
+        }
+    }
+
+    Json::Value err;
+    err["error"] = "No live MCP client found for '" + serverName + "'";
     return err;
 }
 

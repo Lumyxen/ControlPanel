@@ -1,347 +1,428 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#include <string>
+#include <algorithm>
 #include <fstream>
 #include <json/json.h>
 #include <mutex>
+#include <string>
 
 class Config {
 private:
-    int         port;
-    std::string host;
-    std::string defaultModel;
-    int         fallbackMaxOutputTokens;
-    double      temperature;
-    std::string systemPrompt;
-    std::string lmStudioUrl;
-
-    // ── llama.cpp settings ────────────────────────────────────────────────────
-    bool        llamacppFlashAttn;
-    bool        llamacppKvCacheReuse;
-    int         llamacppEvalBatchSize;
-    int         llamacppCtxSize;
-    int         llamacppGpuLayers;
-    int         llamacppThreads;
-    int         llamacppThreadsBatch;
-    double      llamacppTopP;
-    double      llamacppMinP;
-    double      llamacppRepeatPenalty;
-    int         llamacppModelKeepAlive; // -1 = infinite, 0 = immediate, >0 = minutes
-    
-    // KV Cache Type
-    std::string llamacppKvCacheType; // "f16", "q8_0", "q4_0"
-
-    // ── Backend preference ────────────────────────────────────────────────────
-    std::string llamacppBackend;
-
-    // llama.cpp git tag used when building backend .so files via BackendBuilder.
-    std::string llamacppTag;
-
-    // ── UI dismiss state ──────────────────────────────────────────────────────
-    bool        backendSuggestionDismissed;
-
-    // ── Logprob highlighting ──────────────────────────────────────────────────
-    bool        logprobHighlightHigh;     // Highlight high confidence tokens
-    bool        logprobHighlightMedium;   // Highlight medium confidence tokens
-    bool        logprobHighlightLow;      // Highlight low confidence tokens
-
-    // ── Logprob inclusion in chat history ─────────────────────────────────────
-    bool        logprobHistoryHigh;   // Include high confidence tokens in history
-    bool        logprobHistoryMedium; // Include medium confidence tokens in history
-    bool        logprobHistoryLow;    // Include low confidence tokens in history
-
-    // ── AI Title Generation ───────────────────────────────────────────────────
-    bool        aiTitleEnabled;       // Enable AI-generated chat titles
-    std::string aiTitleModel;         // Model to use for title generation (empty = use chat model)
-    std::string aiTitleSystemPrompt;  // Custom system prompt for title generation
-    bool        llamacppTitleModelConcurrent; // Load title model alongside chat model (vs unload/swap/reload)
-
-    std::string settingsPath;
-    std::mutex  mutex;
-
-public:
-    Config(const std::string& path)
-        : port(8080), host("0.0.0.0"),
-          defaultModel(""),
-          fallbackMaxOutputTokens(8192), temperature(0.7),
-          systemPrompt(R"SYS(You are {model}, a reasoning engine with access to powerful tools. 
+    struct State {
+        int port = 8080;
+        std::string host = "0.0.0.0";
+        std::string defaultModel;
+        int fallbackMaxOutputTokens = 8192;
+        double temperature = 0.7;
+        std::string systemPrompt = R"SYS(You are in an advanced AI harness with access to a deferred internal tool system.
 
 Core principles:
+- Search the internal tool catalog before loading or calling specialist tools
+- Load only the tool definitions you actually need for the current task
 - Rely on tools for factual queries, calculations, and data retrieval - never guess or hallucinate
 - Say "I don't know" or be honest when uncertain or when tools don't provide a clear answer
 - Be direct and concise; prioritize information density over verbosity
 - Use latest standards and best practices for technical work
-- Format math with LaTeX ($inline$ or $$block$$)
-- Only cite sources you actually retrieved via tools in this session)SYS"),
-          lmStudioUrl("http://localhost:1234"),
-          llamacppFlashAttn(true),
-          llamacppKvCacheReuse(true),
-          llamacppEvalBatchSize(2048),
-          llamacppCtxSize(0),
-          llamacppGpuLayers(0),
-          llamacppThreads(0),
-          llamacppThreadsBatch(0),
-          llamacppTopP(0.9),
-          llamacppMinP(0.05),
-          llamacppRepeatPenalty(1.15),
-          llamacppModelKeepAlive(5),
-          llamacppKvCacheType("f16"),
-          llamacppBackend("auto"),
-          llamacppTag("b8749"),
-          backendSuggestionDismissed(false),
-          logprobHighlightHigh(false),
-          logprobHighlightMedium(false),
-          logprobHighlightLow(true),
-          logprobHistoryHigh(false),
-          logprobHistoryMedium(false),
-          logprobHistoryLow(false),
-          aiTitleEnabled(true),
-          aiTitleModel(""),
-          aiTitleSystemPrompt("Describe the chat in 1-3 words. No quotes, or explanation. Reason as minimally as possible"),
-          llamacppTitleModelConcurrent(false),
-          settingsPath(path) {}
+- Only cite sources you actually retrieved via tools in this session)SYS";
+        std::string lmStudioUrl = "http://localhost:1234";
 
-    void load() {
-        std::lock_guard<std::mutex> lock(mutex);
-        std::ifstream file(settingsPath);
-        if (!file.is_open()) { saveUnlocked(); return; }
-        Json::Value cfg;
-        try { file >> cfg; } catch (...) { saveUnlocked(); return; }
+        bool llamacppFlashAttn = true;
+        bool llamacppKvCacheReuse = true;
+        int llamacppEvalBatchSize = 2048;
+        int llamacppCtxSize = 0;
+        int llamacppGpuLayers = 0;
+        int llamacppThreads = 0;
+        int llamacppThreadsBatch = 0;
+        double llamacppTopP = 0.9;
+        double llamacppMinP = 0.05;
+        double llamacppRepeatPenalty = 1.15;
+        int llamacppModelKeepAlive = 5;
+        int llamacppMaxConcurrentInstances = 4;
+        int llamacppMaxLoadedModels = 2;
+        int llamacppIdleTimeoutSeconds = 300;
+        std::string llamacppKvCacheType = "f16";
+        std::string llamacppBackend = "auto";
+        std::string llamacppTag = "b8846";
+        bool llamacppConcurrentGeneration = true;
 
-        if (cfg.isMember("port"))         port         = cfg["port"].asInt();
-        if (cfg.isMember("host"))         host         = cfg["host"].asString();
-        if (cfg.isMember("defaultModel")) defaultModel = cfg["defaultModel"].asString();
-        if (cfg.isMember("temperature"))  temperature  = cfg["temperature"].asDouble();
-        if (cfg.isMember("systemPrompt")) systemPrompt = cfg["systemPrompt"].asString();
-        if (cfg.isMember("lmStudioUrl"))  lmStudioUrl  = cfg["lmStudioUrl"].asString();
-        if (cfg.isMember("fallbackMaxOutputTokens")) fallbackMaxOutputTokens = cfg["fallbackMaxOutputTokens"].asInt();
-        else if (cfg.isMember("maxTokens")) fallbackMaxOutputTokens = cfg["maxTokens"].asInt();
+        bool backendSuggestionDismissed = false;
 
-        if (cfg.isMember("llamacppFlashAttn"))     llamacppFlashAttn     = cfg["llamacppFlashAttn"].asBool();
-        if (cfg.isMember("llamacppKvCacheReuse"))  llamacppKvCacheReuse  = cfg["llamacppKvCacheReuse"].asBool();
-        if (cfg.isMember("llamacppEvalBatchSize")) llamacppEvalBatchSize = cfg["llamacppEvalBatchSize"].asInt();
-        if (cfg.isMember("llamacppCtxSize"))       llamacppCtxSize       = cfg["llamacppCtxSize"].asInt();
-        if (cfg.isMember("llamacppGpuLayers"))     llamacppGpuLayers     = cfg["llamacppGpuLayers"].asInt();
-        if (cfg.isMember("llamacppThreads"))       llamacppThreads       = cfg["llamacppThreads"].asInt();
-        if (cfg.isMember("llamacppThreadsBatch"))  llamacppThreadsBatch  = cfg["llamacppThreadsBatch"].asInt();
-        if (cfg.isMember("llamacppTopP"))          llamacppTopP          = cfg["llamacppTopP"].asDouble();
-        if (cfg.isMember("llamacppMinP"))          llamacppMinP          = cfg["llamacppMinP"].asDouble();
-        if (cfg.isMember("llamacppRepeatPenalty")) llamacppRepeatPenalty = cfg["llamacppRepeatPenalty"].asDouble();
-        if (cfg.isMember("llamacppModelKeepAlive"))llamacppModelKeepAlive= cfg["llamacppModelKeepAlive"].asInt();
-        if (cfg.isMember("llamacppKvCacheType"))   llamacppKvCacheType   = cfg["llamacppKvCacheType"].asString();
+        bool logprobHighlightHigh = false;
+        bool logprobHighlightMedium = false;
+        bool logprobHighlightLow = true;
 
-        if (cfg.isMember("llamacppBackend")) {
-            const std::string b = cfg["llamacppBackend"].asString();
-            if (b == "auto" || b == "cpu" || b == "cuda" || b == "rocm" || b == "vulkan")
-                llamacppBackend = b;
+        bool logprobHistoryHigh = false;
+        bool logprobHistoryMedium = false;
+        bool logprobHistoryLow = false;
+
+        bool aiTitleEnabled = true;
+        std::string aiTitleModel;
+        std::string aiTitleSystemPrompt =
+            "Describe the chat in 1-3 words. Output only the title text. No quotes. No explanation.";
+    };
+
+    State state_;
+    std::string settingsPath_;
+    mutable std::mutex mutex_;
+
+    static void applyGeneralJson(State& state, const Json::Value& root) {
+        if (root.isMember("port")) state.port = root["port"].asInt();
+        if (root.isMember("host")) state.host = root["host"].asString();
+        if (root.isMember("defaultModel")) state.defaultModel = root["defaultModel"].asString();
+        if (root.isMember("temperature")) state.temperature = root["temperature"].asDouble();
+        if (root.isMember("systemPrompt")) state.systemPrompt = root["systemPrompt"].asString();
+        if (root.isMember("lmStudioUrl")) state.lmStudioUrl = root["lmStudioUrl"].asString();
+        if (root.isMember("fallbackMaxOutputTokens")) {
+            state.fallbackMaxOutputTokens = root["fallbackMaxOutputTokens"].asInt();
+        } else if (root.isMember("maxTokens")) {
+            state.fallbackMaxOutputTokens = root["maxTokens"].asInt();
         }
-        if (cfg.isMember("llamacppTag") && !cfg["llamacppTag"].asString().empty())
-            llamacppTag = cfg["llamacppTag"].asString();
-        if (cfg.isMember("backendSuggestionDismissed"))
-            backendSuggestionDismissed = cfg["backendSuggestionDismissed"].asBool();
-        if (cfg.isMember("logprobHighlightHigh"))
-            logprobHighlightHigh = cfg["logprobHighlightHigh"].asBool();
-        if (cfg.isMember("logprobHighlightMedium"))
-            logprobHighlightMedium = cfg["logprobHighlightMedium"].asBool();
-        if (cfg.isMember("logprobHighlightLow"))
-            logprobHighlightLow = cfg["logprobHighlightLow"].asBool();
-        if (cfg.isMember("logprobHistoryHigh"))
-            logprobHistoryHigh = cfg["logprobHistoryHigh"].asBool();
-        if (cfg.isMember("logprobHistoryMedium"))
-            logprobHistoryMedium = cfg["logprobHistoryMedium"].asBool();
-        if (cfg.isMember("logprobHistoryLow"))
-            logprobHistoryLow = cfg["logprobHistoryLow"].asBool();
-        if (cfg.isMember("aiTitleEnabled"))
-            aiTitleEnabled = cfg["aiTitleEnabled"].asBool();
-        if (cfg.isMember("aiTitleModel"))
-            aiTitleModel = cfg["aiTitleModel"].asString();
-        if (cfg.isMember("aiTitleSystemPrompt"))
-            aiTitleSystemPrompt = cfg["aiTitleSystemPrompt"].asString();
-        if (cfg.isMember("llamacppTitleModelConcurrent"))
-            llamacppTitleModelConcurrent = cfg["llamacppTitleModelConcurrent"].asBool();
     }
 
-    void save() { std::lock_guard<std::mutex> lock(mutex); saveUnlocked(); }
+    static void applyLlamaJson(State& state, const Json::Value& root, bool legacyConcurrentOnlyEnables) {
+        if (root.isMember("llamacppFlashAttn")) state.llamacppFlashAttn = root["llamacppFlashAttn"].asBool();
+        if (root.isMember("llamacppKvCacheReuse")) state.llamacppKvCacheReuse = root["llamacppKvCacheReuse"].asBool();
+        if (root.isMember("llamacppEvalBatchSize")) state.llamacppEvalBatchSize = root["llamacppEvalBatchSize"].asInt();
+        if (root.isMember("llamacppCtxSize")) state.llamacppCtxSize = root["llamacppCtxSize"].asInt();
+        if (root.isMember("llamacppGpuLayers")) state.llamacppGpuLayers = root["llamacppGpuLayers"].asInt();
+        if (root.isMember("llamacppThreads")) state.llamacppThreads = root["llamacppThreads"].asInt();
+        if (root.isMember("llamacppThreadsBatch")) state.llamacppThreadsBatch = root["llamacppThreadsBatch"].asInt();
+        if (root.isMember("llamacppTopP")) state.llamacppTopP = root["llamacppTopP"].asDouble();
+        if (root.isMember("llamacppMinP")) state.llamacppMinP = root["llamacppMinP"].asDouble();
+        if (root.isMember("llamacppRepeatPenalty")) state.llamacppRepeatPenalty = root["llamacppRepeatPenalty"].asDouble();
+        if (root.isMember("llamacppModelKeepAlive")) state.llamacppModelKeepAlive = root["llamacppModelKeepAlive"].asInt();
+        if (root.isMember("llamacppKvCacheType")) state.llamacppKvCacheType = root["llamacppKvCacheType"].asString();
 
-    void updateFromJson(const Json::Value& root) {
-        std::lock_guard<std::mutex> lock(mutex);
+        if (root.isMember("llamacppMaxConcurrentInstances")) {
+            state.llamacppMaxConcurrentInstances =
+                std::clamp(root["llamacppMaxConcurrentInstances"].asInt(), 1, 100);
+        }
 
-        if (root.isMember("port"))         port         = root["port"].asInt();
-        if (root.isMember("host"))         host         = root["host"].asString();
-        if (root.isMember("defaultModel")) defaultModel = root["defaultModel"].asString();
-        if (root.isMember("temperature"))  temperature  = root["temperature"].asDouble();
-        if (root.isMember("systemPrompt")) systemPrompt = root["systemPrompt"].asString();
-        if (root.isMember("lmStudioUrl"))  lmStudioUrl  = root["lmStudioUrl"].asString();
-        if (root.isMember("fallbackMaxOutputTokens")) fallbackMaxOutputTokens = root["fallbackMaxOutputTokens"].asInt();
-        else if (root.isMember("maxTokens")) fallbackMaxOutputTokens = root["maxTokens"].asInt();
+        if (root.isMember("llamacppMaxLoadedModels")) {
+            state.llamacppMaxLoadedModels =
+                std::clamp(root["llamacppMaxLoadedModels"].asInt(), 0, 100);
+        }
 
-        if (root.isMember("llamacppFlashAttn"))     llamacppFlashAttn     = root["llamacppFlashAttn"].asBool();
-        if (root.isMember("llamacppKvCacheReuse"))  llamacppKvCacheReuse  = root["llamacppKvCacheReuse"].asBool();
-        if (root.isMember("llamacppEvalBatchSize")) llamacppEvalBatchSize = root["llamacppEvalBatchSize"].asInt();
-        if (root.isMember("llamacppCtxSize"))       llamacppCtxSize       = root["llamacppCtxSize"].asInt();
-        if (root.isMember("llamacppGpuLayers"))     llamacppGpuLayers     = root["llamacppGpuLayers"].asInt();
-        if (root.isMember("llamacppThreads"))       llamacppThreads       = root["llamacppThreads"].asInt();
-        if (root.isMember("llamacppThreadsBatch"))  llamacppThreadsBatch  = root["llamacppThreadsBatch"].asInt();
-        if (root.isMember("llamacppTopP"))          llamacppTopP          = root["llamacppTopP"].asDouble();
-        if (root.isMember("llamacppMinP"))          llamacppMinP          = root["llamacppMinP"].asDouble();
-        if (root.isMember("llamacppRepeatPenalty")) llamacppRepeatPenalty = root["llamacppRepeatPenalty"].asDouble();
-        if (root.isMember("llamacppModelKeepAlive"))llamacppModelKeepAlive= root["llamacppModelKeepAlive"].asInt();
-        if (root.isMember("llamacppKvCacheType"))   llamacppKvCacheType   = root["llamacppKvCacheType"].asString();
+        if (root.isMember("llamacppIdleTimeoutSeconds")) {
+            state.llamacppIdleTimeoutSeconds =
+                std::clamp(root["llamacppIdleTimeoutSeconds"].asInt(), 30, 86400);
+        }
 
         if (root.isMember("llamacppBackend")) {
-            const std::string b = root["llamacppBackend"].asString();
-            if (b == "auto" || b == "cpu" || b == "cuda" || b == "rocm" || b == "vulkan")
-                llamacppBackend = b;
+            const std::string backend = root["llamacppBackend"].asString();
+            if (backend == "auto" || backend == "cpu" || backend == "cuda" ||
+                backend == "rocm" || backend == "vulkan") {
+                state.llamacppBackend = backend;
+            }
         }
-        if (root.isMember("llamacppTag") && !root["llamacppTag"].asString().empty())
-            llamacppTag = root["llamacppTag"].asString();
-        if (root.isMember("backendSuggestionDismissed"))
-            backendSuggestionDismissed = root["backendSuggestionDismissed"].asBool();
-        if (root.isMember("logprobHighlightHigh"))
-            logprobHighlightHigh = root["logprobHighlightHigh"].asBool();
-        if (root.isMember("logprobHighlightMedium"))
-            logprobHighlightMedium = root["logprobHighlightMedium"].asBool();
-        if (root.isMember("logprobHighlightLow"))
-            logprobHighlightLow = root["logprobHighlightLow"].asBool();
-        if (root.isMember("logprobHistoryHigh"))
-            logprobHistoryHigh = root["logprobHistoryHigh"].asBool();
-        if (root.isMember("logprobHistoryMedium"))
-            logprobHistoryMedium = root["logprobHistoryMedium"].asBool();
-        if (root.isMember("logprobHistoryLow"))
-            logprobHistoryLow = root["logprobHistoryLow"].asBool();
-        if (root.isMember("aiTitleEnabled"))
-            aiTitleEnabled = root["aiTitleEnabled"].asBool();
-        if (root.isMember("aiTitleModel"))
-            aiTitleModel = root["aiTitleModel"].asString();
-        if (root.isMember("aiTitleSystemPrompt"))
-            aiTitleSystemPrompt = root["aiTitleSystemPrompt"].asString();
-        if (root.isMember("llamacppTitleModelConcurrent"))
-            llamacppTitleModelConcurrent = root["llamacppTitleModelConcurrent"].asBool();
 
+        if (root.isMember("llamacppTag") && !root["llamacppTag"].asString().empty()) {
+            state.llamacppTag = root["llamacppTag"].asString();
+        }
+
+        if (root.isMember("llamacppConcurrentGeneration")) {
+            state.llamacppConcurrentGeneration = root["llamacppConcurrentGeneration"].asBool();
+        } else if (root.isMember("llamacppTitleModelConcurrent")) {
+            const bool legacyValue = root["llamacppTitleModelConcurrent"].asBool();
+            if (!legacyConcurrentOnlyEnables || legacyValue) {
+                state.llamacppConcurrentGeneration = legacyValue;
+            }
+        }
+    }
+
+    static void applyUiJson(State& state, const Json::Value& root) {
+        if (root.isMember("backendSuggestionDismissed")) {
+            state.backendSuggestionDismissed = root["backendSuggestionDismissed"].asBool();
+        }
+
+        if (root.isMember("logprobHighlightHigh")) state.logprobHighlightHigh = root["logprobHighlightHigh"].asBool();
+        if (root.isMember("logprobHighlightMedium")) state.logprobHighlightMedium = root["logprobHighlightMedium"].asBool();
+        if (root.isMember("logprobHighlightLow")) state.logprobHighlightLow = root["logprobHighlightLow"].asBool();
+
+        if (root.isMember("logprobHistoryHigh")) state.logprobHistoryHigh = root["logprobHistoryHigh"].asBool();
+        if (root.isMember("logprobHistoryMedium")) state.logprobHistoryMedium = root["logprobHistoryMedium"].asBool();
+        if (root.isMember("logprobHistoryLow")) state.logprobHistoryLow = root["logprobHistoryLow"].asBool();
+
+        if (root.isMember("aiTitleEnabled")) state.aiTitleEnabled = root["aiTitleEnabled"].asBool();
+        if (root.isMember("aiTitleModel")) state.aiTitleModel = root["aiTitleModel"].asString();
+        if (root.isMember("aiTitleSystemPrompt")) state.aiTitleSystemPrompt = root["aiTitleSystemPrompt"].asString();
+    }
+
+    Json::Value toJsonUnlocked() const {
+        Json::Value root;
+        root["host"] = state_.host;
+        root["port"] = state_.port;
+        root["defaultModel"] = state_.defaultModel;
+        root["fallbackMaxOutputTokens"] = state_.fallbackMaxOutputTokens;
+        root["temperature"] = state_.temperature;
+        root["systemPrompt"] = state_.systemPrompt;
+        root["lmStudioUrl"] = state_.lmStudioUrl;
+
+        root["llamacppFlashAttn"] = state_.llamacppFlashAttn;
+        root["llamacppKvCacheReuse"] = state_.llamacppKvCacheReuse;
+        root["llamacppEvalBatchSize"] = state_.llamacppEvalBatchSize;
+        root["llamacppCtxSize"] = state_.llamacppCtxSize;
+        root["llamacppGpuLayers"] = state_.llamacppGpuLayers;
+        root["llamacppThreads"] = state_.llamacppThreads;
+        root["llamacppThreadsBatch"] = state_.llamacppThreadsBatch;
+        root["llamacppTopP"] = state_.llamacppTopP;
+        root["llamacppMinP"] = state_.llamacppMinP;
+        root["llamacppRepeatPenalty"] = state_.llamacppRepeatPenalty;
+        root["llamacppModelKeepAlive"] = state_.llamacppModelKeepAlive;
+        root["llamacppKvCacheType"] = state_.llamacppKvCacheType;
+        root["llamacppMaxConcurrentInstances"] = state_.llamacppMaxConcurrentInstances;
+        root["llamacppMaxLoadedModels"] = state_.llamacppMaxLoadedModels;
+        root["llamacppIdleTimeoutSeconds"] = state_.llamacppIdleTimeoutSeconds;
+        root["llamacppBackend"] = state_.llamacppBackend;
+        root["llamacppTag"] = state_.llamacppTag;
+        root["llamacppConcurrentGeneration"] = state_.llamacppConcurrentGeneration;
+
+        root["backendSuggestionDismissed"] = state_.backendSuggestionDismissed;
+
+        root["logprobHighlightHigh"] = state_.logprobHighlightHigh;
+        root["logprobHighlightMedium"] = state_.logprobHighlightMedium;
+        root["logprobHighlightLow"] = state_.logprobHighlightLow;
+
+        root["logprobHistoryHigh"] = state_.logprobHistoryHigh;
+        root["logprobHistoryMedium"] = state_.logprobHistoryMedium;
+        root["logprobHistoryLow"] = state_.logprobHistoryLow;
+
+        root["aiTitleEnabled"] = state_.aiTitleEnabled;
+        root["aiTitleModel"] = state_.aiTitleModel;
+        root["aiTitleSystemPrompt"] = state_.aiTitleSystemPrompt;
+        return root;
+    }
+
+    void saveUnlocked() const {
+        std::ofstream file(settingsPath_);
+        if (!file.is_open()) {
+            return;
+        }
+
+        Json::StreamWriterBuilder builder;
+        builder["indentation"] = "    ";
+        std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+        Json::Value root = toJsonUnlocked();
+        writer->write(root, &file);
+    }
+
+public:
+    explicit Config(const std::string& path) : settingsPath_(path) {}
+
+    void load() {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        std::ifstream file(settingsPath_);
+        if (!file.is_open()) {
+            saveUnlocked();
+            return;
+        }
+
+        Json::Value root;
+        try {
+            file >> root;
+        } catch (...) {
+            saveUnlocked();
+            return;
+        }
+
+        applyGeneralJson(state_, root);
+        applyLlamaJson(state_, root, true);
+        applyUiJson(state_, root);
+    }
+
+    void save() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        saveUnlocked();
+    }
+
+    void updateFromJson(const Json::Value& root) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        applyGeneralJson(state_, root);
+        applyLlamaJson(state_, root, false);
+        applyUiJson(state_, root);
         saveUnlocked();
     }
 
     Json::Value toJson() {
-        std::lock_guard<std::mutex> lock(mutex);
-        Json::Value root;
-        root["host"]                       = host;
-        root["port"]                       = port;
-        root["defaultModel"]               = defaultModel;
-        root["fallbackMaxOutputTokens"]    = fallbackMaxOutputTokens;
-        root["temperature"]                = temperature;
-        root["systemPrompt"]               = systemPrompt;
-        root["lmStudioUrl"]                = lmStudioUrl;
-        root["llamacppFlashAttn"]          = llamacppFlashAttn;
-        root["llamacppKvCacheReuse"]       = llamacppKvCacheReuse;
-        root["llamacppEvalBatchSize"]      = llamacppEvalBatchSize;
-        root["llamacppCtxSize"]            = llamacppCtxSize;
-        root["llamacppGpuLayers"]          = llamacppGpuLayers;
-        root["llamacppThreads"]            = llamacppThreads;
-        root["llamacppThreadsBatch"]       = llamacppThreadsBatch;
-        root["llamacppTopP"]               = llamacppTopP;
-        root["llamacppMinP"]               = llamacppMinP;
-        root["llamacppRepeatPenalty"]      = llamacppRepeatPenalty;
-        root["llamacppModelKeepAlive"]     = llamacppModelKeepAlive;
-        root["llamacppKvCacheType"]        = llamacppKvCacheType;
-        root["llamacppBackend"]            = llamacppBackend;
-        root["llamacppTag"]                = llamacppTag;
-        root["backendSuggestionDismissed"] = backendSuggestionDismissed;
-        root["logprobHighlightHigh"]         = logprobHighlightHigh;
-        root["logprobHighlightMedium"]       = logprobHighlightMedium;
-        root["logprobHighlightLow"]          = logprobHighlightLow;
-        root["logprobHistoryHigh"]           = logprobHistoryHigh;
-        root["logprobHistoryMedium"]         = logprobHistoryMedium;
-        root["logprobHistoryLow"]            = logprobHistoryLow;
-        root["aiTitleEnabled"]               = aiTitleEnabled;
-        root["aiTitleModel"]                 = aiTitleModel;
-        root["aiTitleSystemPrompt"]          = aiTitleSystemPrompt;
-        root["llamacppTitleModelConcurrent"]  = llamacppTitleModelConcurrent;
-        return root;
+        std::lock_guard<std::mutex> lock(mutex_);
+        return toJsonUnlocked();
     }
 
-    // Getters
-    int         getPort()       { std::lock_guard<std::mutex> l(mutex); return port; }
-    std::string getHost()       { std::lock_guard<std::mutex> l(mutex); return host; }
-    std::string getLmStudioUrl(){ std::lock_guard<std::mutex> l(mutex); return lmStudioUrl; }
-    bool   getLlamacppFlashAttn()     { std::lock_guard<std::mutex> l(mutex); return llamacppFlashAttn; }
-    bool   getLlamacppKvCacheReuse()  { std::lock_guard<std::mutex> l(mutex); return llamacppKvCacheReuse; }
-    int    getLlamacppEvalBatchSize() { std::lock_guard<std::mutex> l(mutex); return llamacppEvalBatchSize; }
-    int    getLlamacppCtxSize()       { std::lock_guard<std::mutex> l(mutex); return llamacppCtxSize; }
-    int    getLlamacppGpuLayers()     { std::lock_guard<std::mutex> l(mutex); return llamacppGpuLayers; }
-    int    getLlamacppThreads()       { std::lock_guard<std::mutex> l(mutex); return llamacppThreads; }
-    int    getLlamacppThreadsBatch()  { std::lock_guard<std::mutex> l(mutex); return llamacppThreadsBatch; }
-    double getLlamacppTopP()          { std::lock_guard<std::mutex> l(mutex); return llamacppTopP; }
-    double getLlamacppMinP()          { std::lock_guard<std::mutex> l(mutex); return llamacppMinP; }
-    double getLlamacppRepeatPenalty() { std::lock_guard<std::mutex> l(mutex); return llamacppRepeatPenalty; }
-    int    getLlamacppModelKeepAlive(){ std::lock_guard<std::mutex> l(mutex); return llamacppModelKeepAlive; }
-    std::string getLlamacppKvCacheType()  { std::lock_guard<std::mutex> l(mutex); return llamacppKvCacheType; }
-    std::string getLlamacppBackend()  { std::lock_guard<std::mutex> l(mutex); return llamacppBackend; }
-    std::string getLlamacppTag()      { std::lock_guard<std::mutex> l(mutex); return llamacppTag; }
-    bool   getBackendSuggestionDismissed() { std::lock_guard<std::mutex> l(mutex); return backendSuggestionDismissed; }
-    bool   getLogprobHighlightHigh()       { std::lock_guard<std::mutex> l(mutex); return logprobHighlightHigh; }
-    bool   getLogprobHighlightMedium()     { std::lock_guard<std::mutex> l(mutex); return logprobHighlightMedium; }
-    bool   getLogprobHighlightLow()        { std::lock_guard<std::mutex> l(mutex); return logprobHighlightLow; }
-    bool   getLogprobHistoryHigh()         { std::lock_guard<std::mutex> l(mutex); return logprobHistoryHigh; }
-    bool   getLogprobHistoryMedium()       { std::lock_guard<std::mutex> l(mutex); return logprobHistoryMedium; }
-    bool   getLogprobHistoryLow()          { std::lock_guard<std::mutex> l(mutex); return logprobHistoryLow; }
-    bool   getAiTitleEnabled()             { std::lock_guard<std::mutex> l(mutex); return aiTitleEnabled; }
-    std::string getAiTitleModel()          { std::lock_guard<std::mutex> l(mutex); return aiTitleModel; }
-    std::string getAiTitleSystemPrompt()   { std::lock_guard<std::mutex> l(mutex); return aiTitleSystemPrompt; }
-    bool   getLlamacppTitleModelConcurrent(){ std::lock_guard<std::mutex> l(mutex); return llamacppTitleModelConcurrent; }
+    int getPort() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.port;
+    }
+
+    std::string getHost() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.host;
+    }
+
+    std::string getLmStudioUrl() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.lmStudioUrl;
+    }
+
+    bool getLlamacppFlashAttn() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppFlashAttn;
+    }
+
+    bool getLlamacppKvCacheReuse() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppKvCacheReuse;
+    }
+
+    int getLlamacppEvalBatchSize() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppEvalBatchSize;
+    }
+
+    int getLlamacppCtxSize() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppCtxSize;
+    }
+
+    int getLlamacppGpuLayers() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppGpuLayers;
+    }
+
+    int getLlamacppThreads() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppThreads;
+    }
+
+    int getLlamacppThreadsBatch() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppThreadsBatch;
+    }
+
+    double getLlamacppTopP() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppTopP;
+    }
+
+    double getLlamacppMinP() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppMinP;
+    }
+
+    double getLlamacppRepeatPenalty() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppRepeatPenalty;
+    }
+
+    int getLlamacppModelKeepAlive() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppModelKeepAlive;
+    }
+
+    int getLlamacppMaxConcurrentInstances() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppMaxConcurrentInstances;
+    }
+
+    int getLlamacppIdleTimeoutSeconds() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppIdleTimeoutSeconds;
+    }
+
+    int getLlamacppMaxLoadedModels() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppMaxLoadedModels;
+    }
+
+    std::string getLlamacppKvCacheType() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppKvCacheType;
+    }
+
+    std::string getLlamacppBackend() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppBackend;
+    }
+
+    std::string getLlamacppTag() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppTag;
+    }
+
+    bool getBackendSuggestionDismissed() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.backendSuggestionDismissed;
+    }
+
+    bool getLogprobHighlightHigh() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.logprobHighlightHigh;
+    }
+
+    bool getLogprobHighlightMedium() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.logprobHighlightMedium;
+    }
+
+    bool getLogprobHighlightLow() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.logprobHighlightLow;
+    }
+
+    bool getLogprobHistoryHigh() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.logprobHistoryHigh;
+    }
+
+    bool getLogprobHistoryMedium() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.logprobHistoryMedium;
+    }
+
+    bool getLogprobHistoryLow() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.logprobHistoryLow;
+    }
+
+    bool getAiTitleEnabled() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.aiTitleEnabled;
+    }
+
+    std::string getAiTitleModel() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.aiTitleModel;
+    }
+
+    std::string getAiTitleSystemPrompt() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.aiTitleSystemPrompt;
+    }
+
+    bool getLlamacppConcurrentGeneration() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppConcurrentGeneration;
+    }
+
+    int getLlamacppEffectiveMaxConcurrentInstances() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.llamacppConcurrentGeneration ? state_.llamacppMaxConcurrentInstances : 1;
+    }
 
     std::string getMcpConfigPath() const {
-        const std::string suffix = "settings.json";
-        if (settingsPath.size() >= suffix.size() &&
-                settingsPath.substr(settingsPath.size() - suffix.size()) == suffix)
-            return settingsPath.substr(0, settingsPath.size() - suffix.size()) + "mcp.json";
-        auto sep = settingsPath.find_last_of("/\\");
-        if (sep != std::string::npos) return settingsPath.substr(0, sep + 1) + "mcp.json";
-        return "mcp.json";
-    }
-
-private:
-    void saveUnlocked() {
-        Json::Value root;
-        root["host"]                       = host;
-        root["port"]                       = port;
-        root["defaultModel"]               = defaultModel;
-        root["fallbackMaxOutputTokens"]    = fallbackMaxOutputTokens;
-        root["temperature"]                = temperature;
-        root["systemPrompt"]               = systemPrompt;
-        root["lmStudioUrl"]                = lmStudioUrl;
-        root["llamacppFlashAttn"]          = llamacppFlashAttn;
-        root["llamacppKvCacheReuse"]       = llamacppKvCacheReuse;
-        root["llamacppEvalBatchSize"]      = llamacppEvalBatchSize;
-        root["llamacppCtxSize"]            = llamacppCtxSize;
-        root["llamacppGpuLayers"]          = llamacppGpuLayers;
-        root["llamacppThreads"]            = llamacppThreads;
-        root["llamacppThreadsBatch"]       = llamacppThreadsBatch;
-        root["llamacppTopP"]               = llamacppTopP;
-        root["llamacppMinP"]               = llamacppMinP;
-        root["llamacppRepeatPenalty"]      = llamacppRepeatPenalty;
-        root["llamacppModelKeepAlive"]     = llamacppModelKeepAlive;
-        root["llamacppKvCacheType"]        = llamacppKvCacheType;
-        root["llamacppBackend"]            = llamacppBackend;
-        root["llamacppTag"]                = llamacppTag;
-        root["backendSuggestionDismissed"] = backendSuggestionDismissed;
-        root["logprobHighlightHigh"]         = logprobHighlightHigh;
-        root["logprobHighlightMedium"]       = logprobHighlightMedium;
-        root["logprobHighlightLow"]          = logprobHighlightLow;
-        root["logprobHistoryHigh"]           = logprobHistoryHigh;
-        root["logprobHistoryMedium"]         = logprobHistoryMedium;
-        root["logprobHistoryLow"]            = logprobHistoryLow;
-        root["aiTitleEnabled"]               = aiTitleEnabled;
-        root["aiTitleModel"]                 = aiTitleModel;
-        root["aiTitleSystemPrompt"]          = aiTitleSystemPrompt;
-        root["llamacppTitleModelConcurrent"]  = llamacppTitleModelConcurrent;
-        std::ofstream file(settingsPath);
-        if (file.is_open()) {
-            Json::StreamWriterBuilder builder;
-            builder["indentation"] = "    ";
-            std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
-            writer->write(root, &file);
+        constexpr const char* suffix = "settings.json";
+        if (settingsPath_.size() >= std::char_traits<char>::length(suffix) &&
+            settingsPath_.substr(settingsPath_.size() - std::char_traits<char>::length(suffix)) == suffix) {
+            return settingsPath_.substr(0, settingsPath_.size() - std::char_traits<char>::length(suffix)) + "mcp.json";
         }
+
+        const auto separator = settingsPath_.find_last_of("/\\");
+        if (separator != std::string::npos) {
+            return settingsPath_.substr(0, separator + 1) + "mcp.json";
+        }
+
+        return "mcp.json";
     }
 };
 

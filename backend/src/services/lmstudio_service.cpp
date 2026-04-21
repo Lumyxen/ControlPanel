@@ -1,5 +1,7 @@
 #include "services/lmstudio_service.h"
+#include "services/tools/tool_system.h"
 #include "services/mcp_registry.h"
+#include "server/http_utils.h"
 #include <curl/curl.h>
 #include <json/json.h>
 #include <iostream>
@@ -7,6 +9,93 @@
 #include <vector>
 #include <map>
 #include <chrono>
+
+namespace {
+constexpr int kTitleGenerationMaxTokens = 24;
+
+std::vector<Json::Value> buildNormalizedContentDeltas(
+    const Json::Value& choice,
+    const Json::Value& delta) {
+    std::vector<Json::Value> normalized;
+
+    const std::string deltaContent =
+        delta.isMember("content") && delta["content"].isString()
+            ? delta["content"].asString()
+            : "";
+
+    if (deltaContent.empty()) {
+        return normalized;
+    }
+
+    const Json::Value* logprobEntries = nullptr;
+    if (choice.isMember("logprobs") && choice["logprobs"].isObject() &&
+        choice["logprobs"].isMember("content") && choice["logprobs"]["content"].isArray()) {
+        logprobEntries = &choice["logprobs"]["content"];
+    }
+
+    if (logprobEntries && !logprobEntries->empty()) {
+        std::string reconstructed;
+        bool appended = false;
+
+        for (const auto& entry : *logprobEntries) {
+            if (!entry.isObject()) {
+                continue;
+            }
+
+            const std::string token = entry.get("token", "").asString();
+            if (token.empty()) {
+                continue;
+            }
+
+            Json::Value normalizedDelta(Json::objectValue);
+            normalizedDelta["content"] = token;
+            if (entry.isMember("logprob")) {
+                normalizedDelta["logprob"] = entry["logprob"];
+            }
+            normalized.push_back(normalizedDelta);
+            reconstructed += token;
+            appended = true;
+        }
+
+        if (appended && (deltaContent.empty() || reconstructed == deltaContent)) {
+            return normalized;
+        }
+
+        normalized.clear();
+    }
+
+    if (!deltaContent.empty()) {
+        Json::Value normalizedDelta(Json::objectValue);
+        normalizedDelta["content"] = deltaContent;
+        if (delta.isMember("logprob")) {
+            normalizedDelta["logprob"] = delta["logprob"];
+        } else if (logprobEntries && logprobEntries->size() == 1 &&
+                   (*logprobEntries)[0].isObject() &&
+                   (*logprobEntries)[0].isMember("logprob")) {
+            normalizedDelta["logprob"] = (*logprobEntries)[0]["logprob"];
+        }
+        normalized.push_back(normalizedDelta);
+    }
+
+    return normalized;
+}
+
+bool emitNormalizedDelta(StreamContext* ctx, const Json::Value& normalizedDelta) {
+    if (normalizedDelta.empty()) {
+        return true;
+    }
+
+    Json::Value newChoice(Json::objectValue);
+    newChoice["delta"] = normalizedDelta;
+
+    Json::Value newJson(Json::objectValue);
+    newJson["choices"].append(newChoice);
+
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    return !ctx->onChunk || ctx->onChunk("data: " + Json::writeString(wb, newJson) + "\n\n");
+}
+}
 
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
     ((std::string*)userp)->append((char*)contents, size * nmemb);
@@ -87,24 +176,21 @@ static size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, voi
             continue;
         }
 
-        bool hasContent   = delta.isMember("content")   && delta["content"].isString() && !delta["content"].asString().empty();
-        bool hasReasoning = delta.isMember("reasoning") && delta["reasoning"].isString() && !delta["reasoning"].asString().empty();
+        const bool hasReasoning =
+            delta.isMember("reasoning") && delta["reasoning"].isString() &&
+            !delta["reasoning"].asString().empty();
 
-        if (hasContent || hasReasoning) {
-            Json::Value newDelta;
-            if (hasContent)   newDelta["content"]   = delta["content"].asString();
-            if (hasReasoning) newDelta["reasoning"] = delta["reasoning"].asString();
+        if (hasReasoning) {
+            Json::Value reasoningDelta(Json::objectValue);
+            reasoningDelta["reasoning"] = delta["reasoning"].asString();
+            if (!emitNormalizedDelta(ctx, reasoningDelta)) {
+                return 0;
+            }
+        }
 
-            Json::Value newChoice;
-            newChoice["delta"] = newDelta;
-
-            Json::Value newJson;
-            newJson["choices"].append(newChoice);
-
-            Json::StreamWriterBuilder wb;
-            wb["indentation"] = "";
-            if (ctx->onChunk) {
-                if (!ctx->onChunk("data: " + Json::writeString(wb, newJson) + "\n\n")) return 0;
+        for (const auto& normalizedDelta : buildNormalizedContentDeltas(choice, delta)) {
+            if (!emitNormalizedDelta(ctx, normalizedDelta)) {
+                return 0;
             }
         }
     }
@@ -336,16 +422,21 @@ void LmStudioService::streamingChatWithTools(
         const std::string& model,
         Json::Value messages,
         const Json::Value& tools,
+        const std::string& taskId,
         int maxTokens,
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
-        McpRegistry* registry,
+        ToolSystem* toolSystem,
         double temperature, int numCtx,
         std::function<bool()> cancelCheck,
         bool emitLogprobs) const {
 
     for (;;) {
         if (cancelCheck && cancelCheck()) return;
+        const Json::Value currentTools = (toolSystem && !taskId.empty())
+            ? toolSystem->getModelToolsForTask(taskId)
+            : tools;
+        const bool hasTools = currentTools.isArray() && !currentTools.empty();
         Json::Value body;
         body["model"]      = model;
         body["messages"]   = messages;
@@ -353,10 +444,10 @@ void LmStudioService::streamingChatWithTools(
         body["stream"]     = true;
         if (temperature >= 0.0) body["temperature"] = temperature;
         if (numCtx > 0)         body["num_ctx"]     = numCtx;
-        if (emitLogprobs)       body["logprobs"]    = true;
+        if (emitLogprobs && !hasTools) body["logprobs"] = true;
 
-        if (!tools.isNull() && tools.isArray() && !tools.empty()) {
-            body["tools"]       = tools;
+        if (hasTools) {
+            body["tools"]       = currentTools;
             body["tool_choice"] = "auto";
         }
 
@@ -396,65 +487,41 @@ void LmStudioService::streamingChatWithTools(
         		if (!onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n")) return;
         	}
       
-        	// Send tool call event to UI immediately (before execution)
-        	if (onChunk) {
-        		Json::Value toolCallEvent;
-        		toolCallEvent["type"] = "tool_execution";
-        		toolCallEvent["tool_call"]["id"] = tc.id;
-        		toolCallEvent["tool_call"]["name"] = tc.name;
-        		toolCallEvent["tool_call"]["arguments"] = tc.argumentsJson;
-        		toolCallEvent["tool_call"]["output"] = ""; // Empty output initially
-        		Json::StreamWriterBuilder wb;
-        		wb["indentation"] = "";
-        		if (!onChunk("data: " + Json::writeString(wb, toolCallEvent) + "\n\n")) return;
-        	}
-      
         	std::string resultStr;
-      
-        	if (registry) {
-        		Json::Value args(Json::objectValue);
-        		if (!tc.argumentsJson.empty()) {
-        			Json::CharReaderBuilder rb;
-        			std::string errs;
-        			std::istringstream ss(tc.argumentsJson);
-        			Json::parseFromStream(rb, ss, &args, &errs);
-        		}
-      
-        		Json::Value result = registry->callTool(tc.name, args);
-      
-        		if (result.isArray()) {
-        			for (const auto& item : result) {
-        				if (item.get("type", "").asString() == "text")
-        					resultStr += item.get("text", "").asString();
-        			}
-        		} else {
-        			Json::StreamWriterBuilder wb;
-        			wb["indentation"] = "";
-        			resultStr = Json::writeString(wb, result);
-        		}
-        	} else {
-        		resultStr = "{\"error\": \"No MCP registry available\"}";
-        	}
-      
+            if (toolSystem && !taskId.empty()) {
+                Json::Value args(Json::objectValue);
+                if (!tc.argumentsJson.empty()) {
+                    Json::CharReaderBuilder rb;
+                    std::string errs;
+                    std::istringstream ss(tc.argumentsJson);
+                    Json::parseFromStream(rb, ss, &args, &errs);
+                }
+
+                const auto execution = toolSystem->executeToolCall(
+                    taskId,
+                    tc.name,
+                    tc.id,
+                    args,
+                    [onChunk](const Json::Value& event) {
+                        if (!onChunk) {
+                            return true;
+                        }
+                        return onChunk("data: " + writeJson(event) + "\n\n");
+                    },
+                    cancelCheck);
+                resultStr = execution.modelOutput;
+                if (resultStr.empty()) {
+                    resultStr = "{}";
+                }
+            } else {
+                resultStr = "{\"error\":\"Legacy raw tools are not executable without a task-scoped tool session\"}";
+            }
+
         	Json::Value toolResultMsg;
         	toolResultMsg["role"]         = "tool";
         	toolResultMsg["tool_call_id"] = tc.id;
         	toolResultMsg["content"]      = resultStr;
         	messages.append(toolResultMsg);
-      
-        	// Update tool_execution event with output for the UI
-        	if (onChunk) {
-        		Json::Value toolEvent;
-        		toolEvent["type"] = "tool_execution";
-        		toolEvent["tool_call"]["id"] = tc.id;
-        		toolEvent["tool_call"]["name"] = tc.name;
-        		toolEvent["tool_call"]["arguments"] = tc.argumentsJson;
-        		toolEvent["tool_call"]["output"] = resultStr;
-      
-        		Json::StreamWriterBuilder wb;
-        		wb["indentation"] = "";
-        		if (!onChunk("data: " + Json::writeString(wb, toolEvent) + "\n\n")) return;
-        	}
         }
     }
 
@@ -522,12 +589,20 @@ std::string LmStudioService::generateTitle(const std::string& model,
     user["content"] = userMessage;
     messages.append(user);
 
-    // Make a non-streaming request with low max_tokens and temperature=0
+    // Keep title generation deterministic and capped so a misbehaving model cannot loop.
+    // When the backend supports it, disable reasoning explicitly instead of relying on prompt text.
     Json::Value body;
     body["model"] = model;
     body["messages"] = messages;
-    body["max_tokens"] = 30;
+    body["max_tokens"] = kTitleGenerationMaxTokens;
     body["temperature"] = 0.0;
+    body["reasoning_effort"] = "none";
+    body["reasoning_tokens"] = 0;
+    Json::Value stop(Json::arrayValue);
+    stop.append("\n");
+    stop.append("<think>");
+    stop.append("<reasoning>");
+    body["stop"] = stop;
 
     Json::Value response = makeRequest("/chat/completions", body);
 
@@ -541,6 +616,21 @@ std::string LmStudioService::generateTitle(const std::string& model,
         const auto& choice = response["choices"][0];
         if (choice.isMember("message") && choice["message"].isMember("content")) {
             std::string title = choice["message"]["content"].asString();
+
+            auto stripTag = [&title](const std::string& openTag, const std::string& closeTag) {
+                while (true) {
+                    const size_t openPos = title.find(openTag);
+                    if (openPos == std::string::npos) break;
+                    const size_t closePos = title.find(closeTag, openPos);
+                    if (closePos == std::string::npos) {
+                        title.erase(openPos);
+                        break;
+                    }
+                    title.erase(openPos, closePos + closeTag.size() - openPos);
+                }
+            };
+            stripTag("<think>", "</think>");
+            stripTag("<reasoning>", "</reasoning>");
 
             // Clean up the title - remove quotes, trim whitespace
             if (title.size() >= 2 && title.front() == '"' && title.back() == '"') {

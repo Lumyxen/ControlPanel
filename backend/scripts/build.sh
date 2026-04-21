@@ -47,6 +47,27 @@ calculate_jobs() {
     echo "$jobs"
 }
 
+has_arm_openssl() {
+    local has_headers=false
+    local has_ssl=false
+    local has_crypto=false
+
+    if [[ -f "/usr/aarch64-linux-gnu/include/openssl/evp.h" || -f "/usr/include/openssl/evp.h" ]]; then
+        has_headers=true
+    fi
+
+    for libdir in /usr/aarch64-linux-gnu/lib /usr/lib/aarch64-linux-gnu; do
+        if compgen -G "${libdir}/libssl.so*" >/dev/null; then
+            has_ssl=true
+        fi
+        if compgen -G "${libdir}/libcrypto.so*" >/dev/null; then
+            has_crypto=true
+        fi
+    done
+
+    [[ "${has_headers}" == true && "${has_ssl}" == true && "${has_crypto}" == true ]]
+}
+
 BUILD_JOBS=$(calculate_jobs)
 echo "=== Using $BUILD_JOBS parallel build jobs ==="
 
@@ -94,14 +115,23 @@ else
     # ── ARM cross-compile (optional — requires aarch64-linux-gnu-g++) ─────────────
     if command -v aarch64-linux-gnu-g++ &>/dev/null; then
         echo ""
-        echo "=== Building ARM64 target ==="
-        mkdir -p build-arm
-        cmake -B build-arm \
-            -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake \
-            -DCMAKE_BUILD_TYPE=Release
-        cmake --build build-arm --target ctrlpanel_arm -j"$BUILD_JOBS"
-        cp build-arm/ctrlpanel_arm build/ctrlpanel_arm
-        rm -rf build-arm
+        if has_arm_openssl; then
+            echo "=== Building ARM64 target ==="
+            mkdir -p build-arm
+            cmake -B build-arm \
+                -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake \
+                -DCMAKE_BUILD_TYPE=Release
+            cmake --build build-arm --target ctrlpanel_arm -j"$BUILD_JOBS"
+            cp build-arm/ctrlpanel_arm build/ctrlpanel_arm
+            rm -rf build-arm
+        else
+            echo "=== Skipping ARM64 target (missing OpenSSL cross libraries) ==="
+            echo "Expected one of:"
+            echo "  /usr/aarch64-linux-gnu/lib/libssl.so* and libcrypto.so*"
+            echo "  /usr/lib/aarch64-linux-gnu/libssl.so* and libcrypto.so*"
+            echo "Install target OpenSSL dev packages, then rerun build.sh."
+            rm -f build/ctrlpanel_arm
+        fi
     fi
 fi
 

@@ -1,4 +1,4 @@
-<section data-fragment="main">
+<section data-fragment="main" class="settings-page">
     <header class="page-header" aria-label="Page header">
         <div class="page-chip" aria-hidden="true">
             <span class="icon" aria-hidden="true">
@@ -19,8 +19,8 @@
         <div class="option-row">
             <label for="lmstudio-url-input">Server URL</label>
             <div class="input-group">
-                <input id="lmstudio-url-input" class="text-input" type="text" placeholder="http://localhost:1234" autocomplete="off" spellcheck="false" style="flex: 1;" />
-                <span id="lmstudio-status" class="badge" style="flex-shrink: 0;">—</span>
+                <input id="lmstudio-url-input" class="text-input settings-input-grow" type="text" placeholder="http://localhost:1234" autocomplete="off" spellcheck="false" />
+                <span id="lmstudio-status" class="badge settings-badge-shrink">—</span>
                 <button type="button" id="refresh-lmstudio-status" class="btn">Test</button>
             </div>
         </div>
@@ -34,135 +34,143 @@
         </div>
         <div class="option-row">
             <label for="temperature-input">Temperature</label>
-            <div class="input-group" style="gap: 0.75rem; align-items: center;">
-                <input id="temperature-slider" type="range" min="0" max="2" step="0.01" value="0.7" style="flex: 1; min-width: 0;" />
-                <input id="temperature-input" type="number" min="0" max="2" step="0.01" value="0.7" style="flex: none; width: 5rem;" />
+            <div class="input-group settings-slider-group">
+                <input id="temperature-slider" type="range" min="0" max="2" step="0.01" value="0.7" />
+                <input id="temperature-input" class="settings-number-compact" type="number" min="0" max="2" step="0.01" value="0.7" />
             </div>
         </div>
         <div class="option-row">
             <label for="max-tokens-input">Max Output Tokens</label>
-            <input id="max-tokens-input" type="number" min="256" max="131072" step="256" value="8192" style="width: 8rem;" />
+            <input id="max-tokens-input" class="settings-number-wide" type="number" min="256" max="131072" step="256" value="8192" />
         </div>
         <div class="option-row">
             <label for="system-prompt-input">System Prompt</label>
-            <textarea id="system-prompt-input" class="system-prompt-input" rows="6" placeholder="Enter a system prompt…"></textarea>
+            <textarea id="system-prompt-input" class="system-prompt-input" rows="6"></textarea>
         </div>
         <div class="option-row">
-            <span style="font-weight:600;">Token Highlighting</span>
+            <span class="settings-section-label">Token Highlighting</span>
             <span class="option-hint">Colour-code tokens by confidence — green (certain), yellow (moderate), red (uncertain)</span>
         </div>
-        <div class="option-row" style="padding-left: 1rem;">
+        <div class="option-row settings-indent">
             <span>High confidence (≥80%)</span>
-            <label class="toggle-switch" style="width: fit-content;">
+            <label class="toggle-switch settings-toggle-fit">
                 <input id="logprob-highlight-high" type="checkbox" />
                 <span class="toggle-track"></span>
             </label>
         </div>
-        <div class="option-row" style="padding-left: 1rem;">
+        <div class="option-row settings-indent">
             <span>Medium confidence (50-80%)</span>
-            <label class="toggle-switch" style="width: fit-content;">
+            <label class="toggle-switch settings-toggle-fit">
                 <input id="logprob-highlight-medium" type="checkbox" />
                 <span class="toggle-track"></span>
             </label>
         </div>
-        <div class="option-row" style="padding-left: 1rem;">
+        <div class="option-row settings-indent">
             <span>Low confidence (&lt;50%)</span>
-            <label class="toggle-switch" style="width: fit-content;">
+            <label class="toggle-switch settings-toggle-fit">
                 <input id="logprob-highlight-low" type="checkbox" checked />
                 <span class="toggle-track"></span>
             </label>
         </div>
         <div class="option-row">
-            <span style="font-weight:600;">Include Logprobs in Chat History</span>
+            <span class="settings-section-label">Include Logprobs in Chat History</span>
             <span class="option-hint">Show token confidence levels to the AI as part of conversation context</span>
         </div>
-        <div class="option-row" style="padding-left: 1rem;">
+        <div class="option-row settings-indent">
             <span>High confidence (≥80%)</span>
-            <label class="toggle-switch" style="width: fit-content;">
+            <label class="toggle-switch settings-toggle-fit">
                 <input id="logprob-history-high" type="checkbox" />
                 <span class="toggle-track"></span>
             </label>
         </div>
-        <div class="option-row" style="padding-left: 1rem;">
+        <div class="option-row settings-indent">
             <span>Medium confidence (50-80%)</span>
-            <label class="toggle-switch" style="width: fit-content;">
+            <label class="toggle-switch settings-toggle-fit">
                 <input id="logprob-history-medium" type="checkbox" />
                 <span class="toggle-track"></span>
             </label>
         </div>
-        <div class="option-row" style="padding-left: 1rem;">
+        <div class="option-row settings-indent">
             <span>Low confidence (&lt;50%)</span>
-            <label class="toggle-switch" style="width: fit-content;">
+            <label class="toggle-switch settings-toggle-fit">
                 <input id="logprob-history-low" type="checkbox" />
                 <span class="toggle-track"></span>
             </label>
         </div>
-        <div class="option-row" style="margin-top: 1rem;">
-            <span style="font-weight:600;">AI-Generated Chat Titles</span>
+        <div class="option-row settings-top-gap">
+            <span class="settings-section-label">AI-Generated Chat Titles</span>
             <span class="option-hint">Automatically generate descriptive titles for new chats using AI</span>
         </div>
-        <div class="option-row" style="padding-left: 1rem;">
+        <div class="option-row settings-indent">
             <span>Enable AI titles</span>
-            <label class="toggle-switch" style="width: fit-content;">
+            <label class="toggle-switch settings-toggle-fit">
                 <input id="ai-title-enabled" type="checkbox" checked />
                 <span class="toggle-track"></span>
             </label>
         </div>
-        <div class="option-row" style="padding-left: 1rem;">
+        <div class="option-row settings-indent">
             <label for="ai-title-model-input">Title Model (leave empty to use chat model)</label>
-            <input id="ai-title-model-input" class="text-input" type="text" placeholder="e.g. lmstudio::qwen3-2b (empty = use chat model)" autocomplete="off" spellcheck="false" style="max-width: 400px;" />
+            <input id="ai-title-model-input" class="text-input settings-input-grow" type="text" placeholder="e.g. lmstudio::qwen3-2b (empty = use chat model)" autocomplete="off" spellcheck="false" />
         </div>
-        <div class="option-row" style="padding-left: 1rem;">
-            <span>Concurrent title model loading (keep chat model loaded)</span>
-            <label class="toggle-switch" style="width: fit-content;">
-                <input id="llamacpp-title-model-concurrent" type="checkbox" />
-                <span class="toggle-track"></span>
-            </label>
-        </div>
-        <div class="option-row" style="padding-left: 1rem;">
+        <div class="option-row settings-indent">
             <label for="ai-title-system-prompt-input">Title System Prompt</label>
-            <textarea id="ai-title-system-prompt-input" class="system-prompt-input" rows="4" placeholder="Enter a system prompt for title generation…"></textarea>
+            <textarea id="ai-title-system-prompt-input" class="system-prompt-input" rows="4"></textarea>
         </div>
-        <div class="input-group" style="margin-top: 0.75rem;">
+        <div class="input-group settings-top-gap">
             <button type="button" id="save-ai-settings" class="btn btn-primary">Save</button>
-            <span id="ai-settings-status" class="option-hint" style="margin-left: 0.5rem;"></span>
+            <span id="ai-settings-status" class="option-hint settings-status-inline"></span>
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="tools-title">
+        <h2 class="card-title" id="tools-title">Tools</h2>
+        <div class="option-row">
+            <span class="settings-section-label">Sandbox Health</span>
+            <span id="tool-sandbox-health" class="option-hint">Loading…</span>
+        </div>
+        <div class="input-group settings-top-gap">
+            <button type="button" id="reload-tool-packs" class="btn btn-primary">Reload Packs</button>
+            <span id="tool-packs-status" class="option-hint settings-status-inline"></span>
+        </div>
+        <div id="tool-packs-list" class="settings-tools-stack settings-top-gap">
+            <div class="settings-placeholder">Loading tool packs…</div>
         </div>
     </section>
 
     <section class="card" aria-labelledby="llamacpp-backend-title">
         <h2 class="card-title" id="llamacpp-backend-title">Hardware Backend</h2>
 
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:6px;border:1px solid var(--border);background:color-mix(in srgb,var(--panel) 80%,transparent);font-size:0.88rem;">
-            <span style="color:var(--muted);">Active:</span>
-            <span id="llamacpp-active-backend-label" style="font-family:ui-monospace,monospace;color:var(--accent);font-weight:600;">—</span>
+        <div class="settings-active-backend">
+            <span class="settings-active-label-prefix">Active:</span>
+            <span id="llamacpp-active-backend-label" class="settings-active-label">—</span>
         </div>
 
         <div class="option-row">
             <label id="backend-selector-label">Preference</label>
-            <div id="llamacpp-backend-selector" role="radiogroup" aria-labelledby="backend-selector-label" style="display:flex;flex-direction:column;gap:8px;">
-                <span id="llamacpp-backend-loading" style="color:var(--muted);font-size:0.85rem;">Loading…</span>
+            <div id="llamacpp-backend-selector" class="settings-backend-selector" role="radiogroup" aria-labelledby="backend-selector-label">
+                <span id="llamacpp-backend-loading" class="settings-muted-note">Loading…</span>
             </div>
         </div>
 
         <div class="option-row">
             <label for="llamacpp-tag-input">llama.cpp Tag</label>
-            <input id="llamacpp-tag-input" class="text-input" type="text" value="b8749" placeholder="e.g. b8749" autocomplete="off" spellcheck="false" style="width:9rem;" />
+            <input id="llamacpp-tag-input" class="text-input settings-number-tag" type="text" value="b8846" placeholder="e.g. b8846" autocomplete="off" spellcheck="false" />
         </div>
 
-        <div class="input-group" style="margin-top:0.75rem;">
+        <div class="input-group settings-top-gap">
             <button type="button" id="save-llamacpp-backend" class="btn btn-primary">Apply</button>
-            <span id="llamacpp-backend-save-status" class="option-hint" style="margin-left:0.5rem;"></span>
+            <span id="llamacpp-backend-save-status" class="option-hint settings-status-inline"></span>
         </div>
 
-        <div id="llamacpp-build-progress" hidden style="margin-top:1rem;border:1px solid var(--border);padding:12px;background:color-mix(in srgb,var(--panel) 60%,transparent);">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                <span id="llamacpp-build-progress-label" style="font-size:0.88rem;color:var(--muted);flex:1;">Building…</span>
-                <span id="llamacpp-build-progress-pct" style="font-size:0.8rem;color:var(--accent);font-family:ui-monospace,monospace;flex-shrink:0;"></span>
+        <div id="llamacpp-build-progress" class="settings-build-progress" hidden>
+            <div class="settings-build-progress-head">
+                <span id="llamacpp-build-progress-label" class="settings-build-progress-label">Building…</span>
+                <span id="llamacpp-build-progress-pct" class="settings-build-progress-pct"></span>
             </div>
-            <div style="height:6px;background:color-mix(in srgb,var(--border) 60%,transparent);overflow:hidden;">
-                <div id="llamacpp-build-progress-bar" style="height:100%;width:0%;background:var(--accent);transition:width 0.4s ease;"></div>
+            <div class="settings-build-progress-track">
+                <div id="llamacpp-build-progress-bar" class="settings-build-progress-bar"></div>
             </div>
-            <div id="llamacpp-build-log-tail" style="margin-top:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:0.74rem;color:var(--muted);max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:1.4;"></div>
+            <div id="llamacpp-build-log-tail" class="settings-build-log"></div>
         </div>
     </section>
 
@@ -171,43 +179,61 @@
 
         <div class="option-row">
             <span>Flash Attention</span>
-            <label class="toggle-switch" style="width: fit-content;">
+            <label class="toggle-switch settings-toggle-fit">
                 <input id="llamacpp-flash-attn" type="checkbox" checked />
                 <span class="toggle-track"></span>
             </label>
         </div>
-        <div class="option-row" style="grid-template-columns: 1fr;">
-            <span class="option-hint" style="color: #f59e0b; grid-column: 1;">Warning: can cause severe output quality degradation (garbled/grammatically incorrect text) with certain models like Qwen 3.5. Disable if you notice nonsensical output.</span>
+        <div class="option-row settings-single-column">
+            <span class="option-hint settings-warning">Warning: can cause severe output quality degradation (garbled/grammatically incorrect text) with certain models like Qwen 3.5. Disable if you notice nonsensical output.</span>
         </div>
         <div class="option-row">
             <span>KV Cache Reuse</span>
-            <label class="toggle-switch" style="width: fit-content;">
+            <label class="toggle-switch settings-toggle-fit">
                 <input id="llamacpp-kv-cache-reuse" type="checkbox" checked />
                 <span class="toggle-track"></span>
             </label>
         </div>
         <div class="option-row">
             <label for="llamacpp-eval-batch-size">Eval Batch Size</label>
-            <input id="llamacpp-eval-batch-size" type="number" min="64" max="16384" step="64" value="2048" style="width:8rem;" />
+            <input id="llamacpp-eval-batch-size" class="settings-number-wide" type="number" min="64" max="16384" step="64" value="2048" />
         </div>
         <div class="option-row">
             <label for="llamacpp-ctx-size">Context Size</label>
-            <input id="llamacpp-ctx-size" type="number" min="0" max="524288" step="512" value="0" style="width:8rem;" />
+            <input id="llamacpp-ctx-size" class="settings-number-wide" type="number" min="0" max="524288" step="512" value="0" />
         </div>
         <div class="option-row">
             <label for="llamacpp-keep-alive-slider">Time to Unload</label>
-            <div class="input-group" style="gap:0.75rem;align-items:center;">
-                <input id="llamacpp-keep-alive-slider" type="range" min="0" max="31" step="1" value="5" style="flex:1;min-width:0;" />
-                <span id="llamacpp-keep-alive-display" style="flex:none;width:5rem;text-align:right;">5 mins</span>
+            <div class="input-group settings-slider-group">
+                <input id="llamacpp-keep-alive-slider" type="range" min="0" max="31" step="1" value="5" />
+                <span id="llamacpp-keep-alive-display" class="settings-keepalive-display">5 mins</span>
             </div>
         </div>
         <div class="option-row">
+            <span>Concurrent Generation</span>
+            <label class="toggle-switch settings-toggle-fit">
+                <input id="llamacpp-concurrent-generation" type="checkbox" />
+                <span class="toggle-track"></span>
+            </label>
+        </div>
+        <div class="option-row settings-single-column">
+            <span class="option-hint settings-note-full">Allow the managed llama.cpp router to serve multiple generations at once. Disable to force the router down to a single request slot.</span>
+        </div>
+        <div class="option-row">
+            <label for="llamacpp-parallel-slots">Parallel Requests</label>
+            <input id="llamacpp-parallel-slots" class="settings-number-wide" type="number" min="1" max="64" step="1" value="4" />
+        </div>
+        <div class="option-row">
+            <label for="llamacpp-max-loaded-models">Max Loaded Models</label>
+            <input id="llamacpp-max-loaded-models" class="settings-number-wide" type="number" min="0" max="64" step="1" value="2" />
+        </div>
+        <div class="option-row">
             <label for="llamacpp-gpu-layers">GPU Layers</label>
-            <input id="llamacpp-gpu-layers" type="number" min="0" max="999" step="1" value="0" style="width:8rem;" />
+            <input id="llamacpp-gpu-layers" class="settings-number-wide" type="number" min="0" max="999" step="1" value="0" />
         </div>
         <div class="option-row">
             <label for="llamacpp-kv-cache-type">KV Cache Quantisation</label>
-            <select id="llamacpp-kv-cache-type" class="text-input" style="width:8rem; padding: 6px 10px;">
+            <select id="llamacpp-kv-cache-type" class="text-input settings-select-compact">
                 <option value="f16">F16 (Default)</option>
                 <option value="q8_0">Q8_0 (8-bit)</option>
                 <option value="q4_0">Q4_0 (4-bit)</option>
@@ -215,41 +241,41 @@
         </div>
         <div class="option-row">
             <label>CPU Threads</label>
-            <div style="display:flex;gap:1.5rem;flex-wrap:wrap;">
+            <div class="settings-threads-grid">
                 <div>
-                    <label for="llamacpp-threads" style="font-size:0.8rem;opacity:0.75;">Generation</label>
-                    <div><input id="llamacpp-threads" type="number" min="0" max="256" step="1" value="0" style="width:6rem;" /></div>
+                    <label for="llamacpp-threads" class="settings-thread-field-label">Generation</label>
+                    <div><input id="llamacpp-threads" class="settings-thread-field-input" type="number" min="0" max="256" step="1" value="0" /></div>
                 </div>
                 <div>
-                    <label for="llamacpp-threads-batch" style="font-size:0.8rem;opacity:0.75;">Batch</label>
-                    <div><input id="llamacpp-threads-batch" type="number" min="0" max="256" step="1" value="0" style="width:6rem;" /></div>
+                    <label for="llamacpp-threads-batch" class="settings-thread-field-label">Batch</label>
+                    <div><input id="llamacpp-threads-batch" class="settings-thread-field-input" type="number" min="0" max="256" step="1" value="0" /></div>
                 </div>
             </div>
         </div>
         <div class="option-row">
             <label for="llamacpp-top-p">Top-P</label>
-            <div class="input-group" style="gap:0.75rem;align-items:center;">
-                <input id="llamacpp-top-p-slider" type="range" min="0" max="1" step="0.01" value="0.9" style="flex:1;min-width:0;" />
-                <input id="llamacpp-top-p" type="number" min="0" max="1" step="0.01" value="0.9" style="flex:none;width:5rem;" />
+            <div class="input-group settings-slider-group">
+                <input id="llamacpp-top-p-slider" type="range" min="0" max="1" step="0.01" value="0.9" />
+                <input id="llamacpp-top-p" class="settings-number-compact" type="number" min="0" max="1" step="0.01" value="0.9" />
             </div>
         </div>
         <div class="option-row">
             <label for="llamacpp-min-p">Min-P</label>
-            <div class="input-group" style="gap:0.75rem;align-items:center;">
-                <input id="llamacpp-min-p-slider" type="range" min="0" max="1" step="0.01" value="0.05" style="flex:1;min-width:0;" />
-                <input id="llamacpp-min-p" type="number" min="0" max="1" step="0.01" value="0.05" style="flex:none;width:5rem;" />
+            <div class="input-group settings-slider-group">
+                <input id="llamacpp-min-p-slider" type="range" min="0" max="1" step="0.01" value="0.05" />
+                <input id="llamacpp-min-p" class="settings-number-compact" type="number" min="0" max="1" step="0.01" value="0.05" />
             </div>
         </div>
         <div class="option-row">
             <label for="llamacpp-repeat-penalty">Repetition Penalty</label>
-            <div class="input-group" style="gap:0.75rem;align-items:center;">
-                <input id="llamacpp-repeat-penalty-slider" type="range" min="1" max="2" step="0.01" value="1.15" style="flex:1;min-width:0;" />
-                <input id="llamacpp-repeat-penalty" type="number" min="1" max="2" step="0.01" value="1.15" style="flex:none;width:5rem;" />
+            <div class="input-group settings-slider-group">
+                <input id="llamacpp-repeat-penalty-slider" type="range" min="1" max="2" step="0.01" value="1.15" />
+                <input id="llamacpp-repeat-penalty" class="settings-number-compact" type="number" min="1" max="2" step="0.01" value="1.15" />
             </div>
         </div>
-        <div class="input-group" style="margin-top:0.75rem;">
+        <div class="input-group settings-top-gap">
             <button type="button" id="save-llamacpp-settings" class="btn btn-primary">Save</button>
-            <span id="llamacpp-settings-status" class="option-hint" style="margin-left:0.5rem;"></span>
+            <span id="llamacpp-settings-status" class="option-hint settings-status-inline"></span>
         </div>
     </section>
 
@@ -268,14 +294,14 @@
         <!-- Filters -->
         <div class="option-row">
             <span>Image support</span>
-            <label class="toggle-switch" style="width:fit-content;">
+            <label class="toggle-switch settings-toggle-fit">
                 <input type="checkbox" id="hf-filter-image" />
                 <span class="toggle-track"></span>
             </label>
         </div>
         <div class="option-row">
             <span>Audio support</span>
-            <label class="toggle-switch" style="width:fit-content;">
+            <label class="toggle-switch settings-toggle-fit">
                 <input type="checkbox" id="hf-filter-audio" />
                 <span class="toggle-track"></span>
             </label>
@@ -284,7 +310,7 @@
         <!-- Sort -->
         <div class="option-row">
             <label for="hf-sort-select">Sort by</label>
-            <select id="hf-sort-select" class="text-input" style="width:10rem;">
+            <select id="hf-sort-select" class="text-input settings-sort-select">
                 <option value="downloads">Downloads</option>
                 <option value="likes">Likes</option>
                 <option value="trending">Trending</option>
@@ -296,18 +322,18 @@
         <div id="hf-search-status" class="option-hint"></div>
 
         <!-- Search Results -->
-        <details style="margin-top:0.5rem;" open>
-            <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;margin-bottom:0.5rem;">Search Results</summary>
-            <div id="hf-results-list" style="display:flex;flex-direction:column;gap:8px;">
-                <div style="text-align:center;padding:1rem;font-size:0.85rem;color:var(--muted);">Search for models to download</div>
+        <details class="settings-detail-block" open>
+            <summary class="settings-summary">Search Results</summary>
+            <div id="hf-results-list" class="settings-list-stack">
+                <div class="settings-placeholder">Search for models to download</div>
             </div>
         </details>
 
         <!-- Local Models -->
-        <details style="margin-top:1rem;" open>
-            <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;margin-bottom:0.5rem;">Local Models</summary>
-            <div id="hf-local-models-list" style="display:flex;flex-direction:column;gap:8px;">
-                <div style="text-align:center;padding:1rem;font-size:0.85rem;color:var(--muted);">Loading…</div>
+        <details class="settings-detail-block" open>
+            <summary class="settings-summary">Local Models</summary>
+            <div id="hf-local-models-list" class="settings-list-stack">
+                <div class="settings-placeholder">Loading…</div>
             </div>
         </details>
     </section>

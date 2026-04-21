@@ -1,0 +1,75 @@
+/* www/css/components/content/token-highlighting.css */
+/* ─── Token Highlighting ───────────────────────────────────────────────────── */
+
+/* Base token style - applies when token highlighting is enabled */
+.chat-message-text.token-highlighting-enabled {
+    position: relative;
+}
+
+/* Token spans */
+.token-highlighting-enabled .token {
+    border-radius: 2px;
+    padding: 0;
+    transition: background-color 0.15s ease;
+    cursor: text;
+    position: relative;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
+/* Analytic mode colours - on-theme */
+.token-highlighting-enabled .token-certain,
+.token-highlighting-enabled .chat-message-text > .token-certain {
+    background-color: color-mix(in srgb, var(--ctp-green) 20%, transparent);
+}
+
+.token-highlighting-enabled .token-moderate,
+.token-highlighting-enabled .chat-message-text > .token-moderate {
+    background-color: color-mix(in srgb, var(--ctp-yellow) 20%, transparent);
+}
+
+.token-highlighting-enabled .token-uncertain,
+.token-highlighting-enabled .chat-message-text > .token-uncertain {
+    background-color: color-mix(in srgb, var(--ctp-red) 20%, transparent);
+}
+
+/* Viewport-level tooltip avoids clipping inside tables/code blocks/scrollers */
+.token-logprob-tooltip {
+    position: fixed;
+    left: 0;
+    top: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    font-size: 0.7rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    z-index: 9999;
+    font-family: monospace;
+    pointer-events: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.12s ease;
+}
+
+.token-logprob-tooltip.is-visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Everforest theme support for token highlighting */
+html[data-theme^="everforest-"] .token-highlighting-enabled .token-certain,
+html[data-theme^="everforest-"] .token-highlighting-enabled .chat-message-text > .token-certain {
+    background-color: var(--ef-green-bg);
+}
+
+html[data-theme^="everforest-"] .token-highlighting-enabled .token-moderate,
+html[data-theme^="everforest-"] .token-highlighting-enabled .chat-message-text > .token-moderate {
+    background-color: var(--ef-yellow-bg);
+}
+
+html[data-theme^="everforest-"] .token-highlighting-enabled .token-uncertain,
+html[data-theme^="everforest-"] .token-highlighting-enabled .chat-message-text > .token-uncertain {
+    background-color: var(--ef-red-bg);
+}

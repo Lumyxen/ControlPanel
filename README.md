@@ -2,17 +2,21 @@
 A highly personal web interface to give me the information and tools I need all in 1 place
 
 ## Features
-- An optimised and complex AI chat-box/harness to give it the suite of tools it needs, because nobody else seems to be making good AI harnesses.
+- Password-gated local web UI with encrypted stored chat data
+- AI chat harness with threaded chats, background task streaming, settings, themes, and model management
+- Supports LM Studio, built-in `llama-server` backends from llama.cpp, HuggingFace GGUF downloads, and MCP tool aggregation
+- Detailed shipped feature breakdown: [FEATURES.md](FEATURES.md)
 
 ## Installation
 1. Download the source code
-2. Ensure you have an LM Studio Server running
-3. Build the app (commands down below)
-4. Navigate to the build folder `backend/build/` and run the build file
-- **Linux x64**, run `ctrlpanel`
-- **Linux ARM**, run `ctrlpanel_arm`
-- **Windows**, run `ctrlpanel.exe`
+2. Install the requirements listed below
+3. Build the app
+4. Navigate to `backend/build/` and run the binary there
+- Main Linux build: `ctrlpanel`
+- Optional ARM build: `ctrlpanel_arm` (only produced when the cross-toolchain is available)
+- `ctrlpanel.exe` is also emitted by the current CMake/build setup, but the helper script is Linux-first
 5. In your browser, visit http://127.0.0.1:8080/
+6. On first launch, create a password, then either point the app at LM Studio or use the built-in llama.cpp / model manager settings
 
 ## About
 I just wanted a local web interface to do things in.
@@ -25,75 +29,102 @@ I just want a place to use AI that is safe, private, and uses the AI to its full
 ## Requirements
 - C++23 compatible compiler
 - CMake 3.16+
+- Python 3
+- pkg-config
 - jsoncpp
 - libcurl
+- OpenSSL
+- Internet access on first configure/build to fetch `httplib.h`, and when building llama.cpp backends to download llama.cpp source
 
 ## Building
-### Linux
+### Recommended
 ```bash
-# Create build directory
-mkdir -p backend/build/
-cd backend/build/
+cd backend
+./scripts/build.sh
+```
 
-# Configure
-cmake ..
+This builds `build/ctrlpanel`, `build/ctrlpanel.exe`, and, when the aarch64 toolchain plus target OpenSSL libraries are installed, `build/ctrlpanel_arm`.
 
-# Build
-make -j$(nproc)
+### Manual CMake
+```bash
+cmake -S backend -B backend/build -DCMAKE_BUILD_TYPE=Release
+cmake --build backend/build --target ctrlpanel -j$(nproc)
 ```
 
 ### Windows
-I don't know man, I don't use Windows. Figure it out yourself.
+There is a Windows target in CMake, but the current helper script is Linux-first.
 
 ### Mac
-Good luck.
+There is no maintained macOS build guide yet.
 
 ## Configuration
 
-Edit `data/settings.json` with your settings:
+The app creates `data/settings.json` and `data/mcp.json` next to the binary on first start.
+
+Representative `data/settings.json` keys:
 
 ```json
 {
-    "defaultModel" : "lmstudio::llama-3-8b-instruct",
-    "fallbackMaxOutputTokens" : 8192,
-    "host" : "0.0.0.0",
-    "port" : 8080,
-    "systemPrompt" : "",
-    "temperature" : 0.69999999999999996
+    "defaultModel": "",
+    "fallbackMaxOutputTokens": 8192,
+    "host": "0.0.0.0",
+    "port": 8080,
+    "lmStudioUrl": "http://localhost:1234",
+    "systemPrompt": "You are {model}, a reasoning engine with access to powerful tools.",
+    "temperature": 0.7,
+    "aiTitleEnabled": true,
+    "aiTitleModel": "",
+    "aiTitleSystemPrompt": "Describe the chat in 1-3 words. No quotes, or explanation. Reason as minimally as possible",
+    "llamacppBackend": "auto",
+    "llamacppTag": "b8846",
+    "llamacppConcurrentGeneration": true,
+    "llamacppMaxConcurrentInstances": 4,
+    "llamacppMaxLoadedModels": 2
 }
 ```
 
+Additional llama.cpp tuning fields are also stored there and can be changed from the Settings page.
+
 ## API Endpoints
 
+Unless noted otherwise, all `/api/*` routes and `/mcp` require an authenticated session token. The backend accepts `X-Session-Token`, and SSE-style clients can also use `?token=...`.
+
 **General**
-- `GET /health` - Check backend health status
+- `GET /health` - Check backend health status (public)
 
 **Authentication**
-- `GET /api/auth` - Check if a password has been set up
-- `POST /api/auth/setup` - Set up the initial password (fails if already set up)
-- `POST /api/auth/login` - Log in with an existing password, returns a session token
+- `GET /api/auth` - Check whether a password has been set up (public)
+- `POST /api/auth/setup` - Set up the initial password (public, fails if already set up)
+- `POST /api/auth/login` - Log in with an existing password and receive a session token (public)
 - `POST /api/auth/logout` - Revoke the current session
-- `GET /api/auth/validate` - Validate a session token
+- `GET /api/auth/validate` - Validate a supplied session token (public)
 
-**Chat & Models**
-- `POST /api/chat` - Send a non-streaming chat message
-- `POST /api/chat/stream` - Send a streaming chat message (SSE)
+**Legacy Chat**
+- `POST /api/chat` - Legacy non-streaming LM Studio chat endpoint
+- `POST /api/chat/stream` - Legacy streaming chat endpoint
 - `POST /api/chat/stop` - Stop an active chat stream
 - `POST /api/chat/generate-title` - Generate a title for a chat thread
+
+**Task-Based Generation**
+- `POST /api/tasks/generate` - Create an async generation task
+- `GET /api/tasks` - List all tasks with their statuses
+- `GET /api/tasks/by-chat` - Get the most recent task for a given `chat_id`
+- `GET /api/tasks/:id` - Get the status/result for a specific task
+- `GET /api/tasks/:id/wait` - Wait for a specific task to complete, then return the result
+- `GET /api/tasks/:id/stream` - SSE stream that replays accumulated chunks and continues live generation
+- `POST /api/tasks/:id/cancel` - Cancel a pending or running task
+
+**Chats**
+- `GET /api/chats` - Get all saved chat threads
+- `PUT /api/chats` - Save/replace the chat thread collection
+- `GET /api/chats/:id` - Get a single saved chat thread
+- `PUT /api/chats/:id` - Save/update a single chat thread
+- `DELETE /api/chats/:id` - Delete a saved chat thread
+
+**Models**
 - `GET /api/models` - List available models (LM Studio & local llama.cpp)
 - `DELETE /api/models` - Delete a downloaded model from disk (body: `model_id`)
 - `GET /api/lmstudio/models` - List models from LM Studio only
-- `GET /api/chats` - Get saved chat history/threads (requires `X-Session-Token`)
-- `PUT /api/chats` - Save/Update chat history/threads (requires `X-Session-Token`)
-
-**Task-Based Generation**
-- `POST /api/tasks/generate` - Create an async generation task (returns `task_id`)
-- `GET /api/tasks` - List all tasks with their statuses
-- `GET /api/tasks/by-chat` - Get the most recent task for a given `chat_id` query param
-- `GET /api/tasks/:id` - Get the status and result of a specific task
-- `GET /api/tasks/:id/wait` - Block until the task completes, then return the result
-- `GET /api/tasks/:id/stream` - SSE stream that replays past chunks and continues live generation
-- `POST /api/tasks/:id/cancel` - Cancel a pending or running task
 
 **Configuration**
 - `GET /api/config/settings` - Get current control panel settings
@@ -102,25 +133,26 @@ Edit `data/settings.json` with your settings:
 **llama.cpp Management**
 - `GET /api/llamacpp/backend` - Get backend info (available, hardware, active, suggestions)
 - `POST /api/llamacpp/backend` - Switch the active llama.cpp backend
-- `DELETE /api/llamacpp/backend/:name` - Remove a built backend library from disk
-- `POST /api/llamacpp/reload-model` - Unload and reload the model (applies config changes)
-- `POST /api/llamacpp/build` - Start building a new backend shared library
+- `DELETE /api/llamacpp/backend/:name` - Remove a built backend runtime from disk
+- `POST /api/llamacpp/reload-model` - Reload the managed llama.cpp model/router so config changes apply
+- `POST /api/llamacpp/build` - Start building a new backend-specific `llama-server` runtime
 - `GET /api/llamacpp/build/status` - Get the status of the current build
-- `GET /api/llamacpp/build/log` - Get the latest log lines for the active build
+- `GET /api/llamacpp/build/log` - Get the latest build log chunk and tail lines (`lines` / `offset` query params supported)
 - `POST /api/llamacpp/backend/dismiss` - Dismiss the GPU backend suggestion
+- `GET /api/llamacpp/pool/status` - Get managed llama.cpp router status
 
 **HuggingFace Model Hub**
 - `GET /api/huggingface/search` - Search HuggingFace for models
-- `GET /api/huggingface/model-info` - Get metadata for a specific HuggingFace model
-- `GET /api/huggingface/files` - List files for a HuggingFace model (gguf, mmproj, tokenizer)
+- `GET /api/huggingface/model-info` - Get metadata for a specific HuggingFace model (`model_id`)
+- `GET /api/huggingface/files` - List GGUF, mmproj, and tokenizer files for a HuggingFace model (`model_id`)
 - `POST /api/huggingface/download` - Start an async download of a HuggingFace model
-- `GET /api/huggingface/download-status` - Check download progress or list active downloads
+- `GET /api/huggingface/download-status` - Check one download job (`job_id`) or list active downloads when omitted
 - `POST /api/huggingface/cancel-download` - Cancel an active download
 - `POST /api/huggingface/install-tokenizer` - Install tokenizer files into an existing model directory
 
 **MCP (Model Context Protocol)**
 - `GET /api/mcp/tools` - List aggregated tools from all live MCP servers
-- `POST /api/mcp/reload` - Reload `mcp.json` configuration
+- `POST /api/mcp/reload` - Reload `data/mcp.json` configuration
 - `POST /mcp` - Dispatch a JSON-RPC 2.0 request to an MCP server
 - `GET /mcp` - MCP Server-Sent Events (SSE) channel stub
 
