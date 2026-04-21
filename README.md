@@ -70,7 +70,7 @@ Representative `data/settings.json` keys:
     "host": "0.0.0.0",
     "port": 8080,
     "lmStudioUrl": "http://localhost:1234",
-    "systemPrompt": "You are {model}, a reasoning engine with access to powerful tools.",
+    "systemPrompt": "You are in an advanced AI harness with access to a deferred internal tool system.",
     "temperature": 0.7,
     "aiTitleEnabled": true,
     "aiTitleModel": "",
