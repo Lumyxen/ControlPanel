@@ -55,6 +55,7 @@ export function ensureGraph(chat) {
 	       if (m.parts) node.parts = JSON.parse(JSON.stringify(m.parts));
 	       if (m.attachments) node.attachments = JSON.parse(JSON.stringify(m.attachments));
 	       if (m.reasoning) node.reasoning = m.reasoning;
+	       if (m.reasoningParts) node.reasoningParts = JSON.parse(JSON.stringify(m.reasoningParts));
 	       if (m.toolCalls) node.toolCalls = JSON.parse(JSON.stringify(m.toolCalls));
 	       
 		graph.nodes[nodeId] = node;
@@ -107,7 +108,7 @@ export function recomputeLeafId(graph) {
 	graph.leafId = path.length ? path[path.length - 1] : null;
 }
 
-export function appendNode(graph, { parentId, role, content, timestamp, attachments, parts, toolCalls }) {
+export function appendNode(graph, { parentId, role, content, timestamp, attachments, parts, reasoningParts, toolCalls }) {
 	// If no parent specified, use the leaf (last message in thread)
 	if (parentId == null) {
 		parentId = graph.leafId ?? graph.rootId;
@@ -134,6 +135,9 @@ export function appendNode(graph, { parentId, role, content, timestamp, attachme
 	if (toolCalls && toolCalls.length > 0) {
 		node.toolCalls = toolCalls;
 	}
+	if (reasoningParts && reasoningParts.length > 0) {
+		node.reasoningParts = reasoningParts;
+	}
 	
 	graph.nodes[id] = node;
 	parent.children.push(id);
@@ -142,7 +146,7 @@ export function appendNode(graph, { parentId, role, content, timestamp, attachme
 	return node;
 }
 
-export function createSiblingCopy(graph, nodeId, { content, timestamp, parts, attachments, reasoning } = {}) {
+export function createSiblingCopy(graph, nodeId, { content, timestamp, parts, attachments, reasoning, reasoningParts } = {}) {
 	const node = getNode(graph, nodeId);
 	if (!node?.parentId) return null;
 	const parent = getNode(graph, node.parentId);
@@ -176,6 +180,12 @@ export function createSiblingCopy(graph, nodeId, { content, timestamp, parts, at
         if (reasoning) sibling.reasoning = reasoning;
     } else if (node.reasoning) {
         sibling.reasoning = node.reasoning;
+    }
+
+    if (reasoningParts !== undefined) {
+        if (reasoningParts) sibling.reasoningParts = JSON.parse(JSON.stringify(reasoningParts));
+    } else if (node.reasoningParts) {
+        sibling.reasoningParts = JSON.parse(JSON.stringify(node.reasoningParts));
     }
 
     if (node.toolCalls) sibling.toolCalls = JSON.parse(JSON.stringify(node.toolCalls));
@@ -221,6 +231,7 @@ export function branchFromNode(graph, nodeId, { preserveSelectedTail = false } =
     if (node.parts) sibling.parts = JSON.parse(JSON.stringify(node.parts));
     if (node.attachments) sibling.attachments = JSON.parse(JSON.stringify(node.attachments));
     if (node.reasoning) sibling.reasoning = node.reasoning;
+    if (node.reasoningParts) sibling.reasoningParts = JSON.parse(JSON.stringify(node.reasoningParts));
     if (node.toolCalls) sibling.toolCalls = JSON.parse(JSON.stringify(node.toolCalls));
     if (node.tokenLogprobs) sibling.tokenLogprobs = JSON.parse(JSON.stringify(node.tokenLogprobs));
 
@@ -251,6 +262,7 @@ export function branchFromNode(graph, nodeId, { preserveSelectedTail = false } =
         if (oldNext.parts) cloned.parts = JSON.parse(JSON.stringify(oldNext.parts));
         if (oldNext.attachments) cloned.attachments = JSON.parse(JSON.stringify(oldNext.attachments));
         if (oldNext.reasoning) cloned.reasoning = oldNext.reasoning;
+        if (oldNext.reasoningParts) cloned.reasoningParts = JSON.parse(JSON.stringify(oldNext.reasoningParts));
         if (oldNext.toolCalls) cloned.toolCalls = JSON.parse(JSON.stringify(oldNext.toolCalls));
         if (oldNext.tokenLogprobs) cloned.tokenLogprobs = JSON.parse(JSON.stringify(oldNext.tokenLogprobs));
 

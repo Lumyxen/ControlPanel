@@ -17,6 +17,7 @@ namespace {
 struct ParsedTaskOutput {
     std::string content;
     std::string reasoning;
+    Json::Value reasoningParts = Json::Value(Json::arrayValue);
     Json::Value toolCalls = Json::Value(Json::arrayValue);
     Json::Value logprobs = Json::Value(Json::arrayValue);
 };
@@ -121,10 +122,65 @@ void upsertToolCall(Json::Value& toolCalls, const Json::Value& toolCall) {
     toolCalls.append(toolCall);
 }
 
+void appendReasoningTextPart(Json::Value& reasoningParts, const std::string& text) {
+    if (text.empty()) {
+        return;
+    }
+    if (!reasoningParts.isArray()) {
+        reasoningParts = Json::Value(Json::arrayValue);
+    }
+
+    if (!reasoningParts.empty()) {
+        Json::Value& last = reasoningParts[reasoningParts.size() - 1];
+        if (last.isObject() && last.get("type", "").asString() == "text") {
+            last["content"] = last.get("content", "").asString() + text;
+            return;
+        }
+    }
+
+    Json::Value part(Json::objectValue);
+    part["type"] = "text";
+    part["content"] = text;
+    reasoningParts.append(part);
+}
+
+void upsertReasoningToolPart(Json::Value& reasoningParts, const Json::Value& toolCall) {
+    if (!toolCall.isObject()) {
+        return;
+    }
+    if (!reasoningParts.isArray()) {
+        reasoningParts = Json::Value(Json::arrayValue);
+    }
+
+    const std::string toolCallId = toolCall.get("id", "").asString();
+    if (!toolCallId.empty()) {
+        for (auto& existing : reasoningParts) {
+            if (!existing.isObject() || existing.get("type", "").asString() != "tool_call") {
+                continue;
+            }
+            if (existing.get("toolCallId", "").asString() != toolCallId) {
+                continue;
+            }
+            existing["toolCallId"] = toolCallId;
+            existing["toolCall"] = toolCall;
+            return;
+        }
+    }
+
+    Json::Value part(Json::objectValue);
+    part["type"] = "tool_call";
+    if (!toolCallId.empty()) {
+        part["toolCallId"] = toolCallId;
+    }
+    part["toolCall"] = toolCall;
+    reasoningParts.append(part);
+}
+
 ParsedTaskOutput parseTaskOutput(const std::deque<std::string>& chunks) {
     ParsedTaskOutput output;
     std::string fullContent;
     std::string fullReasoning;
+    bool reasoningFromContent = false;
 
     for (const auto& chunk : chunks) {
         for (const auto& payload : extractSsePayloads(chunk)) {
@@ -143,8 +199,10 @@ ParsedTaskOutput parseTaskOutput(const std::deque<std::string>& chunks) {
             if (json.get("type", "").asString() == "retract") {
                 fullContent.clear();
                 fullReasoning.clear();
+                output.reasoningParts = Json::Value(Json::arrayValue);
                 output.toolCalls = Json::Value(Json::arrayValue);
                 output.logprobs = Json::Value(Json::arrayValue);
+                reasoningFromContent = false;
                 continue;
             }
 
@@ -152,6 +210,7 @@ ParsedTaskOutput parseTaskOutput(const std::deque<std::string>& chunks) {
                  json.get("type", "").asString() == "tool_event") &&
                 json.isMember("tool_call")) {
                 upsertToolCall(output.toolCalls, json["tool_call"]);
+                upsertReasoningToolPart(output.reasoningParts, json["tool_call"]);
                 continue;
             }
 
@@ -162,7 +221,9 @@ ParsedTaskOutput parseTaskOutput(const std::deque<std::string>& chunks) {
             const Json::Value& choice = json["choices"][0];
             const Json::Value& delta = choice["delta"];
             if (delta.isMember("reasoning") && delta["reasoning"].isString()) {
-                fullReasoning += delta["reasoning"].asString();
+                const std::string reasoningDelta = delta["reasoning"].asString();
+                fullReasoning += reasoningDelta;
+                appendReasoningTextPart(output.reasoningParts, reasoningDelta);
             }
             if (delta.isMember("content") && delta["content"].isString()) {
                 const std::string token = delta["content"].asString();
@@ -184,10 +245,12 @@ ParsedTaskOutput parseTaskOutput(const std::deque<std::string>& chunks) {
         const std::size_t thinkEnd = remaining.find("</think>", thinkStart + 7);
         if (thinkEnd == std::string::npos) {
             output.reasoning += remaining.substr(thinkStart + 7);
+            reasoningFromContent = true;
             break;
         }
 
         output.reasoning += remaining.substr(thinkStart + 7, thinkEnd - thinkStart - 7) + "\n\n";
+        reasoningFromContent = true;
         remaining = remaining.substr(thinkEnd + 8);
     }
 
@@ -200,6 +263,9 @@ ParsedTaskOutput parseTaskOutput(const std::deque<std::string>& chunks) {
 
     trimWhitespace(output.content);
     trimWhitespace(output.reasoning);
+    if (reasoningFromContent) {
+        output.reasoningParts = Json::Value(Json::arrayValue);
+    }
     return output;
 }
 
@@ -209,6 +275,7 @@ void saveParsedOutputToTask(
     std::lock_guard<std::mutex> lock(task->mutex);
     task->resultContent = output.content;
     task->resultReasoning = output.reasoning;
+    task->resultReasoningParts = output.reasoningParts;
     task->resultToolCalls = output.toolCalls;
     task->resultLogprobs = output.logprobs;
 }
@@ -232,6 +299,7 @@ void persistParsedOutputToChat(
         parentUserId,
         output.content,
         output.reasoning,
+        output.reasoningParts,
         output.toolCalls,
         output.logprobs);
 }
@@ -328,9 +396,11 @@ Json::Value TaskManager::buildSnapshot(const std::shared_ptr<GenerationTask>& ta
 
     if (task->finalized.load() &&
         (!task->resultContent.empty() || !task->resultReasoning.empty() ||
-         !task->resultToolCalls.empty() || !task->resultLogprobs.empty())) {
+         !task->resultReasoningParts.empty() || !task->resultToolCalls.empty() ||
+         !task->resultLogprobs.empty())) {
         result["result"]["content"] = task->resultContent;
         result["result"]["reasoning"] = task->resultReasoning;
+        result["result"]["reasoningParts"] = task->resultReasoningParts;
         result["result"]["toolCalls"] = task->resultToolCalls;
         result["result"]["logprobs"] = task->resultLogprobs;
     }

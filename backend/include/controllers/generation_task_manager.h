@@ -35,6 +35,7 @@ struct GenerationTask {
     std::string error;
     std::string resultContent;
     std::string resultReasoning;
+    Json::Value resultReasoningParts = Json::Value(Json::arrayValue);
     Json::Value resultToolCalls = Json::Value(Json::arrayValue);
     Json::Value resultLogprobs = Json::Value(Json::arrayValue);
     TaskStatus status = TaskStatus::Pending;

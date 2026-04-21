@@ -800,6 +800,7 @@ bool ChatStore::appendAssistantMessage(
     const std::string& parentUserId,
     const std::string& content,
     const std::string& reasoning,
+    const Json::Value& reasoningParts,
     const Json::Value& toolCalls,
     const Json::Value& logprobs) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -853,6 +854,9 @@ bool ChatStore::appendAssistantMessage(
     }
     if (!reasoning.empty()) {
         node["reasoning"] = reasoning;
+    }
+    if (reasoningParts.isArray() && !reasoningParts.empty()) {
+        node["reasoningParts"] = reasoningParts;
     }
     if (toolCalls.isArray() && !toolCalls.empty()) {
         node["toolCalls"] = toolCalls;

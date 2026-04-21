@@ -55,6 +55,7 @@ import {
 } from './www/js/pages/chat/graph.js';
 import { getNodeTextContent, buildPartsWithUpdatedText } from './www/js/pages/chat/message-parts.js';
 import { buildApiMessages, buildConversationHistory, parseStreamReasoning } from './www/js/pages/chat/payloads.js';
+import { getResolvedReasoningParts } from './www/js/pages/chat/reasoning-parts.js';
 import { coerceTheme } from './www/js/pages/settings/theme-section.js';
 import { renderMessageTextHtml } from './www/js/render/message.js';
 import { isFormattingOnlyTextContent, mapDomTextToTokenLogprobs } from './www/js/render/token-highlighting.js';
@@ -109,6 +110,31 @@ assert.deepEqual(buildApiMessages(apiGraph, [apiUser.id, apiAssistant.id]), [
 	{ role: 'user', content: 'hi there' },
 	{ role: 'assistant', content: '<think>\nthinking\n</think>\n\ngeneral kenobi' },
 ]);
+
+apiAssistant.reasoningParts = [
+	{ type: 'text', content: 'Thinking...' },
+	{ type: 'tool_call', toolCallId: 'tool_1' },
+	{ type: 'text', content: '\nDone.' },
+];
+apiAssistant.toolCalls = [
+	{ id: 'tool_1', name: 'diag_tool', status: 'completed', output: { ok: true } },
+];
+assert.deepEqual(getResolvedReasoningParts({
+	reasoning: apiAssistant.reasoning,
+	reasoningParts: apiAssistant.reasoningParts,
+	toolCalls: apiAssistant.toolCalls,
+}), [
+	{ type: 'text', content: 'Thinking...' },
+	{
+		type: 'tool_call',
+		toolCallId: 'tool_1',
+		toolCall: { id: 'tool_1', name: 'diag_tool', status: 'completed', output: { ok: true } },
+	},
+	{ type: 'text', content: '\nDone.' },
+]);
+
+const assistantSiblingCopy = createSiblingCopy(apiGraph, apiAssistant.id);
+assert.deepEqual(getNode(apiGraph, assistantSiblingCopy.id).reasoningParts, apiAssistant.reasoningParts);
 
 apiAssistant.tokenLogprobs = [
 	{ text: 'general ', logprob: -0.1 },

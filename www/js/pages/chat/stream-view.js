@@ -1,5 +1,10 @@
 import { parseStreamReasoning } from './payloads.js';
-import { buildToolCallElement } from './thread-view.js';
+import { buildReasoningElement } from './thread-view.js';
+import {
+	appendReasoningTextPart,
+	cloneReasoningParts,
+	upsertReasoningToolPart,
+} from './reasoning-parts.js';
 import { applyTokenHighlighting } from '../../render/token-highlighting.js';
 import { renderMessageTextInto } from '../../render/message.js';
 
@@ -19,6 +24,7 @@ export function createStreamingMessageController({
 }) {
 	let rawStreamText = '';
 	let officialReasoningText = '';
+	let reasoningParts = [];
 	let activeToolCalls = [];
 	let tokenLogprobs = [];
 	let errorFromStream = null;
@@ -47,7 +53,11 @@ export function createStreamingMessageController({
 		if (parsedReasoning) {
 			displayReasoning += (displayReasoning ? '\n\n' : '') + parsedReasoning.trim();
 		}
-		return { parsedContent, displayReasoning };
+		return {
+			parsedContent,
+			parsedReasoning,
+			displayReasoning,
+		};
 	};
 
 	const emitLiveNode = () => {
@@ -55,6 +65,7 @@ export function createStreamingMessageController({
 			role: 'assistant',
 			content: rawStreamText,
 			reasoning: officialReasoningText,
+			reasoningParts: cloneReasoningParts(reasoningParts),
 			toolCalls: cloneToolCalls(activeToolCalls),
 		});
 	};
@@ -74,34 +85,24 @@ export function createStreamingMessageController({
 		return content;
 	};
 
-	const renderReasoning = (content, displayReasoning) => {
-		let reasoningEl = content.querySelector('.message-reasoning');
-		if (!displayReasoning) {
-			reasoningEl?.remove();
+	const renderReasoning = (content, displayState) => {
+		const { displayReasoning, parsedReasoning } = displayState;
+		const nextReasoningEl = buildReasoningElement({
+			reasoning: displayReasoning,
+			reasoningParts: parsedReasoning ? null : reasoningParts,
+			toolCalls: activeToolCalls,
+			open: true,
+			summaryText: 'Thinking...',
+		});
+		const existingReasoningEl = content.querySelector('.message-reasoning');
+		if (!nextReasoningEl) {
+			existingReasoningEl?.remove();
 			return;
 		}
-
-		if (!reasoningEl) {
-			reasoningEl = document.createElement('details');
-			reasoningEl.className = 'message-reasoning';
-			reasoningEl.open = true;
-			reasoningEl.innerHTML = '<summary>Thinking...</summary><div class="reasoning-content"></div>';
-			content.insertBefore(reasoningEl, content.firstChild);
-		}
-
-		const reasoningContent = reasoningEl.querySelector('.reasoning-content');
-		if (reasoningContent) reasoningContent.textContent = displayReasoning;
-	};
-
-	const renderToolCalls = (content) => {
-		content.querySelectorAll('.message-tool-call').forEach((el) => el.remove());
-		if (activeToolCalls.length === 0) return;
-
-		const textEl = content.querySelector('.chat-message-text');
-		for (const toolCall of activeToolCalls) {
-			const toolEl = buildToolCallElement(toolCall);
-			toolEl.dataset.toolCallId = toolCall.id;
-			textEl ? content.insertBefore(toolEl, textEl) : content.appendChild(toolEl);
+		if (existingReasoningEl) {
+			existingReasoningEl.replaceWith(nextReasoningEl);
+		} else {
+			content.insertBefore(nextReasoningEl, content.firstChild);
 		}
 	};
 
@@ -126,10 +127,10 @@ export function createStreamingMessageController({
 
 	const renderDom = () => {
 		const content = ensureMessageContent();
-		const { parsedContent, displayReasoning } = getDisplayState();
-		renderReasoning(content, displayReasoning);
+		const displayState = getDisplayState();
+		renderReasoning(content, displayState);
+		const { parsedContent } = displayState;
 		renderText(content, parsedContent);
-		renderToolCalls(content);
 		afterRender();
 	};
 
@@ -144,6 +145,7 @@ export function createStreamingMessageController({
 		if (chunk.type === 'retract') {
 			rawStreamText = '';
 			officialReasoningText = '';
+			reasoningParts = [];
 			tokenLogprobs = [];
 			emitLiveNode();
 			renderDom();
@@ -156,11 +158,15 @@ export function createStreamingMessageController({
 				input: chunk.tool_call.input ?? chunk.tool_call.arguments ?? null,
 			};
 			upsertToolCall(nextToolCall);
+			upsertReasoningToolPart(reasoningParts, nextToolCall);
 		}
 
 		if (chunk.choices?.[0]?.delta) {
 			const delta = chunk.choices[0].delta;
-			if (delta.reasoning) officialReasoningText += delta.reasoning;
+			if (delta.reasoning) {
+				officialReasoningText += delta.reasoning;
+				appendReasoningTextPart(reasoningParts, delta.reasoning);
+			}
 			if (delta.content) {
 				rawStreamText += delta.content;
 				if (delta.logprob != null) {
@@ -214,13 +220,14 @@ export function createStreamingMessageController({
 			return {
 				rawStreamText,
 				officialReasoningText,
+				reasoningParts: cloneReasoningParts(reasoningParts),
 				activeToolCalls: cloneToolCalls(activeToolCalls),
 				tokenLogprobs: cloneTokenLogprobs(tokenLogprobs),
 				errorFromStream,
 			};
 		},
 		buildFinalResult() {
-			const { parsedContent, displayReasoning } = getDisplayState();
+			const { parsedContent, parsedReasoning, displayReasoning } = getDisplayState();
 			let finalContent = parsedContent.trim();
 			const finalReasoning = displayReasoning.trim();
 			if (errorFromStream) {
@@ -231,6 +238,7 @@ export function createStreamingMessageController({
 			return {
 				finalContent,
 				finalReasoning,
+				finalReasoningParts: parsedReasoning ? [] : cloneReasoningParts(reasoningParts),
 				activeToolCalls: cloneToolCalls(activeToolCalls),
 				tokenLogprobs: cloneTokenLogprobs(tokenLogprobs),
 				errorFromStream,

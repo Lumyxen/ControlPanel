@@ -87,11 +87,21 @@
 
 .reasoning-content {
     padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.reasoning-text {
     font-size: 0.9rem;
     font-style: italic;
     color: var(--muted);
     white-space: pre-wrap;
     overflow-wrap: break-word;
+}
+
+.reasoning-content .message-tool-call {
+    margin: 0;
 }
 
 /* Tool call blocks */

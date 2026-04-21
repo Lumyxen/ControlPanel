@@ -6,6 +6,7 @@ import { computeThreadNodeIds, ensureGraph, getNode } from './graph.js';
 import { formatBytes, getFileExtension, getFiletypeIcon, getFiletypeName } from './util.js';
 import { applyTokenHighlighting } from '../../render/token-highlighting.js';
 import { getNodeTextContent } from './message-parts.js';
+import { getResolvedReasoningParts } from './reasoning-parts.js';
 import { renderMessageTextInto } from '../../render/message.js';
 
 // ─── HTML escaping ────────────────────────────────────────────────────────────
@@ -158,16 +159,39 @@ export function buildToolCallElement(tc) {
 
 // ─── Reasoning block ──────────────────────────────────────────────────────────
 
-export function buildReasoningElement(reasoning) {
-	if (!reasoning || !reasoning.trim()) return null;
+function buildReasoningTextPart(text) {
+	const content = document.createElement('div');
+	content.className = 'reasoning-text';
+	content.textContent = text;
+	return content;
+}
+
+export function buildReasoningElement({
+	reasoning = '',
+	reasoningParts = null,
+	toolCalls = null,
+	open = false,
+	summaryText = 'Thinking',
+} = {}) {
+	const resolvedParts = getResolvedReasoningParts({ reasoning, reasoningParts, toolCalls });
+	if (!resolvedParts.length) return null;
 	const details = document.createElement('details');
 	details.className = 'message-reasoning';
-	details.open = false;
+	details.open = Boolean(open);
 	const summary = document.createElement('summary');
-	summary.textContent = 'Thinking';
+	summary.textContent = summaryText;
 	const content = document.createElement('div');
 	content.className = 'reasoning-content';
-	content.textContent = reasoning;
+
+	for (const part of resolvedParts) {
+		if (part.type === 'text' && part.content) {
+			content.appendChild(buildReasoningTextPart(part.content));
+			continue;
+		}
+		if (part.type === 'tool_call' && part.toolCall) {
+			content.appendChild(buildToolCallElement(part.toolCall));
+		}
+	}
 	details.append(summary, content);
 	return details;
 }
@@ -178,13 +202,13 @@ export function buildContentContainer(node, isEditing, editingDraft, settings = 
 	const container = document.createElement('div');
 	container.className = 'chat-message-content';
 
-	if (!isEditing && node.role === 'assistant' && node.reasoning) {
-		const el = buildReasoningElement(node.reasoning);
+	if (!isEditing && node.role === 'assistant') {
+		const el = buildReasoningElement({
+			reasoning: node.reasoning,
+			reasoningParts: node.reasoningParts,
+			toolCalls: node.toolCalls,
+		});
 		if (el) container.appendChild(el);
-	}
-
-	if (!isEditing && node.role === 'assistant' && Array.isArray(node.toolCalls) && node.toolCalls.length > 0) {
-		node.toolCalls.forEach(tc => container.appendChild(buildToolCallElement(tc)));
 	}
 
 	if (isEditing) {

@@ -1772,17 +1772,6 @@ void LlamaCppService::streamingChatWithTools(
         messages.append(assistantMsg);
 
         for (const auto& [id, name, argumentsJson] : toolCalls) {
-            if (onChunk) {
-                Json::Value thinking(Json::objectValue);
-                thinking["choices"][0]["delta"]["reasoning"] = "\n*Executing tool: " + name + "*\n";
-                Json::StreamWriterBuilder writer;
-                writer["indentation"] = "";
-                if (!onChunk("data: " + Json::writeString(writer, thinking) + "\n\n")) {
-                    return;
-                }
-
-            }
-
             std::string resultStr;
             if (toolSystem && !taskId.empty()) {
                 Json::Value args(Json::objectValue);

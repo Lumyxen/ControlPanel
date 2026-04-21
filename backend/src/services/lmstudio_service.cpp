@@ -477,16 +477,6 @@ void LmStudioService::streamingChatWithTools(
         messages.append(assistantMsg);
 
         for (const auto& tc : toolCalls) {
-        	if (onChunk) {
-        		Json::Value fakeChoice;
-        		fakeChoice["delta"]["reasoning"] = "\n*Executing tool: " + tc.name + "*\n";
-        		Json::Value fakeJson;
-        		fakeJson["choices"].append(fakeChoice);
-        		Json::StreamWriterBuilder wb;
-        		wb["indentation"] = "";
-        		if (!onChunk("data: " + Json::writeString(wb, fakeJson) + "\n\n")) return;
-        	}
-      
         	std::string resultStr;
             if (toolSystem && !taskId.empty()) {
                 Json::Value args(Json::objectValue);

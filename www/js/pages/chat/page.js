@@ -454,6 +454,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			const {
 				finalContent,
 				finalReasoning,
+				finalReasoningParts,
 				activeToolCalls,
 				tokenLogprobs,
 				errorFromStream,
@@ -462,6 +463,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				const node = addChildMessageToChat(activeChatId, parentUserNodeId, 'assistant', finalContent);
 				if (node) {
 					if (finalReasoning)             node.reasoning  = finalReasoning;
+					if (finalReasoningParts.length > 0) node.reasoningParts = finalReasoningParts;
 					if (activeToolCalls.length > 0) node.toolCalls  = activeToolCalls;
 					if (tokenLogprobs.length > 0) {
 						node.tokenLogprobs = tokenLogprobs;
