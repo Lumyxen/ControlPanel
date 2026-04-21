@@ -9,9 +9,8 @@ backend/build-arm/
 # Test dir
 testing/
 
-# Project dumps
-dev/project.json
-dev/project.md
+# Project dump
+scripts/dump.md
 
 # Temp chat files
 chat1.json
