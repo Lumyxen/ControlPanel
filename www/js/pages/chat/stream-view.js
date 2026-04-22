@@ -30,6 +30,12 @@ export function createStreamingMessageController({
 	let errorFromStream = null;
 	let pendingChunks = [];
 	let isProcessingChunks = false;
+	let reasoningOpen = true;
+	let reasoningSummaryText = 'Thinking...';
+	let reasoningPhaseActive = false;
+	let reasoningPhaseUserToggled = false;
+	let reasoningUserToggledDuringGeneration = false;
+	let pendingReasoningUserToggle = false;
 
 	const upsertToolCall = (toolCall) => {
 		if (!toolCall || typeof toolCall !== 'object') return;
@@ -48,7 +54,13 @@ export function createStreamingMessageController({
 	};
 
 	const getDisplayState = () => {
-		const { parsedContent, parsedReasoning } = parseStreamReasoning(rawStreamText);
+		const {
+			parsedContent,
+			parsedReasoning,
+			hasThinkTags,
+			isThinkingActive,
+			closedThinkBlocks,
+		} = parseStreamReasoning(rawStreamText);
 		let displayReasoning = officialReasoningText;
 		if (parsedReasoning) {
 			displayReasoning += (displayReasoning ? '\n\n' : '') + parsedReasoning.trim();
@@ -57,6 +69,9 @@ export function createStreamingMessageController({
 			parsedContent,
 			parsedReasoning,
 			displayReasoning,
+			hasThinkTags,
+			isThinkingActive,
+			closedThinkBlocks,
 		};
 	};
 
@@ -85,14 +100,61 @@ export function createStreamingMessageController({
 		return content;
 	};
 
+	const bindReasoningElement = (reasoningEl) => {
+		if (!reasoningEl || reasoningEl.dataset.streamingBound === 'true') return;
+		const summaryEl = reasoningEl.querySelector('summary');
+		summaryEl?.addEventListener('click', () => {
+			pendingReasoningUserToggle = true;
+		});
+		summaryEl?.addEventListener('keydown', (event) => {
+			if (event.key === 'Enter' || event.key === ' ') {
+				pendingReasoningUserToggle = true;
+			}
+		});
+		reasoningEl.addEventListener('toggle', () => {
+			reasoningOpen = reasoningEl.open;
+			if (pendingReasoningUserToggle) {
+				reasoningUserToggledDuringGeneration = true;
+				if (reasoningPhaseActive) {
+					reasoningPhaseUserToggled = true;
+				}
+			}
+			pendingReasoningUserToggle = false;
+		});
+		reasoningEl.dataset.streamingBound = 'true';
+	};
+
+	const syncReasoningElement = (reasoningEl, nextReasoningEl) => {
+		if (!reasoningEl || !nextReasoningEl) return;
+		const currentSummaryEl = reasoningEl.querySelector('summary');
+		const nextSummaryEl = nextReasoningEl.querySelector('summary');
+		if (currentSummaryEl && nextSummaryEl) {
+			currentSummaryEl.textContent = nextSummaryEl.textContent;
+		}
+
+		if (reasoningEl.open !== reasoningOpen) {
+			reasoningEl.open = reasoningOpen;
+		}
+
+		const currentContentEl = reasoningEl.querySelector('.reasoning-content');
+		const nextContentEl = nextReasoningEl.querySelector('.reasoning-content');
+		if (currentContentEl && nextContentEl) {
+			currentContentEl.replaceWith(nextContentEl);
+		} else if (currentContentEl) {
+			currentContentEl.remove();
+		} else if (nextContentEl) {
+			reasoningEl.appendChild(nextContentEl);
+		}
+	};
+
 	const renderReasoning = (content, displayState) => {
 		const { displayReasoning, parsedReasoning } = displayState;
 		const nextReasoningEl = buildReasoningElement({
 			reasoning: displayReasoning,
 			reasoningParts: parsedReasoning ? null : reasoningParts,
 			toolCalls: activeToolCalls,
-			open: true,
-			summaryText: 'Thinking...',
+			open: reasoningOpen,
+			summaryText: reasoningSummaryText,
 		});
 		const existingReasoningEl = content.querySelector('.message-reasoning');
 		if (!nextReasoningEl) {
@@ -100,10 +162,12 @@ export function createStreamingMessageController({
 			return;
 		}
 		if (existingReasoningEl) {
-			existingReasoningEl.replaceWith(nextReasoningEl);
-		} else {
-			content.insertBefore(nextReasoningEl, content.firstChild);
+			bindReasoningElement(existingReasoningEl);
+			syncReasoningElement(existingReasoningEl, nextReasoningEl);
+			return;
 		}
+		bindReasoningElement(nextReasoningEl);
+		content.insertBefore(nextReasoningEl, content.firstChild);
 	};
 
 	const renderText = (content, parsedContent) => {
@@ -134,7 +198,28 @@ export function createStreamingMessageController({
 		afterRender();
 	};
 
+	const closeReasoningPhase = () => {
+		reasoningPhaseActive = false;
+		reasoningSummaryText = 'Thinking';
+		if (!reasoningPhaseUserToggled) {
+			reasoningOpen = false;
+		}
+		reasoningPhaseUserToggled = false;
+	};
+
+	const startReasoningPhase = () => {
+		reasoningPhaseActive = true;
+		reasoningPhaseUserToggled = false;
+		pendingReasoningUserToggle = false;
+		reasoningOpen = true;
+		reasoningSummaryText = 'Thinking...';
+	};
+
 	const applyChunk = (chunk) => {
+		const previousDisplayState = getDisplayState();
+		let chunkHasLiveReasoning = false;
+		let chunkStartedMainOutput = false;
+
 		if (chunk.error) {
 			errorFromStream = typeof chunk.error === 'object'
 				? (chunk.error.message || JSON.stringify(chunk.error))
@@ -147,12 +232,19 @@ export function createStreamingMessageController({
 			officialReasoningText = '';
 			reasoningParts = [];
 			tokenLogprobs = [];
+			reasoningOpen = true;
+			reasoningSummaryText = 'Thinking...';
+			reasoningPhaseActive = false;
+			reasoningPhaseUserToggled = false;
+			reasoningUserToggledDuringGeneration = false;
+			pendingReasoningUserToggle = false;
 			emitLiveNode();
 			renderDom();
 			return;
 		}
 
 		if ((chunk.type === 'tool_execution' || chunk.type === 'tool_event') && chunk.tool_call) {
+			chunkHasLiveReasoning = true;
 			const nextToolCall = {
 				...chunk.tool_call,
 				input: chunk.tool_call.input ?? chunk.tool_call.arguments ?? null,
@@ -164,15 +256,49 @@ export function createStreamingMessageController({
 		if (chunk.choices?.[0]?.delta) {
 			const delta = chunk.choices[0].delta;
 			if (delta.reasoning) {
+				chunkHasLiveReasoning = true;
 				officialReasoningText += delta.reasoning;
 				appendReasoningTextPart(reasoningParts, delta.reasoning);
 			}
 			if (delta.content) {
-				rawStreamText += delta.content;
+				const contentText = String(delta.content);
+				if (contentText.includes('<think>')) {
+					chunkHasLiveReasoning = true;
+				} else if (reasoningPhaseActive) {
+					chunkStartedMainOutput = true;
+				}
+				rawStreamText += contentText;
 				if (delta.logprob != null) {
-					tokenLogprobs.push({ text: delta.content, logprob: delta.logprob });
+					tokenLogprobs.push({ text: contentText, logprob: delta.logprob });
 				}
 			}
+		}
+
+		const nextDisplayState = getDisplayState();
+		const startedThinkingThisChunk =
+			!previousDisplayState.isThinkingActive && nextDisplayState.isThinkingActive;
+		const shouldStartReasoningPhase =
+			startedThinkingThisChunk ||
+			(!nextDisplayState.hasThinkTags && chunkHasLiveReasoning && !reasoningPhaseActive);
+		const closedThinkingThisChunk =
+			nextDisplayState.closedThinkBlocks > previousDisplayState.closedThinkBlocks;
+		const mainOutputStartedThisChunk =
+			chunkStartedMainOutput &&
+			!nextDisplayState.hasThinkTags &&
+			(reasoningPhaseActive || shouldStartReasoningPhase);
+		const hasVisibleReasoning =
+			Boolean(nextDisplayState.displayReasoning) ||
+			reasoningParts.length > 0 ||
+			activeToolCalls.length > 0;
+		const visibleOutputStarted =
+			String(nextDisplayState.parsedContent ?? '').length > 0 &&
+			hasVisibleReasoning &&
+			reasoningSummaryText === 'Thinking...';
+		if (shouldStartReasoningPhase) {
+			startReasoningPhase();
+		}
+		if (closedThinkingThisChunk || mainOutputStartedThisChunk || visibleOutputStarted) {
+			closeReasoningPhase();
 		}
 
 		emitLiveNode();
@@ -210,11 +336,14 @@ export function createStreamingMessageController({
 			renderDom();
 		},
 		closeReasoning() {
-			const reasoningEl = typingEl.querySelector('.message-reasoning');
-			if (!reasoningEl) return;
-			reasoningEl.open = false;
-			const summary = reasoningEl.querySelector('summary');
-			if (summary) summary.textContent = 'Thinking';
+			reasoningSummaryText = 'Thinking';
+			if (!reasoningUserToggledDuringGeneration) {
+				reasoningOpen = false;
+			}
+			reasoningPhaseActive = false;
+			reasoningPhaseUserToggled = false;
+			pendingReasoningUserToggle = false;
+			renderDom();
 		},
 		getState() {
 			return {

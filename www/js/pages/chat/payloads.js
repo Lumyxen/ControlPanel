@@ -230,16 +230,31 @@ export function parseStreamReasoning(rawText) {
 	let parsedContent  = '';
 	let parsedReasoning = '';
 	let currentStr = rawText;
+	let hasThinkTags = false;
+	let isThinkingActive = false;
+	let closedThinkBlocks = 0;
 
 	while (true) {
 		const startIdx = currentStr.indexOf('<think>');
 		if (startIdx === -1) { parsedContent += currentStr; break; }
+		hasThinkTags = true;
 		parsedContent += currentStr.substring(0, startIdx);
 		const endIdx = currentStr.indexOf('</think>', startIdx + 7);
-		if (endIdx === -1) { parsedReasoning += currentStr.substring(startIdx + 7); break; }
+		if (endIdx === -1) {
+			parsedReasoning += currentStr.substring(startIdx + 7);
+			isThinkingActive = true;
+			break;
+		}
 		parsedReasoning += currentStr.substring(startIdx + 7, endIdx) + '\n\n';
+		closedThinkBlocks += 1;
 		currentStr = currentStr.substring(endIdx + 8);
 	}
 
-	return { parsedContent, parsedReasoning };
+	return {
+		parsedContent,
+		parsedReasoning,
+		hasThinkTags,
+		isThinkingActive,
+		closedThinkBlocks,
+	};
 }

@@ -175,6 +175,9 @@ assert.equal(tableMapped.matched, 'Column 1Column 2Column 3Item AValue XDescript
 assert.deepEqual(parseStreamReasoning('alpha<think>beta</think>gamma'), {
 	parsedContent: 'alphagamma',
 	parsedReasoning: 'beta\n\n',
+	hasThinkTags: true,
+	isThinkingActive: false,
+	closedThinkBlocks: 1,
 });
 
 assert.equal(coerceTheme('bogus'), 'everforest-harddark-green');
