@@ -38,6 +38,7 @@ struct LlamaApi {
     llama_model*  (*model_load_from_file)       (const char* path, llama_model_params p)           = nullptr;
     void          (*model_free)                 (llama_model* m)                                   = nullptr;
     const llama_vocab* (*model_get_vocab)       (const llama_model* m)                             = nullptr;
+    const char*   (*model_chat_template)        (const llama_model* m, const char* name)           = nullptr;
 
     // ── Context ───────────────────────────────────────────────────────────────
     llama_context_params (*context_default_params) ()                                              = nullptr;
@@ -73,7 +74,7 @@ struct LlamaApi {
                                                  llama_token token, char* buf, int32_t length,
                                                  int32_t lstrip, bool special)                     = nullptr;
     bool          (*vocab_is_eog)               (const llama_vocab* vocab, llama_token token)      = nullptr;
-    int32_t       (*chat_apply_template)        (const llama_model* model,
+    int32_t       (*chat_apply_template)        (const char* tmpl,
                                                  const llama_chat_message* chat,
                                                  size_t n_msg, bool add_ass,
                                                  char* buf, int32_t length)                        = nullptr;

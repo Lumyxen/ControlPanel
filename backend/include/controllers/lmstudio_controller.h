@@ -11,6 +11,11 @@ class McpRegistry;
 class ToolSystem;
 
 void handleChat(const httplib::Request& req, httplib::Response& res, LmStudioService& service);
+void handleTokenCount(
+    const httplib::Request& req,
+    httplib::Response& res,
+    LmStudioService& service,
+    LlamaCppService* llamaCppService = nullptr);
 void handleStreaming(
     const httplib::Request& req,
     httplib::Response& res,

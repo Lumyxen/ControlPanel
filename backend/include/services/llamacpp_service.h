@@ -2,6 +2,8 @@
 
 #include <functional>
 #include <json/json.h>
+#include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <tuple>
@@ -9,6 +11,8 @@
 
 class Config;
 class ToolSystem;
+struct LlamaApi;
+struct llama_model;
 
 struct ModelInfo {
     std::string id;
@@ -17,7 +21,7 @@ struct ModelInfo {
     std::string ggufPath;
     std::string mmprojPath;
     std::string tokenizerPath;
-    int contextLength = 8192;
+    int contextLength = 65536;
     int maxTokens = 8192;
     bool loaded = false;
     bool usesMrope = false;
@@ -66,9 +70,13 @@ public:
 
     std::vector<ModelInfo> scanModels() const;
     static std::vector<ModelInfo> scanModelDirectory(const std::string& modelsDir,
-                                                     int contextLength = 8192,
+                                                     int contextLength = 65536,
                                                      const std::string& loadedModelPath = "");
     Json::Value getModels() const;
+    int countTokens(
+        const std::string& model,
+        const Json::Value& messages
+    );
     Json::Value buildMessages(const std::string& prompt,
                               const std::string& systemPrompt) const;
 
@@ -128,6 +136,7 @@ private:
     Config& config_;
 
     mutable std::mutex stateMutex_;
+    mutable std::mutex tokenizerMutex_;
     StartupConfig activeConfig_;
     std::string activeBackend_;
     std::string activePresetSignature_;
@@ -138,10 +147,20 @@ private:
     int serverPid_ = 0;
     bool serverRunning_ = false;
     bool configDirty_ = true;
+    std::string tokenizerBackend_;
+    void* tokenizerLibHandle_ = nullptr;
+    std::unique_ptr<LlamaApi> tokenizerApi_;
+    std::map<std::string, llama_model*> tokenizerModels_;
 
     std::string normalizeModelId(const std::string& modelId) const;
     std::string normalizeLoadedModelPath(const std::string& ggufPath) const;
     std::string findGgufInDirectory(const std::string& dir) const;
+    std::string resolveTokenizerBackend() const;
+    void clearTokenizerCacheLocked();
+    bool ensureTokenizerBackendLocked(const std::string& backend, std::string* error = nullptr);
+    llama_model* ensureTokenizerModelLocked(const std::string& backend,
+                                            const ModelInfo& model,
+                                            std::string* error = nullptr);
 
     StartupConfig buildStartupConfigLocked(const std::string& preferenceOverride = "") const;
     bool ensureServerRunning();

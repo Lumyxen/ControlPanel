@@ -105,6 +105,8 @@ endif()
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/src)
 include_directories("${CMAKE_SOURCE_DIR}/third_party/httplib")
+include_directories("${CMAKE_BINARY_DIR}/_deps/llama_cpp_headers-src/include")
+include_directories("${CMAKE_BINARY_DIR}/_deps/llama_cpp_headers-src/ggml/include")
 
 set(EMBED_H   "${CMAKE_BINARY_DIR}/embedded_frontend.h")
 set(EMBED_CPP "${CMAKE_BINARY_DIR}/embedded_frontend.cpp")

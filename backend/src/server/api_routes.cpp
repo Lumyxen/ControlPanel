@@ -496,6 +496,11 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
         handleChat(req, res, ctx.lmstudioService);
     });
 
+    svr.Post("/api/chat/token-count", [&](const httplib::Request& req, httplib::Response& res) {
+        applyHeaders(req, res);
+        handleTokenCount(req, res, ctx.lmstudioService, ctx.llamaCppService);
+    });
+
     svr.Post("/api/chat/stream", [&](const httplib::Request& req, httplib::Response& res) {
         applyHeaders(req, res);
         handleStreaming(req, res, ctx.lmstudioService, &ctx.registry, &ctx.toolSystem, ctx.llamaCppService);
@@ -610,7 +615,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
             res,
             ctx.lmstudioService,
             ctx.modelsDir,
-            ctx.config.getLlamacppCtxSize() > 0 ? ctx.config.getLlamacppCtxSize() : 8192,
+            ctx.config.getLlamacppCtxSize() > 0 ? ctx.config.getLlamacppCtxSize() : 65536,
             ctx.llamaCppService);
     });
 
@@ -642,7 +647,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
         fs::path removePath;
         for (const auto& model : LlamaCppService::scanModelDirectory(
                  ctx.modelsDir,
-                 ctx.config.getLlamacppCtxSize() > 0 ? ctx.config.getLlamacppCtxSize() : 8192)) {
+                 ctx.config.getLlamacppCtxSize() > 0 ? ctx.config.getLlamacppCtxSize() : 65536)) {
             if (model.id != modelId) {
                 continue;
             }

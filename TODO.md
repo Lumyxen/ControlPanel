@@ -17,7 +17,7 @@
   - [ ] Setting to change between full list and organised (split between selected folders)
   - [ ] Sorting stuff
 - [ ] Cloud storage page
-- [ ] Search bar functionality and UI with AI chat-box
+- [ ] Search bar functionality with AI chat-box
 - [ ] GitHub/GitLab/Codeberg/Directory LoC display
 
 ### AI Chat-box
@@ -95,8 +95,8 @@
 - [ ] Turn the response into a back-and-forth for the AI.
   - [ ] Allow it to generate drafts, relook through the drafts, refine it, edit mistakes, and push the finalised result to the user
   - [ ] Show the user the live process of editing as the output so the user gets a sense of progression
-- [ ] Do exact token counting instead of estimation
-  - [ ] Show small warning under context window usage block when falling back to estimation because model's tokenisation is unknown
+- [x] Do exact token counting instead of estimation
+  - [ ] Show small warning under context window usage block when exact token counting is unavailable
 - [ ] Text showing model loading and prompt processing percentages and time
 - [ ] RLM-like wrapper implementation for LLMs
   - [ ] Get more aggressive with offputting data into the long term context the closer you get to the maximum context window
@@ -133,7 +133,7 @@
 - [ ] UI for model selection instead of dropdown
 - [ ] Smooth fade-in text streaming instead of sharp blocky streaming
 - [ ] Smooth buttery typing and cursor (like monkeytype)
-- [ ] Favicon
+- [x] Favicon
 - [ ] Add message timestamps (visible to AI and user)
 - [ ] Chat referencing (forwards/references entire chat)
 - [ ] Cross-chat and same-chat message forwarding (forwards response and prompt)

@@ -151,6 +151,27 @@ Json::Value buildPreparedMessages(const Json::Value& body, const std::string& sy
     return messages;
 }
 
+Json::Value buildCountMessages(
+    const Json::Value& body,
+    const std::string& systemPrompt,
+    bool isLlamaCpp,
+    LmStudioService& service,
+    LlamaCppService* llamaCppService) {
+    const bool hasPrebuiltMessages =
+        body.isMember("messages") && body["messages"].isArray();
+
+    if (hasPrebuiltMessages) {
+        return buildPreparedMessages(body, systemPrompt);
+    }
+
+    const std::string prompt = body.get("prompt", "").asString();
+    if (isLlamaCpp && llamaCppService) {
+        return llamaCppService->buildMessages(prompt, systemPrompt);
+    }
+
+    return service.buildMessages(prompt, systemPrompt);
+}
+
 } // namespace
 
 void startStreamCleanupLoop() {
@@ -195,6 +216,57 @@ void handleChat(const httplib::Request& req, httplib::Response& res, LmStudioSer
         body.get("system_prompt", "").asString(),
         body.get("temperature", -1.0).asDouble());
     setJson(res, response);
+}
+
+void handleTokenCount(
+    const httplib::Request& req,
+    httplib::Response& res,
+    LmStudioService& service,
+    LlamaCppService* llamaCppService) {
+    Json::Value body;
+    if (!parseJsonBody(req.body, body, res)) {
+        return;
+    }
+
+    const bool hasPrebuiltMessages =
+        body.isMember("messages") && body["messages"].isArray();
+    const bool hasPrompt = body.isMember("prompt") && body["prompt"].isString();
+    const bool hasSystemPrompt = body.isMember("system_prompt") && body["system_prompt"].isString();
+
+    if (!body.isMember("model") || (!hasPrebuiltMessages && !hasPrompt && !hasSystemPrompt)) {
+        setJsonError(res, 400, "Missing required fields: model and prompt/messages/system_prompt");
+        return;
+    }
+
+    const std::string model = body["model"].asString();
+    const std::string systemPrompt = body.get("system_prompt", "").asString();
+    const bool isLlamaCpp = model.rfind("llamacpp::", 0) == 0;
+
+    if (isLlamaCpp && !llamaCppService) {
+        setJsonError(res, 503, "llama.cpp service not available");
+        return;
+    }
+
+    try {
+        const Json::Value messages = buildCountMessages(
+            body,
+            systemPrompt,
+            isLlamaCpp,
+            service,
+            llamaCppService);
+
+        const int promptTokens = isLlamaCpp
+            ? llamaCppService->countTokens(model, messages)
+            : service.countTokens(model, messages);
+
+        Json::Value result(Json::objectValue);
+        result["prompt_tokens"] = promptTokens;
+        setJson(res, result);
+    } catch (const std::exception& exception) {
+        setJsonError(res, 500, exception.what());
+    } catch (...) {
+        setJsonError(res, 500, "Could not count tokens");
+    }
 }
 
 void handleStreaming(
@@ -484,7 +556,7 @@ void handleModels(
         llamaModels["data"] = Json::Value(Json::arrayValue);
         const auto scanned = LlamaCppService::scanModelDirectory(
             llamaCppModelsDir,
-            llamaCppContextLength > 0 ? llamaCppContextLength : 8192);
+            llamaCppContextLength > 0 ? llamaCppContextLength : 65536);
         for (const auto& model : scanned) {
             Json::Value entry(Json::objectValue);
             entry["id"] = model.id;

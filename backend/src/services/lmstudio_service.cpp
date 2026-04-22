@@ -5,6 +5,7 @@
 #include <curl/curl.h>
 #include <json/json.h>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <vector>
 #include <map>
@@ -12,6 +13,107 @@
 
 namespace {
 constexpr int kTitleGenerationMaxTokens = 24;
+
+bool messageContentHasRichParts(const Json::Value& content) {
+    if (content.isArray()) {
+        for (const auto& part : content) {
+            if (!part.isObject()) {
+                continue;
+            }
+
+            const std::string type = part.get("type", "").asString();
+            if (!type.empty() && type != "text") {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+int parsePositiveInt(const Json::Value& value) {
+    if (value.isInt()) {
+        const int parsed = value.asInt();
+        return parsed > 0 ? parsed : 0;
+    }
+    if (value.isUInt()) {
+        const Json::Value::UInt parsed = value.asUInt();
+        if (parsed == 0) {
+            return 0;
+        }
+        return parsed > static_cast<Json::Value::UInt>(std::numeric_limits<int>::max())
+            ? std::numeric_limits<int>::max()
+            : static_cast<int>(parsed);
+    }
+    if (value.isInt64()) {
+        const Json::Value::Int64 parsed = value.asInt64();
+        if (parsed <= 0) {
+            return 0;
+        }
+        return parsed > static_cast<Json::Value::Int64>(std::numeric_limits<int>::max())
+            ? std::numeric_limits<int>::max()
+            : static_cast<int>(parsed);
+    }
+    if (value.isUInt64()) {
+        const Json::Value::UInt64 parsed = value.asUInt64();
+        if (parsed == 0) {
+            return 0;
+        }
+        return parsed > static_cast<Json::Value::UInt64>(std::numeric_limits<int>::max())
+            ? std::numeric_limits<int>::max()
+            : static_cast<int>(parsed);
+    }
+    if (value.isString()) {
+        try {
+            const long long parsed = std::stoll(value.asString());
+            if (parsed <= 0) {
+                return 0;
+            }
+            return parsed > static_cast<long long>(std::numeric_limits<int>::max())
+                ? std::numeric_limits<int>::max()
+                : static_cast<int>(parsed);
+        } catch (...) {
+            return 0;
+        }
+    }
+    return 0;
+}
+
+int getPositiveIntField(const Json::Value& object, std::initializer_list<const char*> keys) {
+    if (!object.isObject()) {
+        return 0;
+    }
+    for (const char* key : keys) {
+        if (!key || !object.isMember(key)) {
+            continue;
+        }
+        const int parsed = parsePositiveInt(object[key]);
+        if (parsed > 0) {
+            return parsed;
+        }
+    }
+    return 0;
+}
+
+int extractPromptTokensFromResponse(const Json::Value& response) {
+    if (response.isMember("usage") && response["usage"].isObject()) {
+        const Json::Value& usage = response["usage"];
+        if (usage.isMember("prompt_tokens") &&
+            (usage["prompt_tokens"].isInt() || usage["prompt_tokens"].isUInt())) {
+            return usage["prompt_tokens"].asInt();
+        }
+    }
+
+    if (response.isMember("stats") && response["stats"].isObject()) {
+        const Json::Value& stats = response["stats"];
+        if (stats.isMember("prompt_tokens") &&
+            (stats["prompt_tokens"].isInt() || stats["prompt_tokens"].isUInt())) {
+            return stats["prompt_tokens"].asInt();
+        }
+    }
+
+    return -1;
+}
 
 std::vector<Json::Value> buildNormalizedContentDeltas(
     const Json::Value& choice,
@@ -656,8 +758,18 @@ Json::Value LmStudioService::getModels() const {
             for (const auto& m : nativeResult["data"]) {
                 std::string id = m.get("id", "").asString();
                 if (id.empty()) continue;
-                if (m.isMember("max_context_length") && m["max_context_length"].isInt()) {
-                    nativeCtxMap[id] = m["max_context_length"].asInt();
+                const int nativeContextLength = getPositiveIntField(m, {
+                    "max_context_length",
+                    "maxContextLength",
+                    "context_length",
+                    "contextLength",
+                    "context_window",
+                    "contextWindow",
+                    "max_position_embeddings",
+                    "maxPositionEmbeddings",
+                });
+                if (nativeContextLength > 0) {
+                    nativeCtxMap[id] = nativeContextLength;
                 }
             }
         }
@@ -687,19 +799,40 @@ Json::Value LmStudioService::getModels() const {
             ctx_len = it->second;
         }
         if (ctx_len <= 0) {
-            if      (m.isMember("context_length")          && m["context_length"].isInt())          ctx_len = m["context_length"].asInt();
-            else if (m.isMember("context_window")          && m["context_window"].isInt())          ctx_len = m["context_window"].asInt();
-            else if (m.isMember("max_context_length")      && m["max_context_length"].isInt())      ctx_len = m["max_context_length"].asInt();
-            else if (m.isMember("max_position_embeddings") && m["max_position_embeddings"].isInt()) ctx_len = m["max_position_embeddings"].asInt();
-            else if (m.isMember("architecture") && m["architecture"].isObject()
-                     && m["architecture"].isMember("context_length"))                               ctx_len = m["architecture"]["context_length"].asInt();
+            ctx_len = getPositiveIntField(m, {
+                "context_length",
+                "contextLength",
+                "context_window",
+                "contextWindow",
+                "max_context_length",
+                "maxContextLength",
+                "max_position_embeddings",
+                "maxPositionEmbeddings",
+            });
+            if (ctx_len <= 0 && m.isMember("architecture") && m["architecture"].isObject()) {
+                ctx_len = getPositiveIntField(m["architecture"], {
+                    "context_length",
+                    "contextLength",
+                    "max_context_length",
+                    "maxContextLength",
+                    "max_position_embeddings",
+                    "maxPositionEmbeddings",
+                });
+            }
         }
-        if (ctx_len <= 0) ctx_len = 8192;
+        if (ctx_len <= 0) ctx_len = 65536;
         nm["context_length"] = ctx_len;
 
         int max_tokens = 8192;
-        if      (m.isMember("max_tokens")            && m["max_tokens"].isInt())            max_tokens = m["max_tokens"].asInt();
-        else if (m.isMember("max_completion_tokens") && m["max_completion_tokens"].isInt()) max_tokens = m["max_completion_tokens"].asInt();
+        const int parsedMaxTokens = getPositiveIntField(m, {
+            "max_tokens",
+            "maxTokens",
+            "max_completion_tokens",
+            "maxCompletionTokens",
+        });
+        if (parsedMaxTokens > 0) {
+            max_tokens = parsedMaxTokens;
+        }
         nm["max_tokens"] = max_tokens;
 
         out["data"].append(nm);
@@ -707,8 +840,63 @@ Json::Value LmStudioService::getModels() const {
     return out;
 }
 
+int LmStudioService::countTokens(const std::string& model, const Json::Value& messages) const {
+    Json::Value preparedMessages = messages;
+    if (!preparedMessages.isArray()) {
+        preparedMessages = Json::Value(Json::arrayValue);
+    }
+
+    std::string lastError = "LM Studio did not return prompt token usage";
+    const bool hasRichParts = [&preparedMessages]() {
+        for (const auto& message : preparedMessages) {
+            if (!message.isObject()) {
+                continue;
+            }
+            if (messageContentHasRichParts(message["content"])) {
+                return true;
+            }
+        }
+        return false;
+    }();
+
+    const std::vector<std::string> paths = hasRichParts
+        ? std::vector<std::string>{"/v1/chat/completions"}
+        : std::vector<std::string>{"/v1/chat/completions", "/api/v0/chat/completions"};
+
+    for (const auto& path : paths) {
+        for (const int maxTokens : {0, 1}) {
+            Json::Value body(Json::objectValue);
+            body["model"] = model;
+            body["messages"] = preparedMessages;
+            body["stream"] = false;
+            body["max_tokens"] = maxTokens;
+            body["temperature"] = 0.0;
+            body["reasoning_effort"] = "none";
+            body["reasoning_tokens"] = 0;
+
+            const Json::Value response = makeRequestToPath(path, body);
+            if (response.isMember("error")) {
+                lastError = response["error"].asString();
+                continue;
+            }
+
+            const int promptTokens = extractPromptTokensFromResponse(response);
+            if (promptTokens >= 0) {
+                return promptTokens;
+            }
+        }
+    }
+
+    throw std::runtime_error(lastError);
+}
+
 Json::Value LmStudioService::makeRequest(const std::string& endpoint,
                                             const Json::Value& body) const {
+    return makeRequestToPath("/v1" + endpoint, body);
+}
+
+Json::Value LmStudioService::makeRequestToPath(const std::string& path,
+                                               const Json::Value& body) const {
     CURL* curl = curl_easy_init();
     if (!curl) throw std::runtime_error("Failed to init CURL");
 
@@ -718,8 +906,8 @@ Json::Value LmStudioService::makeRequest(const std::string& endpoint,
         mutableBody["model"] = modelId.substr(10);
     }
 
-    std::string url = lmStudioUrl_ + "/v1" + endpoint;
-    std::cout << "[LmStudio] Request started: POST " << endpoint << " (model: " << modelId << ")\n";
+    std::string url = lmStudioUrl_ + path;
+    std::cout << "[LmStudio] Request started: POST " << path << " (model: " << modelId << ")\n";
 
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");

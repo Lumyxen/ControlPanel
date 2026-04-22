@@ -72,6 +72,14 @@ export async function getModels() {
     return requestJson("/models");
 }
 
+export async function countChatTokens(payload, options = {}) {
+    return requestJson("/chat/token-count", {
+        method: "POST",
+        body: JSON.stringify(payload),
+        ...options,
+    });
+}
+
 // ─── Task-based generation API ───────────────────────────────────────────────
 // These functions support backend-managed generation. The frontend submits a
 // task, then opens an SSE stream to receive chunks. The caller is responsible

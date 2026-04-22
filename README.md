@@ -3,8 +3,8 @@ A highly personal web interface to give me the information and tools I need all 
 
 ## Features
 - Password-gated local web UI with encrypted stored chat data
-- AI chat harness with threaded chats, background task streaming, settings, themes, and model management
-- Supports LM Studio, built-in `llama-server` backends from llama.cpp, HuggingFace GGUF downloads, and MCP tool aggregation
+- AI chat harness with threaded chats, background task streaming, exact context metering, inline tool-call rendering, settings, themes, and model management
+- Supports LM Studio, built-in `llama-server` backends from llama.cpp, HuggingFace GGUF downloads, and a schema-first tool system with pack discovery, approvals, and MCP bridging
 - Detailed shipped feature breakdown: [FEATURES.md](FEATURES.md)
 
 ## Installation
@@ -59,7 +59,15 @@ There is no maintained macOS build guide yet.
 
 ## Configuration
 
-The app creates `data/settings.json` and `data/mcp.json` next to the binary on first start.
+The app creates runtime state next to the binary on first start:
+
+- `data/settings.json`
+- `data/mcp.json`
+- `data/tooling.json`
+- `data/chats/`, `data/models/`, `data/libs/`, `data/logs/`, and `data/build-cache/`
+- `toolpacks/` for system packs and `data/toolpacks/` for user packs
+
+The backend watches `settings.json`, `mcp.json`, `tooling.json`, and tool-pack manifests for changes. The Settings page also polls for external `settings.json` edits so updates show up without restarting the server.
 
 Representative `data/settings.json` keys:
 
@@ -72,14 +80,16 @@ Representative `data/settings.json` keys:
     "lmStudioUrl": "http://localhost:1234",
     "systemPrompt": "You are in an advanced AI harness with access to a deferred internal tool system.",
     "temperature": 0.7,
+    "logprobHighlightLow": true,
     "aiTitleEnabled": true,
     "aiTitleModel": "",
-    "aiTitleSystemPrompt": "Describe the chat in 1-3 words. No quotes, or explanation. Reason as minimally as possible",
+    "aiTitleSystemPrompt": "Describe the chat in 1-3 words. Output only the title text. No quotes. No explanation.",
     "llamacppBackend": "auto",
     "llamacppTag": "b8846",
     "llamacppConcurrentGeneration": true,
     "llamacppMaxConcurrentInstances": 4,
-    "llamacppMaxLoadedModels": 2
+    "llamacppMaxLoadedModels": 2,
+    "llamacppIdleTimeoutSeconds": 300
 }
 ```
 
@@ -101,6 +111,7 @@ Unless noted otherwise, all `/api/*` routes and `/mcp` require an authenticated 
 
 **Legacy Chat**
 - `POST /api/chat` - Legacy non-streaming LM Studio chat endpoint
+- `POST /api/chat/token-count` - Count prompt tokens for a prepared message list or prompt/system-prompt combo
 - `POST /api/chat/stream` - Legacy streaming chat endpoint
 - `POST /api/chat/stop` - Stop an active chat stream
 - `POST /api/chat/generate-title` - Generate a title for a chat thread
@@ -129,6 +140,14 @@ Unless noted otherwise, all `/api/*` routes and `/mcp` require an authenticated 
 **Configuration**
 - `GET /api/config/settings` - Get current control panel settings
 - `PUT /api/config/settings` - Update control panel settings
+
+**Tools / Harness**
+- `GET /api/tools/catalog` - Search the tool catalog for in-scope tool descriptors (`query`, `limit`, `enabled_pack_ids`)
+- `GET /api/tools/packs` - List discovered/synthetic tool packs plus executor/sandbox health
+- `POST /api/tools/reload` - Reload tool packs after on-disk config changes
+- `GET /api/tools/approvals` - List tool approvals (`task_id` optional)
+- `POST /api/tools/approvals/:id/approve` - Approve a pending tool action
+- `POST /api/tools/approvals/:id/deny` - Deny a pending tool action
 
 **llama.cpp Management**
 - `GET /api/llamacpp/backend` - Get backend info (available, hardware, active, suggestions)

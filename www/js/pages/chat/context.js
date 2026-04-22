@@ -1,9 +1,9 @@
 // www/js/chat/context.js
-import { computeThreadNodeIds, ensureGraph, getNode } from "./graph.js";
 
 // Store for model metadata fetched from API
 // Maps model ID -> model object with context_length, max_tokens, etc.
 let modelMetadata = new Map();
+const DEFAULT_CONTEXT_LIMIT = 65536;
 
 /**
  * Store / merge model metadata from API response
@@ -29,10 +29,86 @@ function getModelMetadata(modelId) {
 	return modelMetadata.get(modelId) || null;
 }
 
+export function hasKnownModel(modelId) {
+	return Boolean(modelId) && modelMetadata.has(modelId);
+}
+
+export function getKnownModelContextLength(modelId) {
+	return getModelContextLength(getModelMetadata(modelId));
+}
+
+function parsePositiveInt(value) {
+	const parsed = Number.parseInt(value, 10);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function getModelContextLength(model) {
+	if (!model || typeof model !== "object") return null;
+
+	const candidates = [
+		model.context_length,
+		model.contextLength,
+		model.max_context_length,
+		model.maxContextLength,
+		model.architecture?.context_length,
+		model.architecture?.contextLength,
+	];
+
+	for (const candidate of candidates) {
+		const parsed = parsePositiveInt(candidate);
+		if (parsed) return parsed;
+	}
+
+	return null;
+}
+
 export function estimateTokensForText(text) {
 	const s = String(text || "");
 	if (!s) return 0;
 	return Math.max(1, Math.ceil(s.length / 4));
+}
+
+function estimateMessageContentTokens(content) {
+	if (!content) return 0;
+	if (typeof content === "string") {
+		return estimateTokensForText(content);
+	}
+	if (Array.isArray(content)) {
+		return content.reduce((total, part) => {
+			if (!part || typeof part !== "object") {
+				return total + estimateTokensForText(part);
+			}
+
+			if (part.type === "text" || part.type === "input_text") {
+				return total + estimateTokensForText(part.text || part.content || "");
+			}
+			if (part.type === "image_url" || part.type === "input_image") {
+				return total + estimateTokensForText("[Image attachment]");
+			}
+
+			return total + estimateTokensForText(JSON.stringify(part));
+		}, 0);
+	}
+	if (typeof content === "object") {
+		return estimateTokensForText(JSON.stringify(content));
+	}
+	return estimateTokensForText(content);
+}
+
+export function estimatePreparedMessagesTokens(messages, systemPrompt = "") {
+	let total = estimateTokensForText(systemPrompt);
+
+	if (!Array.isArray(messages)) return total;
+
+	for (const message of messages) {
+		if (!message || typeof message !== "object") continue;
+		total += estimateTokensForText(message.role || "");
+		total += estimateMessageContentTokens(message.content);
+		if (message.name) total += estimateTokensForText(message.name);
+		if (message.tool_calls) total += estimateTokensForText(JSON.stringify(message.tool_calls));
+	}
+
+	return total;
 }
 
 /**
@@ -103,31 +179,43 @@ export function estimatePartsTokens(parts) {
 	return estimateTokensForText(getNodeFullText({ parts }));
 }
 
-export function getModelContextLimitFromUI(root) {
-	const selected = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
-	if (!selected) return 65536;
+export function getModelContextInfoFromUI(root) {
+	const selected = root?.querySelector?.('[data-dropdown="model"] .chat-dropdown-item.selected');
+	if (!selected) {
+		return {
+			contextLimit: DEFAULT_CONTEXT_LIMIT,
+			isKnown: false,
+		};
+	}
 
 	const modelId = selected.dataset.value;
-
-	let limit = 65536; // Fallback
+	let contextLimit = null;
 
 	// Prefer metadata (now includes LM Studio models and normalizes fallback keys dynamically)
 	if (modelId && modelMetadata.has(modelId)) {
 		const model = getModelMetadata(modelId);
-		const contextLength = parseInt(model.context_length, 10);
-		if (!isNaN(contextLength) && contextLength > 0) {
-			limit = contextLength;
-		}
-	} else {
+		contextLimit = getModelContextLength(model);
+	}
+	if (!contextLimit) {
 		// Fallback to data attribute (still works)
-		const contextLength = parseInt(selected.dataset.contextLength, 10);
-		if (!isNaN(contextLength) && contextLength > 0) {
-			limit = contextLength;
-		}
+		contextLimit = parsePositiveInt(selected.dataset.contextLength);
 	}
 
-	// Apply minimum and maximum of 64k
-	return Math.min(Math.max(limit, 65536), 65536);
+	if (contextLimit) {
+		return {
+			contextLimit,
+			isKnown: true,
+		};
+	}
+
+	return {
+		contextLimit: DEFAULT_CONTEXT_LIMIT,
+		isKnown: false,
+	};
+}
+
+export function getModelContextLimitFromUI(root) {
+	return getModelContextInfoFromUI(root).contextLimit;
 }
 
 /**
@@ -145,32 +233,76 @@ export function getModelMaxTokens(modelId) {
 	return 8192;
 }
 
-function computeThreadTokenUsage(graph) {
-	return computeThreadNodeIds(graph).reduce((total, id) => {
-		const node = getNode(graph, id);
-		const text = getNodeFullText(node);
-		return total + estimateTokensForText(text);
-	}, 0);
+function buildContextIssueMessages({
+	exactCountUnavailable = false,
+	contextLimitKnown = true,
+	showUnknownContextWarning = true,
+} = {}) {
+	const messages = [];
+	if (exactCountUnavailable) {
+		messages.push('Exact token counting is unavailable. The displayed usage may be stale.');
+	}
+	if (showUnknownContextWarning && !contextLimitKnown) {
+		messages.push("The model's context window is unknown.");
+	}
+	return messages;
 }
 
-export function updateContextUI(root, chat, extraTokens = 0) {
+export function updateContextUI(root, {
+	usedTokens = 0,
+	contextLimit = null,
+	contextLimitKnown = null,
+	exactCountUnavailable = false,
+	showUnknownContextWarning = true,
+} = {}) {
 	const el = root?.querySelector?.("#chatContext");
 	if (!el) return;
+	const warningEl = root?.querySelector?.("#chatContextWarningIcon");
+	const contextInfo = getModelContextInfoFromUI(root);
 
-	const max = getModelContextLimitFromUI(root);
+	const max = Number.isFinite(contextLimit) && contextLimit > 0
+		? contextLimit
+		: contextInfo.contextLimit;
+	const isContextLimitKnown = typeof contextLimitKnown === "boolean"
+		? contextLimitKnown
+		: contextInfo.isKnown;
+	const used = Number.isFinite(usedTokens) && usedTokens >= 0
+		? Math.max(0, usedTokens)
+		: 0;
+	const hasExactCountIssue = exactCountUnavailable === true;
+	const issueMessages = buildContextIssueMessages({
+		exactCountUnavailable: hasExactCountIssue,
+		contextLimitKnown: isContextLimitKnown,
+		showUnknownContextWarning,
+	});
+	const issueTitle = issueMessages.join("\n");
+	const displayMax = isContextLimitKnown && Number.isFinite(max) && max > 0
+		? String(max)
+		: "?";
 
-	let used = extraTokens;
-	if (chat?.graph && typeof chat.graph === "object") {
-		const graph = ensureGraph(chat);
-		used += computeThreadTokenUsage(graph);
+	el.dataset.usedTokens = String(used);
+	el.dataset.contextLimitKnown = String(isContextLimitKnown);
+	el.dataset.exactCountUnavailable = String(hasExactCountIssue);
+	el.textContent = `${used}/${displayMax}`;
+	el.title = (isContextLimitKnown && max > 0
+		? `Context Window: ${used} tokens used / ${max} total`
+		: `Context Window: ${used} tokens used / unknown total`)
+		+ (issueTitle ? `\n${issueTitle}` : "");
+	el.classList.toggle("issue-text", issueMessages.length > 0);
+	el.classList.toggle("issue-box", hasExactCountIssue && !isContextLimitKnown);
+
+	if (warningEl) {
+		warningEl.hidden = issueMessages.length === 0;
+		if (issueMessages.length > 0) {
+			warningEl.title = issueTitle;
+			warningEl.setAttribute("aria-label", issueMessages.join(" "));
+		} else {
+			warningEl.removeAttribute("title");
+			warningEl.removeAttribute("aria-label");
+		}
 	}
 
-	el.textContent = `${Math.max(0, used)}/${max}`;
-	el.title = max > 0
-		? `Context Window: ${Math.max(0, used)} tokens used / ${max} total`
-		: "Context Window";
-
-	if (max > 0) {
+	if (max > 0 && isContextLimitKnown) {
 		const ratio = used / max;
 		if (ratio >= 0.9) {
 			el.classList.add("danger");

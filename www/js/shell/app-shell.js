@@ -3,7 +3,7 @@ import { loadFragment, prefetchFragment } from '../core/fragment-loader.js';
 import { initNavGroups, initSidebarToggle, setActive } from './navigation.js';
 import { bindQuickNewChat } from './sidebar.js';
 import { mountHomePage } from '../pages/home.js';
-import { mountChatPage } from '../pages/chat/page.js';
+import { mountChatPage, prepareChatPageFragment } from '../pages/chat/page.js';
 import { renderChatList } from '../pages/chat/sidebar-list.js';
 import {
 	clearCurrentChatId,
@@ -135,7 +135,9 @@ function startNewChat() {
 
 async function renderRoute(route) {
 	cleanupPage();
-	const root = await loadFragment(route);
+	const root = await loadFragment(route, route.includes('pages/ai-chat.html')
+		? { prepareFragment: (fragment) => prepareChatPageFragment(fragment, { route }) }
+		: undefined);
 	if (!root) return;
 	if (route.includes('pages/settings.html')) {
 		activeCleanup = mountSettingsPage(root, buildPageContext());

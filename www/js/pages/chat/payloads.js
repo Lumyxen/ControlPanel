@@ -98,6 +98,77 @@ export function buildConversationHistory(graph, nodeIds, settings = null) {
 	return history.trim();
 }
 
+function buildApiMessageFromNode(node, settings = null) {
+	if (!node || (node.role !== 'user' && node.role !== 'assistant')) return null;
+	const role = node.role === 'user' ? 'user' : 'assistant';
+
+	const includeLogprobs = settings && (
+		settings.logprobHistoryHigh || settings.logprobHistoryMedium || settings.logprobHistoryLow
+	);
+
+	if (role === 'assistant') {
+		const textContent = includeLogprobs
+			? buildAssistantHistoryText(node, settings)
+			: buildNodeTextForHistory(node);
+
+		return textContent ? { role, content: textContent } : null;
+	}
+
+	if (node.parts && Array.isArray(node.parts)) {
+		const textParts = [];
+		const contentBlocks = [];
+		let hasImages = false;
+
+		for (const part of node.parts) {
+			if (part.type === 'text' && part.content) {
+				textParts.push(part.content);
+			} else if (part.type === 'attachment') {
+				if (part.isImage && part.data) {
+					hasImages = true;
+					contentBlocks.push({ type: 'image_url', image_url: { url: part.data } });
+				} else if (!part.isImage && part.data) {
+					try {
+						const b64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
+						if (b64Match) {
+							const chunk = b64Match[1].slice(0, 13336);
+							const binary = atob(chunk);
+							const bytes = new Uint8Array(binary.length);
+							for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+							const text = new TextDecoder('utf-8').decode(bytes).slice(0, 10000);
+							textParts.push(`\n[File: ${part.name}]\n${text}`);
+						}
+					} catch (e) { console.warn('[generation] Could not decode file attachment:', e); }
+				}
+			}
+		}
+
+		const combinedText = textParts.join('');
+		if (hasImages) {
+			if (combinedText) contentBlocks.push({ type: 'text', text: combinedText });
+			return { role, content: contentBlocks };
+		}
+		if (combinedText) {
+			return { role, content: combinedText };
+		}
+		return null;
+	}
+
+	if (node.content) {
+		return { role, content: node.content };
+	}
+
+	return null;
+}
+
+export function buildApiMessagesFromNodes(nodes, settings = null) {
+	const apiMessages = [];
+	for (const node of nodes || []) {
+		const message = buildApiMessageFromNode(node, settings);
+		if (message) apiMessages.push(message);
+	}
+	return apiMessages;
+}
+
 // ─── buildLogprobAnnotation ──────────────────────────────────────────────────
 // Builds a text annotation showing token confidence levels for selected tokens.
 // Used to include logprob info in the conversation history for the AI to see.
@@ -158,69 +229,10 @@ function buildLogprobAnnotation(tokenLogprobs, settings) {
 // @param {Object} [settings] - Optional settings object with logprobHistory* flags
 
 export function buildApiMessages(graph, nodeIds, settings = null) {
-	const apiMessages = [];
-
-	// Determine which logprob levels to include
-	const includeLogprobs = settings && (
-		settings.logprobHistoryHigh || settings.logprobHistoryMedium || settings.logprobHistoryLow
+	return buildApiMessagesFromNodes(
+		(nodeIds || []).map((nodeId) => getNode(graph, nodeId)).filter(Boolean),
+		settings
 	);
-
-	for (const nodeId of nodeIds) {
-		const node = getNode(graph, nodeId);
-		if (!node) continue;
-		const role = node.role === 'user' ? 'user' : 'assistant';
-
-		if (role === 'assistant') {
-			let textContent = includeLogprobs
-				? buildAssistantHistoryText(node, settings)
-				: buildNodeTextForHistory(node);
-
-			if (textContent) apiMessages.push({ role, content: textContent });
-			continue;
-		}
-
-		// User messages: may contain image attachments → multimodal content blocks
-		if (node.parts && Array.isArray(node.parts)) {
-			const textParts = [];
-			const contentBlocks = [];
-			let hasImages = false;
-
-			for (const part of node.parts) {
-				if (part.type === 'text' && part.content) {
-					textParts.push(part.content);
-				} else if (part.type === 'attachment') {
-					if (part.isImage && part.data) {
-						hasImages = true;
-						contentBlocks.push({ type: 'image_url', image_url: { url: part.data } });
-					} else if (!part.isImage && part.data) {
-						try {
-							const b64Match = part.data.match(/^data:[^;]+;base64,(.+)$/);
-							if (b64Match) {
-								const chunk = b64Match[1].slice(0, 13336);
-								const binary = atob(chunk);
-								const bytes = new Uint8Array(binary.length);
-								for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-								const text = new TextDecoder('utf-8').decode(bytes).slice(0, 10000);
-								textParts.push(`\n[File: ${part.name}]\n${text}`);
-							}
-						} catch (e) { console.warn('[generation] Could not decode file attachment:', e); }
-					}
-				}
-			}
-
-			const combinedText = textParts.join('');
-			if (hasImages) {
-				if (combinedText) contentBlocks.push({ type: 'text', text: combinedText });
-				apiMessages.push({ role, content: contentBlocks });
-			} else if (combinedText) {
-				apiMessages.push({ role, content: combinedText });
-			}
-		} else if (node.content) {
-			apiMessages.push({ role, content: node.content });
-		}
-	}
-
-	return apiMessages;
 }
 
 // ─── parseStreamReasoning ─────────────────────────────────────────────────────

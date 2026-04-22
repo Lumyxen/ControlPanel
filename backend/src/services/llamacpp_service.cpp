@@ -1,4 +1,5 @@
 #include "services/llamacpp_service.h"
+#include "services/llama_api.h"
 #include "services/tools/tool_system.h"
 
 #include "config/config.h"
@@ -35,6 +36,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#else
+#include <windows.h>
 #endif
 
 namespace fs = std::filesystem;
@@ -43,6 +46,7 @@ namespace {
 
 constexpr int kTitleGenerationMaxTokens = 24;
 constexpr std::string_view kMropeMetadataSuffix = ".rope.dimension_sections";
+constexpr const char* kMtmdDefaultMarker = "<__media__>";
 
 struct StreamContext {
     std::function<bool(const std::string&)> onChunk;
@@ -57,6 +61,245 @@ struct StreamContext {
     std::vector<ToolCallAccum> toolCalls;
     std::string finishReason;
 };
+
+bool messageContentHasRichParts(const Json::Value& content) {
+    if (content.isArray()) {
+        for (const auto& part : content) {
+            if (!part.isObject()) {
+                continue;
+            }
+
+            const std::string type = part.get("type", "").asString();
+            if (!type.empty() && type != "text") {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+std::string flattenMessageContentForTemplate(const Json::Value& message) {
+    if (!message.isObject()) {
+        return "";
+    }
+
+    const Json::Value& content = message["content"];
+    if (content.isString()) {
+        return content.asString();
+    }
+    if (content.isNull()) {
+        return "";
+    }
+    if (!content.isArray()) {
+        return "";
+    }
+
+    std::string flattened;
+    for (const auto& part : content) {
+        if (!part.isObject()) {
+            continue;
+        }
+
+        const std::string type = part.get("type", "").asString();
+        std::string piece;
+        if (type == "text") {
+            piece = part.get("text", "").asString();
+        } else if (type == "media_marker" || type == "image_url" || type == "input_audio") {
+            piece = part.get("text", kMtmdDefaultMarker).asString();
+            if (piece.empty()) {
+                piece = kMtmdDefaultMarker;
+            }
+        } else {
+            continue;
+        }
+
+        if (!flattened.empty()) {
+            flattened += '\n';
+        }
+        flattened += piece;
+    }
+
+    return flattened;
+}
+
+std::string findLlamaSharedLibrary(const fs::path& dir) {
+#ifdef _WIN32
+    for (const auto& name : {"llama.dll", "libllama.dll"}) {
+        const fs::path candidate = dir / name;
+        if (fs::exists(candidate) && fs::is_regular_file(candidate)) {
+            return candidate.string();
+        }
+    }
+#elif defined(__APPLE__)
+    for (const auto& name : {"libllama.dylib", "libllama.so"}) {
+        const fs::path candidate = dir / name;
+        if (fs::exists(candidate) && fs::is_regular_file(candidate)) {
+            return candidate.string();
+        }
+    }
+#else
+    for (const auto& name : {"libllama.so"}) {
+        const fs::path candidate = dir / name;
+        if (fs::exists(candidate) && fs::is_regular_file(candidate)) {
+            return candidate.string();
+        }
+    }
+#endif
+
+    if (fs::exists(dir) && fs::is_directory(dir)) {
+        for (const auto& entry : fs::directory_iterator(dir)) {
+            if (!entry.is_regular_file()) {
+                continue;
+            }
+            const std::string name = entry.path().filename().string();
+#ifdef _WIN32
+            if (name == "llama.dll" || name == "libllama.dll") {
+                return entry.path().string();
+            }
+#elif defined(__APPLE__)
+            if (name.rfind("libllama.", 0) == 0) {
+                return entry.path().string();
+            }
+#else
+            if (name.rfind("libllama.so", 0) == 0) {
+                return entry.path().string();
+            }
+#endif
+        }
+    }
+
+    return "";
+}
+
+std::optional<ModelInfo> findModelInfoById(const std::vector<ModelInfo>& models, const std::string& modelId) {
+    for (const auto& model : models) {
+        if (model.id == modelId) {
+            return model;
+        }
+    }
+    return std::nullopt;
+}
+
+template <typename T>
+bool loadRequiredLlamaSymbol(void* handle, const char* name, T& target, std::string& error) {
+#ifdef _WIN32
+    auto symbol = reinterpret_cast<T>(GetProcAddress(static_cast<HMODULE>(handle), name));
+#else
+    dlerror();
+    auto symbol = reinterpret_cast<T>(dlsym(handle, name));
+#endif
+    if (!symbol) {
+        error = std::string("Missing libllama symbol: ") + name;
+        return false;
+    }
+    target = symbol;
+    return true;
+}
+
+template <typename T>
+bool loadOptionalLlamaSymbol(void* handle, const char* name, T& target) {
+#ifdef _WIN32
+    target = reinterpret_cast<T>(GetProcAddress(static_cast<HMODULE>(handle), name));
+#else
+    dlerror();
+    target = reinterpret_cast<T>(dlsym(handle, name));
+    (void) dlerror();
+#endif
+    return target != nullptr;
+}
+
+struct TokenizerLogState {
+    std::mutex mutex;
+    enum ggml_log_level level = GGML_LOG_LEVEL_NONE;
+    bool emit = false;
+    std::string buffer;
+};
+
+TokenizerLogState& tokenizerLogState() {
+    static TokenizerLogState state;
+    return state;
+}
+
+bool shouldEmitTokenizerLog(enum ggml_log_level level) {
+    return level == GGML_LOG_LEVEL_WARN || level == GGML_LOG_LEVEL_ERROR;
+}
+
+const char* tokenizerLogPrefix(enum ggml_log_level level) {
+    return level == GGML_LOG_LEVEL_ERROR
+        ? "[LlamaCpp][tokenizer][error] "
+        : "[LlamaCpp][tokenizer][warn] ";
+}
+
+void flushTokenizerLogLinesLocked(TokenizerLogState& state, bool flushPartial) {
+    if (!state.emit) {
+        state.buffer.clear();
+        return;
+    }
+
+    std::size_t newlinePos = std::string::npos;
+    while ((newlinePos = state.buffer.find('\n')) != std::string::npos) {
+        const std::string line = state.buffer.substr(0, newlinePos);
+        state.buffer.erase(0, newlinePos + 1);
+        std::cerr << tokenizerLogPrefix(state.level) << line << "\n";
+    }
+
+    if (flushPartial && !state.buffer.empty()) {
+        std::cerr << tokenizerLogPrefix(state.level) << state.buffer << "\n";
+        state.buffer.clear();
+    }
+}
+
+void flushTokenizerLogState() {
+    auto& state = tokenizerLogState();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    flushTokenizerLogLinesLocked(state, true);
+    state.level = GGML_LOG_LEVEL_NONE;
+    state.emit = false;
+}
+
+void tokenizerLogCallback(enum ggml_log_level level, const char* text, void* userData) {
+    auto* state = static_cast<TokenizerLogState*>(userData);
+    if (!state || !text || !*text) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(state->mutex);
+
+    if (level != GGML_LOG_LEVEL_CONT) {
+        flushTokenizerLogLinesLocked(*state, true);
+        state->level = level;
+        state->emit = shouldEmitTokenizerLog(level);
+    }
+
+    if (!state->emit) {
+        return;
+    }
+
+    state->buffer += text;
+    flushTokenizerLogLinesLocked(*state, false);
+}
+
+int extractPromptTokensFromChatResponse(const Json::Value& response) {
+    if (response.isMember("usage") && response["usage"].isObject()) {
+        const Json::Value& usage = response["usage"];
+        if (usage.isMember("prompt_tokens") &&
+            (usage["prompt_tokens"].isInt() || usage["prompt_tokens"].isUInt())) {
+            return usage["prompt_tokens"].asInt();
+        }
+    }
+
+    if (response.isMember("timings") && response["timings"].isObject()) {
+        const Json::Value& timings = response["timings"];
+        const int promptN = timings.get("prompt_n", 0).asInt();
+        const int cacheN = timings.get("cache_n", 0).asInt();
+        if (promptN > 0 || cacheN > 0) {
+            return promptN + cacheN;
+        }
+    }
+
+    return -1;
+}
 
 std::vector<Json::Value> buildNormalizedContentDeltas(
     const Json::Value& choice,
@@ -250,6 +493,176 @@ bool skipGgufValue(std::ifstream& stream, std::int32_t type) {
 
     const std::size_t primitiveSize = ggufPrimitiveSize(type);
     return primitiveSize != 0 && skipBytes(stream, primitiveSize);
+}
+
+bool readGgufPositiveInt(std::ifstream& stream, std::int32_t type, std::optional<int>& out) {
+    out.reset();
+    auto clampPositive = [](auto value) -> std::optional<int> {
+        using ValueType = decltype(value);
+        if (value <= static_cast<ValueType>(0)) {
+            return std::nullopt;
+        }
+        constexpr auto kIntMax = static_cast<ValueType>(std::numeric_limits<int>::max());
+        if (value > kIntMax) {
+            return std::numeric_limits<int>::max();
+        }
+        return static_cast<int>(value);
+    };
+
+    switch (type) {
+        case 0: { // GGUF_TYPE_UINT8
+            std::uint8_t value = 0;
+            if (!readExact(stream, value)) {
+                return false;
+            }
+            out = clampPositive(value);
+            return true;
+        }
+        case 1: { // GGUF_TYPE_INT8
+            std::int8_t value = 0;
+            if (!readExact(stream, value)) {
+                return false;
+            }
+            out = clampPositive(value);
+            return true;
+        }
+        case 2: { // GGUF_TYPE_UINT16
+            std::uint16_t value = 0;
+            if (!readExact(stream, value)) {
+                return false;
+            }
+            out = clampPositive(value);
+            return true;
+        }
+        case 3: { // GGUF_TYPE_INT16
+            std::int16_t value = 0;
+            if (!readExact(stream, value)) {
+                return false;
+            }
+            out = clampPositive(value);
+            return true;
+        }
+        case 4: { // GGUF_TYPE_UINT32
+            std::uint32_t value = 0;
+            if (!readExact(stream, value)) {
+                return false;
+            }
+            out = clampPositive(value);
+            return true;
+        }
+        case 5: { // GGUF_TYPE_INT32
+            std::int32_t value = 0;
+            if (!readExact(stream, value)) {
+                return false;
+            }
+            out = clampPositive(value);
+            return true;
+        }
+        case 10: { // GGUF_TYPE_UINT64
+            std::uint64_t value = 0;
+            if (!readExact(stream, value)) {
+                return false;
+            }
+            out = clampPositive(value);
+            return true;
+        }
+        case 11: { // GGUF_TYPE_INT64
+            std::int64_t value = 0;
+            if (!readExact(stream, value)) {
+                return false;
+            }
+            out = clampPositive(value);
+            return true;
+        }
+        case 8: { // GGUF_TYPE_STRING
+            std::string value;
+            if (!readGgufString(stream, value)) {
+                return false;
+            }
+            const std::size_t start = value.find_first_not_of(" \t\r\n");
+            if (start == std::string::npos) {
+                return true;
+            }
+            const std::size_t end = value.find_last_not_of(" \t\r\n");
+            value = value.substr(start, end - start + 1);
+            if (value.empty()) {
+                return true;
+            }
+            try {
+                const long long parsed = std::stoll(value);
+                out = clampPositive(parsed);
+                return true;
+            } catch (...) {
+                return true;
+            }
+        }
+        default:
+            return skipGgufValue(stream, type);
+    }
+}
+
+bool isGgufContextLengthKey(const std::string& key) {
+    const std::string_view keyView(key);
+    return keyView == "context_length" ||
+           keyView == "context.window" ||
+           keyView == "context_window" ||
+           keyView == "max_context_length" ||
+           keyView == "max_position_embeddings" ||
+           keyView.ends_with(".context_length") ||
+           keyView.ends_with(".context_window") ||
+           keyView.ends_with(".max_context_length") ||
+           keyView.ends_with(".max_position_embeddings");
+}
+
+std::optional<int> ggufContextLength(const fs::path& path) {
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream.is_open()) {
+        return std::nullopt;
+    }
+
+    std::array<char, 4> magic{};
+    if (!readExact(stream, magic.data(), magic.size()) ||
+        magic[0] != 'G' || magic[1] != 'G' || magic[2] != 'U' || magic[3] != 'F') {
+        return std::nullopt;
+    }
+
+    std::uint32_t version = 0;
+    std::int64_t tensorCount = 0;
+    std::int64_t kvCount = 0;
+    if (!readExact(stream, version) ||
+        !readExact(stream, tensorCount) ||
+        !readExact(stream, kvCount)) {
+        return std::nullopt;
+    }
+
+    if (version == 0 || version > 3 || tensorCount < 0 || kvCount < 0) {
+        return std::nullopt;
+    }
+
+    for (std::int64_t index = 0; index < kvCount; ++index) {
+        std::string key;
+        std::int32_t type = -1;
+        if (!readGgufString(stream, key) || !readExact(stream, type)) {
+            return std::nullopt;
+        }
+
+        if (isGgufContextLengthKey(key)) {
+            std::optional<int> value;
+            if (!readGgufPositiveInt(stream, type, value)) {
+                return std::nullopt;
+            }
+            if (value && *value > 0) {
+                return value;
+            }
+            continue;
+        }
+
+        if (!skipGgufValue(stream, type)) {
+            return std::nullopt;
+        }
+    }
+
+    return std::nullopt;
 }
 
 bool ggufUsesMrope(const fs::path& path) {
@@ -559,6 +972,10 @@ LlamaCppService::LlamaCppService(const std::string& modelsDir,
 }
 
 LlamaCppService::~LlamaCppService() {
+    {
+        std::lock_guard<std::mutex> tokenizerLock(tokenizerMutex_);
+        clearTokenizerCacheLocked();
+    }
     std::lock_guard<std::mutex> lock(stateMutex_);
     stopServerLocked();
 }
@@ -597,6 +1014,150 @@ std::string LlamaCppService::findGgufInDirectory(const std::string& dir) const {
     return "";
 }
 
+std::string LlamaCppService::resolveTokenizerBackend() const {
+    const auto available = listAvailableBackends(libsDir_);
+    if (std::find(available.begin(), available.end(), "cpu") != available.end()) {
+        return "cpu";
+    }
+
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    if (!activeBackend_.empty()) {
+        return activeBackend_;
+    }
+    return resolveBackendPreference(config_.getLlamacppBackend(), available);
+}
+
+void LlamaCppService::clearTokenizerCacheLocked() {
+    flushTokenizerLogState();
+
+    for (auto& [path, model] : tokenizerModels_) {
+        if (model && tokenizerApi_ && tokenizerApi_->model_free) {
+            tokenizerApi_->model_free(model);
+        }
+    }
+    tokenizerModels_.clear();
+
+    if (tokenizerApi_ && tokenizerApi_->loaded && tokenizerApi_->backend_free) {
+        tokenizerApi_->backend_free();
+    }
+
+#ifdef _WIN32
+    if (tokenizerLibHandle_) {
+        FreeLibrary(static_cast<HMODULE>(tokenizerLibHandle_));
+    }
+#else
+    if (tokenizerLibHandle_) {
+        dlclose(tokenizerLibHandle_);
+    }
+#endif
+
+    tokenizerBackend_.clear();
+    tokenizerLibHandle_ = nullptr;
+    tokenizerApi_.reset();
+}
+
+bool LlamaCppService::ensureTokenizerBackendLocked(const std::string& backend, std::string* error) {
+    if (backend.empty() || backend == "none") {
+        if (error) {
+            *error = "No llama.cpp backend is available for tokenizer loading";
+        }
+        return false;
+    }
+
+    if (tokenizerApi_ && tokenizerApi_->loaded && tokenizerBackend_ == backend && tokenizerLibHandle_) {
+        return true;
+    }
+
+    clearTokenizerCacheLocked();
+
+    const fs::path backendDir = backendInstallDir(backend);
+    const std::string libPath = findLlamaSharedLibrary(backendDir);
+    if (libPath.empty()) {
+        if (error) {
+            *error = "Could not find libllama in " + backendDir.string();
+        }
+        return false;
+    }
+
+#ifdef _WIN32
+    tokenizerLibHandle_ = LoadLibraryA(libPath.c_str());
+    if (!tokenizerLibHandle_) {
+        if (error) {
+            *error = "Failed to load libllama: " + libPath;
+        }
+        return false;
+    }
+#else
+    tokenizerLibHandle_ = dlopen(libPath.c_str(), RTLD_NOW | RTLD_LOCAL);
+    if (!tokenizerLibHandle_) {
+        if (error) {
+            *error = std::string("Failed to load libllama: ") + dlerror();
+        }
+        return false;
+    }
+#endif
+
+    tokenizerApi_ = std::make_unique<LlamaApi>();
+    std::string loadError;
+    auto& api = *tokenizerApi_;
+    loadOptionalLlamaSymbol(tokenizerLibHandle_, "llama_log_set", api.log_set);
+    if (!loadRequiredLlamaSymbol(tokenizerLibHandle_, "llama_backend_init", api.backend_init, loadError) ||
+        !loadRequiredLlamaSymbol(tokenizerLibHandle_, "llama_backend_free", api.backend_free, loadError) ||
+        !loadRequiredLlamaSymbol(tokenizerLibHandle_, "llama_model_default_params", api.model_default_params, loadError) ||
+        !loadRequiredLlamaSymbol(tokenizerLibHandle_, "llama_model_load_from_file", api.model_load_from_file, loadError) ||
+        !loadRequiredLlamaSymbol(tokenizerLibHandle_, "llama_model_free", api.model_free, loadError) ||
+        !loadRequiredLlamaSymbol(tokenizerLibHandle_, "llama_model_get_vocab", api.model_get_vocab, loadError) ||
+        !loadRequiredLlamaSymbol(tokenizerLibHandle_, "llama_model_chat_template", api.model_chat_template, loadError) ||
+        !loadRequiredLlamaSymbol(tokenizerLibHandle_, "llama_tokenize", api.tokenize, loadError) ||
+        !loadRequiredLlamaSymbol(tokenizerLibHandle_, "llama_chat_apply_template", api.chat_apply_template, loadError)) {
+        clearTokenizerCacheLocked();
+        if (error) {
+            *error = loadError;
+        }
+        return false;
+    }
+
+    if (api.log_set) {
+        api.log_set(tokenizerLogCallback, &tokenizerLogState());
+    }
+    api.backend_init();
+    api.loaded = true;
+    tokenizerBackend_ = backend;
+    return true;
+}
+
+llama_model* LlamaCppService::ensureTokenizerModelLocked(const std::string& backend,
+                                                         const ModelInfo& model,
+                                                         std::string* error) {
+    if (!ensureTokenizerBackendLocked(backend, error)) {
+        return nullptr;
+    }
+
+    auto existing = tokenizerModels_.find(model.ggufPath);
+    if (existing != tokenizerModels_.end() && existing->second) {
+        return existing->second;
+    }
+
+    auto params = tokenizerApi_->model_default_params();
+    params.n_gpu_layers = 0;
+    params.vocab_only = true;
+    params.use_mmap = true;
+    params.use_mlock = false;
+    params.no_alloc = false;
+    params.no_host = false;
+
+    llama_model* loadedModel = tokenizerApi_->model_load_from_file(model.ggufPath.c_str(), params);
+    if (!loadedModel) {
+        if (error) {
+            *error = "Failed to load tokenizer vocabulary from " + model.ggufPath;
+        }
+        return nullptr;
+    }
+
+    tokenizerModels_[model.ggufPath] = loadedModel;
+    return loadedModel;
+}
+
 std::vector<ModelInfo> LlamaCppService::scanModelDirectory(const std::string& modelsDir,
                                                            int contextLength,
                                                            const std::string& loadedModelPath) {
@@ -622,7 +1183,7 @@ std::vector<ModelInfo> LlamaCppService::scanModelDirectory(const std::string& mo
         info.ggufPath = ggufPath.string();
         info.mmprojPath = mmprojPath.value_or("");
         info.tokenizerPath = tokenizerPath.value_or("");
-        info.contextLength = contextLength > 0 ? contextLength : 8192;
+        info.contextLength = ggufContextLength(ggufPath).value_or(contextLength > 0 ? contextLength : 65536);
         info.maxTokens = 8192;
         info.loaded = !loadedModelPath.empty() && loadedModelPath == info.ggufPath;
         info.usesMrope = ggufUsesMrope(ggufPath);
@@ -692,7 +1253,7 @@ std::vector<ModelInfo> LlamaCppService::scanModelDirectory(const std::string& mo
 std::vector<ModelInfo> LlamaCppService::scanModels() const {
     return scanModelDirectory(
         modelsDir_,
-        config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 8192);
+        config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 65536);
 }
 
 std::vector<std::string> LlamaCppService::availableBackends() const {
@@ -821,7 +1382,7 @@ LlamaCppService::StartupConfig LlamaCppService::buildStartupConfigLocked(
     if (cfg.cachePrompt) {
         const auto models = scanModelDirectory(
             modelsDir_,
-            config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 8192);
+            config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 65536);
         if (countMropeModels(models) > 0) {
             cfg.cachePrompt = false;
         }
@@ -857,7 +1418,7 @@ std::string LlamaCppService::backendBinaryPath(const std::string& backend) const
 std::string LlamaCppService::buildRouterPresetLocked() const {
     const auto models = scanModelDirectory(
         modelsDir_,
-        config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 8192);
+        config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 65536);
 
     std::ostringstream preset;
     std::ostringstream signature;
@@ -923,7 +1484,7 @@ bool LlamaCppService::startServerLocked(const StartupConfig& desired) {
     if (config_.getLlamacppKvCacheReuse() && !desired.cachePrompt) {
         const auto models = scanModelDirectory(
             modelsDir_,
-            config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 8192);
+            config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 65536);
         const std::size_t mropeModelCount = countMropeModels(models);
         if (mropeModelCount > 0) {
             std::cout << "[LlamaCpp] Disabling KV cache reuse for "
@@ -1376,7 +1937,7 @@ bool LlamaCppService::unloadModel(const std::string& modelId) {
 Json::Value LlamaCppService::getModels() const {
     std::vector<ModelInfo> localModels = scanModelDirectory(
         modelsDir_,
-        config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 8192);
+        config_.getLlamacppCtxSize() > 0 ? config_.getLlamacppCtxSize() : 65536);
 
     Json::Value routerModels = routerModelsJson();
     std::map<std::string, std::string> statusById;
@@ -1487,6 +2048,154 @@ Json::Value LlamaCppService::buildMessages(const std::string& prompt,
         messages.append(message);
     }
     return messages;
+}
+
+int LlamaCppService::countTokens(const std::string& model, const Json::Value& messages) {
+    Json::Value preparedMessages = messages;
+    if (!preparedMessages.isArray()) {
+        preparedMessages = Json::Value(Json::arrayValue);
+    }
+
+    const auto modelInfo = findModelInfoById(scanModels(), model);
+    if (!modelInfo || modelInfo->ggufPath.empty()) {
+        throw std::runtime_error("Could not locate llama.cpp model files for token counting");
+    }
+
+    std::string backend = resolveTokenizerBackend();
+    std::string localCountError;
+
+    {
+        std::lock_guard<std::mutex> tokenizerLock(tokenizerMutex_);
+        llama_model* tokenizerModel = ensureTokenizerModelLocked(backend, *modelInfo, &localCountError);
+        if (tokenizerModel) {
+            const char* tmpl = tokenizerApi_->model_chat_template
+                ? tokenizerApi_->model_chat_template(tokenizerModel, nullptr)
+                : nullptr;
+            if (tmpl && *tmpl) {
+                std::vector<std::pair<std::string, std::string>> storage;
+                storage.reserve(preparedMessages.size());
+                for (const auto& message : preparedMessages) {
+                    if (!message.isObject()) {
+                        continue;
+                    }
+
+                    const std::string role = message.get("role", "").asString();
+                    if (role.empty()) {
+                        continue;
+                    }
+                    storage.emplace_back(role, flattenMessageContentForTemplate(message));
+                }
+
+                std::vector<llama_chat_message> chatMessages;
+                chatMessages.reserve(storage.size());
+                for (const auto& entry : storage) {
+                    chatMessages.push_back({ entry.first.c_str(), entry.second.c_str() });
+                }
+
+                int32_t promptBytes = tokenizerApi_->chat_apply_template(
+                    tmpl,
+                    chatMessages.data(),
+                    chatMessages.size(),
+                    true,
+                    nullptr,
+                    0);
+                std::vector<char> promptBuffer;
+                if (promptBytes > 0) {
+                    promptBuffer.resize(static_cast<std::size_t>(promptBytes));
+                    promptBytes = tokenizerApi_->chat_apply_template(
+                        tmpl,
+                        chatMessages.data(),
+                        chatMessages.size(),
+                        true,
+                        promptBuffer.data(),
+                        static_cast<int32_t>(promptBuffer.size()));
+                }
+
+                if (promptBytes > 0) {
+                    const llama_vocab* vocab = tokenizerApi_->model_get_vocab(tokenizerModel);
+                    if (vocab) {
+                        std::vector<llama_token> tokens(static_cast<std::size_t>(promptBytes) + 8);
+                        int32_t tokenCount = tokenizerApi_->tokenize(
+                            vocab,
+                            promptBuffer.data(),
+                            promptBytes,
+                            tokens.data(),
+                            static_cast<int32_t>(tokens.size()),
+                            true,
+                            true);
+                        if (tokenCount < 0) {
+                            tokens.resize(static_cast<std::size_t>(-tokenCount));
+                            tokenCount = tokenizerApi_->tokenize(
+                                vocab,
+                                promptBuffer.data(),
+                                promptBytes,
+                                tokens.data(),
+                                static_cast<int32_t>(tokens.size()),
+                                true,
+                                true);
+                        }
+
+                        if (tokenCount >= 0) {
+                            return tokenCount;
+                        }
+                        localCountError = "Local llama.cpp tokenization failed";
+                    } else {
+                        localCountError = "Could not access llama.cpp vocabulary";
+                    }
+                } else {
+                    localCountError = "Failed to apply llama.cpp chat template";
+                }
+            } else {
+                localCountError = "Model does not expose a llama.cpp chat template";
+            }
+        }
+    }
+
+    bool modelLoaded = false;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        auto* self = const_cast<LlamaCppService*>(this);
+        if (self->ensureServerRunningLocked()) {
+            self->refreshLoadedModelStateLocked();
+            for (const auto& loadedId : loadedModelIds_) {
+                if (loadedId.isString() && loadedId.asString() == model) {
+                    modelLoaded = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (modelLoaded) {
+        std::string lastError = localCountError.empty()
+            ? "llama.cpp did not return prompt token usage"
+            : localCountError;
+        for (const int maxTokens : {0, 1}) {
+            Json::Value body(Json::objectValue);
+            body["model"] = normalizeModelId(model);
+            body["messages"] = preparedMessages;
+            body["stream"] = false;
+            body["max_tokens"] = maxTokens;
+            body["temperature"] = 0.0;
+            body["reasoning_format"] = "none";
+
+            const Json::Value response = postJson("/v1/chat/completions", body, 120);
+            if (response.isMember("error")) {
+                lastError = response["error"].asString();
+                continue;
+            }
+
+            const int promptTokens = extractPromptTokensFromChatResponse(response);
+            if (promptTokens >= 0) {
+                return promptTokens;
+            }
+        }
+        throw std::runtime_error(lastError);
+    }
+
+    throw std::runtime_error(localCountError.empty()
+        ? "llama.cpp tokenizer is unavailable for this unloaded model"
+        : localCountError);
 }
 
 std::string LlamaCppService::generateTitle(const std::string& model,

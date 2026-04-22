@@ -27,7 +27,7 @@ It is intentionally separate from `TODO.md`:
 | Tuning and personalisation | Theme palettes, AI behavior settings, token-confidence display/history controls, title-generation settings |
 | Integration surface | REST API, task endpoints, tool-pack discovery/reload, approval endpoints, MCP client loading/bridging, built-in MCP config tools |
 
-The tool system itself is now implemented, but the project does not currently ship with real task-oriented tool packs. Out of the box, installs only expose internal/synthetic control-plane wiring unless you add your own packs or configure MCP servers.
+The tool system itself is now implemented, but the project does not currently ship with real task-oriented tool packs. Out of the box, installs expose synthetic/internal control-plane wiring plus an opt-in diagnostic pack unless you add your own packs or configure MCP servers.
 
 ---
 
@@ -143,10 +143,10 @@ The tool system itself is now implemented, but the project does not currently sh
 | Live auto-scroll | The transcript follows new output automatically while the user is at the bottom. |
 | User-controlled scroll detachment | If the user scrolls upward, the app stops forcing scroll-to-bottom during streaming. |
 | Scroll-to-bottom button | A dedicated button appears when the user is detached from the live bottom of the transcript. |
-| Live context meter | The toolbar shows an estimated `used / max` context count for the current conversation. |
-| Attachment-aware context estimation | Attachments contribute to the context estimate instead of being ignored. |
-| System-prompt-aware estimation | Global system-prompt content is included in the estimate. |
-| Reasoning/tool-aware estimation | Stored reasoning blocks and tool-call records are included in the estimate. |
+| Live context meter | The toolbar shows a live backend-counted `used / max` prompt-token count for the current conversation. |
+| Attachment-aware token counting | Attachments contribute to the token count instead of being ignored. |
+| System-prompt-aware token counting | Global system-prompt content is included in the token count. |
+| Reasoning/tool-aware token counting | Stored reasoning blocks and tool-call records are included in the token count. |
 | Context pressure warnings | The context meter changes state at 50% usage and again at 90% usage. |
 
 ---
@@ -264,7 +264,7 @@ The tool system itself is now implemented, but the project does not currently sh
 The backend exposes API groups for:
 - Authentication setup, login, logout, and validation
 - Chat summary CRUD and per-chat detail CRUD
-- Legacy chat endpoints plus task-based generation endpoints
+- Legacy chat endpoints, prompt token counting, and task-based generation endpoints
 - Model listing and local-model deletion
 - LM Studio model listing
 - Settings read/write
@@ -285,8 +285,9 @@ The backend exposes API groups for:
 | Per-chat pack enablement | Each chat can enable or disable discovered packs from the toolbar. |
 | Approval workflow | Tool executions can pause for approval, with list/approve/deny endpoints and inline chat actions. |
 | Multiple executor backends | The execution layer supports native, HTTP, sandbox, and MCP-backed tools. |
+| Internal control-plane pack | Fresh installs include a synthetic pack for deferred tool-catalog search and schema loading. |
 | Diagnostic test pack | The repo includes an opt-in diagnostic no-op pack for verifying tool-call wiring and transcript rendering. |
-| Current shipped tool state | The repository currently ships no real task-oriented tool packs; fresh installs start without user-facing tools to actually solve tasks. |
+| Current shipped tool state | The repository currently ships no real task-oriented tool packs; fresh installs only expose internal control-plane wiring and the diagnostic test pack until you add packs or MCP servers. |
 
 ### MCP Support
 
@@ -312,7 +313,7 @@ The backend exposes API groups for:
 | Tool scope on generation tasks | Generation requests carry the current chat's enabled pack scope. |
 | Transcript-visible execution records | Tool executions are streamed back into the chat transcript with input, output, status, and approval details. |
 | Approval-aware task states | A generation task can enter a `waiting_approval` state until the user resolves a pending tool action. |
-| No bundled task tools yet | The execution pipeline exists, but out-of-the-box installs do not provide real task-solving tools for the model to call. |
+| No bundled task tools yet | The execution pipeline exists, but out-of-the-box installs do not provide real task-solving tools beyond the synthetic control-plane/diagnostic tools. |
 
 ---
 

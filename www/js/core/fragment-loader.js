@@ -28,13 +28,19 @@ export function parseFragment(html, url) {
 	return node;
 }
 
-export async function loadFragment(url) {
+export async function loadFragment(url, options = {}) {
 	navAbort?.abort();
 	const controller = new AbortController();
 	navAbort = controller;
 	const source = await fetchFragmentSource(url, controller.signal);
 	if (controller.signal.aborted) return null;
 	const fragment = parseFragment(source, url);
+	const prepareFragment = typeof options === 'function'
+		? options
+		: options?.prepareFragment;
+	if (typeof prepareFragment === 'function') {
+		await prepareFragment(fragment);
+	}
 	const outlet = getOutlet();
 	if (!outlet) throw new Error('Fragment outlet not found');
 	outlet.replaceWith(fragment);

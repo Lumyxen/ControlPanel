@@ -76,10 +76,11 @@ export function createStreamingMessageController({
 	};
 
 	const emitLiveNode = () => {
+		const { parsedContent, displayReasoning } = getDisplayState();
 		onLiveNodeChange({
 			role: 'assistant',
-			content: rawStreamText,
-			reasoning: officialReasoningText,
+			content: parsedContent,
+			reasoning: displayReasoning,
 			reasoningParts: cloneReasoningParts(reasoningParts),
 			toolCalls: cloneToolCalls(activeToolCalls),
 		});

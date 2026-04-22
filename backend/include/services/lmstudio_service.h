@@ -62,6 +62,10 @@ public:
     ) const;
 
     Json::Value getModels() const;
+    int countTokens(
+        const std::string& model,
+        const Json::Value& messages
+    ) const;
 
     void        setLmStudioUrl(const std::string& url) { lmStudioUrl_ = url; }
     std::string getLmStudioUrl() const                 { return lmStudioUrl_; }
@@ -79,6 +83,8 @@ private:
 
     Json::Value makeRequest(const std::string& endpoint,
                             const Json::Value& body) const;
+    Json::Value makeRequestToPath(const std::string& path,
+                                  const Json::Value& body) const;
     Json::Value parseConversationHistory(const std::string& prompt) const;
 
     std::string streamOneRound(

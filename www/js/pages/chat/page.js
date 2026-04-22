@@ -11,10 +11,18 @@ import {
 import {
 	addChildMessageToChat, addMessageToChat, createNewChat,
 	ensureChatLoaded, getChatById, getCurrentChatId, getChatToolScope, isChatLoaded,
-	loadChats, saveChats, setChatModel, setCurrentChatId,
+	loadChats, saveChats, setChatModel, setCurrentChatId, getLastSelectedModel, setLastSelectedModel,
 } from './repository.js';
 import { renderChatList } from './sidebar-list.js';
-import { updateContextUI, getModelMaxTokens, getModelContextLimitFromUI, estimateNodeTokens, estimatePartsTokens, estimateTokensForText } from './context.js';
+import {
+	updateContextUI,
+	estimatePreparedMessagesTokens,
+	getModelContextInfoFromUI,
+	getModelMaxTokens,
+	getModelContextLimitFromUI,
+	getKnownModelContextLength,
+	hasKnownModel,
+} from './context.js';
 import { renderThread, showTyping, patchMessageEditState, getSiblingNavState, createActionButton } from './thread-view.js';
 import { InlineAttachmentManager } from './attachments.js';
 import {
@@ -25,17 +33,408 @@ import {
 	generateAiTitle,
 	approveToolApproval,
 	denyToolApproval,
+	countChatTokens,
 } from '../../core/http.js';
 import * as SettingsStore from '../../services/settings.js';
 import { initDropdowns, initTools, loadAndPopulateModels } from './model-picker.js';
 import { initUpload, initAutoResize } from './composer.js';
-import { buildNodeTextForHistory, buildApiMessages, buildConversationHistory } from './payloads.js';
+import { buildNodeTextForHistory, buildApiMessages, buildApiMessagesFromNodes, buildConversationHistory } from './payloads.js';
 import { buildPartsWithUpdatedText, getNodeTextContent } from './message-parts.js';
 import { createStreamingMessageController } from './stream-view.js';
 import { htmlToMarkdown } from './clipboard.js';
 import { createChatSessionState } from './session.js';
 
 let chatPageAbort = null;
+const MAX_CONTEXT_COUNT_CACHE_ENTRIES = 128;
+const contextCountCache = new Map();
+const contextCountScopeCache = new Map();
+const contextIndicatorCache = new Map();
+
+function getLruCacheEntry(cache, key) {
+	if (!key || !cache.has(key)) return null;
+	const value = cache.get(key);
+	cache.delete(key);
+	cache.set(key, value);
+	return value;
+}
+
+function setLruCacheEntry(cache, key, value) {
+	if (!key) return;
+	if (cache.has(key)) {
+		cache.delete(key);
+	}
+	cache.set(key, value);
+	while (cache.size > MAX_CONTEXT_COUNT_CACHE_ENTRIES) {
+		const oldestKey = cache.keys().next().value;
+		if (!oldestKey) break;
+		cache.delete(oldestKey);
+	}
+}
+
+function buildContextScopeKey({ chatId, model }) {
+	if (!chatId || !model) return '';
+	return `${chatId}::${model}`;
+}
+
+function buildContextIndicatorKey({ chatId, model = '' }) {
+	if (!chatId) return '';
+	return model ? `${chatId}::${model}` : `${chatId}::indicator`;
+}
+
+function getCachedContextCount(cacheKey) {
+	return getLruCacheEntry(contextCountCache, cacheKey);
+}
+
+function setCachedContextCount(cacheKey, usedTokens) {
+	const nextTokens = Number.parseInt(usedTokens, 10);
+	if (!cacheKey || !Number.isFinite(nextTokens) || nextTokens < 0) return;
+	setLruCacheEntry(contextCountCache, cacheKey, nextTokens);
+}
+
+function rememberExactContextCount({ chatId, model, usedTokens }) {
+	const nextTokens = Number.parseInt(usedTokens, 10);
+	const scopeKey = buildContextScopeKey({ chatId, model });
+	if (!scopeKey || !Number.isFinite(nextTokens) || nextTokens < 0) return;
+	setLruCacheEntry(contextCountScopeCache, scopeKey, nextTokens);
+}
+
+function getCachedScopeContextCount({ chatId, model }) {
+	return getLruCacheEntry(contextCountScopeCache, buildContextScopeKey({ chatId, model }));
+}
+
+function rememberContextIndicator({
+	chatId,
+	model,
+	usedTokens,
+	contextLimit,
+	exactCountUnavailable = false,
+	contextLimitKnown = true,
+}) {
+	const nextTokens = Number.parseInt(usedTokens, 10);
+	const nextLimit = Number.parseInt(contextLimit, 10);
+	if (!chatId || !model || !Number.isFinite(nextTokens) || nextTokens < 0) return;
+	if (!Number.isFinite(nextLimit) || nextLimit <= 0) return;
+	const snapshot = {
+		usedTokens: nextTokens,
+		contextLimit: nextLimit,
+		exactCountUnavailable: exactCountUnavailable === true,
+		contextLimitKnown: contextLimitKnown === true,
+	};
+	setLruCacheEntry(contextIndicatorCache, buildContextIndicatorKey({ chatId, model }), snapshot);
+	setLruCacheEntry(contextIndicatorCache, buildContextIndicatorKey({ chatId }), snapshot);
+}
+
+function getCachedContextIndicator({ chatId, model }) {
+	const modelSnapshot = getLruCacheEntry(contextIndicatorCache, buildContextIndicatorKey({ chatId, model }));
+	if (modelSnapshot) return { ...modelSnapshot, scope: 'model' };
+	const chatSnapshot = getLruCacheEntry(contextIndicatorCache, buildContextIndicatorKey({ chatId }));
+	return chatSnapshot ? { ...chatSnapshot, scope: 'chat' } : null;
+}
+
+function getRouteChatId(route) {
+	try {
+		return new URLSearchParams(String(route || '').split('?')[1] || '').get('chat');
+	} catch {
+		return null;
+	}
+}
+
+function formatModelDisplayName(modelId) {
+	return String(modelId || '')
+		.replace('llamacpp::', '')
+		.replace('lmstudio::', '')
+		.split('/')
+		.pop()
+		.replace(/-/g, ' ');
+}
+
+function resolvePreferredModelId(chatId) {
+	const settings = SettingsStore.get();
+	const chat = chatId ? getChatById(chatId) : null;
+	const candidates = [
+		chat?.model || '',
+		getLastSelectedModel() || '',
+		settings?.defaultModel || '',
+	].filter(Boolean);
+	const knownCandidate = candidates.find((candidate) => hasKnownModel(candidate));
+	return knownCandidate || candidates[0] || '';
+}
+
+function seedModelPicker(root, {
+	modelId = '',
+	contextLimit = null,
+	contextLimitKnown = false,
+} = {}) {
+	if (!modelId) return false;
+	const modelDropdown = root?.querySelector?.('[data-dropdown="model"]');
+	if (!modelDropdown) return false;
+
+	const label = modelDropdown.querySelector('.chat-dropdown-label');
+	if (label) label.textContent = formatModelDisplayName(modelId);
+
+	const menu = modelDropdown.querySelector('.chat-dropdown-menu');
+	if (!menu) return true;
+
+	let selectedItem = null;
+	for (const item of menu.querySelectorAll('.chat-dropdown-item')) {
+		const isMatch = item.dataset.value === modelId;
+		item.classList.toggle('selected', isMatch);
+		item.setAttribute('aria-selected', String(isMatch));
+		if (isMatch) selectedItem = item;
+	}
+
+	if (!selectedItem) {
+		selectedItem = document.createElement('button');
+		selectedItem.type = 'button';
+		selectedItem.className = 'chat-dropdown-item selected';
+		selectedItem.dataset.seeded = 'true';
+		selectedItem.setAttribute('role', 'option');
+		selectedItem.setAttribute('aria-selected', 'true');
+		menu.prepend(selectedItem);
+	}
+
+	selectedItem.dataset.value = modelId;
+	if (contextLimitKnown && Number.isFinite(contextLimit) && contextLimit > 0) {
+		selectedItem.dataset.contextLength = String(contextLimit);
+	} else {
+		delete selectedItem.dataset.contextLength;
+	}
+	selectedItem.textContent = '';
+	const labelText = document.createElement('span');
+	labelText.className = 'chat-dropdown-item-label';
+	labelText.textContent = formatModelDisplayName(modelId);
+	selectedItem.appendChild(labelText);
+	return true;
+}
+
+function seedChatPageShell(root, currentRouteGetter = () => '') {
+	const routeChatId = getRouteChatId(currentRouteGetter());
+	const activeChatId = routeChatId || getCurrentChatId();
+	const model = resolvePreferredModelId(activeChatId);
+	if (!activeChatId && !model) return false;
+	if (model) setLastSelectedModel(model);
+	const cachedIndicator = activeChatId
+		? getCachedContextIndicator({ chatId: activeChatId, model })
+		: null;
+	const knownModelContextLimit = getKnownModelContextLength(model);
+	const contextLimitKnown = Boolean(
+		(Number.isFinite(knownModelContextLimit) && knownModelContextLimit > 0)
+		|| (cachedIndicator?.scope === 'model' && cachedIndicator.contextLimitKnown === true)
+	);
+	const modelContextLimit = knownModelContextLimit
+		|| cachedIndicator?.contextLimit
+		|| null;
+
+	seedModelPicker(root, {
+		modelId: model,
+		contextLimit: modelContextLimit,
+		contextLimitKnown,
+	});
+
+	if (cachedIndicator) {
+		updateContextUI(root, {
+			usedTokens: cachedIndicator.usedTokens,
+			contextLimit: cachedIndicator.contextLimit,
+			contextLimitKnown,
+			exactCountUnavailable: cachedIndicator.scope === 'model' && cachedIndicator.exactCountUnavailable === true,
+			showUnknownContextWarning: root?._modelPickerPopulated === true,
+		});
+		return true;
+	}
+	if (Number.isFinite(modelContextLimit) && modelContextLimit > 0) {
+		updateContextUI(root, {
+			usedTokens: 0,
+			contextLimit: modelContextLimit,
+			contextLimitKnown,
+			showUnknownContextWarning: root?._modelPickerPopulated === true,
+		});
+		return true;
+	}
+	return Boolean(model);
+}
+
+function buildSystemPromptForMessages(apiMessages, settings) {
+	let systemPrompt = settings?.systemPrompt || '';
+	if (apiMessages.some((message) => Array.isArray(message.content))) {
+		const hint = '[System Override: You have native multimodal vision capabilities. The user has attached an image. Analyze the visual data directly.]';
+		systemPrompt = systemPrompt ? `${systemPrompt}\n\n${hint}` : hint;
+	}
+	return systemPrompt;
+}
+
+function buildContextCountCacheKey({ model, messages, systemPrompt }) {
+	if (!model) return '';
+	return JSON.stringify({
+		model,
+		system_prompt: systemPrompt || '',
+		messages: Array.isArray(messages) ? messages : [],
+	});
+}
+
+async function fetchExactContextCount({ model, messages, systemPrompt, chatId }, options = {}) {
+	const cacheKey = buildContextCountCacheKey({ model, messages, systemPrompt });
+	const cachedTokens = getCachedContextCount(cacheKey);
+	if (Number.isFinite(cachedTokens)) {
+		rememberExactContextCount({ chatId, model, usedTokens: cachedTokens });
+		return { prompt_tokens: cachedTokens };
+	}
+
+	const result = await countChatTokens({
+		model,
+		messages,
+		system_prompt: systemPrompt,
+	}, options);
+	const promptTokens = Number.parseInt(result?.prompt_tokens, 10);
+	if (Number.isFinite(promptTokens) && promptTokens >= 0) {
+		setCachedContextCount(cacheKey, promptTokens);
+		rememberExactContextCount({ chatId, model, usedTokens: promptTokens });
+	}
+	return result;
+}
+
+function buildStaticContextCountPayload(chatId, settings) {
+	const chat = chatId ? getChatById(chatId) : null;
+	const chatLoaded = isChatLoaded(chat);
+	const model = resolvePreferredModelId(chatId);
+	const cachedIndicator = getCachedContextIndicator({ chatId, model });
+	const knownModelContextLimit = getKnownModelContextLength(model);
+	const contextLimitKnown = Boolean(
+		(Number.isFinite(knownModelContextLimit) && knownModelContextLimit > 0)
+		|| (cachedIndicator?.scope === 'model' && cachedIndicator.contextLimitKnown === true)
+	);
+	const contextLimit = knownModelContextLimit
+		|| cachedIndicator?.contextLimit
+		|| 65536;
+	const effectiveNodes = [];
+
+	if (chatLoaded) {
+		const graph = ensureGraph(chat);
+		const threadIds = computeThreadNodeIds(graph);
+		for (const nodeId of threadIds) {
+			const node = getNode(graph, nodeId);
+			if (!node || (node.role !== 'user' && node.role !== 'assistant')) continue;
+			effectiveNodes.push(node);
+		}
+	}
+
+	const messages = buildApiMessagesFromNodes(effectiveNodes, settings);
+	const systemPrompt = buildSystemPromptForMessages(messages, settings);
+	return {
+		model,
+		messages,
+		systemPrompt,
+		estimatedUsedTokens: estimatePreparedMessagesTokens(messages, systemPrompt),
+		contextLimit,
+		contextLimitKnown,
+		chatLoaded,
+	};
+}
+
+async function seedExactContextIndicator(root, chatId) {
+	if (!root || !chatId) return false;
+	const settings = await SettingsStore.init();
+	let payload = buildStaticContextCountPayload(chatId, settings);
+	if (!payload.model) return false;
+
+	const cachedIndicator = getCachedContextIndicator({ chatId, model: payload.model });
+	if (cachedIndicator) {
+		updateContextUI(root, {
+			usedTokens: cachedIndicator.usedTokens,
+			contextLimit: cachedIndicator.contextLimit,
+			contextLimitKnown: payload.contextLimitKnown || (cachedIndicator.scope === 'model' && cachedIndicator.contextLimitKnown === true),
+			exactCountUnavailable: cachedIndicator.scope === 'model' && cachedIndicator.exactCountUnavailable === true,
+			showUnknownContextWarning: root?._modelPickerPopulated === true,
+		});
+		return true;
+	}
+
+	if (!payload.chatLoaded) {
+		await ensureChatLoaded(chatId);
+		payload = buildStaticContextCountPayload(chatId, settings);
+		if (!payload.model) return false;
+	}
+
+	if (!payload.systemPrompt && payload.messages.length === 0) {
+		rememberExactContextCount({ chatId, model: payload.model, usedTokens: 0 });
+		rememberContextIndicator({
+			chatId,
+			model: payload.model,
+			usedTokens: 0,
+			contextLimit: payload.contextLimit,
+			exactCountUnavailable: false,
+			contextLimitKnown: payload.contextLimitKnown,
+		});
+		updateContextUI(root, {
+			usedTokens: 0,
+			contextLimit: payload.contextLimit,
+			contextLimitKnown: payload.contextLimitKnown,
+			showUnknownContextWarning: root?._modelPickerPopulated === true,
+		});
+		return true;
+	}
+
+	try {
+		const result = await fetchExactContextCount({
+			model: payload.model,
+			messages: payload.messages,
+			systemPrompt: payload.systemPrompt,
+			chatId,
+		});
+		const promptTokens = Number.parseInt(result?.prompt_tokens, 10);
+		if (!Number.isFinite(promptTokens) || promptTokens < 0) {
+			const fallbackUsedTokens = payload.estimatedUsedTokens;
+			rememberContextIndicator({
+				chatId,
+				model: payload.model,
+				usedTokens: fallbackUsedTokens,
+				contextLimit: payload.contextLimit,
+				exactCountUnavailable: true,
+				contextLimitKnown: payload.contextLimitKnown,
+			});
+			updateContextUI(root, {
+				usedTokens: fallbackUsedTokens,
+				contextLimit: payload.contextLimit,
+				contextLimitKnown: payload.contextLimitKnown,
+				exactCountUnavailable: true,
+				showUnknownContextWarning: root?._modelPickerPopulated === true,
+			});
+			return false;
+		}
+		rememberContextIndicator({
+			chatId,
+			model: payload.model,
+			usedTokens: promptTokens,
+			contextLimit: payload.contextLimit,
+			exactCountUnavailable: false,
+			contextLimitKnown: payload.contextLimitKnown,
+		});
+		updateContextUI(root, {
+			usedTokens: promptTokens,
+			contextLimit: payload.contextLimit,
+			contextLimitKnown: payload.contextLimitKnown,
+			showUnknownContextWarning: root?._modelPickerPopulated === true,
+		});
+		return true;
+	} catch (err) {
+		console.error('[ChatPage] Failed to pre-seed exact context indicator:', err);
+		rememberContextIndicator({
+			chatId,
+			model: payload.model,
+			usedTokens: payload.estimatedUsedTokens,
+			contextLimit: payload.contextLimit,
+			exactCountUnavailable: true,
+			contextLimitKnown: payload.contextLimitKnown,
+		});
+		updateContextUI(root, {
+			usedTokens: payload.estimatedUsedTokens,
+			contextLimit: payload.contextLimit,
+			contextLimitKnown: payload.contextLimitKnown,
+			exactCountUnavailable: true,
+			showUnknownContextWarning: root?._modelPickerPopulated === true,
+		});
+		return false;
+	}
+}
 
 // ── AI Title Generation (reusable) ────────────────────────────────────────────
 async function triggerAiTitleGeneration(root, chatId, onStateChange, preferredModel = '') {
@@ -125,6 +524,8 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	const messages = root.querySelector('#chatMessages');
 	const empty    = root.querySelector('#chatEmpty');
 	if (!form || !input || !messages) return;
+	root._modelPickerPopulated = false;
+	seedChatPageShell(root, currentRouteGetter);
 	await SettingsStore.init();
 
 	const attachmentManager = new InlineAttachmentManager(input);
@@ -172,28 +573,288 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		}, { signal });
 	}
 
-	const updateLiveContext = () => {
-		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
-		let extra = 0;
-		const parts = attachmentManager.extractParts();
-		if (parts?.length > 0) extra += estimatePartsTokens(parts);
-		// Account for system prompt from global settings
+	const buildContextCountPayload = () => {
 		const settings = SettingsStore.get();
-		if (settings?.systemPrompt) {
-			extra += estimateTokensForText(settings.systemPrompt);
-		}
-		if (uiState.isGenerating && uiState.liveGeneratingNode) extra += estimateNodeTokens(uiState.liveGeneratingNode);
-		if (uiState.editingNodeId && chat) {
-			const node = getNode(ensureGraph(chat), uiState.editingNodeId);
-			if (node) {
-				extra -= estimateNodeTokens(node);
-				const draftParts = buildPartsWithUpdatedText(node, uiState.editingDraft);
-				extra += estimatePartsTokens(draftParts);
+		const activeChatId = getCurrentChatId();
+		const chat = activeChatId ? getChatById(activeChatId) : null;
+		const chatLoaded = isChatLoaded(chat);
+		const modelSelect = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
+		const model = modelSelect?.dataset?.value
+			|| resolvePreferredModelId(activeChatId)
+			|| '';
+		const contextInfo = getModelContextInfoFromUI(root);
+		const effectiveNodes = [];
+
+		if (chatLoaded) {
+			const graph = ensureGraph(chat);
+			const threadIds = computeThreadNodeIds(graph);
+			for (const nodeId of threadIds) {
+				const node = getNode(graph, nodeId);
+				if (!node || (node.role !== 'user' && node.role !== 'assistant')) continue;
+
+				if (uiState.editingNodeId === node.id) {
+					effectiveNodes.push({
+						...node,
+						parts: buildPartsWithUpdatedText(node, uiState.editingDraft),
+					});
+				} else {
+					effectiveNodes.push(node);
+				}
 			}
 		}
-		updateContextUI(root, chat, Math.max(0, extra));
+
+		if (!uiState.editingNodeId) {
+			const draftParts = attachmentManager.extractParts();
+			if (draftParts?.length > 0) {
+				effectiveNodes.push({ role: 'user', parts: draftParts });
+			}
+		}
+
+		if (uiState.isGenerating && uiState.liveGeneratingNode) {
+			effectiveNodes.push(uiState.liveGeneratingNode);
+		}
+
+		const messages = buildApiMessagesFromNodes(effectiveNodes, settings);
+		const systemPrompt = buildSystemPromptForMessages(messages, settings);
+		return {
+			model,
+			messages,
+			systemPrompt,
+			estimatedUsedTokens: estimatePreparedMessagesTokens(messages, systemPrompt),
+			contextLimit: contextInfo.contextLimit,
+			contextLimitKnown: contextInfo.isKnown,
+			chatLoaded,
+		};
 	};
-	root._updateLiveContext = updateLiveContext;
+
+	let contextCountTimer = null;
+	let contextCountAbort = null;
+	let contextCountRequestId = 0;
+	let contextCountScheduledKey = '';
+	let contextCountPendingKey = '';
+	let lastRenderedContextScope = {
+		chatId: '',
+		model: '',
+		exactCountUnavailable: false,
+	};
+
+	const clearScheduledContextCount = () => {
+		if (contextCountTimer) {
+			clearTimeout(contextCountTimer);
+			contextCountTimer = null;
+		}
+		contextCountScheduledKey = '';
+	};
+
+	const abortPendingContextCount = () => {
+		if (contextCountAbort) {
+			contextCountAbort.abort();
+			contextCountAbort = null;
+		}
+		contextCountPendingKey = '';
+	};
+
+	const getDisplayScopeKey = (chatId, model) => `${chatId || ''}::${model || ''}`;
+
+	const readDisplayedUsedTokens = () => {
+		const usedTokens = Number.parseInt(root?.querySelector?.('#chatContext')?.dataset?.usedTokens ?? '', 10);
+		return Number.isFinite(usedTokens) && usedTokens >= 0 ? usedTokens : null;
+	};
+
+	const recordRenderedContextScope = ({ chatId, model, exactCountUnavailable = false } = {}) => {
+		lastRenderedContextScope = {
+			chatId: chatId || '',
+			model: model || '',
+			exactCountUnavailable: exactCountUnavailable === true,
+		};
+	};
+
+	const shouldShowUnknownContextWarning = () => root?._modelPickerPopulated === true;
+
+	const updateLiveContext = (delayMs = 120) => {
+		const activeChatId = getCurrentChatId();
+		const payload = buildContextCountPayload();
+		const {
+			model,
+			messages: apiMessages,
+			systemPrompt,
+			estimatedUsedTokens,
+			contextLimit,
+			contextLimitKnown,
+			chatLoaded,
+		} = payload;
+		const cacheKey = buildContextCountCacheKey({ model, messages: apiMessages, systemPrompt });
+		const cachedIndicator = getCachedContextIndicator({ chatId: activeChatId, model });
+		const staleTokens = getCachedScopeContextCount({ chatId: activeChatId, model });
+		const displayedUsedTokens = readDisplayedUsedTokens();
+		const canReuseDisplayedTokens = (
+			getDisplayScopeKey(lastRenderedContextScope.chatId, lastRenderedContextScope.model)
+			=== getDisplayScopeKey(activeChatId, model)
+		) && lastRenderedContextScope.exactCountUnavailable !== true
+			&& Number.isFinite(displayedUsedTokens);
+		const fallbackUsedTokens = canReuseDisplayedTokens
+			? displayedUsedTokens
+			: Number.isFinite(staleTokens)
+			? staleTokens
+			: Number.isFinite(estimatedUsedTokens)
+			? estimatedUsedTokens
+			: Number.isFinite(cachedIndicator?.usedTokens)
+				? cachedIndicator.usedTokens
+				: 0;
+		const fallbackContextLimit = Number.isFinite(cachedIndicator?.contextLimit) && cachedIndicator.contextLimit > 0
+			? cachedIndicator.contextLimit
+			: contextLimit;
+		let exactCountUnavailable = cachedIndicator?.scope === 'model' && cachedIndicator.exactCountUnavailable === true;
+		let resolvedContextLimitKnown = Boolean(
+			contextLimitKnown || (cachedIndicator?.scope === 'model' && cachedIndicator.contextLimitKnown === true)
+		);
+
+		const renderContextIndicator = (
+			usedTokens,
+			nextContextLimit = contextLimit,
+			{
+				nextExactCountUnavailable = exactCountUnavailable,
+				nextContextLimitKnown = resolvedContextLimitKnown,
+				persistIndicator = true,
+			} = {},
+		) => {
+			exactCountUnavailable = nextExactCountUnavailable === true;
+			resolvedContextLimitKnown = nextContextLimitKnown === true;
+			const resolvedContextLimit = Number.isFinite(nextContextLimit) && nextContextLimit > 0
+				? nextContextLimit
+				: fallbackContextLimit;
+			if (persistIndicator && activeChatId && model) {
+				rememberContextIndicator({
+					chatId: activeChatId,
+					model,
+					usedTokens,
+					contextLimit: resolvedContextLimit,
+					exactCountUnavailable,
+					contextLimitKnown: resolvedContextLimitKnown,
+				});
+			}
+			updateContextUI(root, {
+				usedTokens,
+				contextLimit: resolvedContextLimit,
+				contextLimitKnown: resolvedContextLimitKnown,
+				exactCountUnavailable,
+				showUnknownContextWarning: shouldShowUnknownContextWarning(),
+			});
+			recordRenderedContextScope({
+				chatId: activeChatId,
+				model,
+				exactCountUnavailable,
+			});
+		};
+
+		if (!model) {
+			clearScheduledContextCount();
+			abortPendingContextCount();
+			updateContextUI(root, {
+				usedTokens: fallbackUsedTokens,
+				contextLimit: fallbackContextLimit,
+				contextLimitKnown: false,
+				exactCountUnavailable: false,
+				showUnknownContextWarning: shouldShowUnknownContextWarning(),
+			});
+			recordRenderedContextScope({ chatId: activeChatId, model: '', exactCountUnavailable: false });
+			return;
+		}
+		if (activeChatId && !chatLoaded) {
+			clearScheduledContextCount();
+			abortPendingContextCount();
+			renderContextIndicator(fallbackUsedTokens, fallbackContextLimit, { persistIndicator: false });
+			return;
+		}
+		if (!systemPrompt && apiMessages.length === 0) {
+			clearScheduledContextCount();
+			abortPendingContextCount();
+			setCachedContextCount(cacheKey, 0);
+			rememberExactContextCount({ chatId: activeChatId, model, usedTokens: 0 });
+			renderContextIndicator(0, contextLimit, {
+				nextExactCountUnavailable: false,
+				nextContextLimitKnown: contextLimitKnown,
+			});
+			return;
+		}
+
+		const cachedTokens = getCachedContextCount(cacheKey);
+		if (Number.isFinite(cachedTokens)) {
+			clearScheduledContextCount();
+			if (contextCountPendingKey && contextCountPendingKey !== cacheKey) {
+				abortPendingContextCount();
+			}
+			rememberExactContextCount({ chatId: activeChatId, model, usedTokens: cachedTokens });
+			renderContextIndicator(cachedTokens, contextLimit, {
+				nextExactCountUnavailable: false,
+				nextContextLimitKnown: contextLimitKnown,
+			});
+			return;
+		}
+
+		if (contextCountScheduledKey === cacheKey || contextCountPendingKey === cacheKey) {
+			renderContextIndicator(fallbackUsedTokens, fallbackContextLimit, { persistIndicator: false });
+			return;
+		}
+
+		clearScheduledContextCount();
+		abortPendingContextCount();
+		renderContextIndicator(fallbackUsedTokens, fallbackContextLimit, { persistIndicator: false });
+
+		const requestId = ++contextCountRequestId;
+		contextCountScheduledKey = cacheKey;
+		contextCountTimer = setTimeout(async () => {
+			contextCountTimer = null;
+			contextCountScheduledKey = '';
+			const abortController = new AbortController();
+			contextCountAbort = abortController;
+			contextCountPendingKey = cacheKey;
+			try {
+				const result = await fetchExactContextCount({
+					model,
+					messages: apiMessages,
+					systemPrompt,
+					chatId: activeChatId,
+				}, { signal: abortController.signal });
+
+				if (signal.aborted || requestId !== contextCountRequestId) return;
+				const promptTokens = Number.parseInt(result?.prompt_tokens, 10);
+				if (Number.isFinite(promptTokens) && promptTokens >= 0) {
+					renderContextIndicator(promptTokens, contextLimit, {
+						nextExactCountUnavailable: false,
+						nextContextLimitKnown: contextLimitKnown,
+					});
+					return;
+				}
+				console.error('[ChatPage] Exact token count response did not include prompt_tokens:', result);
+				renderContextIndicator(fallbackUsedTokens, fallbackContextLimit, {
+					nextExactCountUnavailable: true,
+					nextContextLimitKnown: contextLimitKnown,
+				});
+			} catch (err) {
+				if (abortController.signal.aborted || err?.name === 'AbortError') return;
+				if (signal.aborted || requestId !== contextCountRequestId) return;
+				console.error('[ChatPage] Exact token count failed:', err);
+				renderContextIndicator(fallbackUsedTokens, fallbackContextLimit, {
+					nextExactCountUnavailable: true,
+					nextContextLimitKnown: contextLimitKnown,
+				});
+			} finally {
+				if (contextCountAbort === abortController) {
+					contextCountAbort = null;
+				}
+				if (contextCountPendingKey === cacheKey) {
+					contextCountPendingKey = '';
+				}
+			}
+		}, Math.max(0, delayMs));
+	};
+	root._updateLiveContext = () => updateLiveContext(120);
+
+	signal.addEventListener('abort', () => {
+		clearScheduledContextCount();
+		abortPendingContextCount();
+	}, { once: true });
 
 	loadAndPopulateModels(root, signal).catch((err) => {
 		console.error('Failed to populate models:', err);
@@ -202,9 +863,9 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	initTools(root, signal);
 	initUpload(root, input, attachmentManager, signal);
 	const resizeInput = initAutoResize(input, signal);
-	input.addEventListener('input', updateLiveContext, { signal });
+	input.addEventListener('input', () => updateLiveContext(120), { signal });
 	// Show initial context UI (includes system prompt tokens)
-	updateLiveContext();
+	updateLiveContext(0);
 	input.addEventListener('keydown', (e) => {
 		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
 			e.preventDefault();
@@ -234,13 +895,13 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			messages.querySelectorAll('.chat-message, .chat-typing').forEach(el => el.remove());
 			if (empty) empty.hidden = false;
 			root._syncToolPackPicker?.();
-			updateLiveContext();
+			updateLiveContext(0);
 			return;
 		}
 		renderThread(messages, chat, { editingNodeId: uiState.editingNodeId, editingDraft: uiState.editingDraft }, SettingsStore.get());
 		if (empty) empty.hidden = computeThreadNodeIds(ensureGraph(chat)).length > 0;
 		root._syncToolPackPicker?.();
-		updateLiveContext();
+		updateLiveContext(0);
 	};
 
 	const unsubscribeSettings = SettingsStore.subscribe(() => {
@@ -277,7 +938,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		getSettings: () => SettingsStore.get(),
 		onLiveNodeChange: (node) => {
 			uiState.liveGeneratingNode = node;
-			updateLiveContext();
+			updateLiveContext(120);
 		},
 		afterRender: () => {
 			if (!uiState.isScrolledUp) contentEl.scrollTop = contentEl.scrollHeight;
@@ -431,21 +1092,29 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 
 		let apiMessages = buildApiMessages(graph, threadIds, settings);
 		if (apiMessages.length === 0 && parentUserNodeId) apiMessages = buildApiMessages(graph, [parentUserNodeId], settings);
-		const hasVision = apiMessages.some(m => Array.isArray(m.content));
-		const visionMessages = hasVision ? apiMessages : null;
-
-		const estimatedPromptTokens = Math.ceil(conversationHistory.length / 3) + 200;
-		if (estimatedPromptTokens + maxTokens > contextLimit) maxTokens = Math.max(256, contextLimit - estimatedPromptTokens);
 
 		const streamController = createStreamController(uiState.typingEl);
 		let isSaved = false;
 
-		let systemPrompt = SettingsStore.get()?.systemPrompt || '';
-		let temperature = SettingsStore.get()?.temperature ?? 1.0;
+		let systemPrompt = buildSystemPromptForMessages(apiMessages, settings);
+		let temperature = settings?.temperature ?? 1.0;
 
-		if (hasVision) {
-			const hint = '[System Override: You have native multimodal vision capabilities. The user has attached an image. Analyze the visual data directly.]';
-			systemPrompt = systemPrompt ? systemPrompt + '\n\n' + hint : hint;
+		try {
+			const countResult = await fetchExactContextCount({
+				model,
+				messages: apiMessages,
+				systemPrompt,
+				chatId: activeChatId,
+			}, { signal: currentSignal });
+			const promptTokens = Number.parseInt(countResult?.prompt_tokens, 10);
+			if (Number.isFinite(promptTokens) && contextLimit > 0 && promptTokens + maxTokens > contextLimit) {
+				maxTokens = Math.max(256, contextLimit - promptTokens);
+			}
+		} catch (err) {
+			if (currentSignal.aborted || err?.name === 'AbortError') {
+				throw new DOMException('Aborted', 'AbortError');
+			}
+			console.error('[ChatPage] Exact submit token count failed:', err);
 		}
 
 		uiState.flushResponse = () => {
@@ -486,22 +1155,22 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		// ── Submit the generation task to the backend ─────────────────────────
 		const toolScope = getChatToolScope(activeChatId);
 		const hasExplicitToolPacks = Array.isArray(toolScope?.enabledPackIds) && toolScope.enabledPackIds.length > 0;
-		const taskPayload = {
-			task_id: taskId,
-			model, prompt: conversationHistory, max_tokens: maxTokens,
-			system_prompt: systemPrompt, temperature, context_window: contextLimit,
-			logprobs: !hasExplicitToolPacks,
+			const taskPayload = {
+				task_id: taskId,
+				model, prompt: conversationHistory, max_tokens: maxTokens,
+				system_prompt: systemPrompt, temperature, context_window: contextLimit,
+				logprobs: !hasExplicitToolPacks,
 			chat_id: activeChatId,
 			parent_user_node_id: parentUserNodeId || '',
 			tool_scope: toolScope,
-		};
-		if (visionMessages) taskPayload.messages = visionMessages;
+			};
+			if (apiMessages.length > 0) taskPayload.messages = apiMessages;
 
-		try {
-			const submitResult = await submitGenerationTask(taskPayload, { signal: currentSignal });
-			if (submitResult?.task_id) {
-				taskId = submitResult.task_id;
-			}
+			try {
+				const submitResult = await submitGenerationTask(taskPayload, { signal: currentSignal });
+				if (submitResult?.task_id) {
+					taskId = submitResult.task_id;
+				}
 			uiState.activeTaskId = taskId;
 
 			if (currentSignal.aborted) {
@@ -1011,4 +1680,13 @@ export function mountChatPage(root, context = {}) {
 	return () => {
 		chatPageAbort?.abort();
 	};
+}
+
+export async function prepareChatPageFragment(root, context = {}) {
+	if (!root) return;
+	const route = typeof context.route === 'string' ? context.route : '';
+	const chatId = getRouteChatId(route) || getCurrentChatId();
+	seedChatPageShell(root, () => route);
+	if (!chatId) return;
+	await seedExactContextIndicator(root, chatId);
 }

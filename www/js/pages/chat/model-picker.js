@@ -2,11 +2,10 @@
 // UI setup for chat toolbar controls: dropdowns, model selector, tools toggle, file upload.
 
 import { getModels, getToolPacks } from '../../core/http.js';
-import { setModelMetadata, getModelContextLimitFromUI, updateContextUI } from './context.js';
+import { setModelMetadata, getModelContextLength, updateContextUI } from './context.js';
 import {
 	getChatModel,
 	getCurrentChatId,
-	getChatById,
 	getChatToolScope,
 	setChatModel,
 	setChatToolScope,
@@ -205,6 +204,7 @@ function modelDisplayName(modelId) {
 // ─── Model list population ────────────────────────────────────────────────────
 
 export async function loadAndPopulateModels(root, signal) {
+	root._modelPickerPopulated = false;
 	try {
 		const response = await getModels();
 		const models   = response?.data || [];
@@ -224,7 +224,8 @@ export async function loadAndPopulateModels(root, signal) {
 			btn.setAttribute('role', 'option');
 			btn.setAttribute('aria-selected', 'false');
 			btn.dataset.value = model.id;
-			if (model.context_length) btn.dataset.contextLength = String(model.context_length);
+			const contextLength = getModelContextLength(model);
+			if (contextLength) btn.dataset.contextLength = String(contextLength);
 
 			const isLlamaCpp = model.source === 'llamacpp' || model.id.startsWith('llamacpp::');
 			const badge      = isLlamaCpp ? 'GGUF' : 'LM Studio';
@@ -251,7 +252,7 @@ export async function loadAndPopulateModels(root, signal) {
 				if (root._updateLiveContext) {
 					root._updateLiveContext();
 				} else {
-					updateContextUI(root, chatId ? getChatById(chatId) : null);
+					updateContextUI(root, { usedTokens: 0 });
 				}
 			});
 
@@ -259,21 +260,21 @@ export async function loadAndPopulateModels(root, signal) {
 		}
 
 		selectModelForCurrentChat(root);
+		root._modelPickerPopulated = true;
 
 		if (root._updateLiveContext) {
 			root._updateLiveContext();
 		} else {
-			const chatId = getCurrentChatId();
-			updateContextUI(root, chatId ? getChatById(chatId) : null);
+			updateContextUI(root, { usedTokens: 0 });
 		}
 
 	} catch (err) {
 		console.error('Failed to load models:', err);
+		root._modelPickerPopulated = true;
 		if (root._updateLiveContext) {
 			root._updateLiveContext();
 		} else {
-			const chatId = getCurrentChatId();
-			updateContextUI(root, chatId ? getChatById(chatId) : null);
+			updateContextUI(root, { usedTokens: 0 });
 		}
 	}
 }
@@ -307,17 +308,18 @@ export function applyModel(root, modelId) {
 export function selectModelForCurrentChat(root) {
 	const chatId = getCurrentChatId();
 	const chatModel = chatId ? getChatModel(chatId) : null;
-
-	if (chatModel && applyModel(root, chatModel)) return;
-
 	const settings = SettingsStore.get();
-	if (chatModel && settings?.defaultModel) {
-		applyModel(root, settings.defaultModel);
-		return;
+	const candidates = [
+		chatModel,
+		getLastSelectedModel(),
+		settings?.defaultModel || '',
+	].filter(Boolean);
+
+	for (const modelId of candidates) {
+		if (!applyModel(root, modelId)) continue;
+		setLastSelectedModel(modelId);
+		return modelId;
 	}
 
-	const lastModel = getLastSelectedModel();
-	if (lastModel && applyModel(root, lastModel)) return;
-
-	if (settings?.defaultModel) applyModel(root, settings.defaultModel);
+	return '';
 }
