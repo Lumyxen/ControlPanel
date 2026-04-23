@@ -91,6 +91,7 @@ The tool system itself is now implemented, but the project does not currently sh
 | --- | --- |
 | Contenteditable composer | The chat input is a rich contenteditable surface rather than a plain textarea. |
 | Keyboard send shortcut | `Ctrl+Enter` / `Cmd+Enter` sends the current message. |
+| Replyless send shortcut | `Ctrl+Shift+Enter` / `Cmd+Shift+Enter` adds the user turn without immediately starting a model reply. |
 | Auto-resizing input | The composer grows/shrinks with content instead of locking to a fixed height. |
 | Multi-file upload | The toolbar upload action accepts multiple files in one selection. |
 | Paste-to-attach | Pasted files and images are converted into inline attachments. |
@@ -144,6 +145,7 @@ The tool system itself is now implemented, but the project does not currently sh
 | User-controlled scroll detachment | If the user scrolls upward, the app stops forcing scroll-to-bottom during streaming. |
 | Scroll-to-bottom button | A dedicated button appears when the user is detached from the live bottom of the transcript. |
 | Live context meter | The toolbar shows a live backend-counted `used / max` prompt-token count for the current conversation. |
+| Context availability warnings | The toolbar can flag unknown model context windows and cases where exact token counting is temporarily unavailable. |
 | Attachment-aware token counting | Attachments contribute to the token count instead of being ignored. |
 | System-prompt-aware token counting | Global system-prompt content is included in the token count. |
 | Reasoning/tool-aware token counting | Stored reasoning blocks and tool-call records are included in the token count. |
@@ -160,6 +162,7 @@ The tool system itself is now implemented, but the project does not currently sh
 | GitHub-flavoured Markdown | The renderer supports core Markdown plus common GFM constructs such as tables, task lists, autolinks, and fenced code blocks. |
 | Discord-style extras | Spoilers, mentions, and timestamps are parsed and rendered. |
 | Obsidian-style extras | Wikilinks, highlights, and callout/admonition-style formatting are supported. |
+| Named callout presets | Obsidian-style `warning`, `caution`, `danger`, `error`, `success`, `check`, and related callouts render with icons and themed styling. |
 | Safe inline HTML handling | Generated HTML is filtered so allowed markup can render without opening the door to arbitrary unsafe tags. |
 
 ### Code Blocks and Developer-Focused Rendering

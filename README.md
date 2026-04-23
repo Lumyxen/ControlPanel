@@ -97,7 +97,7 @@ Additional llama.cpp tuning fields are also stored there and can be changed from
 
 ## API Endpoints
 
-Unless noted otherwise, all `/api/*` routes and `/mcp` require an authenticated session token. The backend accepts `X-Session-Token`, and SSE-style clients can also use `?token=...`.
+Unless noted otherwise, all `/api/*` routes and `/mcp` require an authenticated session token. Protected routes accept `X-Session-Token`; SSE-style clients can use `?token=...`; and JSON POST bodies can also supply `sessionToken` when needed (for example `keepalive`/beacon cancellation requests).
 
 **General**
 - `GET /health` - Check backend health status (public)
@@ -107,7 +107,7 @@ Unless noted otherwise, all `/api/*` routes and `/mcp` require an authenticated 
 - `POST /api/auth/setup` - Set up the initial password (public, fails if already set up)
 - `POST /api/auth/login` - Log in with an existing password and receive a session token (public)
 - `POST /api/auth/logout` - Revoke the current session
-- `GET /api/auth/validate` - Validate a supplied session token (public)
+- `GET /api/auth/validate` - Validate a supplied session token from `X-Session-Token` or `?token=...` (public)
 
 **Legacy Chat**
 - `POST /api/chat` - Legacy non-streaming LM Studio chat endpoint
@@ -170,7 +170,7 @@ Unless noted otherwise, all `/api/*` routes and `/mcp` require an authenticated 
 - `GET /api/huggingface/model-info` - Get metadata for a specific HuggingFace model (`model_id`)
 - `GET /api/huggingface/files` - List GGUF, mmproj, and tokenizer files for a HuggingFace model (`model_id`)
 - `POST /api/huggingface/download` - Start an async download of a HuggingFace model
-- `GET /api/huggingface/download-status` - Check one download job (`job_id`) or list active downloads when omitted
+- `GET /api/huggingface/download-status` - Check one download job (`job_id`) or list current known download jobs when omitted
 - `POST /api/huggingface/cancel-download` - Cancel an active download
 - `POST /api/huggingface/install-tokenizer` - Install tokenizer files into an existing model directory
 

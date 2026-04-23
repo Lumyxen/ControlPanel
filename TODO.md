@@ -96,7 +96,7 @@
   - [ ] Allow it to generate drafts, relook through the drafts, refine it, edit mistakes, and push the finalised result to the user
   - [ ] Show the user the live process of editing as the output so the user gets a sense of progression
 - [x] Do exact token counting instead of estimation
-  - [ ] Show small warning under context window usage block when exact token counting is unavailable
+  - [x] Show a warning indicator next to the context window usage block when exact token counting is unavailable
 - [ ] Text showing model loading and prompt processing percentages and time
 - [ ] RLM-like wrapper implementation for LLMs
   - [ ] Get more aggressive with offputting data into the long term context the closer you get to the maximum context window
