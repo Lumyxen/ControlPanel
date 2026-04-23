@@ -93,7 +93,7 @@ Representative `data/settings.json` keys:
 }
 ```
 
-Additional llama.cpp tuning fields are also stored there and can be changed from the Settings page.
+Additional llama.cpp tuning fields are also stored there and can be changed from the Settings page. The Settings page also exposes full backend lifecycle controls so the server can be restarted or stopped without using a terminal.
 
 ## API Endpoints
 
@@ -140,6 +140,11 @@ Unless noted otherwise, all `/api/*` routes and `/mcp` require an authenticated 
 **Configuration**
 - `GET /api/config/settings` - Get current control panel settings
 - `PUT /api/config/settings` - Update control panel settings
+
+**Application Backend**
+- `GET /api/app/backend/status` - Get full backend lifecycle state plus managed llama.cpp router status
+- `POST /api/app/backend/restart` - Restart the entire backend process after the current response completes
+- `POST /api/app/backend/stop` - Stop the entire backend process after the current response completes
 
 **Tools / Harness**
 - `GET /api/tools/catalog` - Search the tool catalog for in-scope tool descriptors (`query`, `limit`, `enabled_pack_ids`)

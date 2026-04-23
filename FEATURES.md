@@ -207,6 +207,7 @@ The tool system itself is now implemented, but the project does not currently sh
 
 | Feature | What it does |
 | --- | --- |
+| Full backend restart / stop controls | The Settings page can restart or stop the entire backend process, including the managed `llama.cpp` router. |
 | Managed local `llama.cpp` runtime | The app can run against its own managed `llama-server` setup, not only external servers. |
 | Backend preference selector | The user can choose `auto`, `cpu`, `cuda`, `rocm`, or `vulkan` as the preferred backend. |
 | Hardware-based backend suggestions | When faster supported GPU hardware is detected, the app can suggest building a better backend. |

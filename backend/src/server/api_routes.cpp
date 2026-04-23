@@ -1,5 +1,6 @@
 #include "server/api_routes.h"
 
+#include "app/server_app.h"
 #include <algorithm>
 #include <deque>
 #include <filesystem>
@@ -26,48 +27,146 @@
 
 namespace fs = std::filesystem;
 
-void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
-    auto applyHeaders = [](const httplib::Request& req, httplib::Response& res) {
-        addSecurityHeaders(res);
-        addCorsHeaders(res, req);
-    };
+namespace {
 
-    auto parsePackScope = [](const httplib::Request& req) {
-        Json::Value scope(Json::objectValue);
-        scope["enabledPackIds"] = Json::Value(Json::arrayValue);
-        if (!req.has_param("enabled_pack_ids")) {
-            return scope;
-        }
+void applyRouteHeaders(const httplib::Request& req, httplib::Response& res) {
+    addSecurityHeaders(res);
+    addCorsHeaders(res, req);
+}
 
-        std::stringstream stream(req.get_param_value("enabled_pack_ids"));
-        std::string item;
-        while (std::getline(stream, item, ',')) {
-            if (!item.empty()) {
-                scope["enabledPackIds"].append(item);
-            }
-        }
+Json::Value parsePackScope(const httplib::Request& req) {
+    Json::Value scope(Json::objectValue);
+    scope["enabledPackIds"] = Json::Value(Json::arrayValue);
+    if (!req.has_param("enabled_pack_ids")) {
         return scope;
-    };
+    }
 
-    auto setBuildProgressJson = [](Json::Value& result,
-                                   const std::string& stage,
-                                   const std::string& stageLabel,
-                                   int stageIndex,
-                                   int stageCount,
-                                   int stagePercent,
-                                   int overallPercent,
-                                   bool determinate) {
-        result["stage"] = stage;
-        result["stageLabel"] = stageLabel;
-        result["stageIndex"] = stageIndex;
-        result["stageCount"] = stageCount;
-        result["stagePercent"] = stagePercent;
-        result["overallPercent"] = overallPercent;
-        result["determinate"] = determinate;
-    };
+    std::stringstream stream(req.get_param_value("enabled_pack_ids"));
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        if (!item.empty()) {
+            scope["enabledPackIds"].append(item);
+        }
+    }
+    return scope;
+}
+
+void setBuildProgressJson(Json::Value& result,
+                          const std::string& stage,
+                          const std::string& stageLabel,
+                          int stageIndex,
+                          int stageCount,
+                          int stagePercent,
+                          int overallPercent,
+                          bool determinate) {
+    result["stage"] = stage;
+    result["stageLabel"] = stageLabel;
+    result["stageIndex"] = stageIndex;
+    result["stageCount"] = stageCount;
+    result["stagePercent"] = stagePercent;
+    result["overallPercent"] = overallPercent;
+    result["determinate"] = determinate;
+}
+
+bool isBuildRunning(BuildState& buildState) {
+    std::lock_guard<std::mutex> lock(buildState.mutex);
+    return buildState.running;
+}
+
+void handleTaskSubRoute(const httplib::Request& req, httplib::Response& res) {
+    applyRouteHeaders(req, res);
+    const std::string prefix = "/api/tasks/";
+    std::string rest = req.path.substr(prefix.size());
+    const size_t slashPos = rest.find('/');
+    const std::string taskId = (slashPos == std::string::npos) ? rest : rest.substr(0, slashPos);
+    const std::string action = (slashPos == std::string::npos) ? "" : rest.substr(slashPos + 1);
+
+    if (action == "wait" && req.method == "GET") {
+        handleTaskWait(req, res, taskId);
+    } else if (action == "stream" && req.method == "GET") {
+        handleTaskStream(req, res, taskId);
+    } else if (action == "cancel" && req.method == "POST") {
+        handleTaskCancel(req, res, taskId);
+    } else {
+        handleTaskStatus(req, res, taskId);
+    }
+}
+
+} // namespace
+
+void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
+
+    svr.Get("/api/app/backend/status", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+
+        const AppLifecycleStatus lifecycle = getAppLifecycleStatus();
+        const LlamaServerStatus llamaStatus = ctx.llamaCppService
+            ? ctx.llamaCppService->getServerStatus()
+            : LlamaServerStatus{};
+
+        Json::Value result;
+        result["running"] = lifecycle.running;
+        result["shutdownRequested"] = lifecycle.shutdownRequested;
+        result["restartPending"] = lifecycle.restartPending;
+        result["restartSupported"] = lifecycle.restartSupported;
+        result["pid"] = lifecycle.pid;
+        result["executablePath"] = lifecycle.executablePath;
+        result["buildRunning"] = isBuildRunning(ctx.buildState);
+        result["routerRunning"] = llamaStatus.running;
+        result["routerReady"] = llamaStatus.ready;
+        result["routerBackend"] = llamaStatus.activeBackend;
+        result["routerLoadedModels"] = llamaStatus.loadedModels;
+        setJson(res, result);
+    });
+
+    svr.Post("/api/app/backend/restart", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+
+        if (isBuildRunning(ctx.buildState)) {
+            res.status = 409;
+            res.set_content("{\"error\":\"Cannot restart while a backend build is running\"}", "application/json");
+            return;
+        }
+
+        if (!scheduleAppRestart()) {
+            res.status = 500;
+            res.set_content("{\"error\":\"Failed to schedule backend restart\"}", "application/json");
+            return;
+        }
+
+        const AppLifecycleStatus lifecycle = getAppLifecycleStatus();
+        Json::Value result;
+        result["success"] = true;
+        result["action"] = "restart";
+        result["shutdownRequested"] = true;
+        result["restartPending"] = lifecycle.restartPending;
+        result["pid"] = lifecycle.pid;
+        setJson(res, result);
+    });
+
+    svr.Post("/api/app/backend/stop", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+
+        if (isBuildRunning(ctx.buildState)) {
+            res.status = 409;
+            res.set_content("{\"error\":\"Cannot stop while a backend build is running\"}", "application/json");
+            return;
+        }
+
+        scheduleAppShutdown();
+
+        const AppLifecycleStatus lifecycle = getAppLifecycleStatus();
+        Json::Value result;
+        result["success"] = true;
+        result["action"] = "stop";
+        result["shutdownRequested"] = true;
+        result["restartPending"] = lifecycle.restartPending;
+        result["pid"] = lifecycle.pid;
+        setJson(res, result);
+    });
 
     svr.Get("/api/llamacpp/backend", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         const auto availableBackends = LlamaCppService::listAvailableBackends(ctx.libsDir);
         const std::string configuredBackend = ctx.config.getLlamacppBackend();
@@ -132,7 +231,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Post("/api/llamacpp/backend", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         Json::Value body;
         if (!parseJsonBody(req.body, body, res)) return;
 
@@ -168,7 +267,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Delete(R"(/api/llamacpp/backend/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         const std::string backend = req.matches[1];
         if (backend != "cpu" && backend != "cuda" && backend != "rocm" && backend != "vulkan") {
@@ -223,7 +322,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Post("/api/llamacpp/reload-model", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         if (!ctx.llamaCppService) {
             res.status = 503;
             res.set_content("{\"error\":\"llama.cpp service unavailable\"}", "application/json");
@@ -243,7 +342,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Post("/api/llamacpp/build", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         Json::Value body;
         if (!parseJsonBody(req.body, body, res)) return;
 
@@ -350,7 +449,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Get("/api/llamacpp/build/status", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         std::lock_guard<std::mutex> lock(ctx.buildState.mutex);
         Json::Value result;
         result["running"] = ctx.buildState.running;
@@ -371,7 +470,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Get("/api/llamacpp/build/log", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         std::string logPath;
         std::string stage;
@@ -464,7 +563,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Post("/api/llamacpp/backend/dismiss", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         Json::Value patch;
         patch["backendSuggestionDismissed"] = true;
         ctx.config.updateFromJson(patch);
@@ -472,7 +571,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Get("/api/llamacpp/pool/status", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         Json::Value result;
         if (ctx.llamaCppService) {
@@ -492,27 +591,27 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Post("/api/chat", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleChat(req, res, ctx.lmstudioService);
     });
 
     svr.Post("/api/chat/token-count", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleTokenCount(req, res, ctx.lmstudioService, ctx.llamaCppService);
     });
 
     svr.Post("/api/chat/stream", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleStreaming(req, res, ctx.lmstudioService, &ctx.registry, &ctx.toolSystem, ctx.llamaCppService);
     });
 
     svr.Post("/api/chat/stop", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleStopStream(req, res);
     });
 
     svr.Post("/api/chat/generate-title", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         Json::Value body;
         if (!parseJsonBody(req.body, body, res)) return;
@@ -562,41 +661,22 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Post("/api/tasks/generate", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleTaskSubmit(req, res, ctx.lmstudioService, ctx.llamaCppService, &ctx.registry, &ctx.chatStore, &ctx.toolSystem);
     });
 
     svr.Get("/api/tasks", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleTaskList(req, res);
     });
 
     svr.Get("/api/tasks/by-chat", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleTaskByChat(req, res);
     });
 
-    auto handleTaskSubRoute = [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
-        const std::string prefix = "/api/tasks/";
-        std::string rest = req.path.substr(prefix.size());
-        size_t slashPos = rest.find('/');
-        std::string taskId = (slashPos == std::string::npos) ? rest : rest.substr(0, slashPos);
-        std::string action = (slashPos == std::string::npos) ? "" : rest.substr(slashPos + 1);
-
-        if (action == "wait" && req.method == "GET") {
-            handleTaskWait(req, res, taskId);
-        } else if (action == "stream" && req.method == "GET") {
-            handleTaskStream(req, res, taskId);
-        } else if (action == "cancel" && req.method == "POST") {
-            handleTaskCancel(req, res, taskId);
-        } else {
-            handleTaskStatus(req, res, taskId);
-        }
-    };
-
     svr.Options(R"(/api/tasks/.*)", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         res.status = 200;
     });
 
@@ -609,7 +689,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Get("/api/models", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleModels(
             req,
             res,
@@ -620,7 +700,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Delete("/api/models", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         Json::CharReaderBuilder reader;
         Json::Value body;
@@ -686,10 +766,8 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
         setJson(res, result);
     });
 
-    auto& hfService = *ctx.huggingFaceService;
-
     svr.Get("/api/huggingface/search", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         HfSearchFilters filters;
         filters.search = req.get_param_value("search");
@@ -701,12 +779,12 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
         filters.imageSupport = req.has_param("image_support");
         filters.audioSupport = req.has_param("audio_support");
 
-        Json::Value result = hfService.searchModels(filters);
+        Json::Value result = ctx.huggingFaceService->searchModels(filters);
         setJson(res, result);
     });
 
     svr.Get("/api/huggingface/model-info", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         std::string modelId = req.get_param_value("model_id");
         if (modelId.empty()) {
@@ -717,12 +795,12 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
             return;
         }
 
-        Json::Value result = hfService.getModelInfo(modelId);
+        Json::Value result = ctx.huggingFaceService->getModelInfo(modelId);
         setJson(res, result);
     });
 
     svr.Get("/api/huggingface/files", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         std::string modelId = req.get_param_value("model_id");
         if (modelId.empty()) {
@@ -733,7 +811,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
             return;
         }
 
-        auto allFiles = hfService.listModelFiles(modelId);
+        auto allFiles = ctx.huggingFaceService->listModelFiles(modelId);
         Json::Value result;
         result["gguf"] = Json::Value(Json::arrayValue);
         result["mmproj"] = Json::Value(Json::arrayValue);
@@ -759,7 +837,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Post("/api/huggingface/download", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         Json::CharReaderBuilder reader;
         Json::Value body;
@@ -810,7 +888,8 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
             dirName = provider + "/" + modelName;
         }
 
-        std::string jobId = hfService.startDownload(modelId, dirName, ctx.modelsDir, ggufPath, mmprojPath, tokenizerPath);
+        std::string jobId = ctx.huggingFaceService->startDownload(
+            modelId, dirName, ctx.modelsDir, ggufPath, mmprojPath, tokenizerPath);
 
         Json::Value result;
         result["status"] = "started";
@@ -821,13 +900,13 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Get("/api/huggingface/download-status", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         std::string jobId = req.get_param_value("job_id");
         if (jobId.empty()) {
             Json::Value result;
             result["jobs"] = Json::Value(Json::arrayValue);
-            auto jobs = hfService.listDownloads();
+            auto jobs = ctx.huggingFaceService->listDownloads();
             for (const auto& job : jobs) {
                 Json::Value entry;
                 entry["id"] = job.id;
@@ -846,7 +925,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
             return;
         }
 
-        auto job = hfService.getDownloadStatus(jobId);
+        auto job = ctx.huggingFaceService->getDownloadStatus(jobId);
         Json::Value result;
         result["id"] = job.id;
         result["model_id"] = job.modelId;
@@ -862,7 +941,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Post("/api/huggingface/cancel-download", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         Json::CharReaderBuilder reader;
         Json::Value body;
@@ -877,7 +956,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
         }
 
         std::string jobId = body.get("job_id", "").asString();
-        if (!jobId.empty()) hfService.cancelDownload(jobId);
+        if (!jobId.empty()) ctx.huggingFaceService->cancelDownload(jobId);
 
         Json::Value result;
         result["status"] = "cancelled";
@@ -885,7 +964,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Post("/api/huggingface/install-tokenizer", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
 
         Json::CharReaderBuilder reader;
         Json::Value body;
@@ -926,9 +1005,9 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
             return;
         }
 
-        int downloaded = hfService.installTokenizer(modelId, modelDir.string());
+        int downloaded = ctx.huggingFaceService->installTokenizer(modelId, modelDir.string());
         if (downloaded == 0 && !baseModel.empty()) {
-            downloaded = hfService.installTokenizer(baseModel, modelDir.string());
+            downloaded = ctx.huggingFaceService->installTokenizer(baseModel, modelDir.string());
         }
 
         Json::Value result;
@@ -940,40 +1019,40 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Get("/api/lmstudio/models", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleLmStudioModels(req, res, ctx.lmstudioService);
     });
 
     svr.Get("/api/config/settings", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleGetSettings(req, res, ctx.config);
     });
 
     svr.Put("/api/config/settings", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleUpdateSettings(req, res, ctx.config);
     });
 
     svr.Get("/api/tools/catalog", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         const std::string query = req.has_param("query") ? req.get_param_value("query") : "";
         const int limit = req.has_param("limit") ? std::max(1, std::atoi(req.get_param_value("limit").c_str())) : 10;
         setJson(res, ctx.toolSystem.getCatalog(query, parsePackScope(req), limit));
     });
 
     svr.Get("/api/tools/packs", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         setJson(res, ctx.toolSystem.getPackSummaries());
     });
 
     svr.Post("/api/tools/reload", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         ctx.toolSystem.reload();
         setJson(res, ctx.toolSystem.getPackSummaries());
     });
 
     svr.Get("/api/tools/approvals", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         const std::string taskId = req.has_param("task_id") ? req.get_param_value("task_id") : "";
         Json::Value result(Json::objectValue);
         result["approvals"] = ctx.toolSystem.listApprovals(taskId);
@@ -981,7 +1060,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Post(R"(/api/tools/approvals/([^/]+)/approve)", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         Json::Value body(Json::objectValue);
         if (!req.body.empty() && !parseJsonBody(req.body, body, res)) {
             return;
@@ -995,7 +1074,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Post(R"(/api/tools/approvals/([^/]+)/deny)", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         Json::Value body(Json::objectValue);
         if (!req.body.empty() && !parseJsonBody(req.body, body, res)) {
             return;
@@ -1009,14 +1088,14 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Get("/api/mcp/tools", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         Json::Value result;
         result["tools"] = ctx.registry.getAggregatedTools();
         setJson(res, result);
     });
 
     svr.Post("/api/mcp/reload", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         ctx.registry.loadFromFile(ctx.config.getMcpConfigPath());
         ctx.toolSystem.reload();
         Json::Value result;
@@ -1028,52 +1107,52 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     });
 
     svr.Get("/api/chats", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleGetChats(req, res, ctx.chatStore);
     });
 
     svr.Put("/api/chats", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleSaveChats(req, res, ctx.chatStore);
     });
 
     svr.Get(R"(/api/chats/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleGetChat(req, res, ctx.chatStore);
     });
 
     svr.Put(R"(/api/chats/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleSaveChat(req, res, ctx.chatStore);
     });
 
     svr.Delete(R"(/api/chats/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleDeleteChat(req, res, ctx.chatStore);
     });
 
     svr.Get("/api/auth", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleGetAuth(req, res, ctx.authStore);
     });
 
     svr.Post("/api/auth/setup", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleSetupAuth(req, res, ctx.authStore);
     });
 
     svr.Post("/api/auth/login", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleLoginAuth(req, res, ctx.authStore);
     });
 
     svr.Post("/api/auth/logout", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleLogoutAuth(req, res);
     });
 
     svr.Get("/api/auth/validate", [&](const httplib::Request& req, httplib::Response& res) {
-        applyHeaders(req, res);
+        applyRouteHeaders(req, res);
         handleValidateAuth(req, res, ctx.authStore);
     });
 

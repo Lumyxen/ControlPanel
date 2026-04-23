@@ -104,7 +104,7 @@
   - [ ] Strengthen/weight information in the long term context the more it gets used to make it more likely/easy to be recalled in the future
     - [ ] Decay factor in the weighting
   - [ ] Offput large documents (12k+ tokens) to make the AI read in chunks to prevent context overflow and more effectively handle memory
-- [ ] Stop and restart backend options in the front-end, as Windows users likely won't use a terminal to run the app
+- [x] Stop and restart backend options in the front-end, as Windows users likely won't use a terminal to run the app
 
 ##### Start giving updates to GamingwithNP
 - [ ] Obsidian.md warning, danger, and check custom formatting

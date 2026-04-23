@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <csignal>
@@ -1342,6 +1343,20 @@ std::string LlamaCppService::resolveBackend(const std::string& preference) const
     return resolveBackendPreference(preference, availableBackends());
 }
 
+bool LlamaCppService::isServerProcessGroupAliveLocked() const {
+#ifdef _WIN32
+    return false;
+#else
+    if (serverProcessGroupId_ <= 0) {
+        return false;
+    }
+
+    errno = 0;
+    const int result = ::kill(-static_cast<pid_t>(serverProcessGroupId_), 0);
+    return result == 0 || errno == EPERM;
+#endif
+}
+
 bool LlamaCppService::isServerProcessAliveLocked() {
 #ifdef _WIN32
     return false;
@@ -1353,13 +1368,18 @@ bool LlamaCppService::isServerProcessAliveLocked() {
     int status = 0;
     const pid_t result = waitpid(serverPid_, &status, WNOHANG);
     if (result == 0) {
-        return kill(serverPid_, 0) == 0;
+        if (::kill(serverPid_, 0) == 0) {
+            return true;
+        }
     }
 
     serverPid_ = 0;
     serverRunning_ = false;
     loadedModelId_.clear();
     loadedModelIds_ = Json::Value(Json::arrayValue);
+    if (!isServerProcessGroupAliveLocked()) {
+        serverProcessGroupId_ = 0;
+    }
     return false;
 #endif
 }
@@ -1568,6 +1588,7 @@ bool LlamaCppService::startServerLocked(const StartupConfig& desired) {
     ::close(logFd);
 
     serverPid_ = static_cast<int>(pid);
+    serverProcessGroupId_ = static_cast<int>(pid);
     serverRunning_ = true;
     configDirty_ = false;
     activeBackend_ = desired.backend;
@@ -1589,30 +1610,84 @@ bool LlamaCppService::startServerLocked(const StartupConfig& desired) {
 
 void LlamaCppService::stopServerLocked() {
 #ifndef _WIN32
-    if (!isServerProcessAliveLocked()) {
-        serverRunning_ = false;
-        return;
-    }
+    const pid_t pid = serverPid_ > 0 ? static_cast<pid_t>(serverPid_) : 0;
+    const pid_t processGroupId = serverProcessGroupId_ > 0
+        ? static_cast<pid_t>(serverProcessGroupId_)
+        : pid;
 
-    const pid_t pid = static_cast<pid_t>(serverPid_);
-    kill(pid, SIGTERM);
-    for (int attempt = 0; attempt < 50; ++attempt) {
+    auto groupAlive = [&]() {
+        if (processGroupId <= 0) {
+            return false;
+        }
+
+        errno = 0;
+        const int result = ::kill(-processGroupId, 0);
+        return result == 0 || errno == EPERM;
+    };
+
+    auto reapRouter = [&]() {
+        if (pid <= 0 || serverPid_ <= 0) {
+            return false;
+        }
+
         int status = 0;
         const pid_t result = waitpid(pid, &status, WNOHANG);
         if (result == pid) {
+            serverPid_ = 0;
+            return false;
+        }
+        if (result < 0) {
+            serverPid_ = 0;
+            return false;
+        }
+        return true;
+    };
+
+    if (processGroupId <= 0 && !reapRouter()) {
+        serverProcessGroupId_ = 0;
+        serverRunning_ = false;
+        loadedModelId_.clear();
+        loadedModelIds_ = Json::Value(Json::arrayValue);
+        return;
+    }
+
+    if (groupAlive()) {
+        std::cout << "[LlamaCpp] Stopping router process group " << processGroupId << "\n";
+        ::kill(-processGroupId, SIGTERM);
+    } else if (pid > 0 && reapRouter()) {
+        std::cout << "[LlamaCpp] Stopping router process " << pid << "\n";
+        ::kill(pid, SIGTERM);
+    }
+
+    for (int attempt = 0; attempt < 50; ++attempt) {
+        const bool routerAlive = reapRouter();
+        const bool descendantsAlive = groupAlive();
+        if (!routerAlive && !descendantsAlive) {
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    int status = 0;
-    if (waitpid(pid, &status, WNOHANG) == 0) {
-        kill(pid, SIGKILL);
-        waitpid(pid, &status, 0);
+    if (groupAlive()) {
+        std::cerr << "[LlamaCpp] Forcing router process group " << processGroupId << " to exit\n";
+        ::kill(-processGroupId, SIGKILL);
+    } else if (pid > 0 && reapRouter()) {
+        std::cerr << "[LlamaCpp] Forcing router process " << pid << " to exit\n";
+        ::kill(pid, SIGKILL);
+    }
+
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        const bool routerAlive = reapRouter();
+        const bool descendantsAlive = groupAlive();
+        if (!routerAlive && !descendantsAlive) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 #endif
 
     serverPid_ = 0;
+    serverProcessGroupId_ = 0;
     serverRunning_ = false;
     loadedModelId_.clear();
     loadedModelIds_ = Json::Value(Json::arrayValue);

@@ -14,6 +14,7 @@
 #include <sstream>
 #include <streambuf>
 #include <thread>
+#include <vector>
 
 #include <curl/curl.h>
 #include <httplib.h>
@@ -33,7 +34,13 @@
 #include "services/mcp_service.h"
 #include "services/tools/tool_system.h"
 
-#ifndef _WIN32
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -47,14 +54,176 @@ std::atomic<bool> gServerRunning{false};
 std::atomic<bool> gServerError{false};
 std::atomic<bool> gStopConfigWatcher{false};
 std::atomic<bool> gShutdownRequested{false};
+std::atomic<bool> gRestartPending{false};
 BuildState gBuildState;
+fs::path gExecutablePath;
+
+fs::path getExecutablePath() {
+#ifdef _WIN32
+    std::vector<char> buffer(MAX_PATH);
+    for (;;) {
+        const DWORD length = GetModuleFileNameA(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+        if (length == 0) {
+            break;
+        }
+        if (length < buffer.size() - 1) {
+            return fs::path(std::string(buffer.data(), length));
+        }
+        buffer.resize(buffer.size() * 2);
+    }
+#elif defined(__APPLE__)
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    if (size > 0) {
+        std::vector<char> buffer(size + 1, '\0');
+        if (_NSGetExecutablePath(buffer.data(), &size) == 0) {
+            try {
+                return fs::canonical(fs::path(buffer.data()));
+            } catch (...) {
+                return fs::absolute(fs::path(buffer.data()));
+            }
+        }
+    }
+#else
+    try {
+        return fs::canonical("/proc/self/exe");
+    } catch (...) {
+    }
+#endif
+    return fs::current_path();
+}
 
 fs::path getExecutableDir() {
-    try {
-        return fs::canonical("/proc/self/exe").parent_path();
-    } catch (...) {
-        return fs::current_path();
+    const fs::path executablePath = getExecutablePath();
+    if (executablePath.has_parent_path()) {
+        return executablePath.parent_path();
     }
+    return fs::current_path();
+}
+
+int getCurrentProcessIdValue() {
+#ifdef _WIN32
+    return static_cast<int>(GetCurrentProcessId());
+#else
+    return static_cast<int>(::getpid());
+#endif
+}
+
+void sleepForMs(int delayMs) {
+    if (delayMs <= 0) {
+        return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+}
+
+void clearRestartDelayEnv() {
+#ifdef _WIN32
+    SetEnvironmentVariableA("CTRLPANEL_RESTART_DELAY_MS", nullptr);
+#else
+    unsetenv("CTRLPANEL_RESTART_DELAY_MS");
+#endif
+}
+
+void setProcessEnvVar(const char* name, const std::string& value) {
+#ifdef _WIN32
+    SetEnvironmentVariableA(name, value.c_str());
+#else
+    setenv(name, value.c_str(), 0);
+#endif
+}
+
+int consumeRestartDelayMsFromEnv() {
+    const char* value = std::getenv("CTRLPANEL_RESTART_DELAY_MS");
+    if (!value || !*value) {
+        return 0;
+    }
+
+    int delayMs = 0;
+    try {
+        delayMs = std::stoi(value);
+    } catch (...) {
+        delayMs = 0;
+    }
+
+    clearRestartDelayEnv();
+    return std::clamp(delayMs, 0, 30000);
+}
+
+bool hasRestartableExecutable() {
+    if (gExecutablePath.empty()) {
+        return false;
+    }
+    std::error_code ec;
+    return fs::is_regular_file(gExecutablePath, ec) && !ec;
+}
+
+bool spawnRestartProcess(int startupDelayMs) {
+    if (!hasRestartableExecutable()) {
+        return false;
+    }
+
+    const std::string delayValue = std::to_string(std::clamp(startupDelayMs, 0, 30000));
+
+#ifdef _WIN32
+    SetEnvironmentVariableA("CTRLPANEL_RESTART_DELAY_MS", delayValue.c_str());
+
+    STARTUPINFOA startupInfo{};
+    startupInfo.cb = sizeof(startupInfo);
+    PROCESS_INFORMATION processInfo{};
+    std::string commandLine = "\"" + gExecutablePath.string() + "\"";
+
+    const BOOL ok = CreateProcessA(
+        gExecutablePath.string().c_str(),
+        commandLine.data(),
+        nullptr,
+        nullptr,
+        FALSE,
+        CREATE_NEW_PROCESS_GROUP,
+        nullptr,
+        gExecutablePath.parent_path().string().c_str(),
+        &startupInfo,
+        &processInfo);
+
+    clearRestartDelayEnv();
+    if (!ok) {
+        return false;
+    }
+
+    CloseHandle(processInfo.hThread);
+    CloseHandle(processInfo.hProcess);
+    return true;
+#else
+    const pid_t childPid = ::fork();
+    if (childPid < 0) {
+        return false;
+    }
+
+    if (childPid == 0) {
+        ::setsid();
+        ::setenv("CTRLPANEL_RESTART_DELAY_MS", delayValue.c_str(), 1);
+        ::chdir(gExecutablePath.parent_path().c_str());
+
+        std::string executable = gExecutablePath.string();
+        char* argv[] = { executable.data(), nullptr };
+        ::execv(executable.c_str(), argv);
+        _exit(127);
+    }
+
+    return true;
+#endif
+}
+
+void stopHttpServer() {
+    std::lock_guard<std::mutex> lock(gServerMutex);
+    if (gServer) {
+        gServer->stop();
+    }
+}
+
+void requestAppShutdownNow() {
+    gShutdownRequested.store(true, std::memory_order_relaxed);
+    gStopConfigWatcher.store(true);
+    stopHttpServer();
 }
 
 struct RuntimePaths {
@@ -545,7 +714,16 @@ void runHttpServer(
 
     const std::string host = config.getHost();
     const int port = config.getPort();
-    if (!server.bind_to_port(host.c_str(), port)) {
+    bool bound = false;
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        if (server.bind_to_port(host.c_str(), port)) {
+            bound = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+
+    if (!bound) {
         std::cerr << "[Server] ERROR: Failed to bind to " << host << ":" << port << "\n";
         gServerError.store(true);
         std::lock_guard<std::mutex> lock(gServerMutex);
@@ -564,7 +742,44 @@ void runHttpServer(
 
 } // namespace
 
+AppLifecycleStatus getAppLifecycleStatus() {
+    AppLifecycleStatus status;
+    status.running = gServerRunning.load();
+    status.shutdownRequested = gShutdownRequested.load(std::memory_order_relaxed);
+    status.restartPending = gRestartPending.load();
+    status.restartSupported = hasRestartableExecutable();
+    status.pid = getCurrentProcessIdValue();
+    status.executablePath = gExecutablePath.string();
+    return status;
+}
+
+void scheduleAppShutdown(int delayMs) {
+    std::thread([delayMs]() {
+        sleepForMs(delayMs);
+        requestAppShutdownNow();
+    }).detach();
+}
+
+bool scheduleAppRestart(int shutdownDelayMs, int startupDelayMs) {
+    if (!spawnRestartProcess(startupDelayMs)) {
+        return false;
+    }
+
+    gRestartPending.store(true);
+    scheduleAppShutdown(shutdownDelayMs);
+    return true;
+}
+
 int ServerApp::run() {
+    sleepForMs(consumeRestartDelayMsFromEnv());
+
+    gExecutablePath = getExecutablePath();
+    gServerRunning.store(false);
+    gServerError.store(false);
+    gStopConfigWatcher.store(false);
+    gShutdownRequested.store(false, std::memory_order_relaxed);
+    gRestartPending.store(false);
+
     const RuntimePaths paths = buildRuntimePaths();
     ensureRuntimeDirectories(paths);
     ensureDefaultMcpConfig(paths);
@@ -598,8 +813,7 @@ int ServerApp::run() {
     startStreamCleanupLoop();
     printStartupBanner(paths, config, llamaService);
 
-    gServerError.store(false);
-    setenv("CTRLPANEL_MODELS_DIR", paths.modelsDir.string().c_str(), 0);
+    setProcessEnvVar("CTRLPANEL_MODELS_DIR", paths.modelsDir.string());
 
     std::thread serverThread(
         runHttpServer,
@@ -641,6 +855,7 @@ int ServerApp::run() {
 
     gStopConfigWatcher.store(true);
     TaskManager::instance().cancelAllTasks();
+    llamaService.unloadLib();
     {
         std::lock_guard<std::mutex> lock(gServerMutex);
         if (gServer) {

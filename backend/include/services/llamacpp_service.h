@@ -145,6 +145,7 @@ private:
     std::string serverBaseUrl_;
     int serverPort_ = 0;
     int serverPid_ = 0;
+    int serverProcessGroupId_ = 0;
     bool serverRunning_ = false;
     bool configDirty_ = true;
     std::string tokenizerBackend_;
@@ -163,6 +164,7 @@ private:
                                             std::string* error = nullptr);
 
     StartupConfig buildStartupConfigLocked(const std::string& preferenceOverride = "") const;
+    bool isServerProcessGroupAliveLocked() const;
     bool ensureServerRunning();
     bool ensureServerRunningLocked();
     bool startServerLocked(const StartupConfig& desired);

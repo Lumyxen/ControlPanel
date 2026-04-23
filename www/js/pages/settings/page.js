@@ -18,22 +18,25 @@ import { mountToolsSection } from './tools-section.js';
 const BACKEND_LABELS = { auto: 'Auto', cpu: 'CPU', cuda: 'CUDA', rocm: 'ROCm', vulkan: 'Vulkan' };
 const BUILD_LOG_LINES = 120;
 const BUILD_LOG_ANSI_REGEX = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
+const APP_BACKEND_RESTART_TIMEOUT_MS = 60000;
+
+const wait = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs));
 
 function sanitizeBuildLogChunk(text) {
 	return text.replace(BUILD_LOG_ANSI_REGEX, '').replace(/\r/g, '');
 }
 
-function showRemoveConfirmation(root, backend, onConfirm) {
+function showActionConfirmation({ title, message, confirmLabel = 'Confirm', confirmClassName = 'btn-primary' }, onConfirm) {
 	const overlay = document.createElement('div');
 	overlay.className = 'modal-overlay';
 	const dialog = document.createElement('div');
 	dialog.className = 'modal-dialog';
 	dialog.innerHTML = `
-		<h3 class="modal-title">Remove ${BACKEND_LABELS[backend] || backend} Backend</h3>
-		<p class="modal-message">This will delete the built library for the ${BACKEND_LABELS[backend] || backend} backend. This action cannot be undone.</p>
+		<h3 class="modal-title">${title}</h3>
+		<p class="modal-message">${message}</p>
 		<div class="modal-actions">
 			<button class="btn modal-cancel">Cancel</button>
-			<button class="btn btn-danger modal-confirm">Remove</button>
+			<button class="btn modal-confirm ${confirmClassName}">${confirmLabel}</button>
 		</div>
 	`;
 	overlay.appendChild(dialog);
@@ -57,6 +60,105 @@ function showRemoveConfirmation(root, backend, onConfirm) {
 	});
 
 	requestAnimationFrame(() => overlay.classList.add('visible'));
+}
+
+function showRemoveConfirmation(root, backend, onConfirm) {
+	showActionConfirmation(
+		{
+			title: `Remove ${BACKEND_LABELS[backend] || backend} Backend`,
+			message: `This will delete the built library for the ${BACKEND_LABELS[backend] || backend} backend. This action cannot be undone.`,
+			confirmLabel: 'Remove',
+			confirmClassName: 'btn-danger',
+		},
+		onConfirm,
+	);
+}
+
+function renderAppBackendStatus(root, data) {
+	const statusEl = root.querySelector('#app-backend-status');
+	const restartBtn = root.querySelector('#restart-app-backend');
+	const stopBtn = root.querySelector('#stop-app-backend');
+	const busy = root.dataset.appBackendBusy === 'true';
+	if (!statusEl) return;
+
+	if (!data || typeof data !== 'object') {
+		statusEl.textContent = 'Backend status unavailable.';
+		if (restartBtn) restartBtn.disabled = true;
+		if (stopBtn) stopBtn.disabled = true;
+		return;
+	}
+
+	const appState = data.shutdownRequested
+		? 'Backend shutting down'
+		: data.restartPending
+			? 'Backend restart queued'
+			: data.running
+				? 'Backend running'
+				: 'Backend stopped';
+
+	const routerLabel = data.routerBackend ? (BACKEND_LABELS[data.routerBackend] || data.routerBackend.toUpperCase()) : 'none';
+	const routerState = data.routerRunning
+		? `llama.cpp ${data.routerReady ? 'ready' : 'starting'} on ${routerLabel}`
+		: 'llama.cpp stopped';
+
+	const details = [appState];
+	if (Number.isFinite(data.pid) && data.pid > 0) details.push(`PID ${data.pid}`);
+	details.push(routerState);
+	if (Number.isFinite(data.routerLoadedModels) && data.routerLoadedModels > 0) {
+		details.push(`${data.routerLoadedModels} model${data.routerLoadedModels === 1 ? '' : 's'} loaded`);
+	}
+	if (data.buildRunning) details.push('build in progress');
+	statusEl.textContent = details.join(' · ');
+
+	const lifecycleLocked = busy || data.shutdownRequested || data.restartPending || data.buildRunning;
+	if (restartBtn) restartBtn.disabled = lifecycleLocked || data.restartSupported === false;
+	if (stopBtn) stopBtn.disabled = lifecycleLocked;
+}
+
+async function loadAppBackendStatus(root) {
+	try {
+		const response = await fetch('/api/app/backend/status');
+		const data = await response.json();
+		if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+		renderAppBackendStatus(root, data);
+		return data;
+	} catch (err) {
+		const statusEl = root.querySelector('#app-backend-status');
+		const restartBtn = root.querySelector('#restart-app-backend');
+		const stopBtn = root.querySelector('#stop-app-backend');
+		if (statusEl) statusEl.textContent = `Could not load backend status: ${err.message}`;
+		if (restartBtn) restartBtn.disabled = true;
+		if (stopBtn) stopBtn.disabled = true;
+		throw err;
+	}
+}
+
+async function probeBackendHealth() {
+	try {
+		const response = await fetch('/health', { cache: 'no-store' });
+		return response.ok;
+	} catch {
+		return false;
+	}
+}
+
+async function waitForBackendRestartCycle() {
+	const startedAt = Date.now();
+	const deadline = startedAt + APP_BACKEND_RESTART_TIMEOUT_MS;
+	let sawDisconnect = false;
+
+	await wait(700);
+
+	while (Date.now() < deadline) {
+		const healthy = await probeBackendHealth();
+		if (!healthy) sawDisconnect = true;
+		if (healthy && (sawDisconnect || (Date.now() - startedAt) >= 5000)) {
+			return true;
+		}
+		await wait(1000);
+	}
+
+	return false;
 }
 
 function linkSliderAndNumber(sl, num, min, max) {
@@ -401,6 +503,7 @@ async function initBackendSelector(root, backendSection) {
 
 function initSettingsPage(root) {
 	if (!root) return;
+	root.dataset.appBackendBusy = 'false';
 
 	const aiSection = mountAiSection(root);
 	const toolsSection = mountToolsSection(root);
@@ -485,6 +588,101 @@ function initSettingsPage(root) {
 	}
 
 	initBackendSelector(root, backendSection).catch(console.warn);
+	loadAppBackendStatus(root).catch(() => {});
+
+	const restartBackendBtn = root.querySelector('#restart-app-backend');
+	const stopBackendBtn = root.querySelector('#stop-app-backend');
+	const appBackendActionStatus = root.querySelector('#app-backend-action-status');
+
+	const setAppBackendBusy = (busy) => {
+		root.dataset.appBackendBusy = busy ? 'true' : 'false';
+		if (!busy) {
+			loadAppBackendStatus(root).catch(() => {});
+		}
+	};
+
+	const runAppBackendAction = async (action) => {
+		const isRestart = action === 'restart';
+		setAppBackendBusy(true);
+		if (appBackendActionStatus) {
+			appBackendActionStatus.textContent = isRestart ? 'Restarting…' : 'Stopping…';
+			appBackendActionStatus.style.color = '';
+		}
+
+		try {
+			const response = await fetch(`/api/app/backend/${action}`, { method: 'POST' });
+			const data = await response.json().catch(() => ({}));
+			if (!response.ok || data?.success !== true) {
+				throw new Error(data?.error || `HTTP ${response.status}`);
+			}
+
+			if (isRestart) {
+				if (appBackendActionStatus) {
+					appBackendActionStatus.textContent = 'Restart scheduled. Waiting for backend…';
+				}
+				const ready = await waitForBackendRestartCycle();
+				if (ready) {
+					if (appBackendActionStatus) {
+						appBackendActionStatus.textContent = 'Backend restarted. Reloading…';
+						appBackendActionStatus.style.color = 'var(--green,green)';
+					}
+					window.location.reload();
+					return;
+				}
+
+				if (appBackendActionStatus) {
+					appBackendActionStatus.textContent = 'Restart requested. Waiting for the backend to come back…';
+					appBackendActionStatus.style.color = '';
+				}
+				return;
+			}
+
+			if (appBackendActionStatus) {
+				appBackendActionStatus.textContent = 'Backend stopping…';
+				appBackendActionStatus.style.color = '';
+			}
+		} catch (err) {
+			if (appBackendActionStatus) {
+				appBackendActionStatus.textContent = 'Error: ' + err.message;
+				appBackendActionStatus.style.color = 'var(--red,red)';
+			}
+			setAppBackendBusy(false);
+		}
+	};
+
+	if (restartBackendBtn) {
+		restartBackendBtn.addEventListener('click', () => {
+			showActionConfirmation(
+				{
+					title: 'Restart Application Backend',
+					message: 'This will restart the entire backend process, stop active tasks, and send you back through login when it comes back.',
+					confirmLabel: 'Restart',
+					confirmClassName: 'btn-primary',
+				},
+				() => { runAppBackendAction('restart').catch(console.warn); },
+			);
+		});
+	}
+
+	if (stopBackendBtn) {
+		stopBackendBtn.addEventListener('click', () => {
+			showActionConfirmation(
+				{
+					title: 'Stop Application Backend',
+					message: 'This will stop the entire backend process, including llama.cpp. You will need to launch the app again to use it.',
+					confirmLabel: 'Stop Backend',
+					confirmClassName: 'btn-danger',
+				},
+				() => { runAppBackendAction('stop').catch(console.warn); },
+			);
+		});
+	}
+
+	const appBackendStatusPollId = window.setInterval(() => {
+		if (!document.body.contains(root)) return;
+		if (root.dataset.appBackendBusy === 'true') return;
+		loadAppBackendStatus(root).catch(() => {});
+	}, 5000);
 
 	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#system-prompt-input','#lmstudio-url-input','#llamacpp-flash-attn','#llamacpp-kv-cache-reuse','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-parallel-slots','#llamacpp-max-loaded-models','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty','#llamacpp-keep-alive-slider','#llamacpp-kv-cache-type','#llamacpp-concurrent-generation','#ai-title-enabled','#ai-title-model-input','#ai-title-system-prompt-input'];
 	const unsub = SettingsStore.subscribe((s) => {
@@ -494,7 +692,13 @@ function initSettingsPage(root) {
 			llamacppSection.populate(s);
 		}
 	});
-	const obs = new MutationObserver(() => { if (!document.body.contains(root)) { unsub(); obs.disconnect(); } });
+	const obs = new MutationObserver(() => {
+		if (!document.body.contains(root)) {
+			unsub();
+			obs.disconnect();
+			window.clearInterval(appBackendStatusPollId);
+		}
+	});
 	obs.observe(document.body, { childList: true, subtree: true });
 
 	const saveBtn  = root.querySelector('#save-ai-settings'), statusEl = root.querySelector('#ai-settings-status');
@@ -568,12 +772,19 @@ function initSettingsPage(root) {
 			toolsSection.refresh();
 		}).catch(console.warn);
 	}
+
+	return () => {
+		unsub();
+		obs.disconnect();
+		window.clearInterval(appBackendStatusPollId);
+	};
 }
 
 export function mountSettingsPage(root) {
-	initSettingsPage(root);
+	const cleanupSettings = initSettingsPage(root);
 	const cleanupModelManager = mountModelManager(root);
 	return () => {
+		cleanupSettings?.();
 		cleanupModelManager?.();
 	};
 }

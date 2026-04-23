@@ -26,6 +26,21 @@
         </div>
     </section>
 
+    <section class="card" aria-labelledby="app-backend-title">
+        <h2 class="card-title" id="app-backend-title">Application Backend</h2>
+        <div class="option-row settings-single-column">
+            <span id="app-backend-status" class="option-hint settings-note-full">Loading backend status…</span>
+        </div>
+        <div class="option-row settings-single-column">
+            <span class="option-hint settings-note-full">Restart relaunches the full backend process and returns you to login. Stop shuts the app down until you launch it again.</span>
+        </div>
+        <div class="input-group settings-top-gap">
+            <button type="button" id="restart-app-backend" class="btn btn-primary">Restart Backend</button>
+            <button type="button" id="stop-app-backend" class="btn btn-danger">Stop Backend</button>
+            <span id="app-backend-action-status" class="option-hint settings-status-inline"></span>
+        </div>
+    </section>
+
     <section class="card" aria-labelledby="ai-behaviour-title">
         <h2 class="card-title" id="ai-behaviour-title">AI Behaviour</h2>
         <div class="option-row">
