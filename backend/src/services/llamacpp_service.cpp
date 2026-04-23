@@ -48,6 +48,7 @@ namespace {
 constexpr int kTitleGenerationMaxTokens = 24;
 constexpr std::string_view kMropeMetadataSuffix = ".rope.dimension_sections";
 constexpr const char* kMtmdDefaultMarker = "<__media__>";
+constexpr const char* kSanitizedMalformedToolArguments = "{}";
 
 struct StreamContext {
     std::function<bool(const std::string&)> onChunk;
@@ -61,6 +62,7 @@ struct StreamContext {
 
     std::vector<ToolCallAccum> toolCalls;
     std::string finishReason;
+    std::string apiErrorMessage;
 };
 
 bool messageContentHasRichParts(const Json::Value& content) {
@@ -787,6 +789,91 @@ void trimWhitespace(std::string& value) {
     value = value.substr(start, end - start + 1);
 }
 
+std::string extractStreamErrorMessage(const Json::Value& parsed) {
+    const Json::Value& error = parsed["error"];
+    if (error.isObject()) {
+        const std::string message = error.get("message", "").asString();
+        if (!message.empty()) {
+            return message;
+        }
+    }
+    if (error.isString()) {
+        return error.asString();
+    }
+    return writeJson(error);
+}
+
+bool isRecoverableToolArgumentParseError(const std::string& message) {
+    return message.find("Failed to parse tool call arguments as JSON") != std::string::npos;
+}
+
+bool parseToolArgumentsJson(
+    const std::string& argumentsJson,
+    Json::Value& parsedArguments,
+    std::string& error) {
+    parsedArguments = Json::Value(Json::objectValue);
+    error.clear();
+
+    if (argumentsJson.empty()) {
+        return true;
+    }
+
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream stream(argumentsJson);
+    if (Json::parseFromStream(reader, stream, &parsedArguments, &errors)) {
+        return true;
+    }
+
+    trimWhitespace(errors);
+    error = "Failed to parse tool call arguments as JSON: " + errors;
+    return false;
+}
+
+Json::Value buildToolArgumentParseFailureOutput(
+    const std::string& error,
+    const std::string& rawArguments) {
+    Json::Value output(Json::objectValue);
+    output["error"] = error;
+    if (!rawArguments.empty()) {
+        output["raw_arguments"] = rawArguments;
+    }
+    return output;
+}
+
+Json::Value buildMalformedToolCallEvent(
+    const std::string& toolCallId,
+    const std::string& toolName,
+    const std::string& rawArguments,
+    const Json::Value& output) {
+    Json::Value toolCall(Json::objectValue);
+    toolCall["id"] = toolCallId;
+    toolCall["name"] = toolName;
+    toolCall["title"] = toolName;
+    toolCall["status"] = "failed";
+    toolCall["input"] = Json::Value(Json::objectValue);
+    if (!rawArguments.empty()) {
+        toolCall["input_raw"] = rawArguments;
+    }
+    toolCall["error"] = output.get("error", "Failed to parse tool call arguments as JSON");
+    toolCall["output"] = output;
+    return toolCall;
+}
+
+bool emitToolFailureEvent(
+    const std::function<bool(const std::string&)>& onChunk,
+    const Json::Value& toolCall) {
+    if (!onChunk) {
+        return true;
+    }
+
+    Json::Value event(Json::objectValue);
+    event["type"] = "tool_event";
+    event["event"] = "failed";
+    event["tool_call"] = toolCall;
+    return onChunk("data: " + writeJson(event) + "\n\n");
+}
+
 size_t writeCallbackStream(char* contents, size_t size, size_t nmemb, void* userp) {
     StreamContext* ctx = static_cast<StreamContext*>(userp);
     const size_t realSize = size * nmemb;
@@ -821,13 +908,19 @@ size_t writeCallbackStream(char* contents, size_t size, size_t nmemb, void* user
         }
 
         if (parsed.isMember("error")) {
-            Json::StreamWriterBuilder writer;
-            writer["indentation"] = "";
-            if (ctx->onChunk &&
-                !ctx->onChunk("data: " + Json::writeString(writer, parsed) + "\n\n")) {
-                return 0;
+            ctx->apiErrorMessage = extractStreamErrorMessage(parsed);
+            const bool recoverable =
+                !ctx->toolCalls.empty() &&
+                isRecoverableToolArgumentParseError(ctx->apiErrorMessage);
+
+            if (!recoverable && ctx->onChunk) {
+                Json::StreamWriterBuilder writer;
+                writer["indentation"] = "";
+                if (!ctx->onChunk("data: " + Json::writeString(writer, parsed) + "\n\n")) {
+                    return 0;
+                }
             }
-            ctx->finishReason = "_api_error_";
+            ctx->finishReason = recoverable ? "_tool_call_parse_error_" : "_api_error_";
             continue;
         }
 
@@ -2337,7 +2430,8 @@ std::string LlamaCppService::streamOneRound(
     const Json::Value& requestBody,
     std::function<bool(const std::string&)> onChunk,
     std::function<void(const std::string&)> onError,
-    std::vector<std::tuple<std::string, std::string, std::string>>& toolCallsOut) const {
+    std::vector<std::tuple<std::string, std::string, std::string>>& toolCallsOut,
+    std::string* apiErrorOut) const {
     auto* self = const_cast<LlamaCppService*>(this);
     if (!self->ensureServerRunning()) {
         onError("llama.cpp server unavailable");
@@ -2420,6 +2514,9 @@ std::string LlamaCppService::streamOneRound(
 
     for (const auto& toolCall : ctx.toolCalls) {
         toolCallsOut.emplace_back(toolCall.id, toolCall.name, toolCall.argumentsJson);
+    }
+    if (apiErrorOut) {
+        *apiErrorOut = ctx.apiErrorMessage;
     }
     return ctx.finishReason;
 }
@@ -2521,6 +2618,7 @@ void LlamaCppService::streamingChatWithTools(
         }
 
         std::vector<std::tuple<std::string, std::string, std::string>> toolCalls;
+        std::string apiErrorMessage;
         const std::string finishReason = streamOneRound(
             body,
             [&](const std::string& chunk) {
@@ -2530,9 +2628,18 @@ void LlamaCppService::streamingChatWithTools(
                 return onChunk ? onChunk(chunk) : true;
             },
             onError,
-            toolCalls);
+            toolCalls,
+            &apiErrorMessage);
+        const bool recoverableToolCallParseError =
+            finishReason == "_tool_call_parse_error_" ||
+            (finishReason == "_api_error_" &&
+             !toolCalls.empty() &&
+             isRecoverableToolArgumentParseError(apiErrorMessage));
 
-        if (finishReason == "_cancelled_" || finishReason == "_internal_error_" || finishReason == "_api_error_") {
+        if (finishReason == "_cancelled_" || finishReason == "_internal_error_") {
+            return;
+        }
+        if (finishReason == "_api_error_" && !recoverableToolCallParseError) {
             return;
         }
 
@@ -2550,27 +2657,41 @@ void LlamaCppService::streamingChatWithTools(
             toolCall["id"] = id;
             toolCall["type"] = "function";
             toolCall["function"]["name"] = name;
-            toolCall["function"]["arguments"] = argumentsJson;
+            Json::Value parsedArgs;
+            std::string parseError;
+            const bool argumentsParsed = parseToolArgumentsJson(argumentsJson, parsedArgs, parseError);
+            toolCall["function"]["arguments"] = argumentsParsed
+                ? argumentsJson
+                : kSanitizedMalformedToolArguments;
             assistantMsg["tool_calls"].append(toolCall);
         }
         messages.append(assistantMsg);
 
         for (const auto& [id, name, argumentsJson] : toolCalls) {
+            Json::Value parsedArgs;
+            std::string parseError;
+            const bool argumentsParsed = parseToolArgumentsJson(argumentsJson, parsedArgs, parseError);
             std::string resultStr;
-            if (toolSystem && !taskId.empty()) {
-                Json::Value args(Json::objectValue);
-                if (!argumentsJson.empty()) {
-                    Json::CharReaderBuilder reader;
-                    std::string errors;
-                    std::istringstream stream(argumentsJson);
-                    Json::parseFromStream(reader, stream, &args, &errors);
+            if (!argumentsParsed) {
+                const std::string effectiveError =
+                    (recoverableToolCallParseError && !apiErrorMessage.empty())
+                        ? apiErrorMessage
+                        : parseError;
+                const Json::Value output = buildToolArgumentParseFailureOutput(
+                    effectiveError,
+                    argumentsJson);
+                if (!emitToolFailureEvent(
+                        onChunk,
+                        buildMalformedToolCallEvent(id, name, argumentsJson, output))) {
+                    return;
                 }
-
+                resultStr = writeJson(output);
+            } else if (toolSystem && !taskId.empty()) {
                 const auto execution = toolSystem->executeToolCall(
                     taskId,
                     name,
                     id,
-                    args,
+                    parsedArgs,
                     [onChunk](const Json::Value& event) {
                         if (!onChunk) {
                             return true;

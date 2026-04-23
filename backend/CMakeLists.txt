@@ -119,6 +119,21 @@ add_custom_command(
     DEPENDS "${CMAKE_SOURCE_DIR}/scripts/embed_frontend.py" ${FRONTEND_FILES}
     COMMENT "Embedding frontend files...")
 include_directories("${CMAKE_BINARY_DIR}")
+set(TOOLPACKS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/toolpacks")
+set(EMBED_TOOLPACKS_H   "${CMAKE_BINARY_DIR}/embedded_toolpacks.h")
+set(EMBED_TOOLPACKS_CPP "${CMAKE_BINARY_DIR}/embedded_toolpacks.cpp")
+file(GLOB_RECURSE TOOLPACK_FILES CONFIGURE_DEPENDS "${TOOLPACKS_SOURCE_DIR}/*")
+add_custom_command(
+    OUTPUT ${EMBED_TOOLPACKS_H} ${EMBED_TOOLPACKS_CPP}
+    COMMAND Python3::Interpreter
+            "${CMAKE_SOURCE_DIR}/scripts/embed_directory.py"
+            "${TOOLPACKS_SOURCE_DIR}"
+            "${EMBED_TOOLPACKS_H}"
+            "${EMBED_TOOLPACKS_CPP}"
+            "embedded_toolpacks.h"
+            "embedded_toolpack_files"
+    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/embed_directory.py" ${TOOLPACK_FILES}
+    COMMENT "Embedding tool pack files...")
 
 set(SOURCES
     src/main.cpp
@@ -131,6 +146,8 @@ set(SOURCES
     src/services/mcp_client.cpp
     src/services/mcp_stdio_client.cpp
     src/services/mcp_registry.cpp
+    src/services/tools/calculator_tool.cpp
+    src/services/tools/tool_argument_validator.cpp
     src/services/tools/tool_system.cpp
     src/services/crypto_service.cpp
     src/server/http_utils.cpp
@@ -142,6 +159,7 @@ set(SOURCES
     src/controllers/mcp_controller.cpp
     src/controllers/generation_task_manager.cpp
     ${EMBED_CPP}
+    ${EMBED_TOOLPACKS_CPP}
 )
 
 # =============================================================================

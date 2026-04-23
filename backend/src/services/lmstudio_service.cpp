@@ -13,6 +13,7 @@
 
 namespace {
 constexpr int kTitleGenerationMaxTokens = 24;
+constexpr const char* kSanitizedMalformedToolArguments = "{}";
 
 bool messageContentHasRichParts(const Json::Value& content) {
     if (content.isArray()) {
@@ -197,6 +198,99 @@ bool emitNormalizedDelta(StreamContext* ctx, const Json::Value& normalizedDelta)
     wb["indentation"] = "";
     return !ctx->onChunk || ctx->onChunk("data: " + Json::writeString(wb, newJson) + "\n\n");
 }
+
+std::string trimCopy(std::string value) {
+    const std::size_t start = value.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) {
+        return "";
+    }
+    const std::size_t end = value.find_last_not_of(" \t\r\n");
+    return value.substr(start, end - start + 1);
+}
+
+std::string extractStreamErrorMessage(const Json::Value& parsed) {
+    const Json::Value& error = parsed["error"];
+    if (error.isObject()) {
+        const std::string message = error.get("message", "").asString();
+        if (!message.empty()) {
+            return message;
+        }
+    }
+    if (error.isString()) {
+        return error.asString();
+    }
+    return trimCopy(writeJson(error));
+}
+
+bool isRecoverableToolArgumentParseError(const std::string& message) {
+    return message.find("Failed to parse tool call arguments as JSON") != std::string::npos;
+}
+
+bool parseToolArgumentsJson(
+    const std::string& argumentsJson,
+    Json::Value& parsedArguments,
+    std::string& error) {
+    parsedArguments = Json::Value(Json::objectValue);
+    error.clear();
+
+    if (argumentsJson.empty()) {
+        return true;
+    }
+
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream stream(argumentsJson);
+    if (Json::parseFromStream(reader, stream, &parsedArguments, &errors)) {
+        return true;
+    }
+
+    error = "Failed to parse tool call arguments as JSON: " + trimCopy(errors);
+    return false;
+}
+
+Json::Value buildToolArgumentParseFailureOutput(
+    const std::string& error,
+    const std::string& rawArguments) {
+    Json::Value output(Json::objectValue);
+    output["error"] = error;
+    if (!rawArguments.empty()) {
+        output["raw_arguments"] = rawArguments;
+    }
+    return output;
+}
+
+Json::Value buildMalformedToolCallEvent(
+    const std::string& toolCallId,
+    const std::string& toolName,
+    const std::string& rawArguments,
+    const Json::Value& output) {
+    Json::Value toolCall(Json::objectValue);
+    toolCall["id"] = toolCallId;
+    toolCall["name"] = toolName;
+    toolCall["title"] = toolName;
+    toolCall["status"] = "failed";
+    toolCall["input"] = Json::Value(Json::objectValue);
+    if (!rawArguments.empty()) {
+        toolCall["input_raw"] = rawArguments;
+    }
+    toolCall["error"] = output.get("error", "Failed to parse tool call arguments as JSON");
+    toolCall["output"] = output;
+    return toolCall;
+}
+
+bool emitToolFailureEvent(
+    const std::function<bool(const std::string&)>& onChunk,
+    const Json::Value& toolCall) {
+    if (!onChunk) {
+        return true;
+    }
+
+    Json::Value event(Json::objectValue);
+    event["type"] = "tool_event";
+    event["event"] = "failed";
+    event["tool_call"] = toolCall;
+    return onChunk("data: " + writeJson(event) + "\n\n");
+}
 }
 
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
@@ -237,12 +331,17 @@ static size_t WriteCallbackStream(char* contents, size_t size, size_t nmemb, voi
         }
 
         if (parsed.isMember("error")) {
-            Json::StreamWriterBuilder wb;
-            wb["indentation"] = "";
-            if (ctx->onChunk) {
+            ctx->apiErrorMessage = extractStreamErrorMessage(parsed);
+            const bool recoverable =
+                !ctx->toolCalls.empty() &&
+                isRecoverableToolArgumentParseError(ctx->apiErrorMessage);
+
+            if (!recoverable && ctx->onChunk) {
+                Json::StreamWriterBuilder wb;
+                wb["indentation"] = "";
                 if (!ctx->onChunk("data: " + Json::writeString(wb, parsed) + "\n\n")) return 0;
             }
-            ctx->finishReason = "_api_error_";
+            ctx->finishReason = recoverable ? "_tool_call_parse_error_" : "_api_error_";
             continue;
         }
 
@@ -406,7 +505,8 @@ std::string LmStudioService::streamOneRound(
         const Json::Value& requestBody,
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
-        std::vector<StreamContext::ToolCallAccum>& toolCallsOut) const {
+        std::vector<StreamContext::ToolCallAccum>& toolCallsOut,
+        std::string* apiErrorOut) const {
 
     CURL* curl = curl_easy_init();
     if (!curl) { onError("Failed to init CURL"); return "_internal_error_"; }
@@ -491,6 +591,9 @@ std::string LmStudioService::streamOneRound(
     }
 
     toolCallsOut = std::move(ctx.toolCalls);
+    if (apiErrorOut) {
+        *apiErrorOut = ctx.apiErrorMessage;
+    }
     return ctx.finishReason;
 }
 
@@ -554,10 +657,22 @@ void LmStudioService::streamingChatWithTools(
         }
 
         std::vector<StreamContext::ToolCallAccum> toolCalls;
-        const std::string finishReason = streamOneRound(body, onChunk, onError, toolCalls);
+        std::string apiErrorMessage;
+        const std::string finishReason = streamOneRound(
+            body,
+            onChunk,
+            onError,
+            toolCalls,
+            &apiErrorMessage);
+        const bool recoverableToolCallParseError =
+            finishReason == "_tool_call_parse_error_" ||
+            (finishReason == "_api_error_" &&
+             !toolCalls.empty() &&
+             isRecoverableToolArgumentParseError(apiErrorMessage));
 
         if (finishReason == "_cancelled_") return;
-        if (finishReason == "_internal_error_" || finishReason == "_api_error_") return;
+        if (finishReason == "_internal_error_") return;
+        if (finishReason == "_api_error_" && !recoverableToolCallParseError) return;
 
         if (toolCalls.empty()) {
             break;
@@ -573,27 +688,41 @@ void LmStudioService::streamingChatWithTools(
             tcObj["id"]   = tc.id;
             tcObj["type"] = "function";
             tcObj["function"]["name"]      = tc.name;
-            tcObj["function"]["arguments"] = tc.argumentsJson;
+            Json::Value parsedArgs;
+            std::string parseError;
+            const bool argumentsParsed = parseToolArgumentsJson(tc.argumentsJson, parsedArgs, parseError);
+            tcObj["function"]["arguments"] = argumentsParsed
+                ? tc.argumentsJson
+                : kSanitizedMalformedToolArguments;
             assistantMsg["tool_calls"].append(tcObj);
         }
         messages.append(assistantMsg);
 
         for (const auto& tc : toolCalls) {
+            Json::Value parsedArgs;
+            std::string parseError;
+            const bool argumentsParsed = parseToolArgumentsJson(tc.argumentsJson, parsedArgs, parseError);
         	std::string resultStr;
-            if (toolSystem && !taskId.empty()) {
-                Json::Value args(Json::objectValue);
-                if (!tc.argumentsJson.empty()) {
-                    Json::CharReaderBuilder rb;
-                    std::string errs;
-                    std::istringstream ss(tc.argumentsJson);
-                    Json::parseFromStream(rb, ss, &args, &errs);
+            if (!argumentsParsed) {
+                const std::string effectiveError =
+                    (recoverableToolCallParseError && !apiErrorMessage.empty())
+                        ? apiErrorMessage
+                        : parseError;
+                const Json::Value output = buildToolArgumentParseFailureOutput(
+                    effectiveError,
+                    tc.argumentsJson);
+                if (!emitToolFailureEvent(
+                        onChunk,
+                        buildMalformedToolCallEvent(tc.id, tc.name, tc.argumentsJson, output))) {
+                    return;
                 }
-
+                resultStr = writeJson(output);
+            } else if (toolSystem && !taskId.empty()) {
                 const auto execution = toolSystem->executeToolCall(
                     taskId,
                     tc.name,
                     tc.id,
-                    args,
+                    parsedArgs,
                     [onChunk](const Json::Value& event) {
                         if (!onChunk) {
                             return true;

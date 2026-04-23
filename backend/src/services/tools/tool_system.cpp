@@ -1,5 +1,8 @@
 #include "services/tools/tool_system.h"
 
+#include "services/tools/calculator_tool.h"
+#include "services/tools/tool_argument_validator.h"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -50,6 +53,29 @@ std::string toLower(std::string value) {
         return static_cast<char>(std::tolower(c));
     });
     return value;
+}
+
+std::vector<std::string> tokenizeSearchTerms(const std::string& value) {
+    std::vector<std::string> terms;
+    std::string current;
+    current.reserve(value.size());
+
+    for (char ch : value) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (std::isalnum(c)) {
+            current.push_back(static_cast<char>(std::tolower(c)));
+            continue;
+        }
+        if (current.size() >= 2) {
+            terms.push_back(current);
+        }
+        current.clear();
+    }
+
+    if (current.size() >= 2) {
+        terms.push_back(current);
+    }
+    return terms;
 }
 
 std::string trimCopy(const std::string& value) {
@@ -276,6 +302,64 @@ Json::Value extractByPath(const Json::Value& root, const std::string& path) {
     }
     return *current;
 }
+
+const char* kCalculatorBatchRunner = R"PY(
+import itertools
+import json
+import math
+import statistics
+from pathlib import Path
+
+SAFE_BUILTINS = {
+    "abs": abs,
+    "all": all,
+    "any": any,
+    "bool": bool,
+    "dict": dict,
+    "enumerate": enumerate,
+    "float": float,
+    "int": int,
+    "len": len,
+    "list": list,
+    "max": max,
+    "min": min,
+    "pow": pow,
+    "range": range,
+    "round": round,
+    "set": set,
+    "sorted": sorted,
+    "str": str,
+    "sum": sum,
+    "tuple": tuple,
+    "zip": zip,
+}
+
+try:
+    request = json.loads(Path("/workspace/request.json").read_text())
+    scope = {
+        "__builtins__": SAFE_BUILTINS,
+        "input_data": request.get("input", {}),
+        "itertools": itertools,
+        "math": math,
+        "statistics": statistics,
+    }
+    exec(compile(request.get("program", ""), "<calculator_batch>", "exec"), scope, scope)
+    if "result" not in scope:
+        raise RuntimeError("Program must assign result")
+
+    output = json.dumps(scope["result"], separators=(",", ":"), allow_nan=False)
+    if len(output) > 20000:
+        raise RuntimeError("Result is too large")
+
+    print(json.dumps({
+        "sandboxed": True,
+        "language": "python",
+        "result": scope["result"],
+        "output": output,
+    }, separators=(",", ":"), allow_nan=False))
+except Exception as exc:
+    print(json.dumps({"error": str(exc)}, separators=(",", ":")))
+)PY";
 
 enum class ApprovalStatus {
     Pending,
@@ -817,39 +901,6 @@ struct ToolSystem::Impl {
         load.inputSchema["required"] = loadRequired;
         load.config["native"]["handler"] = "load_tool_definitions";
         registerToolUnlocked(load);
-
-        ToolPackRecord diagnosticPack;
-        diagnosticPack.id = "diagnostic-test-tools";
-        diagnosticPack.title = "Diagnostic Test Tools";
-        diagnosticPack.version = "1";
-        diagnosticPack.description = "Opt-in no-op tools for verifying tool-call wiring in the UI.";
-        diagnosticPack.sourceType = "system";
-        diagnosticPack.rootPath = "";
-        diagnosticPack.defaultEnabled = false;
-        diagnosticPack.synthetic = true;
-        registerPackUnlocked(diagnosticPack);
-
-        ToolDefinition test;
-        test.canonicalId = "system/test_return_true";
-        test.packId = diagnosticPack.id;
-        test.toolId = "test_return_true";
-        test.modelName = "test_return_true";
-        test.title = "Test Return True";
-        test.description = "Diagnostic no-op tool that always returns the JSON boolean true. Use it to verify tool-calling and tool event rendering in the UI.";
-        test.executor = "native";
-        test.sourceType = "system";
-        test.alwaysVisible = true;
-        test.listedInCatalog = false;
-        test.listedInPackSummary = true;
-        test.policy = makePolicy();
-        test.selection = makeSelection(
-            "Return the JSON boolean true without performing any side effects.",
-            "Use when you need to verify that tool invocation, event streaming, or inline tool rendering is wired correctly.",
-            "Do not use when a real tool is needed to accomplish the user's task.");
-        test.inputSchema["type"] = "object";
-        test.inputSchema["additionalProperties"] = false;
-        test.config["native"]["handler"] = "test_return_true";
-        registerToolUnlocked(test);
     }
 
     void loadManifestPackUnlocked(const fs::path& packDir, const std::string& fallbackSourceType) {
@@ -947,7 +998,10 @@ struct ToolSystem::Impl {
             tool.selection = selection;
             tool.policy = policy;
             tool.defaultEnabled = pack.defaultEnabled;
-            tool.config = toolJson.get(executor, Json::Value(Json::objectValue));
+            tool.alwaysVisible = toolJson.get("alwaysVisible", false).asBool();
+            tool.listedInCatalog = toolJson.get("listedInCatalog", true).asBool();
+            tool.listedInPackSummary = toolJson.get("listedInPackSummary", true).asBool();
+            tool.config[executor] = toolJson.get(executor, Json::Value(Json::objectValue));
             registerToolUnlocked(tool);
         }
     }
@@ -1101,6 +1155,7 @@ struct ToolSystem::Impl {
     Json::Value buildCatalogResultsUnlocked(const std::string& query, const ToolSession* session, int limit) const {
         Json::Value results(Json::arrayValue);
         const std::string loweredQuery = toLower(trimCopy(query));
+        const std::vector<std::string> queryTerms = tokenizeSearchTerms(loweredQuery);
         const int cappedLimit = std::clamp(limit <= 0 ? 8 : limit, 1, 50);
 
         struct Match {
@@ -1118,22 +1173,61 @@ struct ToolSystem::Impl {
                 continue;
             }
 
-            const std::string haystack = toLower(
-                tool.title + " " +
-                tool.description + " " +
-                getStringArg(tool.selection, "summary") + " " +
-                getStringArg(tool.selection, "whenToUse") + " " +
-                joinTags(tool.selection["tags"]));
+            const std::string titleText = toLower(tool.title);
+            const std::string descriptionText = toLower(tool.description);
+            const std::string summaryText = toLower(getStringArg(tool.selection, "summary"));
+            const std::string whenToUseText = toLower(getStringArg(tool.selection, "whenToUse"));
+            const std::string tagsText = toLower(joinTags(tool.selection["tags"]));
+            const std::string packIdText = toLower(tool.packId);
+            const std::string toolIdText = toLower(tool.toolId);
+            const std::string modelNameText = toLower(tool.modelName);
+            const std::string haystack =
+                titleText + " " +
+                descriptionText + " " +
+                summaryText + " " +
+                whenToUseText + " " +
+                tagsText + " " +
+                packIdText + " " +
+                toolIdText + " " +
+                modelNameText;
 
             int score = 1;
             if (!loweredQuery.empty()) {
-                if (haystack.find(loweredQuery) == std::string::npos) {
+                int matchedTerms = 0;
+                if (haystack.find(loweredQuery) != std::string::npos) {
+                    score += 10;
+                }
+
+                for (const auto& term : queryTerms) {
+                    bool matched = false;
+                    if (titleText.find(term) != std::string::npos) {
+                        score += 6;
+                        matched = true;
+                    } else if (toolIdText.find(term) != std::string::npos || modelNameText.find(term) != std::string::npos) {
+                        score += 5;
+                        matched = true;
+                    } else if (descriptionText.find(term) != std::string::npos) {
+                        score += 4;
+                        matched = true;
+                    } else if (summaryText.find(term) != std::string::npos) {
+                        score += 3;
+                        matched = true;
+                    } else if (tagsText.find(term) != std::string::npos || packIdText.find(term) != std::string::npos) {
+                        score += 2;
+                        matched = true;
+                    } else if (whenToUseText.find(term) != std::string::npos) {
+                        score += 1;
+                        matched = true;
+                    }
+                    if (matched) {
+                        matchedTerms += 1;
+                    }
+                }
+
+                if (matchedTerms == 0 && haystack.find(loweredQuery) == std::string::npos) {
                     continue;
                 }
-                if (toLower(tool.title).find(loweredQuery) != std::string::npos) score += 5;
-                if (toLower(tool.description).find(loweredQuery) != std::string::npos) score += 4;
-                if (toLower(getStringArg(tool.selection, "summary")).find(loweredQuery) != std::string::npos) score += 3;
-                if (toLower(joinTags(tool.selection["tags"])).find(loweredQuery) != std::string::npos) score += 2;
+                score += matchedTerms * 2;
             }
 
             Json::Value descriptor(Json::objectValue);
@@ -1316,8 +1410,86 @@ struct ToolSystem::Impl {
             return result;
         }
 
-        if (handler == "test_return_true") {
-            return Json::Value(true);
+        if (handler == "calculator_calculate") {
+            return calculator_tool::executeCalculation(args);
+        }
+
+        if (handler == "calculator_calculate_batch") {
+            fs::path workspaceRoot;
+            try {
+                const std::size_t threadHash = std::hash<std::thread::id>{}(std::this_thread::get_id());
+                workspaceRoot = fs::temp_directory_path() /
+                    ("ctrlpanel-calc-batch-" + std::to_string(nowMillis()) + "-" + std::to_string(threadHash));
+                fs::create_directories(workspaceRoot);
+            } catch (const std::exception& exception) {
+                Json::Value error(Json::objectValue);
+                error["error"] = std::string("Failed to create calculator batch workspace: ") + exception.what();
+                return error;
+            }
+
+            struct WorkspaceCleanup {
+                fs::path path;
+                ~WorkspaceCleanup() {
+                    std::error_code ec;
+                    fs::remove_all(path, ec);
+                }
+            } cleanup{workspaceRoot};
+
+            writeJsonFile(workspaceRoot / "request.json", args);
+
+            {
+                std::ofstream runner(workspaceRoot / "runner.py");
+                if (!runner.is_open()) {
+                    Json::Value error(Json::objectValue);
+                    error["error"] = "Failed to write calculator batch runner";
+                    return error;
+                }
+                runner << kCalculatorBatchRunner;
+            }
+
+            Json::Value sandboxConfig(Json::objectValue);
+            sandboxConfig["command"] = "python3 /workspace/runner.py";
+            sandboxConfig["workspaceRoot"] = workspaceRoot.string();
+            sandboxConfig["allowNetwork"] = false;
+            sandboxConfig["timeoutMs"] = 15000;
+
+            const SandboxResult sandboxResult = sandbox.execute(sandboxConfig, Json::Value(Json::objectValue));
+            if (!sandboxResult.success) {
+                Json::Value error(Json::objectValue);
+                error["error"] = sandboxResult.error.empty()
+                    ? "Calculator batch execution failed"
+                    : sandboxResult.error;
+                error["stderr"] = sandboxResult.stderrText;
+                error["stdout"] = sandboxResult.stdoutText;
+                error["timed_out"] = sandboxResult.timedOut;
+                error["exit_code"] = sandboxResult.exitCode;
+                return error;
+            }
+
+            const std::string stdoutText = trimCopy(sandboxResult.stdoutText);
+            if (stdoutText.empty()) {
+                Json::Value error(Json::objectValue);
+                error["error"] = "Calculator batch produced no output";
+                return error;
+            }
+
+            const Json::Value parsed = parseMaybeJson(stdoutText);
+            if (!parsed.isObject()) {
+                Json::Value error(Json::objectValue);
+                error["error"] = "Calculator batch returned invalid JSON";
+                error["stdout"] = stdoutText;
+                return error;
+            }
+            if (parsed.isMember("error")) {
+                return parsed;
+            }
+            if (!parsed.isMember("result") || !parsed.isMember("output") || !parsed["output"].isString()) {
+                Json::Value error(Json::objectValue);
+                error["error"] = "Calculator batch returned an incomplete result";
+                error["stdout"] = parsed;
+                return error;
+            }
+            return parsed;
         }
 
         Json::Value error(Json::objectValue);
@@ -1481,6 +1653,7 @@ void ToolSystem::beginTaskSession(const SessionOptions& options) {
     if (session.enabledPackIds.empty()) {
         session.enabledPackIds = impl_->defaultEnabledPacksUnlocked();
     }
+    session.enabledPackIds.insert("system-control");
     session.onStatusChange = options.onStatusChange;
     impl_->sessions[options.taskId] = std::move(session);
 }
@@ -1580,6 +1753,23 @@ ToolSystem::ExecutionResult ToolSystem::executeToolCall(
     toolCall["approvalMode"] = tool.policy.get("approvalMode", "auto");
     toolCall["input"] = arguments;
     toolCall["status"] = "queued";
+
+    if (const auto validationError = tool_argument_validator::validate(tool.inputSchema, arguments); validationError.has_value()) {
+        Json::Value output(Json::objectValue);
+        output["error"] = *validationError;
+        toolCall["status"] = "failed";
+        toolCall["error"] = *validationError;
+        toolCall["output"] = output;
+        if (emitEvent) {
+            emitEvent(impl_->makeToolEvent("failed", toolCall));
+        }
+
+        ExecutionResult failure;
+        failure.success = false;
+        failure.modelOutput = *validationError;
+        failure.toolCall = toolCall;
+        return failure;
+    }
 
     const bool needsApproval = tool.policy.get("approvalMode", "auto").asString() == "prompt";
     if (needsApproval) {
@@ -1718,6 +1908,7 @@ Json::Value ToolSystem::getCatalog(const std::string& query, const Json::Value& 
     if (tempSession.enabledPackIds.empty()) {
         tempSession.enabledPackIds = impl_->defaultEnabledPacksUnlocked();
     }
+    tempSession.enabledPackIds.insert("system-control");
 
     Json::Value result(Json::objectValue);
     result["query"] = query;

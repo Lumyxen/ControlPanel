@@ -1195,8 +1195,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				activeToolCalls,
 				errorFromStream,
 			} = streamState;
-			if (errorFromStream) throw new Error(errorFromStream);
-			if (!rawStreamText && !officialReasoningText && activeToolCalls.length === 0) {
+			if (!rawStreamText && !officialReasoningText && activeToolCalls.length === 0 && !errorFromStream) {
 				stopTyping();
 				setGeneratingState(false);
 				rerender();
@@ -1232,11 +1231,32 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				return;
 			}
 			console.error('[ChatPage] Stream error:', err);
-			uiState.flushResponse = null;
-			stopTyping();
-			if (activeChatId && parentUserNodeId) {
-				const errorText = err?.message ? `**Error:** ${err.message}` : '**Error:** Generation failed';
-				addChildMessageToChat(activeChatId, parentUserNodeId, 'assistant', errorText);
+			const {
+				rawStreamText,
+				officialReasoningText,
+				activeToolCalls,
+				errorFromStream,
+			} = streamController.getState();
+			const hadPartialResponse =
+				Boolean(rawStreamText) ||
+				Boolean(officialReasoningText) ||
+				activeToolCalls.length > 0 ||
+				Boolean(errorFromStream);
+			if (hadPartialResponse) {
+				if (!errorFromStream) {
+					streamController.queueChunk({
+						error: err?.message || 'Generation failed',
+					});
+					streamController.flushAllPending();
+				}
+				stopTyping();
+			} else {
+				uiState.flushResponse = null;
+				stopTyping();
+				if (activeChatId && parentUserNodeId) {
+					const errorText = err?.message ? `**Error:** ${err.message}` : '**Error:** Generation failed';
+					addChildMessageToChat(activeChatId, parentUserNodeId, 'assistant', errorText);
+				}
 			}
 			rerender();
 			renderChatList();
@@ -1308,9 +1328,6 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 						streamController.closeReasoning();
 						setGeneratingState(false);
 					});
-
-					const { errorFromStream } = streamController.getState();
-					if (errorFromStream) throw new Error(errorFromStream);
 					// Reload from backend (source of truth) — don't save frontend state
 					await loadChats();
 					const chat = await ensureChatLoaded(chatId, { force: true });

@@ -1,0 +1,34 @@
+{
+    "id": "calculate_batch",
+    "title": "Calculate Batch",
+    "description": "Run sandboxed Python for repetitive math, list processing, and other batch-style calculations. The program must assign a JSON-serializable `result`.",
+    "executor": "native",
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "program": {
+                "type": "string"
+            },
+            "input": {
+                "type": "object"
+            }
+        },
+        "required": ["program"]
+    },
+    "selection": {
+        "summary": "Run sandboxed Python for batch math and data-heavy calculation work.",
+        "tags": ["math", "python", "batch", "sandbox", "arrays", "statistics"],
+        "whenToUse": "Use when the calculation needs loops, list processing, aggregation, or repeated formulas over larger inputs.",
+        "whenNotToUse": "Do not use for simple one-off arithmetic that fits in the direct calculator tool."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": false,
+        "idempotent": true
+    },
+    "native": {
+        "handler": "calculator_calculate_batch"
+    }
+}

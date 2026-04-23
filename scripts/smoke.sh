@@ -56,6 +56,7 @@ import {
 import { getNodeTextContent, buildPartsWithUpdatedText } from './www/js/pages/chat/message-parts.js';
 import { buildApiMessages, buildConversationHistory, parseStreamReasoning } from './www/js/pages/chat/payloads.js';
 import { getResolvedReasoningParts } from './www/js/pages/chat/reasoning-parts.js';
+import { buildReasoningElement } from './www/js/pages/chat/thread-view.js';
 import { coerceTheme } from './www/js/pages/settings/theme-section.js';
 import { renderMessageTextHtml } from './www/js/render/message.js';
 import { isFormattingOnlyTextContent, mapDomTextToTokenLogprobs } from './www/js/render/token-highlighting.js';
@@ -155,6 +156,76 @@ assert.match(markdownCss, /\.md-link:hover\s*\{[^}]*border-bottom:\s*none;/s);
 
 const tokenHighlightingCss = readFileSync('./www/css/components/content/token-highlighting.css', 'utf8');
 assert.match(tokenHighlightingCss, /\.token-logprob-tooltip\s*\{/);
+
+class FakeElement {
+	constructor(tagName) {
+		this.tagName = String(tagName).toUpperCase();
+		this.className = '';
+		this.children = [];
+		this.open = false;
+		this._textContent = '';
+		this._innerHTML = '';
+	}
+
+	append(...nodes) {
+		nodes.forEach((node) => this.appendChild(node));
+	}
+
+	appendChild(node) {
+		this.children.push(node);
+		return node;
+	}
+
+	set textContent(value) {
+		this._textContent = String(value ?? '');
+		this._innerHTML = '';
+		this.children = [];
+	}
+
+	get textContent() {
+		if (this.children.length > 0) {
+			return this.children.map((child) => child.textContent ?? '').join('');
+		}
+		return this._textContent;
+	}
+
+	set innerHTML(value) {
+		this._innerHTML = String(value ?? '');
+		this._textContent = '';
+		this.children = [];
+	}
+
+	get innerHTML() {
+		return this._innerHTML;
+	}
+}
+
+const previousDocument = globalThis.document;
+globalThis.document = {
+	createElement(tagName) {
+		return new FakeElement(tagName);
+	},
+};
+
+try {
+	const reasoningEl = buildReasoningElement({
+		reasoning: '**bold**\n\n- item',
+		open: true,
+	});
+	assert.equal(reasoningEl.className, 'message-reasoning');
+	assert.equal(reasoningEl.open, true);
+	assert.equal(reasoningEl.children[0].textContent, 'Thinking');
+	assert.equal(reasoningEl.children[1].className, 'reasoning-content');
+	assert.equal(reasoningEl.children[1].children[0].className, 'reasoning-text');
+	assert.match(reasoningEl.children[1].children[0].innerHTML, /<strong>bold<\/strong>/);
+	assert.match(reasoningEl.children[1].children[0].innerHTML, /<ul class="md-list md-list-unordered">/);
+} finally {
+	if (previousDocument === undefined) {
+		delete globalThis.document;
+	} else {
+		globalThis.document = previousDocument;
+	}
+}
 
 assert.equal(isFormattingOnlyTextContent('\n    '), true);
 assert.equal(isFormattingOnlyTextContent(' '), false);
@@ -287,13 +358,13 @@ class Handler(BaseHTTPRequestHandler):
                 user_prompt = str(message.get("content", ""))
                 break
 
-        wants_test_tool = "test_return_true" in user_prompt
-        has_tool_result = any(
+        wants_calculator = "6 * 7" in user_prompt or "6*7" in user_prompt
+        tool_result_count = sum(
             isinstance(message, dict) and message.get("role") == "tool"
             for message in messages
         )
 
-        if wants_test_tool and not has_tool_result:
+        if wants_calculator and tool_result_count == 0:
             events = [
                 {
                     "choices": [
@@ -302,10 +373,10 @@ class Handler(BaseHTTPRequestHandler):
                                 "tool_calls": [
                                     {
                                         "index": 0,
-                                        "id": "call_test_true",
+                                        "id": "call_search_calculator",
                                         "function": {
-                                            "name": "test_return_true",
-                                            "arguments": "{}",
+                                            "name": "search_tool_catalog",
+                                            "arguments": "{\"query\":\"math calculator arithmetic\",\"limit\":4}",
                                         },
                                     }
                                 ]
@@ -315,12 +386,56 @@ class Handler(BaseHTTPRequestHandler):
                 },
                 {"choices": [{"finish_reason": "tool_calls", "delta": {}}]},
             ]
-        elif wants_test_tool and has_tool_result:
+        elif wants_calculator and tool_result_count == 1:
             events = [
                 {
                     "choices": [
                         {
-                            "delta": {"content": "Tool returned true."}
+                            "delta": {
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "call_load_calculator",
+                                        "function": {
+                                            "name": "load_tool_definitions",
+                                            "arguments": "{\"tool_ids\":[\"calculator/calculate\"]}",
+                                        },
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {"choices": [{"finish_reason": "tool_calls", "delta": {}}]},
+            ]
+        elif wants_calculator and tool_result_count == 2:
+            events = [
+                {
+                    "choices": [
+                        {
+                            "delta": {
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "call_calculate",
+                                        "function": {
+                                            "name": "calculator__calculate",
+                                            "arguments": "{\"op\":\"multiply\",\"args\":[6,7]}",
+                                        },
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {"choices": [{"finish_reason": "tool_calls", "delta": {}}]},
+            ]
+        elif wants_calculator and tool_result_count >= 3:
+            events = [
+                {
+                    "choices": [
+                        {
+                            "delta": {"content": "42"}
                         }
                     ]
                 },
@@ -417,6 +532,7 @@ validate="$(curl -sf "$base/api/auth/validate" -H "X-Session-Token: $token")"
 put_chats="$(curl -sf -X PUT "$base/api/chats" -H 'Content-Type: application/json' -H "X-Session-Token: $token" -d '{"chats":[],"currentChatId":"","pins":[]}')"
 get_chats="$(curl -sf "$base/api/chats" -H "X-Session-Token: $token")"
 mcp_tools="$(curl -sf "$base/api/mcp/tools" -H "${auth_header[0]}")"
+tool_packs="$(curl -sf "$base/api/tools/packs" -H "${auth_header[0]}")"
 llama_backend="$(curl -sf "$base/api/llamacpp/backend" -H "${auth_header[0]}")"
 put_chat="$(curl -sf -X PUT "$base/api/chats/smoke-logprobs" -H 'Content-Type: application/json' -H "X-Session-Token: $token" -d '{"title":"Smoke Logprobs"}')"
 task_submit="$(curl -sf -X POST "$base/api/tasks/generate" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"model":"stub-model","prompt":"User: hello","max_tokens":32,"logprobs":true,"chat_id":"smoke-logprobs"}')"
@@ -424,8 +540,8 @@ task_id="$(printf '%s' "$task_submit" | python3 -c 'import json,sys; print(json.
 task_wait="$(curl -sf "$base/api/tasks/$task_id/wait" -H "${auth_header[0]}")"
 task_status="$(curl -sf "$base/api/tasks/$task_id" -H "${auth_header[0]}")"
 saved_chat="$(curl -sf "$base/api/chats/smoke-logprobs" -H "X-Session-Token: $token")"
-put_tool_chat="$(curl -sf -X PUT "$base/api/chats/smoke-tool-call" -H 'Content-Type: application/json' -H "X-Session-Token: $token" -d '{"title":"Smoke Tool Call","toolScope":{"enabledPackIds":["diagnostic-test-tools"]}}')"
-tool_task_submit="$(curl -sf -X POST "$base/api/tasks/generate" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"model":"stub-model","prompt":"User: call test_return_true and then tell me the result","max_tokens":32,"chat_id":"smoke-tool-call","tool_scope":{"enabledPackIds":["diagnostic-test-tools"]}}')"
+put_tool_chat="$(curl -sf -X PUT "$base/api/chats/smoke-tool-call" -H 'Content-Type: application/json' -H "X-Session-Token: $token" -d '{"title":"Smoke Tool Call","toolScope":{"enabledPackIds":["calculator"]}}')"
+tool_task_submit="$(curl -sf -X POST "$base/api/tasks/generate" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"model":"stub-model","prompt":"User: use tools to work out 6 * 7","max_tokens":64,"chat_id":"smoke-tool-call","tool_scope":{"enabledPackIds":["calculator"]}}')"
 tool_task_id="$(printf '%s' "$tool_task_submit" | python3 -c 'import json,sys; print(json.load(sys.stdin)["task_id"])')"
 tool_task_wait="$(curl -sf "$base/api/tasks/$tool_task_id/wait" -H "${auth_header[0]}")"
 tool_task_status="$(curl -sf "$base/api/tasks/$tool_task_id" -H "${auth_header[0]}")"
@@ -437,6 +553,8 @@ saved_tool_chat="$(curl -sf "$base/api/chats/smoke-tool-call" -H "X-Session-Toke
 [[ "$put_chats" == *'"chats":['* ]]
 [[ "$get_chats" == *'"chats":['* ]]
 [[ "$mcp_tools" == *'"tools":['* ]]
+[[ "$tool_packs" == *'"id":"calculator"'* ]]
+[[ "$tool_packs" != *'diagnostic-test-tools'* ]]
 [[ "$llama_backend" == *'"available":['* ]]
 [[ "$put_chat" == *'"id":"smoke-logprobs"'* ]]
 [[ "$put_tool_chat" == *'"id":"smoke-tool-call"'* ]]
@@ -473,13 +591,17 @@ nodes = chat["graph"]["nodes"]
 assistant_nodes = [node for node in nodes.values() if node.get("role") == "assistant"]
 assert assistant_nodes, chat
 assistant = assistant_nodes[-1]
-assert assistant["content"] == "Tool returned true.", assistant
+assert assistant["content"] == "42", assistant
 tool_calls = assistant.get("toolCalls")
-assert isinstance(tool_calls, list) and len(tool_calls) == 1, tool_calls
-tool_call = tool_calls[0]
-assert tool_call["name"] == "test_return_true", tool_call
-assert tool_call["status"] == "completed", tool_call
-assert tool_call["output"] is True, tool_call
+assert isinstance(tool_calls, list) and len(tool_calls) == 3, tool_calls
+assert [tool_call["name"] for tool_call in tool_calls] == [
+    "search_tool_catalog",
+    "load_tool_definitions",
+    "calculator__calculate",
+], tool_calls
+assert all(tool_call["status"] == "completed" for tool_call in tool_calls), tool_calls
+assert tool_calls[-1]["output"]["value"] == 42, tool_calls[-1]
+assert tool_calls[-1]["output"]["output"] == "42", tool_calls[-1]
 PY
 
 echo "[smoke] Backend smoke passed"

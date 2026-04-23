@@ -27,7 +27,7 @@ It is intentionally separate from `TODO.md`:
 | Tuning and personalisation | Theme palettes, AI behavior settings, token-confidence display/history controls, title-generation settings |
 | Integration surface | REST API, task endpoints, tool-pack discovery/reload, approval endpoints, MCP client loading/bridging, built-in MCP config tools |
 
-The tool system itself is now implemented, but the project does not currently ship with real task-oriented tool packs. Out of the box, installs expose synthetic/internal control-plane wiring plus an opt-in diagnostic pack unless you add your own packs or configure MCP servers.
+The tool system ships with a real bundled calculator pack plus the synthetic internal control-plane pack used for deferred discovery and schema loading. Additional packs can still be added locally or bridged in from MCP servers.
 
 ---
 
@@ -113,6 +113,7 @@ The tool system itself is now implemented, but the project does not currently sh
 | Reconnect to active tasks | On page return or refresh, the chat page checks for a running task for the current chat and reattaches to it. |
 | Chunk replay on reconnect | Reattached streams replay buffered chunks first, then continue live. |
 | Completed-result recovery | If a task already finished while the user was away, the frontend reloads the backend-saved result into the chat. |
+| Partial-response error preservation | If a stream fails after partial text, reasoning, or tool events have already arrived, the partial assistant message is kept and the error is appended inline instead of discarding the response. |
 | Auto title trigger | After the first user message completes, the app can asynchronously request a generated chat title. |
 
 ### Reasoning and Tool Visibility
@@ -121,6 +122,7 @@ The tool system itself is now implemented, but the project does not currently sh
 | --- | --- |
 | Reasoning extraction | The app can parse reasoning emitted natively or embedded inside `<think>...</think>` blocks. |
 | Collapsible Thinking block | Assistant reasoning is displayed in a dedicated collapsible block instead of being mixed into the visible answer text. |
+| Markdown-rendered Thinking content | Reasoning text inside the Thinking block uses the same Markdown/callout/code renderer as normal assistant output. |
 | Inline tool-call rendering | Tool executions are rendered inside assistant messages when configured tools are invoked, with expandable input/output details. |
 | Live tool execution events | Tool-call UI can appear during streaming, not only after the final message has finished. |
 | In-chat approval actions | Pending tool approvals can be approved or denied directly from the chat UI. |
@@ -284,14 +286,16 @@ The backend exposes API groups for:
 | Runtime tool-pack directories | The app creates system and user tool-pack directories at startup. |
 | `data/tooling.json` state | Tool-system state such as disabled pack IDs is stored in a dedicated tooling config file. |
 | Manifest-driven pack format | Tool packs are defined by `pack.json` plus per-tool JSON manifests, rather than being hardcoded into the frontend. |
+| Embedded bundled tool packs | Bundled system packs are embedded into the backend binary at build time and synced into runtime `toolpacks/` on startup. |
 | Pack discovery and hot reload | Tool packs can be discovered and reloaded without rebuilding the app. |
 | Settings pack visibility | The Settings page shows discovered packs, executor types, tool counts, and sandbox health. |
 | Per-chat pack enablement | Each chat can enable or disable discovered packs from the toolbar. |
 | Approval workflow | Tool executions can pause for approval, with list/approve/deny endpoints and inline chat actions. |
 | Multiple executor backends | The execution layer supports native, HTTP, sandbox, and MCP-backed tools. |
+| Strict input-schema validation | Tool arguments are validated against each tool's declared JSON schema before execution, and invalid calls fail fast as failed tool events. |
 | Internal control-plane pack | Fresh installs include a synthetic pack for deferred tool-catalog search and schema loading. |
-| Diagnostic test pack | The repo includes an opt-in diagnostic no-op pack for verifying tool-call wiring and transcript rendering. |
-| Current shipped tool state | The repository currently ships no real task-oriented tool packs; fresh installs only expose internal control-plane wiring and the diagnostic test pack until you add packs or MCP servers. |
+| Bundled calculator pack | Fresh installs include a calculator pack with a native scientific calculator and a sandboxed batch-math fallback tool. |
+| Current shipped tool state | The repository ships the internal control-plane pack plus a bundled calculator pack out of the box; additional packs can be added locally or via MCP. |
 
 ### MCP Support
 
@@ -317,7 +321,8 @@ The backend exposes API groups for:
 | Tool scope on generation tasks | Generation requests carry the current chat's enabled pack scope. |
 | Transcript-visible execution records | Tool executions are streamed back into the chat transcript with input, output, status, and approval details. |
 | Approval-aware task states | A generation task can enter a `waiting_approval` state until the user resolves a pending tool action. |
-| No bundled task tools yet | The execution pipeline exists, but out-of-the-box installs do not provide real task-solving tools beyond the synthetic control-plane/diagnostic tools. |
+| Malformed tool-call recovery | If a model emits malformed tool-call argument JSON, the backend turns it into a failed tool event instead of aborting the whole response. |
+| Bundled calculator tools | Out-of-the-box installs provide real calculator capabilities via a native scientific calculator and a sandboxed batch-math tool. |
 
 ---
 

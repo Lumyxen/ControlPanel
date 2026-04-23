@@ -189,11 +189,7 @@ export async function streamTask(taskId, _resumeOffset, onChunk, signal = null, 
             try {
                 const parsed = JSON.parse(event.data);
                 if (parsed.error) {
-                    const msg = typeof parsed.error === 'object' && parsed.error !== null
-                        ? (parsed.error.message || JSON.stringify(parsed.error))
-                        : String(parsed.error);
-                    cleanup();
-                    rejectOnce(new Error(msg));
+                    onChunk(parsed);
                     return;
                 }
                 onChunk(parsed);

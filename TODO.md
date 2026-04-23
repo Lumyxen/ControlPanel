@@ -35,9 +35,9 @@
 - [x] Tool picker UI that reflects discovery/namespaces instead of a flat dropdown
 
 ##### Priority Tools
-- [ ] Calculator tool
-  - [ ] Typed math function; keep sandboxed code execution as fallback for batch math
-  - [ ] WolframAlpha API option
+- [x] Calculator tool
+  - [x] Typed math function; keep sandboxed code execution as fallback for batch math
+  - [ ] WolframAlpha API option (deferred)
 - [ ] Web search tool
   - [ ] Search-first interface; scraper backend only if needed
 - [ ] Weather tool
@@ -87,7 +87,7 @@
   - [ ] Setting to enable/disable this
 - [ ] Rework settings page to have tabs
 - [ ] Rating blocks (like claude.ai's rating blocks)
-- [ ] Markdown formatting inside of thinking block
+- [x] Markdown formatting inside of thinking block
 - [ ] Copy LaTeX image (copies image with transparent background showing the LaTeX formatting)
 - [ ] Shift+Click to copy entire message including thinking block and tool calls
 - [ ] Custom theme setting (list of variables and hex/rgb values)
@@ -107,7 +107,7 @@
 - [x] Stop and restart backend options in the front-end, as Windows users likely won't use a terminal to run the app
 
 ##### Start giving updates to GamingwithNP
-- [ ] Obsidian.md warning, danger, and check custom formatting
+- [x] Obsidian.md warning, danger, and check custom formatting
 - [ ] Mobile UI support
 - [ ] Add chat importing (from T3.chat & Google AI Studio)
 - [ ] Add chat exporting (T3.chat format, custom format as default)

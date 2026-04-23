@@ -71,26 +71,27 @@ static int calculateOptimalJobs() {
     
     // Estimate ~1.5GB per parallel compilation job (conservative)
     // Leave 2GB for system + other needs
-    uint64_t usableMemMB = (memMB > 2048) ? (memMB - 2048) : 0;
-    int memBasedJobs = static_cast<int>(usableMemMB / 1500);
+    uint64_t usableMemMB = 0;
+    int memBasedJobs = 2;
+    if (memMB > 2048) {
+        usableMemMB = memMB - 2048;
+        memBasedJobs = static_cast<int>(usableMemMB / 1500);
+    }
     
     // CPU-based: leave 1 core for system, use the rest
-    int cpuBasedJobs = cores - 1;
+    int cpuBasedJobs = std::max(cores - 1, 2);
     
-    // Use the minimum but cap at a reasonable maximum
-    // For high-end machines (16+ cores, 32GB+ RAM), allow more parallelism
+    // Use the minimum, then clamp to a memory-derived cap.
     int optimal = std::min(memBasedJobs, cpuBasedJobs);
     
-    // Ensure minimum of 2 jobs for parallel builds
-    if (optimal < 2) optimal = 2;
-    
-    // Cap based on memory: more memory = higher cap
-    // 8GB RAM: cap at 4
-    // 16GB RAM: cap at 8  
-    // 32GB+ RAM: cap at 12
-    int memCap = static_cast<int>(std::min(usableMemMB, static_cast<uint64_t>(32768)) / 2048);
+    // Cap based on available memory, but never drop below 2.
+    int memCap = static_cast<int>(std::min(memMB, static_cast<uint64_t>(32768)) / 2048);
+    if (memCap < 2) memCap = 2;
     if (optimal > memCap) optimal = memCap;
     
+    // Ensure minimum of 2 jobs for parallel builds.
+    if (optimal < 2) optimal = 2;
+
     // Absolute cap at 16 jobs (too many parallel compiles can hurt I/O)
     if (optimal > 16) optimal = 16;
     

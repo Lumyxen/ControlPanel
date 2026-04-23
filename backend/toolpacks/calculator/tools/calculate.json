@@ -1,0 +1,88 @@
+{
+    "id": "calculate",
+    "title": "Calculate",
+    "description": "Evaluate direct scientific calculator operations such as arithmetic, powers, roots, logs, trig, rounding, aggregates, and constants.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "op": {
+                "type": "string",
+                "enum": [
+                    "add",
+                    "subtract",
+                    "multiply",
+                    "divide",
+                    "mod",
+                    "power",
+                    "root",
+                    "sqrt",
+                    "abs",
+                    "negate",
+                    "exp",
+                    "ln",
+                    "log10",
+                    "log2",
+                    "sin",
+                    "cos",
+                    "tan",
+                    "asin",
+                    "acos",
+                    "atan",
+                    "atan2",
+                    "floor",
+                    "ceil",
+                    "trunc",
+                    "round",
+                    "min",
+                    "max",
+                    "sum",
+                    "avg",
+                    "pi",
+                    "tau",
+                    "e"
+                ]
+            },
+            "args": {
+                "type": "array",
+                "items": {
+                    "type": "number"
+                },
+                "minItems": 0
+            },
+            "options": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "angle_unit": {
+                        "type": "string",
+                        "enum": ["radian", "degree"]
+                    },
+                    "decimals": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 15
+                    }
+                }
+            }
+        },
+        "required": ["op"]
+    },
+    "selection": {
+        "summary": "Perform direct scientific calculations with typed numeric arguments.",
+        "tags": ["math", "calculator", "arithmetic", "scientific", "trigonometry", "logarithms"],
+        "whenToUse": "Use for one-off numeric calculations where a direct math function is enough.",
+        "whenNotToUse": "Do not use for repetitive data transforms, loops, or bulk calculations that are better handled by the batch math tool."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": false,
+        "idempotent": true
+    },
+    "native": {
+        "handler": "calculator_calculate"
+    }
+}

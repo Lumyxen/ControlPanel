@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <streambuf>
 #include <thread>
@@ -25,6 +26,7 @@
 #include "controllers/generation_task_manager.h"
 #include "controllers/lmstudio_controller.h"
 #include "embedded_frontend.h"
+#include "embedded_toolpacks.h"
 #include "server/api_routes.h"
 #include "server/http_utils.h"
 #include "services/huggingface_service.h"
@@ -254,6 +256,175 @@ RuntimePaths buildRuntimePaths() {
     paths.systemToolpacksDir = paths.execDir / "toolpacks";
     paths.userToolpacksDir = paths.dataDir / "toolpacks";
     return paths;
+}
+
+constexpr const char* kBundledToolpackIndexFile = ".ctrlpanel-bundled-toolpack-files";
+
+bool isSafeBundledToolpackPath(const fs::path& relativePath) {
+    if (relativePath.empty() || relativePath.is_absolute()) {
+        return false;
+    }
+
+    for (const auto& component : relativePath) {
+        const std::string part = component.string();
+        if (part.empty() || part == "." || part == "..") {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+std::set<std::string> readBundledToolpackIndex(const fs::path& indexPath) {
+    std::set<std::string> entries;
+    std::ifstream file(indexPath);
+    if (!file.is_open()) {
+        return entries;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
+            line.pop_back();
+        }
+        if (!line.empty()) {
+            entries.insert(line);
+        }
+    }
+
+    return entries;
+}
+
+void writeBundledToolpackIndex(const fs::path& indexPath, const std::set<std::string>& entries) {
+    std::ofstream file(indexPath, std::ios::trunc);
+    if (!file.is_open()) {
+        std::cerr << "[Toolpacks] Failed to write bundled toolpack index: " << indexPath << "\n";
+        return;
+    }
+
+    for (const auto& entry : entries) {
+        file << entry << "\n";
+    }
+}
+
+bool fileContentMatches(const fs::path& path, std::string_view expected) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    const std::string content = buffer.str();
+    return content.size() == expected.size() &&
+           content.compare(0, content.size(), expected.data(), expected.size()) == 0;
+}
+
+bool writeBundledToolpackFile(const fs::path& path, std::string_view content) {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    file.write(content.data(), static_cast<std::streamsize>(content.size()));
+    return static_cast<bool>(file);
+}
+
+void pruneEmptyToolpackDirectories(const fs::path& root, fs::path current) {
+    std::error_code ec;
+    while (!current.empty() && current != root) {
+        if (!fs::exists(current, ec) || ec) {
+            return;
+        }
+        if (!fs::is_directory(current, ec) || ec) {
+            return;
+        }
+        if (!fs::is_empty(current, ec) || ec) {
+            return;
+        }
+        fs::remove(current, ec);
+        if (ec) {
+            return;
+        }
+        current = current.parent_path();
+    }
+}
+
+void syncBundledToolpacks(const RuntimePaths& paths) {
+    std::error_code ec;
+    fs::create_directories(paths.systemToolpacksDir, ec);
+    if (ec) {
+        std::cerr << "[Toolpacks] Failed to create system toolpacks directory "
+                  << paths.systemToolpacksDir << ": " << ec.message() << "\n";
+        return;
+    }
+
+    const fs::path indexPath = paths.systemToolpacksDir / kBundledToolpackIndexFile;
+    const std::set<std::string> previousFiles = readBundledToolpackIndex(indexPath);
+    std::set<std::string> currentFiles;
+
+    for (const auto& [relativePathView, content] : embedded_toolpack_files) {
+        const fs::path relativePath = fs::path(std::string(relativePathView)).lexically_normal();
+        if (!isSafeBundledToolpackPath(relativePath)) {
+            std::cerr << "[Toolpacks] Skipping unsafe bundled toolpack path: " << relativePathView << "\n";
+            continue;
+        }
+
+        const std::string relativeKey = relativePath.generic_string();
+        currentFiles.insert(relativeKey);
+
+        const fs::path targetPath = paths.systemToolpacksDir / relativePath;
+        if (fileContentMatches(targetPath, content)) {
+            continue;
+        }
+
+        std::error_code dirEc;
+        fs::create_directories(targetPath.parent_path(), dirEc);
+        if (dirEc) {
+            std::cerr << "[Toolpacks] Failed to create directory for " << targetPath
+                      << ": " << dirEc.message() << "\n";
+            continue;
+        }
+
+        dirEc.clear();
+        if (fs::is_directory(targetPath, dirEc) && !dirEc) {
+            std::cerr << "[Toolpacks] Expected file but found directory at " << targetPath << "\n";
+            continue;
+        }
+
+        if (!writeBundledToolpackFile(targetPath, content)) {
+            std::cerr << "[Toolpacks] Failed to write bundled toolpack file " << targetPath << "\n";
+        }
+    }
+
+    for (const auto& relativeKey : previousFiles) {
+        if (currentFiles.find(relativeKey) != currentFiles.end()) {
+            continue;
+        }
+
+        const fs::path relativePath = fs::path(relativeKey).lexically_normal();
+        if (!isSafeBundledToolpackPath(relativePath)) {
+            continue;
+        }
+
+        const fs::path targetPath = paths.systemToolpacksDir / relativePath;
+        std::error_code removeEc;
+        if (!fs::is_regular_file(targetPath, removeEc) || removeEc) {
+            continue;
+        }
+
+        removeEc.clear();
+        fs::remove(targetPath, removeEc);
+        if (removeEc) {
+            std::cerr << "[Toolpacks] Failed to remove stale bundled toolpack file " << targetPath
+                      << ": " << removeEc.message() << "\n";
+            continue;
+        }
+
+        pruneEmptyToolpackDirectories(paths.systemToolpacksDir, targetPath.parent_path());
+    }
+
+    writeBundledToolpackIndex(indexPath, currentFiles);
 }
 
 void ensureRuntimeDirectories(const RuntimePaths& paths) {
@@ -782,6 +953,7 @@ int ServerApp::run() {
 
     const RuntimePaths paths = buildRuntimePaths();
     ensureRuntimeDirectories(paths);
+    syncBundledToolpacks(paths);
     ensureDefaultMcpConfig(paths);
     ensureDefaultToolingConfig(paths);
     initializeLogging(paths);

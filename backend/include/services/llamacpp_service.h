@@ -190,6 +190,7 @@ private:
         const Json::Value& requestBody,
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
-        std::vector<std::tuple<std::string, std::string, std::string>>& toolCallsOut
+        std::vector<std::tuple<std::string, std::string, std::string>>& toolCallsOut,
+        std::string* apiErrorOut = nullptr
     ) const;
 };

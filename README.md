@@ -67,6 +67,9 @@ The app creates runtime state next to the binary on first start:
 - `data/chats/`, `data/models/`, `data/libs/`, `data/logs/`, and `data/build-cache/`
 - `toolpacks/` for system packs and `data/toolpacks/` for user packs
 
+Fresh installs bundle a system `calculator` pack in `toolpacks/`, alongside the synthetic internal control-plane pack used for deferred tool discovery and schema loading.
+Bundled source packs live under `backend/toolpacks/`, are embedded into the backend binary at build time, and are synced into runtime `toolpacks/` on startup.
+
 The backend watches `settings.json`, `mcp.json`, `tooling.json`, and tool-pack manifests for changes. The Settings page also polls for external `settings.json` edits so updates show up without restarting the server.
 
 Representative `data/settings.json` keys:
@@ -126,11 +129,11 @@ Unless noted otherwise, all `/api/*` routes and `/mcp` require an authenticated 
 - `POST /api/tasks/:id/cancel` - Cancel a pending or running task
 
 **Chats**
-- `GET /api/chats` - Get all saved chat threads
-- `PUT /api/chats` - Save/replace the chat thread collection
-- `GET /api/chats/:id` - Get a single saved chat thread
-- `PUT /api/chats/:id` - Save/update a single chat thread
-- `DELETE /api/chats/:id` - Delete a saved chat thread
+- `GET /api/chats` - Get the chat index (`chats` summaries plus `currentChatId` and `pins`) without full thread payloads
+- `PUT /api/chats` - Save/merge the chat index metadata and chat summaries
+- `GET /api/chats/:id` - Get one full saved chat thread
+- `PUT /api/chats/:id` - Save/merge one full chat thread
+- `DELETE /api/chats/:id` - Delete one saved chat thread
 
 **Models**
 - `GET /api/models` - List available models (LM Studio & local llama.cpp)

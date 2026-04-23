@@ -9,15 +9,6 @@ import { getNodeTextContent } from './message-parts.js';
 import { getResolvedReasoningParts } from './reasoning-parts.js';
 import { renderMessageTextInto } from '../../render/message.js';
 
-// ─── HTML escaping ────────────────────────────────────────────────────────────
-
-function escapeHtml(text) {
-	if (!text) return '';
-	const div = document.createElement('div');
-	div.textContent = text;
-	return div.innerHTML;
-}
-
 // ─── Action button icons ──────────────────────────────────────────────────────
 
 const stroke = 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
@@ -162,7 +153,7 @@ export function buildToolCallElement(tc) {
 function buildReasoningTextPart(text) {
 	const content = document.createElement('div');
 	content.className = 'reasoning-text';
-	content.textContent = text;
+	renderMessageTextInto(content, text);
 	return content;
 }
 

@@ -19,6 +19,7 @@ struct StreamContext {
     };
     std::vector<ToolCallAccum> toolCalls;
     std::string finishReason;
+    std::string apiErrorMessage;
 };
 
 class LmStudioService {
@@ -91,7 +92,8 @@ private:
         const Json::Value& requestBody,
         std::function<bool(const std::string&)> onChunk,
         std::function<void(const std::string&)> onError,
-        std::vector<StreamContext::ToolCallAccum>& toolCallsOut
+        std::vector<StreamContext::ToolCallAccum>& toolCallsOut,
+        std::string* apiErrorOut = nullptr
     ) const;
 };
 

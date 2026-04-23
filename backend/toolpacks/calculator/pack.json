@@ -1,0 +1,8 @@
+{
+    "id": "calculator",
+    "title": "Calculator",
+    "version": "1",
+    "description": "Scientific calculator tools with a sandboxed batch-math fallback for repetitive or data-heavy jobs.",
+    "sourceType": "system",
+    "defaultEnabled": true
+}
