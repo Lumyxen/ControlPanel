@@ -87,40 +87,49 @@ std::string flattenMessageContentForTemplate(const Json::Value& message) {
         return "";
     }
 
+    auto appendLine = [](std::string& target, const std::string& value) {
+        if (value.empty()) {
+            return;
+        }
+        if (!target.empty()) {
+            target += '\n';
+        }
+        target += value;
+    };
+
     const Json::Value& content = message["content"];
-    if (content.isString()) {
-        return content.asString();
-    }
-    if (content.isNull()) {
-        return "";
-    }
-    if (!content.isArray()) {
-        return "";
-    }
-
     std::string flattened;
-    for (const auto& part : content) {
-        if (!part.isObject()) {
-            continue;
-        }
-
-        const std::string type = part.get("type", "").asString();
-        std::string piece;
-        if (type == "text") {
-            piece = part.get("text", "").asString();
-        } else if (type == "media_marker" || type == "image_url" || type == "input_audio") {
-            piece = part.get("text", kMtmdDefaultMarker).asString();
-            if (piece.empty()) {
-                piece = kMtmdDefaultMarker;
+    if (content.isString()) {
+        flattened = content.asString();
+    } else if (content.isArray()) {
+        for (const auto& part : content) {
+            if (!part.isObject()) {
+                continue;
             }
-        } else {
-            continue;
-        }
 
-        if (!flattened.empty()) {
-            flattened += '\n';
+            const std::string type = part.get("type", "").asString();
+            std::string piece;
+            if (type == "text") {
+                piece = part.get("text", "").asString();
+            } else if (type == "media_marker" || type == "image_url" || type == "input_audio") {
+                piece = part.get("text", kMtmdDefaultMarker).asString();
+                if (piece.empty()) {
+                    piece = kMtmdDefaultMarker;
+                }
+            } else {
+                continue;
+            }
+
+            appendLine(flattened, piece);
         }
-        flattened += piece;
+    }
+
+    if (message.isMember("tool_calls") && message["tool_calls"].isArray() && !message["tool_calls"].empty()) {
+        appendLine(flattened, "[Tool Calls]");
+        appendLine(flattened, writeJson(message["tool_calls"]));
+    }
+    if (message.isMember("tool_call_id") && message["tool_call_id"].isString()) {
+        appendLine(flattened, "[Tool Call ID] " + message["tool_call_id"].asString());
     }
 
     return flattened;
@@ -857,6 +866,7 @@ Json::Value buildMalformedToolCallEvent(
     }
     toolCall["error"] = output.get("error", "Failed to parse tool call arguments as JSON");
     toolCall["output"] = output;
+    toolCall["modelOutput"] = writeJson(output);
     return toolCall;
 }
 

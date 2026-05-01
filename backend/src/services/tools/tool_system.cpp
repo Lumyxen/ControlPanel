@@ -2,6 +2,7 @@
 
 #include "services/tools/calculator_tool.h"
 #include "services/tools/tool_argument_validator.h"
+#include "services/tools/web_search_tool.h"
 
 #include <algorithm>
 #include <array>
@@ -781,13 +782,25 @@ std::unordered_set<std::string> scopeToSet(const Json::Value& scope) {
 
 struct ToolSystem::Impl {
     explicit Impl(const RuntimePaths& inPaths, McpRegistry* registry)
-        : paths(inPaths), mcpRegistry(registry) {}
+        : paths(inPaths), mcpRegistry(registry) {
+        if (!paths.webSearchRoot.empty()) {
+            WebSearchTool::Options options;
+            options.storageRoot = paths.webSearchRoot;
+            options.databasePath = (fs::path(paths.webSearchRoot) / "index.sqlite3").string();
+            webSearch = std::make_unique<WebSearchTool>(std::move(options));
+            std::string error;
+            if (!webSearch->initialize(&error)) {
+                std::cerr << "[ToolSystem] Web search initialization failed: " << error << "\n";
+            }
+        }
+    }
 
     RuntimePaths paths;
     McpRegistry* mcpRegistry = nullptr;
     mutable std::mutex mutex;
     ToolSystemConfig toolingConfig;
     SandboxRuntime sandbox;
+    std::unique_ptr<WebSearchTool> webSearch;
     std::unordered_map<std::string, ToolPackRecord> packs;
     std::vector<std::string> packOrder;
     std::unordered_map<std::string, ToolDefinition> toolsByCanonicalId;
@@ -1300,6 +1313,12 @@ struct ToolSystem::Impl {
                     health["available"] = false;
                 }
             }
+            if (pack.id == "websearch" && webSearch) {
+                health["websearch"] = webSearch->health();
+                if (!health["websearch"].get("available", true).asBool()) {
+                    health["available"] = false;
+                }
+            }
             summary["health"] = health;
             packsJson.append(summary);
         }
@@ -1352,16 +1371,23 @@ struct ToolSystem::Impl {
         return result;
     }
 
-    Json::Value executeNative(ToolSession& session, const ToolDefinition& tool, const Json::Value& args) {
+    Json::Value executeNative(
+        ToolSession& session,
+        const ToolDefinition& tool,
+        const Json::Value& args,
+        std::function<bool()> cancelCheck) {
         const std::string handler = getStringArg(tool.config["native"], "handler");
 
         if (handler == "search_tool_catalog") {
             Json::Value result(Json::objectValue);
             result["query"] = args.get("query", "");
-            result["results"] = buildCatalogResultsUnlocked(
-                args.get("query", "").asString(),
-                &session,
-                args.get("limit", 8).asInt());
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                result["results"] = buildCatalogResultsUnlocked(
+                    args.get("query", "").asString(),
+                    &session,
+                    args.get("limit", 8).asInt());
+            }
             return result;
         }
 
@@ -1376,30 +1402,33 @@ struct ToolSystem::Impl {
                 return result;
             }
 
-            for (const auto& item : toolIds) {
-                if (!item.isString()) {
-                    continue;
-                }
-                const std::string canonicalId = item.asString();
-                const auto toolIt = toolsByCanonicalId.find(canonicalId);
-                if (toolIt == toolsByCanonicalId.end() || !toolIt->second.listedInCatalog) {
-                    Json::Value rejection(Json::objectValue);
-                    rejection["tool_id"] = canonicalId;
-                    rejection["reason"] = "unknown_tool";
-                    rejected.append(rejection);
-                    continue;
-                }
-                if (!isToolInScopeUnlocked(session, toolIt->second)) {
-                    Json::Value rejection(Json::objectValue);
-                    rejection["tool_id"] = canonicalId;
-                    rejection["reason"] = "out_of_scope";
-                    rejected.append(rejection);
-                    continue;
-                }
-                if (session.loadedToolIds.insert(canonicalId).second) {
-                    loaded.append(canonicalId);
-                } else {
-                    skipped.append(canonicalId);
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                for (const auto& item : toolIds) {
+                    if (!item.isString()) {
+                        continue;
+                    }
+                    const std::string canonicalId = item.asString();
+                    const auto toolIt = toolsByCanonicalId.find(canonicalId);
+                    if (toolIt == toolsByCanonicalId.end() || !toolIt->second.listedInCatalog) {
+                        Json::Value rejection(Json::objectValue);
+                        rejection["tool_id"] = canonicalId;
+                        rejection["reason"] = "unknown_tool";
+                        rejected.append(rejection);
+                        continue;
+                    }
+                    if (!isToolInScopeUnlocked(session, toolIt->second)) {
+                        Json::Value rejection(Json::objectValue);
+                        rejection["tool_id"] = canonicalId;
+                        rejection["reason"] = "out_of_scope";
+                        rejected.append(rejection);
+                        continue;
+                    }
+                    if (session.loadedToolIds.insert(canonicalId).second) {
+                        loaded.append(canonicalId);
+                    } else {
+                        skipped.append(canonicalId);
+                    }
                 }
             }
 
@@ -1490,6 +1519,51 @@ struct ToolSystem::Impl {
                 return error;
             }
             return parsed;
+        }
+
+        if (handler == "websearch_search") {
+            if (!webSearch) {
+                Json::Value error(Json::objectValue);
+                error["error"] = "Web search is not configured";
+                return error;
+            }
+            return webSearch->search(args);
+        }
+
+        if (handler == "websearch_open_result") {
+            if (!webSearch) {
+                Json::Value error(Json::objectValue);
+                error["error"] = "Web search is not configured";
+                return error;
+            }
+            return webSearch->openResult(args);
+        }
+
+        if (handler == "websearch_fetch_url") {
+            if (!webSearch) {
+                Json::Value error(Json::objectValue);
+                error["error"] = "Web search is not configured";
+                return error;
+            }
+            return webSearch->fetchUrl(args, std::move(cancelCheck));
+        }
+
+        if (handler == "websearch_related_results") {
+            if (!webSearch) {
+                Json::Value error(Json::objectValue);
+                error["error"] = "Web search is not configured";
+                return error;
+            }
+            return webSearch->relatedResults(args);
+        }
+
+        if (handler == "websearch_status") {
+            if (!webSearch) {
+                Json::Value error(Json::objectValue);
+                error["error"] = "Web search is not configured";
+                return error;
+            }
+            return webSearch->status();
         }
 
         Json::Value error(Json::objectValue);
@@ -1641,6 +1715,12 @@ void ToolSystem::reload() {
     impl_->loadAllUnlocked();
 }
 
+void ToolSystem::shutdown() {
+    if (impl_ && impl_->webSearch) {
+        impl_->webSearch->shutdown();
+    }
+}
+
 void ToolSystem::beginTaskSession(const SessionOptions& options) {
     std::lock_guard<std::mutex> lock(impl_->mutex);
 
@@ -1760,6 +1840,7 @@ ToolSystem::ExecutionResult ToolSystem::executeToolCall(
         toolCall["status"] = "failed";
         toolCall["error"] = *validationError;
         toolCall["output"] = output;
+        toolCall["modelOutput"] = *validationError;
         if (emitEvent) {
             emitEvent(impl_->makeToolEvent("failed", toolCall));
         }
@@ -1821,15 +1902,17 @@ ToolSystem::ExecutionResult ToolSystem::executeToolCall(
             toolCall["error"] = approval->status == ApprovalStatus::Denied
                 ? "Tool execution denied by user"
                 : "Tool execution cancelled";
+
+            ExecutionResult denied;
+            denied.success = false;
+            denied.modelOutput = jsonToString(Json::Value(toolCall["error"].asString()));
+            toolCall["modelOutput"] = denied.modelOutput;
             if (emitEvent) {
                 emitEvent(impl_->makeToolEvent(
                     approval->status == ApprovalStatus::Denied ? "denied" : "cancelled",
                     toolCall));
             }
 
-            ExecutionResult denied;
-            denied.success = false;
-            denied.modelOutput = jsonToString(Json::Value(toolCall["error"].asString()));
             denied.toolCall = toolCall;
             return denied;
         }
@@ -1847,8 +1930,7 @@ ToolSystem::ExecutionResult ToolSystem::executeToolCall(
 
     Json::Value rawResult;
     if (tool.executor == "native") {
-        std::lock_guard<std::mutex> lock(impl_->mutex);
-        rawResult = impl_->executeNative(*sessionPtr, tool, arguments);
+        rawResult = impl_->executeNative(*sessionPtr, tool, arguments, cancelCheck);
     } else if (tool.executor == "http") {
         rawResult = impl_->executeHttp(tool, arguments);
     } else if (tool.executor == "sandbox") {
@@ -1866,28 +1948,32 @@ ToolSystem::ExecutionResult ToolSystem::executeToolCall(
             toolCall["error"] = rawResult["error"];
         }
         toolCall["output"] = rawResult;
-        if (emitEvent) {
-            emitEvent(impl_->makeToolEvent("failed", toolCall));
-        }
 
         ExecutionResult failure;
         failure.success = false;
         failure.modelOutput = rawResult.isMember("error")
             ? rawResult["error"].asString()
             : jsonToString(rawResult);
+        toolCall["modelOutput"] = failure.modelOutput;
+        if (emitEvent) {
+            emitEvent(impl_->makeToolEvent("failed", toolCall));
+        }
+
         failure.toolCall = toolCall;
         return failure;
     }
 
     toolCall["status"] = "completed";
     toolCall["output"] = rawResult;
-    if (emitEvent) {
-        emitEvent(impl_->makeToolEvent("completed", toolCall));
-    }
 
     ExecutionResult success;
     success.success = true;
     success.modelOutput = impl_->modelOutputFromResult(rawResult);
+    toolCall["modelOutput"] = success.modelOutput;
+    if (emitEvent) {
+        emitEvent(impl_->makeToolEvent("completed", toolCall));
+    }
+
     success.toolCall = toolCall;
     return success;
 }

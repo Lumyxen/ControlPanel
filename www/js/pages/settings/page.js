@@ -19,6 +19,7 @@ const BACKEND_LABELS = { auto: 'Auto', cpu: 'CPU', cuda: 'CUDA', rocm: 'ROCm', v
 const BUILD_LOG_LINES = 120;
 const BUILD_LOG_ANSI_REGEX = /[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g;
 const APP_BACKEND_RESTART_TIMEOUT_MS = 60000;
+const APP_BACKEND_SHUTDOWN_TIMEOUT_MS = 15000;
 
 const wait = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs));
 
@@ -115,6 +116,17 @@ function renderAppBackendStatus(root, data) {
 	if (stopBtn) stopBtn.disabled = lifecycleLocked;
 }
 
+function renderAppBackendStopped(root) {
+	const statusEl = root.querySelector('#app-backend-status');
+	const restartBtn = root.querySelector('#restart-app-backend');
+	const stopBtn = root.querySelector('#stop-app-backend');
+	if (statusEl) {
+		statusEl.textContent = 'Backend stopped · Launch the app again to use it';
+	}
+	if (restartBtn) restartBtn.disabled = true;
+	if (stopBtn) stopBtn.disabled = true;
+}
+
 async function loadAppBackendStatus(root) {
 	try {
 		const response = await fetch('/api/app/backend/status');
@@ -156,6 +168,22 @@ async function waitForBackendRestartCycle() {
 			return true;
 		}
 		await wait(1000);
+	}
+
+	return false;
+}
+
+async function waitForBackendShutdownCycle() {
+	const deadline = Date.now() + APP_BACKEND_SHUTDOWN_TIMEOUT_MS;
+
+	await wait(300);
+
+	while (Date.now() < deadline) {
+		const healthy = await probeBackendHealth();
+		if (!healthy) {
+			return true;
+		}
+		await wait(500);
 	}
 
 	return false;
@@ -634,13 +662,31 @@ function initSettingsPage(root) {
 					appBackendActionStatus.textContent = 'Restart requested. Waiting for the backend to come back…';
 					appBackendActionStatus.style.color = '';
 				}
+				setAppBackendBusy(false);
 				return;
 			}
 
 			if (appBackendActionStatus) {
-				appBackendActionStatus.textContent = 'Backend stopping…';
+				appBackendActionStatus.textContent = 'Stop scheduled. Waiting for backend shutdown…';
 				appBackendActionStatus.style.color = '';
 			}
+
+			const stopped = await waitForBackendShutdownCycle();
+			if (stopped) {
+				renderAppBackendStopped(root);
+				if (appBackendActionStatus) {
+					appBackendActionStatus.textContent = 'Backend stopped. Launch the app again to use it.';
+					appBackendActionStatus.style.color = 'var(--green,green)';
+				}
+				window.clearInterval(appBackendStatusPollId);
+				return;
+			}
+
+			if (appBackendActionStatus) {
+				appBackendActionStatus.textContent = 'Stop requested, but the backend is still responding.';
+				appBackendActionStatus.style.color = 'var(--red,red)';
+			}
+			setAppBackendBusy(false);
 		} catch (err) {
 			if (appBackendActionStatus) {
 				appBackendActionStatus.textContent = 'Error: ' + err.message;

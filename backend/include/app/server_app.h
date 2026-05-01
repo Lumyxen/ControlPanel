@@ -13,6 +13,7 @@ struct AppLifecycleStatus {
 };
 
 AppLifecycleStatus getAppLifecycleStatus();
+bool isAppShutdownRequested();
 void scheduleAppShutdown(int delayMs = 250);
 bool scheduleAppRestart(int shutdownDelayMs = 250, int startupDelayMs = 1500);
 

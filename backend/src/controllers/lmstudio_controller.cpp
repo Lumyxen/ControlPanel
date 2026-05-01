@@ -1,5 +1,7 @@
 #include "controllers/lmstudio_controller.h"
 
+#include "app/server_app.h"
+
 #include <chrono>
 #include <deque>
 #include <future>
@@ -60,6 +62,7 @@ public:
 
     void stop() {
         stop_.store(true);
+        cancelAll();
         if (cleanupThread_.joinable()) {
             cleanupThread_.join();
         }
@@ -97,6 +100,35 @@ public:
         session->done = true;
     }
 
+    void cancelAll() {
+        std::vector<std::shared_ptr<StreamSession>> sessions;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            sessions.reserve(sessions_.size());
+            for (const auto& [streamId, session] : sessions_) {
+                (void)streamId;
+                sessions.push_back(session);
+            }
+        }
+
+        for (const auto& session : sessions) {
+            if (!session) {
+                continue;
+            }
+            session->cancelled.store(true);
+            std::lock_guard<std::mutex> sessionLock(session->mutex);
+            session->done = true;
+            session->closed = true;
+        }
+    }
+
+    static bool isWorkerReady(const std::shared_ptr<StreamSession>& session) {
+        if (!session || !session->workerFuture || !session->workerFuture->valid()) {
+            return true;
+        }
+        return session->workerFuture->wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+    }
+
 private:
     void cleanupLoop() {
         while (!stop_.load()) {
@@ -109,7 +141,9 @@ private:
             for (auto it = sessions_.begin(); it != sessions_.end();) {
                 std::lock_guard<std::mutex> sessionLock(it->second->mutex);
                 const auto age = std::chrono::duration_cast<std::chrono::seconds>(now - it->second->lastWrite).count();
-                const bool removable = (it->second->done || it->second->cancelled.load()) && age > 3600;
+                const bool removable = (it->second->done || it->second->cancelled.load()) &&
+                    age > 3600 &&
+                    isWorkerReady(it->second);
                 if (removable) {
                     it = sessions_.erase(it);
                 } else {
@@ -180,6 +214,10 @@ void startStreamCleanupLoop() {
 
 void stopStreamCleanupLoop() {
     StreamRegistry::instance().stop();
+}
+
+void cancelAllStreams() {
+    StreamRegistry::instance().cancelAll();
 }
 
 void handleStopStream(const httplib::Request& req, httplib::Response& res) {
@@ -449,6 +487,11 @@ void handleStreaming(
     res.set_content_provider(
         "text/event-stream",
         [session](std::size_t, httplib::DataSink& sink) -> bool {
+            if (isAppShutdownRequested()) {
+                session->cancelled.store(true);
+                sink.done();
+                return false;
+            }
             if (session->cancelled.load()) {
                 return false;
             }
@@ -518,7 +561,9 @@ void handleStreaming(
                 session->workerFuture->wait_for(std::chrono::seconds(5));
             }
 
-            StreamRegistry::instance().erase(streamId);
+            if (StreamRegistry::isWorkerReady(session)) {
+                StreamRegistry::instance().erase(streamId);
+            }
         });
 
     unregisterOnExit.dismiss();

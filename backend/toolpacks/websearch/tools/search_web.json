@@ -1,0 +1,62 @@
+{
+    "id": "search_web",
+    "title": "Search Web",
+    "description": "Search the indexed web corpus using BM25-style lexical ranking, with live web fallback and index bootstrapping when local results are unavailable.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "query": {
+                "type": "string"
+            },
+            "top_k": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+            },
+            "site_allow": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                },
+                "maxItems": 16
+            },
+            "site_block": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                },
+                "maxItems": 16
+            },
+            "freshness_days": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3650
+            },
+            "language": {
+                "type": "string"
+            },
+            "safe_mode": {
+                "type": "boolean"
+            }
+        },
+        "required": ["query"]
+    },
+    "selection": {
+        "summary": "Search indexed pages first, then fall back to live web results and bootstrap the local index when needed.",
+        "tags": ["web", "search", "retrieval", "internet", "fts", "bm25"],
+        "whenToUse": "Use when the task needs web information and you want ranked results with snippets plus follow-up opening via indexed documents when possible.",
+        "whenNotToUse": "Do not use when the user already supplied the target URL and you should fetch or open that page directly."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": true,
+        "idempotent": true
+    },
+    "native": {
+        "handler": "websearch_search"
+    }
+}

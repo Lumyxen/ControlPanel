@@ -1,0 +1,46 @@
+{
+    "id": "fetch_url",
+    "title": "Fetch URL",
+    "description": "Fetch a live URL, respect robots and sitemap discovery, canonicalise it, deduplicate the content, and add or refresh it in the local search index.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "url": {
+                "type": "string"
+            },
+            "force_refresh": {
+                "type": "boolean"
+            },
+            "queue_discovered": {
+                "type": "boolean"
+            },
+            "max_queue_links": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+            },
+            "allow_cross_host": {
+                "type": "boolean"
+            }
+        },
+        "required": ["url"]
+    },
+    "selection": {
+        "summary": "Fetch and index a specific URL, optionally enqueueing discovered links.",
+        "tags": ["web", "fetch", "crawl", "index", "robots", "sitemap"],
+        "whenToUse": "Use when you already know the target URL or when search results are stale or missing and a live fetch is needed.",
+        "whenNotToUse": "Do not use for broad discovery when a ranked search query can narrow the candidate set first."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": true,
+        "idempotent": false
+    },
+    "native": {
+        "handler": "websearch_fetch_url"
+    }
+}

@@ -8,7 +8,7 @@ import { getNodeTextContent } from './message-parts.js';
 // ─── buildNodeTextForHistory ──────────────────────────────────────────────────
 // Converts a single graph node into a flat string for the legacy prompt history.
 
-export function buildNodeTextForHistory(node) {
+function buildNodeText(node, { includeToolCalls = true } = {}) {
 	if (!node) return '';
 	let nodeContent = '';
 
@@ -45,8 +45,7 @@ export function buildNodeTextForHistory(node) {
 
 	if (node.reasoning) nodeContent = `<think>\n${node.reasoning}\n</think>\n\n` + nodeContent;
 
-	// Fix: was `Array.isArray(node.toolCalls && node.toolCalls.length > 0)` which always returned false
-	if (node.toolCalls && Array.isArray(node.toolCalls) && node.toolCalls.length > 0) {
+	if (includeToolCalls && node.toolCalls && Array.isArray(node.toolCalls) && node.toolCalls.length > 0) {
 		let toolsText = '';
 		for (const tc of node.toolCalls) {
 			const inputValue = tc.input ?? tc.arguments ?? '';
@@ -60,8 +59,28 @@ export function buildNodeTextForHistory(node) {
 	return nodeContent;
 }
 
+export function buildNodeTextForHistory(node) {
+	return buildNodeText(node, { includeToolCalls: true });
+}
+
 function buildAssistantHistoryText(node, settings = null) {
 	let textContent = buildNodeTextForHistory(node);
+	const includeLogprobs = settings && (
+		settings.logprobHistoryHigh || settings.logprobHistoryMedium || settings.logprobHistoryLow
+	);
+
+	if (includeLogprobs && node?.tokenLogprobs && node.tokenLogprobs.length > 0) {
+		const logprobNote = buildLogprobAnnotation(node.tokenLogprobs, settings);
+		if (logprobNote) {
+			textContent += '\n\n' + logprobNote;
+		}
+	}
+
+	return textContent;
+}
+
+function buildAssistantApiText(node, settings = null) {
+	let textContent = buildNodeText(node, { includeToolCalls: false });
 	const includeLogprobs = settings && (
 		settings.logprobHistoryHigh || settings.logprobHistoryMedium || settings.logprobHistoryLow
 	);
@@ -98,20 +117,109 @@ export function buildConversationHistory(graph, nodeIds, settings = null) {
 	return history.trim();
 }
 
-function buildApiMessageFromNode(node, settings = null) {
-	if (!node || (node.role !== 'user' && node.role !== 'assistant')) return null;
+function stringifyToolArguments(toolCall) {
+	const value = toolCall?.input ?? toolCall?.arguments ?? {};
+	if (typeof value === 'string') {
+		return value;
+	}
+	try {
+		return JSON.stringify(value ?? {});
+	} catch {
+		return '{}';
+	}
+}
+
+function deriveToolMessageContent(toolCall) {
+	if (toolCall?.modelOutput != null) {
+		return String(toolCall.modelOutput);
+	}
+
+	const output = toolCall?.output;
+	if (typeof output === 'string') {
+		return output;
+	}
+	if (output && typeof output === 'object' && !Array.isArray(output)) {
+		if (typeof output.output === 'string') {
+			return output.output;
+		}
+		if (output.output != null) {
+			return JSON.stringify(output.output);
+		}
+		if (typeof output.stdout === 'string' && output.stdout) {
+			return output.stdout;
+		}
+	}
+	if (Array.isArray(output)) {
+		let text = '';
+		for (const item of output) {
+			if (item && typeof item === 'object' && item.type === 'text') {
+				text += item.text || '';
+			}
+		}
+		if (text) {
+			return text;
+		}
+	}
+	if (output == null) {
+		return '';
+	}
+	try {
+		return JSON.stringify(output);
+	} catch {
+		return String(output);
+	}
+}
+
+function buildAssistantToolTranscript(node) {
+	if (!Array.isArray(node?.toolCalls) || node.toolCalls.length === 0) {
+		return [];
+	}
+
+	const toolCalls = [];
+	const toolResults = [];
+
+	for (const toolCall of node.toolCalls) {
+		if (!toolCall || typeof toolCall !== 'object') continue;
+		const id = String(toolCall.id || '');
+		const name = String(toolCall.name || '');
+		if (!id || !name) continue;
+
+		toolCalls.push({
+			id,
+			type: 'function',
+			function: {
+				name,
+				arguments: stringifyToolArguments(toolCall),
+			},
+		});
+		toolResults.push({
+			role: 'tool',
+			tool_call_id: id,
+			content: deriveToolMessageContent(toolCall),
+		});
+	}
+
+	if (toolCalls.length === 0) {
+		return [];
+	}
+
+	return [
+		{ role: 'assistant', content: null, tool_calls: toolCalls },
+		...toolResults,
+	];
+}
+
+function buildApiMessagesFromNode(node, settings = null) {
+	if (!node || (node.role !== 'user' && node.role !== 'assistant')) return [];
 	const role = node.role === 'user' ? 'user' : 'assistant';
 
-	const includeLogprobs = settings && (
-		settings.logprobHistoryHigh || settings.logprobHistoryMedium || settings.logprobHistoryLow
-	);
-
 	if (role === 'assistant') {
-		const textContent = includeLogprobs
-			? buildAssistantHistoryText(node, settings)
-			: buildNodeTextForHistory(node);
-
-		return textContent ? { role, content: textContent } : null;
+		const apiMessages = buildAssistantToolTranscript(node);
+		const textContent = buildAssistantApiText(node, settings);
+		if (textContent) {
+			apiMessages.push({ role, content: textContent });
+		}
+		return apiMessages;
 	}
 
 	if (node.parts && Array.isArray(node.parts)) {
@@ -145,26 +253,28 @@ function buildApiMessageFromNode(node, settings = null) {
 		const combinedText = textParts.join('');
 		if (hasImages) {
 			if (combinedText) contentBlocks.push({ type: 'text', text: combinedText });
-			return { role, content: contentBlocks };
+			return [{ role, content: contentBlocks }];
 		}
 		if (combinedText) {
-			return { role, content: combinedText };
+			return [{ role, content: combinedText }];
 		}
-		return null;
+		return [];
 	}
 
 	if (node.content) {
-		return { role, content: node.content };
+		return [{ role, content: node.content }];
 	}
 
-	return null;
+	return [];
 }
 
 export function buildApiMessagesFromNodes(nodes, settings = null) {
 	const apiMessages = [];
 	for (const node of nodes || []) {
-		const message = buildApiMessageFromNode(node, settings);
-		if (message) apiMessages.push(message);
+		const messages = buildApiMessagesFromNode(node, settings);
+		if (Array.isArray(messages) && messages.length > 0) {
+			apiMessages.push(...messages);
+		}
 	}
 	return apiMessages;
 }

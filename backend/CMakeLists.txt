@@ -48,6 +48,24 @@ if(CMAKE_CROSSCOMPILING)
     )
     FetchContent_MakeAvailable(curl)
 
+    find_path(SQLITE3_INCLUDE_DIR
+        NAMES sqlite3.h
+        PATHS
+            /usr/aarch64-linux-gnu/include
+            /usr/include
+    )
+    find_library(SQLITE3_LIBRARY
+        NAMES sqlite3 libsqlite3
+        PATHS
+            /usr/aarch64-linux-gnu/lib
+            /usr/lib/aarch64-linux-gnu
+        NO_DEFAULT_PATH
+    )
+    if(NOT SQLITE3_INCLUDE_DIR OR NOT SQLITE3_LIBRARY)
+        message(FATAL_ERROR
+            "SQLite3 for aarch64 was not found. Install the target sqlite3 development packages, then retry.")
+    endif()
+
     # OpenSSL for CryptoService (target architecture)
     # Prefer target-arch library paths; headers can come from either target
     # sysroot include or generic /usr/include (headers are arch-independent).
@@ -81,6 +99,7 @@ else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(JSONCPP REQUIRED jsoncpp)
     pkg_check_modules(LIBCURL REQUIRED libcurl)
+    pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 endif()
 
 # =============================================================================
@@ -147,6 +166,7 @@ set(SOURCES
     src/services/mcp_stdio_client.cpp
     src/services/mcp_registry.cpp
     src/services/tools/calculator_tool.cpp
+    src/services/tools/web_search_tool.cpp
     src/services/tools/tool_argument_validator.cpp
     src/services/tools/tool_system.cpp
     src/services/crypto_service.cpp
@@ -171,10 +191,12 @@ if(CMAKE_CROSSCOMPILING)
     target_include_directories(ctrlpanel_arm PRIVATE
         "${jsoncpp_SOURCE_DIR}/include"
         "${curl_SOURCE_DIR}/include"
+        "${SQLITE3_INCLUDE_DIR}"
         "${OPENSSL_INCLUDE_DIR}")
     target_link_libraries(ctrlpanel_arm
         jsoncpp_static
         libcurl
+        "${SQLITE3_LIBRARY}"
         pthread
         dl
         "${OPENSSL_SSL_LIBRARY}"
@@ -184,15 +206,16 @@ if(CMAKE_CROSSCOMPILING)
 else()
     include_directories(${JSONCPP_INCLUDE_DIRS})
     include_directories(${LIBCURL_INCLUDE_DIRS})
+    include_directories(${SQLITE3_INCLUDE_DIRS})
 
     # Linux
     add_executable(ctrlpanel ${SOURCES})
-    target_link_libraries(ctrlpanel ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread dl ssl crypto)
+    target_link_libraries(ctrlpanel ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} ${SQLITE3_LIBRARIES} pthread dl ssl crypto)
 
     # Windows (dl stub is a no-op on Windows; service gracefully reports unavailable)
     add_executable(ctrlpanel_exe ${SOURCES})
     set_target_properties(ctrlpanel_exe PROPERTIES OUTPUT_NAME "ctrlpanel" SUFFIX ".exe")
-    target_link_libraries(ctrlpanel_exe ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} pthread dl)
+    target_link_libraries(ctrlpanel_exe ${JSONCPP_LIBRARIES} ${LIBCURL_LIBRARIES} ${SQLITE3_LIBRARIES} pthread dl)
     # Try to link OpenSSL on Windows if available
     find_package(OpenSSL QUIET)
     if(OPENSSL_FOUND)
@@ -200,4 +223,23 @@ else()
     endif()
 
     install(TARGETS ctrlpanel ctrlpanel_exe DESTINATION bin)
+endif()
+
+if(NOT CMAKE_CROSSCOMPILING)
+    enable_testing()
+
+    add_executable(ctrlpanel_web_search_test
+        src/tests/web_search_tool_test.cpp
+        src/services/tools/web_search_tool.cpp
+    )
+    target_link_libraries(ctrlpanel_web_search_test
+        ${JSONCPP_LIBRARIES}
+        ${LIBCURL_LIBRARIES}
+        ${SQLITE3_LIBRARIES}
+        pthread
+        dl
+        ssl
+        crypto
+    )
+    add_test(NAME ctrlpanel_web_search_test COMMAND ctrlpanel_web_search_test)
 endif()

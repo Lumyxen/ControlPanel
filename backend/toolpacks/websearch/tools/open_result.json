@@ -1,0 +1,41 @@
+{
+    "id": "open_result",
+    "title": "Open Search Result",
+    "description": "Open a stored indexed result by document id and return cleaned text, metadata, deduplication state, and discovered links.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "doc_id": {
+                "type": "integer",
+                "minimum": 1
+            },
+            "max_chars": {
+                "type": "integer",
+                "minimum": 500,
+                "maximum": 100000
+            },
+            "include_links": {
+                "type": "boolean"
+            }
+        },
+        "required": ["doc_id"]
+    },
+    "selection": {
+        "summary": "Open one indexed document and read its cleaned contents.",
+        "tags": ["web", "open", "document", "page", "content"],
+        "whenToUse": "Use after search returns a promising `doc_id` and you need the page contents, not just the snippet.",
+        "whenNotToUse": "Do not use when you only need a ranked search list or need to fetch a URL that is not yet indexed."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": false,
+        "idempotent": true
+    },
+    "native": {
+        "handler": "websearch_open_result"
+    }
+}

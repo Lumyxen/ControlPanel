@@ -16,6 +16,7 @@ public:
         std::string userPackRoot;
         std::string toolingConfigPath;
         std::string mcpConfigPath;
+        std::string webSearchRoot;
     };
 
     struct SessionOptions {
@@ -40,6 +41,7 @@ public:
 
     void initialize();
     void reload();
+    void shutdown();
 
     void beginTaskSession(const SessionOptions& options);
     void endTaskSession(const std::string& taskId);

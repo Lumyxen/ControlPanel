@@ -92,17 +92,28 @@
     gap: 8px;
 }
 
+.reasoning-content .message-tool-call {
+    margin: 0;
+}
+
 .reasoning-text {
     font-size: 0.9rem;
     color: var(--muted);
     overflow-wrap: break-word;
 }
 
-.reasoning-content .message-tool-call {
+/* Tool call blocks */
+.message-tool-calls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.message-tool-calls .message-tool-call {
     margin: 0;
 }
 
-/* Tool call blocks */
 .message-tool-call {
     margin-bottom: 8px;
     border: 1px solid var(--border);

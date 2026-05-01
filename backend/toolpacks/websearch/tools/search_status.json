@@ -1,0 +1,26 @@
+{
+    "id": "search_status",
+    "title": "Search Status",
+    "description": "Return index size, crawl queue depth, freshness information, worker health, and storage details for the web search subsystem.",
+    "executor": "native",
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+    },
+    "selection": {
+        "summary": "Inspect the health and freshness of the web search index.",
+        "tags": ["web", "status", "health", "queue", "freshness"],
+        "whenToUse": "Use when you need to understand whether the search index is populated, fresh, or still crawling.",
+        "whenNotToUse": "Do not use when the task is to retrieve page content or run a search query."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": false,
+        "idempotent": true
+    },
+    "native": {
+        "handler": "websearch_status"
+    }
+}

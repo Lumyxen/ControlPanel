@@ -31,15 +31,13 @@
 - [x] Custom tools support via the same discovery layer
 - [x] Render tool calls inline in the transcript instead of pinning them at the top
   - [x] Allow inlining inside of reasoning
-- [ ] Keep the global system prompt synced with the available tool list and concise descriptions
 - [x] Tool picker UI that reflects discovery/namespaces instead of a flat dropdown
 
 ##### Priority Tools
 - [x] Calculator tool
   - [x] Typed math function; keep sandboxed code execution as fallback for batch math
-  - [ ] WolframAlpha API option (deferred)
-- [ ] Web search tool
-  - [ ] Search-first interface; scraper backend only if needed
+- [x] Web search tool
+  - [x] Search-first interface; scraper backend only if needed
 - [ ] Weather tool
   - [ ] Read-only, location/date-aware
 - [ ] File reading tool

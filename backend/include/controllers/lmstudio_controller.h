@@ -36,5 +36,6 @@ void handleModels(
 
 void startStreamCleanupLoop();
 void stopStreamCleanupLoop();
+void cancelAllStreams();
 
 #endif // LMSTUDIO_CONTROLLER_H

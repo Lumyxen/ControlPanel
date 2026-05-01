@@ -105,6 +105,7 @@ export function estimatePreparedMessagesTokens(messages, systemPrompt = "") {
 		total += estimateTokensForText(message.role || "");
 		total += estimateMessageContentTokens(message.content);
 		if (message.name) total += estimateTokensForText(message.name);
+		if (message.tool_call_id) total += estimateTokensForText(message.tool_call_id);
 		if (message.tool_calls) total += estimateTokensForText(JSON.stringify(message.tool_calls));
 	}
 
@@ -112,8 +113,8 @@ export function estimatePreparedMessagesTokens(messages, systemPrompt = "") {
 }
 
 /**
- * Extract full text that contributes to context (text + attachment descriptions + reasoning + tools)
- * Matches exactly what is sent to the model in chat-page.js
+ * Extract a flat transcript approximation for node-level estimates.
+ * The exact context counter uses structured API messages instead.
  */
 function getNodeFullText(node) {
 	if (!node) return "";

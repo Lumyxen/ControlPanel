@@ -27,7 +27,7 @@ It is intentionally separate from `TODO.md`:
 | Tuning and personalisation | Theme palettes, AI behavior settings, token-confidence display/history controls, title-generation settings |
 | Integration surface | REST API, task endpoints, tool-pack discovery/reload, approval endpoints, MCP client loading/bridging, built-in MCP config tools |
 
-The tool system ships with a real bundled calculator pack plus the synthetic internal control-plane pack used for deferred discovery and schema loading. Additional packs can still be added locally or bridged in from MCP servers.
+The tool system ships with real bundled calculator and web-search packs plus the synthetic internal control-plane pack used for deferred discovery and schema loading. Additional packs can still be added locally or bridged in from MCP servers.
 
 ---
 
@@ -55,6 +55,18 @@ The tool system ships with a real bundled calculator pack plus the synthetic int
 | Quick new-chat action | A compact new-chat button remains available when the sidebar is collapsed. |
 | Backend health polling | The frontend continuously checks `/health` to detect when the backend becomes unavailable. |
 | Retry / reconnect modal | If the backend drops, the UI shows a reconnect flow instead of silently failing. |
+
+### Bundled Tool Packs
+
+| Feature | What it does |
+| --- | --- |
+| Bundled calculator pack | Ships schema-first native math tools, including a typed calculator and a batch fallback worker. |
+| Bundled web-search pack | Ships a real indexed web-search subsystem instead of example/demo HTTP tools. |
+| Web search ranking and fallback | `search_web` ranks indexed pages with SQLite FTS5 and can fall back to live web results when the local index misses. |
+| Stored result opening | `open_result` returns cleaned indexed text, metadata, and discovered links by `doc_id`. |
+| Live fetch and indexing | `fetch_url` fetches live pages, obeys robots/sitemaps, canonicalises URLs, deduplicates content, and updates the local index. |
+| Related-page discovery | `related_results` returns linked and same-host neighbors for already indexed pages. |
+| Search health visibility | `search_status` reports index counts, queue depth, worker state, and storage details. |
 
 ---
 
@@ -295,7 +307,8 @@ The backend exposes API groups for:
 | Strict input-schema validation | Tool arguments are validated against each tool's declared JSON schema before execution, and invalid calls fail fast as failed tool events. |
 | Internal control-plane pack | Fresh installs include a synthetic pack for deferred tool-catalog search and schema loading. |
 | Bundled calculator pack | Fresh installs include a calculator pack with a native scientific calculator and a sandboxed batch-math fallback tool. |
-| Current shipped tool state | The repository ships the internal control-plane pack plus a bundled calculator pack out of the box; additional packs can be added locally or via MCP. |
+| Bundled web-search pack | Fresh installs include a web-search pack with SQLite FTS5 indexing, robots/sitemap-aware fetching, canonicalisation, deduplication, snippets, related-result lookup, and subsystem status reporting. |
+| Current shipped tool state | The repository ships the internal control-plane pack plus bundled calculator and web-search packs out of the box; additional packs can be added locally or via MCP. |
 
 ### MCP Support
 

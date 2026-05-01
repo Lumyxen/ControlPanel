@@ -1,0 +1,41 @@
+{
+    "id": "related_results",
+    "title": "Related Results",
+    "description": "Find related indexed documents using outgoing links, same-host neighbors, and document similarity signals.",
+    "executor": "native",
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "doc_id": {
+                "type": "integer",
+                "minimum": 1
+            },
+            "top_k": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+            },
+            "strategy": {
+                "type": "string",
+                "enum": ["mixed", "linked", "same_host"]
+            }
+        },
+        "required": ["doc_id"]
+    },
+    "selection": {
+        "summary": "Find pages related to an already indexed document.",
+        "tags": ["web", "related", "links", "similarity", "neighbors"],
+        "whenToUse": "Use after opening one result when you want nearby or related pages from the same crawl graph.",
+        "whenNotToUse": "Do not use when you still need the best initial ranked match for a new query."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": false,
+        "idempotent": true
+    },
+    "native": {
+        "handler": "websearch_related_results"
+    }
+}

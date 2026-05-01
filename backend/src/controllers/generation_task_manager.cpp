@@ -1,5 +1,7 @@
 #include "controllers/generation_task_manager.h"
 
+#include "app/server_app.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <sstream>
@@ -263,8 +265,29 @@ ParsedTaskOutput parseTaskOutput(const std::deque<std::string>& chunks) {
 
     trimWhitespace(output.content);
     trimWhitespace(output.reasoning);
-    if (reasoningFromContent) {
-        output.reasoningParts = Json::Value(Json::arrayValue);
+    bool hasReasoningTextPart = false;
+    if (output.reasoningParts.isArray()) {
+        for (const auto& part : output.reasoningParts) {
+            if (part.isObject() && part.get("type", "").asString() == "text" &&
+                !part.get("content", "").asString().empty()) {
+                hasReasoningTextPart = true;
+                break;
+            }
+        }
+    }
+    if (reasoningFromContent && !output.reasoning.empty() && !hasReasoningTextPart) {
+        Json::Value textPart(Json::objectValue);
+        textPart["type"] = "text";
+        textPart["content"] = output.reasoning;
+
+        Json::Value merged(Json::arrayValue);
+        merged.append(textPart);
+        if (output.reasoningParts.isArray()) {
+            for (const auto& part : output.reasoningParts) {
+                merged.append(part);
+            }
+        }
+        output.reasoningParts = merged;
     }
     return output;
 }
@@ -326,6 +349,7 @@ std::string taskStatusToString(TaskStatus status) {
 
 TaskManager::~TaskManager() {
     cancelAllTasks();
+    waitForAllTasks();
 }
 
 TaskManager& TaskManager::instance() {
@@ -512,6 +536,41 @@ void TaskManager::cancelAllTasks() {
             task->status == TaskStatus::WaitingApproval) {
             task->status = TaskStatus::Cancelled;
             task->updated = now;
+        }
+    }
+}
+
+void TaskManager::waitForAllTasks(int timeoutMs) {
+    std::vector<std::shared_ptr<std::future<void>>> futures;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        futures.reserve(tasks_.size());
+        for (const auto& [id, task] : tasks_) {
+            if (!task) {
+                continue;
+            }
+            std::lock_guard<std::mutex> taskLock(task->mutex);
+            if (task->workerFuture) {
+                futures.push_back(task->workerFuture);
+            }
+        }
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(std::max(timeoutMs, 0));
+    for (const auto& future : futures) {
+        if (!future) {
+            continue;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        const auto remaining = deadline > now ? deadline - now : std::chrono::milliseconds(0);
+        if (future->wait_for(remaining) != std::future_status::ready) {
+            continue;
+        }
+
+        try {
+            future->get();
+        } catch (...) {
         }
     }
 }
@@ -792,6 +851,11 @@ void handleTaskWait(const httplib::Request&, httplib::Response& res, const std::
     }
 
     for (int attempt = 0; attempt < 3000; ++attempt) {
+        if (isAppShutdownRequested()) {
+            setJsonError(res, 503, "Application shutdown in progress");
+            return;
+        }
+
         auto task = TaskManager::instance().findTask(taskId);
         if (!task) {
             setJsonError(res, 404, "Task not found");
@@ -845,6 +909,11 @@ void handleTaskStream(const httplib::Request& req, httplib::Response& res, const
     res.set_content_provider(
         "text/event-stream",
         [task, offset = resumeOffset](std::size_t, httplib::DataSink& sink) mutable -> bool {
+            if (isAppShutdownRequested()) {
+                sink.done();
+                return false;
+            }
+
             std::string payload;
             bool done = false;
 

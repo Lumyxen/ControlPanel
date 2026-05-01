@@ -567,6 +567,7 @@ void signalHandler(int) {
     (void)write(STDOUT_FILENO, message, sizeof(message) - 1);
 #endif
     gShutdownRequested.store(true, std::memory_order_relaxed);
+    gStopConfigWatcher.store(true);
 }
 
 void installSignalHandlers() {
@@ -924,6 +925,10 @@ AppLifecycleStatus getAppLifecycleStatus() {
     return status;
 }
 
+bool isAppShutdownRequested() {
+    return gShutdownRequested.load(std::memory_order_relaxed);
+}
+
 void scheduleAppShutdown(int delayMs) {
     std::thread([delayMs]() {
         sleepForMs(delayMs);
@@ -960,85 +965,84 @@ int ServerApp::run() {
     installSignalHandlers();
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
-
-    Config config(paths.settingsPath.string());
-    config.load();
-
-    LmStudioService lmstudioService;
-    lmstudioService.setLmStudioUrl(config.getLmStudioUrl());
-
-    McpService mcpService(config);
-    McpRegistry registry;
-    registry.loadFromFile(paths.mcpConfigPath.string());
-    ToolSystem toolSystem(
-        {
-            paths.systemToolpacksDir.string(),
-            paths.userToolpacksDir.string(),
-            paths.toolingConfigPath.string(),
-            paths.mcpConfigPath.string(),
-        },
-        &registry);
-    toolSystem.initialize();
-
-    LlamaCppService llamaService(paths.modelsDir.string(), paths.libsDir.string(), config);
-
-    startStreamCleanupLoop();
-    printStartupBanner(paths, config, llamaService);
-
-    setProcessEnvVar("CTRLPANEL_MODELS_DIR", paths.modelsDir.string());
-
-    std::thread serverThread(
-        runHttpServer,
-        std::ref(config),
-        std::ref(lmstudioService),
-        std::ref(mcpService),
-        std::ref(registry),
-        std::ref(toolSystem),
-        std::cref(paths),
-        std::ref(llamaService));
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    if (gServerError.load()) {
-        gStopConfigWatcher.store(true);
-        stopStreamCleanupLoop();
-        serverThread.join();
-        curl_global_cleanup();
-        return 1;
-    }
-
-    std::thread configWatcherThread(
-        runConfigWatcher,
-        std::ref(config),
-        std::ref(registry),
-        std::ref(toolSystem),
-        std::ref(lmstudioService),
-        std::ref(llamaService),
-        paths.settingsPath.string(),
-        paths.mcpConfigPath.string(),
-        paths.toolingConfigPath.string(),
-        paths.systemToolpacksDir.string(),
-        paths.userToolpacksDir.string());
-
-    std::cout << "=== Server ready — Press Ctrl+C to stop ===\n\n";
-
-    while (!gShutdownRequested.load(std::memory_order_relaxed)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-
-    gStopConfigWatcher.store(true);
-    TaskManager::instance().cancelAllTasks();
-    llamaService.unloadLib();
+    int exitCode = 0;
     {
-        std::lock_guard<std::mutex> lock(gServerMutex);
-        if (gServer) {
-            gServer->stop();
+        Config config(paths.settingsPath.string());
+        config.load();
+
+        LmStudioService lmstudioService;
+        lmstudioService.setLmStudioUrl(config.getLmStudioUrl());
+
+        McpService mcpService(config);
+        McpRegistry registry;
+        registry.loadFromFile(paths.mcpConfigPath.string());
+        auto toolSystem = std::make_unique<ToolSystem>(
+            ToolSystem::RuntimePaths{
+                paths.systemToolpacksDir.string(),
+                paths.userToolpacksDir.string(),
+                paths.toolingConfigPath.string(),
+                paths.mcpConfigPath.string(),
+                (paths.dataDir / "web-search").string(),
+            },
+            &registry);
+        toolSystem->initialize();
+
+        auto llamaService = std::make_unique<LlamaCppService>(paths.modelsDir.string(), paths.libsDir.string(), config);
+
+        startStreamCleanupLoop();
+        printStartupBanner(paths, config, *llamaService);
+
+        setProcessEnvVar("CTRLPANEL_MODELS_DIR", paths.modelsDir.string());
+
+        std::thread serverThread(
+            runHttpServer,
+            std::ref(config),
+            std::ref(lmstudioService),
+            std::ref(mcpService),
+            std::ref(registry),
+            std::ref(*toolSystem),
+            std::cref(paths),
+            std::ref(*llamaService));
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        if (gServerError.load()) {
+            gStopConfigWatcher.store(true);
+            stopStreamCleanupLoop();
+            serverThread.join();
+            exitCode = 1;
+        } else {
+            std::thread configWatcherThread(
+                runConfigWatcher,
+                std::ref(config),
+                std::ref(registry),
+                std::ref(*toolSystem),
+                std::ref(lmstudioService),
+                std::ref(*llamaService),
+                paths.settingsPath.string(),
+                paths.mcpConfigPath.string(),
+                paths.toolingConfigPath.string(),
+                paths.systemToolpacksDir.string(),
+                paths.userToolpacksDir.string());
+
+            std::cout << "=== Server ready — Press Ctrl+C to stop ===\n\n";
+
+            while (!gShutdownRequested.load(std::memory_order_relaxed)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+
+            cancelAllStreams();
+            stopHttpServer();
+            toolSystem->shutdown();
+            TaskManager::instance().cancelAllTasks();
+            TaskManager::instance().waitForAllTasks();
+            llamaService->unloadLib();
+            serverThread.join();
+            configWatcherThread.join();
+            stopStreamCleanupLoop();
         }
     }
 
-    serverThread.join();
-    configWatcherThread.join();
-    stopStreamCleanupLoop();
     curl_global_cleanup();
     std::cout << "\n=== Server stopped ===\n";
-    return 0;
+    return exitCode;
 }

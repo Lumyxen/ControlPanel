@@ -6,7 +6,7 @@ import { computeThreadNodeIds, ensureGraph, getNode } from './graph.js';
 import { formatBytes, getFileExtension, getFiletypeIcon, getFiletypeName } from './util.js';
 import { applyTokenHighlighting } from '../../render/token-highlighting.js';
 import { getNodeTextContent } from './message-parts.js';
-import { getResolvedReasoningParts } from './reasoning-parts.js';
+import { getResolvedReasoningParts, getResolvedToolCalls } from './reasoning-parts.js';
 import { renderMessageTextInto } from '../../render/message.js';
 
 // ─── Action button icons ──────────────────────────────────────────────────────
@@ -187,6 +187,26 @@ export function buildReasoningElement({
 	return details;
 }
 
+export function buildToolCallsElement({
+	reasoning = '',
+	reasoningParts = null,
+	toolCalls = null,
+} = {}) {
+	const resolvedToolCalls = getResolvedToolCalls({
+		reasoningParts,
+		toolCalls,
+		includeReferenced: false,
+	});
+	if (!resolvedToolCalls.length) return null;
+
+	const container = document.createElement('div');
+	container.className = 'message-tool-calls';
+	for (const toolCall of resolvedToolCalls) {
+		container.appendChild(buildToolCallElement(toolCall));
+	}
+	return container;
+}
+
 // ─── Content container ────────────────────────────────────────────────────────
 
 export function buildContentContainer(node, isEditing, editingDraft, settings = null) {
@@ -194,12 +214,19 @@ export function buildContentContainer(node, isEditing, editingDraft, settings = 
 	container.className = 'chat-message-content';
 
 	if (!isEditing && node.role === 'assistant') {
-		const el = buildReasoningElement({
+		const reasoningEl = buildReasoningElement({
 			reasoning: node.reasoning,
 			reasoningParts: node.reasoningParts,
 			toolCalls: node.toolCalls,
 		});
-		if (el) container.appendChild(el);
+		if (reasoningEl) container.appendChild(reasoningEl);
+
+		const toolCallsEl = buildToolCallsElement({
+			reasoning: node.reasoning,
+			reasoningParts: node.reasoningParts,
+			toolCalls: node.toolCalls,
+		});
+		if (toolCallsEl) container.appendChild(toolCallsEl);
 	}
 
 	if (isEditing) {

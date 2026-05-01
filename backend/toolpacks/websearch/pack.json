@@ -1,0 +1,8 @@
+{
+    "id": "websearch",
+    "title": "Web Search",
+    "version": "1",
+    "description": "Robots-aware web crawling and lexical search backed by SQLite FTS5, canonicalisation, deduplication, snippets, and stored page opens.",
+    "sourceType": "system",
+    "defaultEnabled": true
+}

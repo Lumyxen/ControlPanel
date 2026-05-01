@@ -56,7 +56,7 @@ import {
 import { getNodeTextContent, buildPartsWithUpdatedText } from './www/js/pages/chat/message-parts.js';
 import { buildApiMessages, buildConversationHistory, parseStreamReasoning } from './www/js/pages/chat/payloads.js';
 import { getResolvedReasoningParts } from './www/js/pages/chat/reasoning-parts.js';
-import { buildReasoningElement } from './www/js/pages/chat/thread-view.js';
+import { buildReasoningElement, buildToolCallsElement } from './www/js/pages/chat/thread-view.js';
 import { coerceTheme } from './www/js/pages/settings/theme-section.js';
 import { renderMessageTextHtml } from './www/js/render/message.js';
 import { isFormattingOnlyTextContent, mapDomTextToTokenLogprobs } from './www/js/render/token-highlighting.js';
@@ -132,6 +132,24 @@ assert.deepEqual(getResolvedReasoningParts({
 		toolCall: { id: 'tool_1', name: 'diag_tool', status: 'completed', output: { ok: true } },
 	},
 	{ type: 'text', content: '\nDone.' },
+]);
+
+apiAssistant.toolCalls[0].modelOutput = 'tool says ok';
+assert.deepEqual(buildApiMessages(apiGraph, [apiUser.id, apiAssistant.id]), [
+	{ role: 'user', content: 'hi there' },
+	{
+		role: 'assistant',
+		content: null,
+		tool_calls: [
+			{
+				id: 'tool_1',
+				type: 'function',
+				function: { name: 'diag_tool', arguments: '{}' },
+			},
+		],
+	},
+	{ role: 'tool', tool_call_id: 'tool_1', content: 'tool says ok' },
+	{ role: 'assistant', content: '<think>\nthinking\n</think>\n\ngeneral kenobi' },
 ]);
 
 const assistantSiblingCopy = createSiblingCopy(apiGraph, apiAssistant.id);
@@ -219,6 +237,24 @@ try {
 	assert.equal(reasoningEl.children[1].children[0].className, 'reasoning-text');
 	assert.match(reasoningEl.children[1].children[0].innerHTML, /<strong>bold<\/strong>/);
 	assert.match(reasoningEl.children[1].children[0].innerHTML, /<ul class="md-list md-list-unordered">/);
+
+	const splitReasoningEl = buildReasoningElement({
+		reasoning: 'Reasoning text',
+		reasoningParts: [{ type: 'text', content: 'Reasoning text' }],
+		toolCalls: [{ id: 'tool_1', name: 'fetch_url', status: 'completed', output: { ok: true } }],
+		open: true,
+	});
+	assert.equal(splitReasoningEl.children[1].children.length, 1);
+	assert.equal(splitReasoningEl.children[1].children[0].className, 'reasoning-text');
+
+	const toolCallsEl = buildToolCallsElement({
+		reasoning: 'Reasoning text',
+		reasoningParts: [{ type: 'text', content: 'Reasoning text' }],
+		toolCalls: [{ id: 'tool_1', name: 'fetch_url', status: 'completed', output: { ok: true } }],
+	});
+	assert.equal(toolCallsEl.className, 'message-tool-calls');
+	assert.equal(toolCallsEl.children.length, 1);
+	assert.equal(toolCallsEl.children[0].className, 'message-tool-call');
 } finally {
 	if (previousDocument === undefined) {
 		delete globalThis.document;
@@ -255,6 +291,37 @@ assert.equal(coerceTheme('bogus'), 'everforest-harddark-green');
 assert.equal(coerceTheme('catppuccin-invalid-red'), 'catppuccin-mocha-red');
 const rawMath = renderMessageTextHtml('Inline math stays literal: $x^2$ and $$y = mx + b$$');
 assert.equal(rawMath, '<p class="md-paragraph">Inline math stays literal: $x^2$ and $$y = mx + b$$</p>\n');
+EOF
+
+echo "[smoke] Validating bundled web-search manifests"
+node --input-type=module <<'EOF'
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+const files = [
+	'backend/toolpacks/websearch/tools/search_web.json',
+	'backend/toolpacks/websearch/tools/open_result.json',
+	'backend/toolpacks/websearch/tools/fetch_url.json',
+	'backend/toolpacks/websearch/tools/related_results.json',
+	'backend/toolpacks/websearch/tools/search_status.json',
+];
+
+const expectedHandlers = new Map([
+	['search_web.json', 'websearch_search'],
+	['open_result.json', 'websearch_open_result'],
+	['fetch_url.json', 'websearch_fetch_url'],
+	['related_results.json', 'websearch_related_results'],
+	['search_status.json', 'websearch_status'],
+]);
+
+for (const file of files) {
+	const json = JSON.parse(readFileSync(file, 'utf8'));
+	const name = file.split('/').at(-1);
+	assert.equal(json.executor, 'native', `${file} must use the native executor`);
+	assert.equal(json.native?.handler, expectedHandlers.get(name), `${file} has the wrong native handler`);
+	assert.equal(JSON.stringify(json).includes('example.com'), false, `${file} still references example.com`);
+	assert.equal(JSON.stringify(json).includes('"http"'), false, `${file} should not define an HTTP executor payload`);
+}
 EOF
 
 binary="${1:-backend/build/ctrlpanel}"

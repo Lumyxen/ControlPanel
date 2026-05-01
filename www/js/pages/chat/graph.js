@@ -1,5 +1,26 @@
 import { generateId } from "./util.js";
 
+function cloneStructured(value) {
+	if (value == null) return value;
+	return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeStoredNode(node) {
+	if (!node || typeof node !== "object") return node;
+
+	if (node.reasoningParts == null && Array.isArray(node.reasoning_parts)) {
+		node.reasoningParts = cloneStructured(node.reasoning_parts);
+	}
+	if (node.toolCalls == null && Array.isArray(node.tool_calls)) {
+		node.toolCalls = cloneStructured(node.tool_calls);
+	}
+	if (node.tokenLogprobs == null && Array.isArray(node.token_logprobs)) {
+		node.tokenLogprobs = cloneStructured(node.token_logprobs);
+	}
+
+	return node;
+}
+
 export function createEmptyGraph() {
 	const rootId = "root";
 	return {
@@ -35,6 +56,7 @@ export function ensureGraph(chat) {
 				parentId: null, children:[],
 			};
 		}
+		Object.values(chat.graph.nodes).forEach((node) => normalizeStoredNode(node));
 		// Recompute leafId to ensure it's always valid after loading from storage
 		recomputeLeafId(chat.graph);
 		return chat.graph;
@@ -52,12 +74,20 @@ export function ensureGraph(chat) {
 			parentId,
 			children:[],
 		};
-	       if (m.parts) node.parts = JSON.parse(JSON.stringify(m.parts));
-	       if (m.attachments) node.attachments = JSON.parse(JSON.stringify(m.attachments));
-	       if (m.reasoning) node.reasoning = m.reasoning;
-	       if (m.reasoningParts) node.reasoningParts = JSON.parse(JSON.stringify(m.reasoningParts));
-	       if (m.toolCalls) node.toolCalls = JSON.parse(JSON.stringify(m.toolCalls));
-	       
+		if (m.parts) node.parts = cloneStructured(m.parts);
+		if (m.attachments) node.attachments = cloneStructured(m.attachments);
+		if (m.reasoning) node.reasoning = m.reasoning;
+		if (m.reasoningParts || m.reasoning_parts) {
+			node.reasoningParts = cloneStructured(m.reasoningParts || m.reasoning_parts);
+		}
+		if (m.toolCalls || m.tool_calls) {
+			node.toolCalls = cloneStructured(m.toolCalls || m.tool_calls);
+		}
+		if (m.tokenLogprobs || m.token_logprobs) {
+			node.tokenLogprobs = cloneStructured(m.tokenLogprobs || m.token_logprobs);
+		}
+		normalizeStoredNode(node);
+
 		graph.nodes[nodeId] = node;
 		graph.nodes[parentId].children.push(nodeId);
 		graph.selections[parentId] = nodeId;

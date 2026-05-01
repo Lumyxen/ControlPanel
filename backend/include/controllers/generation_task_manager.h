@@ -67,6 +67,7 @@ public:
 
     void cancelTask(std::string_view taskId);
     void cancelAllTasks();
+    void waitForAllTasks(int timeoutMs = 10000);
     void cleanupOldTasks(int maxAgeSeconds = 300);
 
 private:

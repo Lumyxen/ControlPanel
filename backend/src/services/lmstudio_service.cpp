@@ -275,6 +275,7 @@ Json::Value buildMalformedToolCallEvent(
     }
     toolCall["error"] = output.get("error", "Failed to parse tool call arguments as JSON");
     toolCall["output"] = output;
+    toolCall["modelOutput"] = writeJson(output);
     return toolCall;
 }
 

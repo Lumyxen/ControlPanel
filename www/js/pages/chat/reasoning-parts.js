@@ -7,6 +7,10 @@ function clonePlainObject(value) {
 	}
 }
 
+function cloneToolCall(toolCall) {
+	return clonePlainObject(toolCall);
+}
+
 export function cloneReasoningParts(reasoningParts) {
 	if (!Array.isArray(reasoningParts)) return [];
 	const cloned = [];
@@ -49,7 +53,7 @@ export function upsertReasoningToolPart(reasoningParts, toolCall) {
 		return reasoningParts;
 	}
 
-	const clonedToolCall = clonePlainObject(toolCall);
+	const clonedToolCall = cloneToolCall(toolCall);
 	if (!clonedToolCall) return reasoningParts;
 
 	const toolCallId = String(clonedToolCall.id ?? '');
@@ -75,7 +79,7 @@ export function getResolvedReasoningParts({ reasoning = '', reasoningParts = nul
 	if (Array.isArray(toolCalls)) {
 		for (const toolCall of toolCalls) {
 			if (!toolCall || typeof toolCall !== 'object' || !toolCall.id) continue;
-			toolCallMap.set(String(toolCall.id), clonePlainObject(toolCall));
+			toolCallMap.set(String(toolCall.id), cloneToolCall(toolCall));
 		}
 	}
 
@@ -86,7 +90,6 @@ export function getResolvedReasoningParts({ reasoning = '', reasoningParts = nul
 				if (part.content) resolved.push(part);
 				continue;
 			}
-
 			if (part.type !== 'tool_call') continue;
 			const toolCallId = String(part.toolCallId ?? '');
 			const resolvedToolCall = (toolCallId && toolCallMap.get(toolCallId)) || part.toolCall;
@@ -94,26 +97,63 @@ export function getResolvedReasoningParts({ reasoning = '', reasoningParts = nul
 			resolved.push({
 				type: 'tool_call',
 				toolCallId: toolCallId || String(resolvedToolCall.id ?? ''),
-				toolCall: clonePlainObject(resolvedToolCall),
+				toolCall: cloneToolCall(resolvedToolCall),
 			});
 		}
-		return resolved;
+		if (String(reasoning ?? '').trim() && !resolved.some((part) => part.type === 'text' && part.content)) {
+			resolved.unshift({ type: 'text', content: String(reasoning) });
+		}
+		if (resolved.length > 0) return resolved;
 	}
 
 	const fallback = [];
 	if (String(reasoning ?? '').trim()) {
 		fallback.push({ type: 'text', content: String(reasoning) });
 	}
+	return fallback;
+}
+
+export function getResolvedToolCalls({ reasoningParts = null, toolCalls = null, includeReferenced = true } = {}) {
+	const resolved = [];
+	const seenIds = new Set();
+	const toolCallMap = new Map();
 	if (Array.isArray(toolCalls)) {
 		for (const toolCall of toolCalls) {
-			const clonedToolCall = clonePlainObject(toolCall);
+			if (!toolCall || typeof toolCall !== 'object') continue;
+			const clonedToolCall = cloneToolCall(toolCall);
 			if (!clonedToolCall) continue;
-			fallback.push({
-				type: 'tool_call',
-				toolCallId: String(clonedToolCall.id ?? ''),
-				toolCall: clonedToolCall,
-			});
+			const toolCallId = String(clonedToolCall.id ?? '');
+			if (toolCallId) {
+				toolCallMap.set(toolCallId, clonedToolCall);
+			}
 		}
 	}
-	return fallback;
+
+	for (const part of cloneReasoningParts(reasoningParts)) {
+		if (part?.type !== 'tool_call') continue;
+		const toolCallId = String(part.toolCallId ?? part.toolCall?.id ?? '');
+		if (!includeReferenced) {
+			if (toolCallId) seenIds.add(toolCallId);
+			continue;
+		}
+		const resolvedToolCall = (toolCallId && toolCallMap.get(toolCallId)) || cloneToolCall(part.toolCall);
+		if (!resolvedToolCall) continue;
+		const resolvedId = toolCallId || String(resolvedToolCall.id ?? '');
+		if (resolvedId && seenIds.has(resolvedId)) continue;
+		if (resolvedId) seenIds.add(resolvedId);
+		resolved.push(resolvedToolCall);
+	}
+
+	if (Array.isArray(toolCalls)) {
+		for (const toolCall of toolCalls) {
+			const clonedToolCall = cloneToolCall(toolCall);
+			if (!clonedToolCall) continue;
+			const toolCallId = String(clonedToolCall.id ?? '');
+			if (toolCallId && seenIds.has(toolCallId)) continue;
+			if (toolCallId) seenIds.add(toolCallId);
+			resolved.push(clonedToolCall);
+		}
+	}
+
+	return resolved;
 }
