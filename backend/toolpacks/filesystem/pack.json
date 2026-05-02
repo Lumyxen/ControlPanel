@@ -1,0 +1,8 @@
+{
+    "id": "filesystem",
+    "title": "Filesystem",
+    "version": "1",
+    "description": "Inspect local directories and manage the AI tool session's working directory.",
+    "sourceType": "system",
+    "defaultEnabled": true
+}

@@ -40,7 +40,7 @@
     },
     "policy": {
         "riskTier": "read",
-        "approvalMode": "prompt",
+        "approvalMode": "auto",
         "network": false,
         "idempotent": true
     },

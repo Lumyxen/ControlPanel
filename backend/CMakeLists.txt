@@ -179,6 +179,7 @@ set(SOURCES
     src/services/mcp_registry.cpp
     src/services/tools/calculator_tool.cpp
     src/services/tools/file_reader_tool.cpp
+    src/services/tools/filesystem_tool.cpp
     src/services/tools/web_search_tool.cpp
     src/services/tools/tool_argument_validator.cpp
     src/services/tools/tool_system.cpp
@@ -265,6 +266,16 @@ if(NOT CMAKE_CROSSCOMPILING)
         ${JSONCPP_LIBRARIES}
     )
     add_test(NAME ctrlpanel_file_reader_test COMMAND ctrlpanel_file_reader_test)
+
+    add_executable(ctrlpanel_filesystem_test
+        src/tests/filesystem_tool_test.cpp
+        src/services/tools/file_reader_tool.cpp
+        src/services/tools/filesystem_tool.cpp
+    )
+    target_link_libraries(ctrlpanel_filesystem_test
+        ${JSONCPP_LIBRARIES}
+    )
+    add_test(NAME ctrlpanel_filesystem_test COMMAND ctrlpanel_filesystem_test)
 
     add_executable(ctrlpanel_auth_vault_test
         src/tests/auth_vault_test.cpp

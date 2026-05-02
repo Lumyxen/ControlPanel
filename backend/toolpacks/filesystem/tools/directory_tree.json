@@ -1,0 +1,47 @@
+{
+    "id": "directory_tree",
+    "title": "Directory Tree",
+    "description": "Return a bounded recursive tree for a local directory relative to the current AI working directory unless an absolute path is provided.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "path": {
+                "type": "string"
+            },
+            "max_depth": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 8
+            },
+            "max_entries": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2000
+            },
+            "include_hidden": {
+                "type": "boolean"
+            },
+            "dirs_only": {
+                "type": "boolean"
+            }
+        }
+    },
+    "selection": {
+        "summary": "Inspect a bounded recursive local directory tree.",
+        "tags": ["filesystem", "directory", "tree", "project", "folders", "recursive"],
+        "whenToUse": "Use when you need project or folder structure before deciding which files to read.",
+        "whenNotToUse": "Do not use to read file contents or to enumerate very large trees without tight limits."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": false,
+        "idempotent": true
+    },
+    "native": {
+        "handler": "filesystem_directory_tree"
+    }
+}

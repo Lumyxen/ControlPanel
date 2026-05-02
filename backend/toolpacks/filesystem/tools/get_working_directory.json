@@ -1,0 +1,27 @@
+{
+    "id": "get_working_directory",
+    "title": "Get Working Directory",
+    "description": "Return the current working directory used for relative paths in filesystem and file-reading tool calls.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+    },
+    "selection": {
+        "summary": "Inspect the active folder for this AI tool session.",
+        "tags": ["filesystem", "directory", "working-directory", "cwd", "pwd"],
+        "whenToUse": "Use when you need to know which folder relative file and directory paths resolve from.",
+        "whenNotToUse": "Do not use when you already have an absolute path and do not care about the active folder."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": false,
+        "idempotent": true
+    },
+    "native": {
+        "handler": "filesystem_get_working_directory"
+    }
+}

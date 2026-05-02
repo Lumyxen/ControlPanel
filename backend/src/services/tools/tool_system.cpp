@@ -2,6 +2,7 @@
 
 #include "services/tools/calculator_tool.h"
 #include "services/tools/file_reader_tool.h"
+#include "services/tools/filesystem_tool.h"
 #include "services/tools/tool_argument_validator.h"
 #include "services/tools/web_search_tool.h"
 
@@ -435,6 +436,7 @@ struct ToolPackRecord {
 struct ToolSession {
     std::string taskId;
     std::string chatId;
+    std::string workingDirectory;
     Json::Value toolScope = Json::Value(Json::objectValue);
     Json::Value legacyTools = Json::Value(Json::arrayValue);
     std::unordered_set<std::string> enabledPackIds;
@@ -808,6 +810,7 @@ struct ToolSystem::Impl {
     std::unordered_map<std::string, std::string> modelNameToCanonicalId;
     std::unordered_map<std::string, ToolSession> sessions;
     std::unordered_map<std::string, std::shared_ptr<ApprovalRequestState>> approvals;
+    std::unordered_map<std::string, std::string> chatWorkingDirectories;
 
     void clearUnlocked() {
         packs.clear();
@@ -1523,7 +1526,33 @@ struct ToolSystem::Impl {
         }
 
         if (handler == "file_reader_read_file") {
-            return file_reader_tool::readFile(args);
+            return file_reader_tool::readFile(args, fs::path(session.workingDirectory));
+        }
+
+        if (handler == "filesystem_get_working_directory") {
+            return filesystem_tool::getWorkingDirectory(fs::path(session.workingDirectory));
+        }
+
+        if (handler == "filesystem_change_working_directory") {
+            Json::Value result = filesystem_tool::changeWorkingDirectory(args, fs::path(session.workingDirectory));
+            if (!result.isObject() || result.isMember("error") || !result["working_directory"].isString()) {
+                return result;
+            }
+
+            session.workingDirectory = result["working_directory"].asString();
+            if (!session.chatId.empty()) {
+                std::lock_guard<std::mutex> lock(mutex);
+                chatWorkingDirectories[session.chatId] = session.workingDirectory;
+            }
+            return result;
+        }
+
+        if (handler == "filesystem_list_directory") {
+            return filesystem_tool::listDirectory(args, fs::path(session.workingDirectory));
+        }
+
+        if (handler == "filesystem_directory_tree") {
+            return filesystem_tool::directoryTree(args, fs::path(session.workingDirectory));
         }
 
         if (handler == "websearch_search") {
@@ -1732,6 +1761,16 @@ void ToolSystem::beginTaskSession(const SessionOptions& options) {
     ToolSession session;
     session.taskId = options.taskId;
     session.chatId = options.chatId;
+    session.workingDirectory = fs::current_path().string();
+    if (!session.chatId.empty()) {
+        const auto cwdIt = impl_->chatWorkingDirectories.find(session.chatId);
+        if (cwdIt != impl_->chatWorkingDirectories.end()) {
+            std::error_code ec;
+            if (fs::is_directory(cwdIt->second, ec) && !ec) {
+                session.workingDirectory = cwdIt->second;
+            }
+        }
+    }
     session.toolScope = normalizeScope(options.toolScope);
     session.legacyTools = options.legacyTools.isArray() ? options.legacyTools : Json::Value(Json::arrayValue);
     session.enabledPackIds = scopeToSet(session.toolScope);

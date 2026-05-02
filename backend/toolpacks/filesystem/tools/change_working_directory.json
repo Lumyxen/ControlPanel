@@ -1,0 +1,32 @@
+{
+    "id": "change_working_directory",
+    "title": "Change Working Directory",
+    "description": "Change the AI tool session's working directory. This affects subsequent relative paths used by filesystem and file-reading tools without changing the backend process directory.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "path": {
+                "type": "string"
+            }
+        },
+        "required": ["path"]
+    },
+    "selection": {
+        "summary": "Set the active folder for subsequent relative path tool calls.",
+        "tags": ["filesystem", "directory", "working-directory", "cwd", "cd"],
+        "whenToUse": "Use when the user wants work to continue from a different local folder or when repeated relative path reads/listings should share one base directory.",
+        "whenNotToUse": "Do not use for editing files or when a one-off absolute path is clearer."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": false,
+        "idempotent": false
+    },
+    "native": {
+        "handler": "filesystem_change_working_directory"
+    }
+}

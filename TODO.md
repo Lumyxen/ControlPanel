@@ -41,7 +41,7 @@
 - [ ] Weather tool
   - [ ] Read-only, location/date-aware
 - [x] File reading tool
-- [ ] Directory tree / active-folder inspection tool
+- [x] Directory tree / active-folder inspection tool
 - [ ] Sandboxed file editing tool
   - [ ] Restrained to set workspace directory
   - [ ] Remote editing, so for example, it could work on a project on duyfken despite running on skidbladnir

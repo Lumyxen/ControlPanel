@@ -16,6 +16,108 @@
     z-index: 10;
 }
 
+.tool-approval-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.tool-approval-panel[hidden] {
+    display: none !important;
+}
+
+.tool-approval-card {
+    border: 1px solid var(--accent);
+    background: color-mix(in srgb, var(--panel) 88%, var(--accent));
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+}
+
+.tool-approval-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.tool-approval-title {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.tool-approval-label {
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.tool-approval-name {
+    color: var(--text);
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+.tool-approval-meta {
+    color: var(--muted);
+    font-size: 0.78rem;
+    overflow-wrap: anywhere;
+}
+
+.tool-approval-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.tool-approval-details {
+    border-top: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    padding-top: 8px;
+}
+
+.tool-approval-details summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-bottom: 8px;
+}
+
+.tool-approval-args {
+    margin: 0;
+    max-height: 180px;
+    overflow: auto;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    background: var(--ctp-mantle);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+@media (max-width: 640px) {
+    .tool-approval-header {
+        flex-direction: column;
+    }
+
+    .tool-approval-actions {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .tool-approval-actions .btn {
+        flex: 1 1 120px;
+    }
+}
+
 /* Scroll to bottom button */
 .scroll-to-bottom-btn {
     position: absolute;

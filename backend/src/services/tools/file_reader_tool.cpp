@@ -152,11 +152,12 @@ std::string sanitizeUtf8(const std::string& input, bool& replacedInvalidUtf8, bo
     return output;
 }
 
-fs::path resolvePath(const std::string& pathText) {
+fs::path resolvePath(const std::string& pathText, const fs::path& workingDirectory) {
     const fs::path inputPath(pathText);
+    const fs::path baseDirectory = workingDirectory.empty() ? fs::current_path() : workingDirectory;
     const fs::path absolutePath = inputPath.is_absolute()
         ? inputPath
-        : fs::current_path() / inputPath;
+        : baseDirectory / inputPath;
 
     std::error_code ec;
     const fs::path resolved = fs::weakly_canonical(absolutePath, ec);
@@ -169,6 +170,10 @@ fs::path resolvePath(const std::string& pathText) {
 } // namespace
 
 Json::Value file_reader_tool::readFile(const Json::Value& arguments) {
+    return readFile(arguments, fs::current_path());
+}
+
+Json::Value file_reader_tool::readFile(const Json::Value& arguments, const fs::path& workingDirectory) {
     const std::string pathText = trimCopy(getStringArg(arguments, "path"));
     if (pathText.empty()) {
         return makeError("path is required");
@@ -178,14 +183,15 @@ Json::Value file_reader_tool::readFile(const Json::Value& arguments) {
     const int maxLines = std::clamp(getIntArg(arguments, "max_lines", kDefaultMaxLines), 1, kMaxLinesLimit);
     const int maxChars = std::clamp(getIntArg(arguments, "max_chars", kDefaultMaxChars), 1, kMaxCharsLimit);
     const bool includeLineNumbers = getBoolArg(arguments, "include_line_numbers", true);
+    const fs::path baseDirectory = workingDirectory.empty() ? fs::current_path() : workingDirectory;
 
-    const fs::path resolvedPath = resolvePath(pathText);
+    const fs::path resolvedPath = resolvePath(pathText, baseDirectory);
     std::error_code ec;
     if (!fs::exists(resolvedPath, ec) || ec) {
         Json::Value error = makeError("File does not exist");
         error["path"] = pathText;
         error["resolved_path"] = resolvedPath.string();
-        error["working_directory"] = fs::current_path().string();
+        error["working_directory"] = baseDirectory.string();
         return error;
     }
     if (!fs::is_regular_file(resolvedPath, ec) || ec) {
@@ -325,7 +331,7 @@ Json::Value file_reader_tool::readFile(const Json::Value& arguments) {
     Json::Value result(Json::objectValue);
     result["path"] = pathText;
     result["resolved_path"] = resolvedPath.string();
-    result["working_directory"] = fs::current_path().string();
+    result["working_directory"] = baseDirectory.string();
     result["size_bytes"] = static_cast<Json::UInt64>(fileSize);
     result["start_line"] = startLine;
     result["lines_read"] = linesRead;

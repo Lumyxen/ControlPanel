@@ -531,6 +531,158 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	const attachmentManager = new InlineAttachmentManager(input);
 
 	const uiState = createChatSessionState();
+	const approvalPanel = root.querySelector('#toolApprovalPanel');
+	let pendingApprovals = [];
+	const resolvingApprovalIds = new Set();
+
+	const formatToolApprovalName = (approval) => String(
+		approval?.title ||
+		approval?.name ||
+		approval?.toolName ||
+		approval?.canonicalId ||
+		'Tool'
+	).replace(/__/g, ' › ').replace(/_/g, ' ');
+
+	const formatApprovalInput = (approval) => {
+		const value = approval?.input ?? approval?.arguments ?? {};
+		if (value && typeof value === 'object') {
+			try { return JSON.stringify(value, null, 2); } catch {}
+		}
+		return String(value ?? '');
+	};
+
+	const extractPendingApprovals = (toolCalls = []) => {
+		if (!Array.isArray(toolCalls)) return [];
+		const seen = new Set();
+		const approvals = [];
+		for (const toolCall of toolCalls) {
+			const approval = toolCall?.approval;
+			const approvalId = approval?.id;
+			if (!approvalId || approval?.status !== 'pending' || seen.has(approvalId)) continue;
+			seen.add(approvalId);
+			approvals.push({
+				id: approvalId,
+				title: toolCall.title || approval.title || toolCall.name || approval.toolName || '',
+				name: toolCall.name || approval.toolName || '',
+				canonicalId: toolCall.canonicalId || approval.canonicalToolId || '',
+				executor: toolCall.executor || approval.executor || '',
+				riskTier: toolCall.riskTier || approval.riskTier || '',
+				status: toolCall.status || 'waiting_approval',
+				input: toolCall.input ?? toolCall.arguments ?? approval.input ?? {},
+			});
+		}
+		return approvals;
+	};
+
+	const renderApprovalPanel = () => {
+		if (!approvalPanel) return;
+		approvalPanel.innerHTML = '';
+		if (pendingApprovals.length === 0) {
+			approvalPanel.hidden = true;
+			return;
+		}
+
+		approvalPanel.hidden = false;
+		for (const approval of pendingApprovals) {
+			const card = document.createElement('div');
+			card.className = 'tool-approval-card';
+
+			const header = document.createElement('div');
+			header.className = 'tool-approval-header';
+
+			const titleWrap = document.createElement('div');
+			titleWrap.className = 'tool-approval-title';
+
+			const label = document.createElement('div');
+			label.className = 'tool-approval-label';
+			label.textContent = 'Tool approval';
+
+			const name = document.createElement('div');
+			name.className = 'tool-approval-name';
+			name.textContent = formatToolApprovalName(approval);
+
+			const meta = document.createElement('div');
+			meta.className = 'tool-approval-meta';
+			const metaBits = [
+				approval.status ? String(approval.status).replace(/_/g, ' ') : '',
+				approval.executor || '',
+				approval.riskTier || '',
+				approval.canonicalId || '',
+			].filter(Boolean);
+			meta.textContent = metaBits.join(' • ');
+			titleWrap.append(label, name, meta);
+
+			const actions = document.createElement('div');
+			actions.className = 'tool-approval-actions';
+
+			const approveBtn = document.createElement('button');
+			approveBtn.type = 'button';
+			approveBtn.className = 'btn btn-primary';
+			approveBtn.dataset.approvalAction = 'approve';
+			approveBtn.dataset.approvalId = approval.id;
+			approveBtn.textContent = resolvingApprovalIds.has(approval.id) ? 'Approving...' : 'Approve';
+			approveBtn.disabled = resolvingApprovalIds.has(approval.id);
+
+			const denyBtn = document.createElement('button');
+			denyBtn.type = 'button';
+			denyBtn.className = 'btn';
+			denyBtn.dataset.approvalAction = 'deny';
+			denyBtn.dataset.approvalId = approval.id;
+			denyBtn.textContent = resolvingApprovalIds.has(approval.id) ? 'Resolving...' : 'Deny';
+			denyBtn.disabled = resolvingApprovalIds.has(approval.id);
+
+			actions.append(approveBtn, denyBtn);
+			header.append(titleWrap, actions);
+
+			const details = document.createElement('details');
+			details.className = 'tool-approval-details';
+			details.open = true;
+			const summary = document.createElement('summary');
+			summary.textContent = 'Arguments';
+			const args = document.createElement('pre');
+			args.className = 'tool-approval-args';
+			args.textContent = formatApprovalInput(approval);
+			details.append(summary, args);
+
+			card.append(header, details);
+			approvalPanel.appendChild(card);
+		}
+	};
+
+	const updateApprovalPanelFromToolCalls = (toolCalls = []) => {
+		pendingApprovals = extractPendingApprovals(toolCalls);
+		for (const id of [...resolvingApprovalIds]) {
+			if (!pendingApprovals.some((approval) => approval.id === id)) {
+				resolvingApprovalIds.delete(id);
+			}
+		}
+		renderApprovalPanel();
+	};
+
+	const clearApprovalPanel = () => {
+		pendingApprovals = [];
+		resolvingApprovalIds.clear();
+		renderApprovalPanel();
+	};
+
+	const handleApprovalAction = async (button) => {
+		const approvalId = button?.dataset?.approvalId;
+		const action = button?.dataset?.approvalAction;
+		if (!approvalId || !action || resolvingApprovalIds.has(approvalId)) return;
+		resolvingApprovalIds.add(approvalId);
+		renderApprovalPanel();
+
+		try {
+			if (action === 'approve') await approveToolApproval(approvalId);
+			else await denyToolApproval(approvalId);
+			pendingApprovals = pendingApprovals.filter((approval) => approval.id !== approvalId);
+			renderApprovalPanel();
+		} catch (err) {
+			console.error('[ChatPage] Tool approval action failed:', err);
+			resolvingApprovalIds.delete(approvalId);
+			renderApprovalPanel();
+		}
+	};
 
 	const contentEl = messages.closest('.content') || messages;
 	const scrollToBottomBtn = root.querySelector('#scrollToBottomBtn');
@@ -864,6 +1016,11 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	initUpload(root, input, attachmentManager, signal);
 	const resizeInput = initAutoResize(input, signal);
 	input.addEventListener('input', () => updateLiveContext(120), { signal });
+	approvalPanel?.addEventListener('click', (e) => {
+		const approvalBtn = e.target.closest('[data-approval-action][data-approval-id]');
+		if (!approvalBtn) return;
+		handleApprovalAction(approvalBtn);
+	}, { signal });
 	// Show initial context UI (includes system prompt tokens)
 	updateLiveContext(0);
 	input.addEventListener('keydown', (e) => {
@@ -938,6 +1095,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		getSettings: () => SettingsStore.get(),
 		onLiveNodeChange: (node) => {
 			uiState.liveGeneratingNode = node;
+			updateApprovalPanelFromToolCalls(node.toolCalls);
 			updateLiveContext(120);
 		},
 		afterRender: () => {
@@ -970,6 +1128,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		uiState.activeTaskId = null;
 		uiState.liveGeneratingNode = null;
 		uiState.typingEl = null;
+		clearApprovalPanel();
 		setGeneratingState(false);
 	};
 
@@ -1002,6 +1161,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			}
 			// When preserveElement is true, keep uiState.typingEl so finalizeGeneratedMessage can use it
 		}
+		clearApprovalPanel();
 		setGeneratingState(false);
 	};
 
@@ -1060,6 +1220,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	signal.addEventListener('abort', detachFromRunningTask);
 
 	const startReply = async (replyChatId, parentUserNodeId) => {
+		clearApprovalPanel();
 		stopTyping();
 		uiState.typingEl = showTyping(messages);
 		checkScroll();
@@ -1206,6 +1367,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 
 			streamController.renderNow();
 			streamController.closeReasoning();
+			clearApprovalPanel();
 			stopTyping(true);
 			// Reload from backend (source of truth) instead of using stale local state
 			await loadChats();
@@ -1299,7 +1461,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				return;
 			}
 
-			if (task.status === 'running' || task.status === 'pending') {
+			if (task.status === 'running' || task.status === 'pending' || task.status === 'waiting_approval') {
 				const reconnectAbort = new AbortController();
 				uiState.activeTaskId = task.id;
 				uiState.streamAbort = reconnectAbort;
@@ -1377,17 +1539,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	messages.addEventListener('click', (e) => {
 		const approvalBtn = e.target.closest('[data-approval-action][data-approval-id]');
 		if (approvalBtn) {
-			const action = approvalBtn.dataset.approvalAction;
-			const approvalId = approvalBtn.dataset.approvalId;
-			if (!approvalId) return;
-			approvalBtn.disabled = true;
-			const siblingButtons = approvalBtn.parentElement?.querySelectorAll('[data-approval-action]');
-			siblingButtons?.forEach((btn) => { btn.disabled = true; });
-			(action === 'approve' ? approveToolApproval(approvalId) : denyToolApproval(approvalId))
-				.catch((err) => {
-					console.error('[ChatPage] Tool approval action failed:', err);
-					siblingButtons?.forEach((btn) => { btn.disabled = false; });
-				});
+			handleApprovalAction(approvalBtn);
 			return;
 		}
 

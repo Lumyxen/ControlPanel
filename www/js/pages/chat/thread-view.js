@@ -135,15 +135,6 @@ export function buildToolCallElement(tc) {
 		code.textContent = String(tc.error);
 		body.append(label, code);
 	}
-	if (tc.approval?.status === 'pending' && tc.approval?.id) {
-		const actions = document.createElement('div');
-		actions.className = 'tool-call-approval-actions';
-		actions.innerHTML = `
-			<button type="button" class="btn btn-primary" data-approval-action="approve" data-approval-id="${tc.approval.id}">Approve</button>
-			<button type="button" class="btn" data-approval-action="deny" data-approval-id="${tc.approval.id}">Deny</button>
-		`;
-		body.appendChild(actions);
-	}
 	details.appendChild(body);
 	return details;
 }
