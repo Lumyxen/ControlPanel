@@ -99,9 +99,9 @@ export function get() {
  * @param {Object} patch - Fields to update
  * @returns {Promise<Object>} The updated settings object returned by the backend
  */
-export async function save(patch) {
+export async function save(patch, options = {}) {
     const merged = { ..._cache, ...patch };
-    const updated = await updateSettings(merged);
+    const updated = await updateSettings(merged, options);
     _cache = updated ?? merged;
     _lastSaveAt = Date.now();
     _notify();

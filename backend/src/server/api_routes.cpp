@@ -16,6 +16,7 @@
 #include "controllers/generation_task_manager.h"
 #include "controllers/lmstudio_controller.h"
 #include "controllers/mcp_controller.h"
+#include "controllers/vault_controller.h"
 #include "server/http_utils.h"
 #include "services/backend_builder.h"
 #include "services/huggingface_service.h"
@@ -28,6 +29,8 @@
 namespace fs = std::filesystem;
 
 namespace {
+
+SlidingWindowRateLimiter gPanelLoginRateLimiter;
 
 void applyRouteHeaders(const httplib::Request& req, httplib::Response& res) {
     addSecurityHeaders(res);
@@ -1025,12 +1028,12 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
 
     svr.Get("/api/config/settings", [&](const httplib::Request& req, httplib::Response& res) {
         applyRouteHeaders(req, res);
-        handleGetSettings(req, res, ctx.config);
+        handleGetSettings(req, res, ctx.config, ctx.vaultStore);
     });
 
     svr.Put("/api/config/settings", [&](const httplib::Request& req, httplib::Response& res) {
         applyRouteHeaders(req, res);
-        handleUpdateSettings(req, res, ctx.config);
+        handleUpdateSettings(req, res, ctx.config, ctx.authStore, ctx.vaultStore);
     });
 
     svr.Get("/api/tools/catalog", [&](const httplib::Request& req, httplib::Response& res) {
@@ -1143,7 +1146,21 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
 
     svr.Post("/api/auth/login", [&](const httplib::Request& req, httplib::Response& res) {
         applyRouteHeaders(req, res);
-        handleLoginAuth(req, res, ctx.authStore);
+        constexpr const char* kPanelLoginLimiterKey = "panel-login";
+        if (gPanelLoginRateLimiter.isLimited(
+                kPanelLoginLimiterKey,
+                ctx.config.getPanelLoginRateLimitPerMinute(),
+                std::chrono::seconds(60))) {
+            setJsonError(res, 429, "Panel login rate limit exceeded");
+            return;
+        }
+
+        handleLoginAuth(req, res, ctx.authStore, &ctx.chatStore);
+        if (res.status == 401) {
+            gPanelLoginRateLimiter.recordFailure(kPanelLoginLimiterKey, std::chrono::seconds(60));
+        } else if (res.status < 400) {
+            gPanelLoginRateLimiter.clear(kPanelLoginLimiterKey);
+        }
     });
 
     svr.Post("/api/auth/logout", [&](const httplib::Request& req, httplib::Response& res) {
@@ -1154,6 +1171,56 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     svr.Get("/api/auth/validate", [&](const httplib::Request& req, httplib::Response& res) {
         applyRouteHeaders(req, res);
         handleValidateAuth(req, res, ctx.authStore);
+    });
+
+    svr.Post("/api/auth/reauth", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+        handlePanelReauthAuth(req, res, ctx.authStore);
+    });
+
+    svr.Get("/api/vault/status", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+        handleGetVaultStatus(req, res, ctx.vaultStore);
+    });
+
+    svr.Post("/api/vault/setup", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+        handleSetupVault(req, res, ctx.vaultStore);
+    });
+
+    svr.Post("/api/vault/unlock/challenge", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+        handleVaultUnlockChallenge(req, res, ctx.vaultStore);
+    });
+
+    svr.Post("/api/vault/unlock/master", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+        handleVaultUnlockMaster(req, res, ctx.vaultStore, ctx.config.getVaultLoginRateLimitPerMinute());
+    });
+
+    svr.Post("/api/vault/unlock/pin", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+        handleVaultUnlockPin(req, res, ctx.vaultStore, ctx.config.getVaultLoginRateLimitPerMinute());
+    });
+
+    svr.Post("/api/vault/reauth", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+        handleVaultReauth(req, res, ctx.vaultStore, ctx.config.getVaultLoginRateLimitPerMinute());
+    });
+
+    svr.Put("/api/vault", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+        handlePutVault(req, res, ctx.vaultStore);
+    });
+
+    svr.Post("/api/vault/pin/setup", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+        handleSetupVaultPin(req, res, ctx.vaultStore);
+    });
+
+    svr.Delete(R"(/api/vault/pin/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+        handleDeleteVaultPin(req, res, ctx.vaultStore, req.matches[1]);
     });
 
     svr.Post("/mcp", [&](const httplib::Request& req, httplib::Response& res) {

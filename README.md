@@ -2,7 +2,7 @@
 A highly personal web interface to give me the information and tools I need all in 1 place
 
 ## Features
-- Password-gated local web UI with encrypted stored chat data
+- Password-gated local web UI with encrypted stored chat data, bearer-authenticated APIs, and a zero-knowledge secondary password-vault unlock
 - AI chat harness with threaded chats, background task streaming, exact context metering, inline tool-call rendering, settings, themes, and model management
 - Supports LM Studio, built-in `llama-server` backends from llama.cpp, HuggingFace GGUF downloads, and a schema-first tool system with pack discovery, approvals, MCP bridging, and a bundled web-search pack backed by SQLite FTS5
 - Detailed shipped feature breakdown: [FEATURES.md](FEATURES.md)
@@ -71,6 +71,8 @@ The app creates runtime state next to the binary on first start:
 Fresh installs bundle system `calculator` and `websearch` packs in `toolpacks/`, alongside the synthetic internal control-plane pack used for deferred tool discovery and schema loading.
 Bundled source packs live under `backend/toolpacks/`, are embedded into the backend binary at build time, and are synced into runtime `toolpacks/` on startup.
 
+The authenticated frontend is restricted to the exact origin `http://127.0.0.1:8080`. `/api/*` and `/mcp` requests are rejected unless `Origin` or `Referer` resolve to that exact frontend base URL. `/health` remains exempt for local startup and smoke checks.
+
 The bundled `websearch` pack stores its crawl/index state under `data/web-search/` and exposes:
 - `search_web` for BM25-ranked local web search with snippets and site filters
 - `open_result` for opening stored cleaned page text by `doc_id`
@@ -93,6 +95,9 @@ Representative `data/settings.json` keys:
     "temperature": 0.7,
     "logprobHighlightLow": true,
     "aiTitleEnabled": true,
+    "panelLoginRateLimitPerMinute": 5,
+    "vaultLoginRateLimitPerMinute": 5,
+    "vaultIdleTimeoutSeconds": 300,
     "aiTitleModel": "",
     "aiTitleSystemPrompt": "Describe the chat in 1-3 words. Output only the title text. No quotes. No explanation.",
     "llamacppBackend": "auto",
@@ -108,17 +113,29 @@ Additional llama.cpp tuning fields are also stored there and can be changed from
 
 ## API Endpoints
 
-Unless noted otherwise, all `/api/*` routes and `/mcp` require an authenticated session token. Protected routes accept `X-Session-Token`; SSE-style clients can use `?token=...`; and JSON POST bodies can also supply `sessionToken` when needed (for example `keepalive`/beacon cancellation requests).
+Unless noted otherwise, all `/api/*` routes and `/mcp` require `Authorization: Bearer <sessionToken>`. The frontend no longer relies on `X-Session-Token`, query-string `token`, or body `sessionToken` for normal authenticated flows.
 
 **General**
 - `GET /health` - Check backend health status (public)
 
 **Authentication**
 - `GET /api/auth` - Check whether a password has been set up (public)
-- `POST /api/auth/setup` - Set up the initial password (public, fails if already set up)
+- `POST /api/auth/setup` - Set up the initial panel password using PBKDF2-HMAC-SHA256 at 600,000 iterations (public, fails if already set up)
 - `POST /api/auth/login` - Log in with an existing password and receive a session token (public)
 - `POST /api/auth/logout` - Revoke the current session
-- `GET /api/auth/validate` - Validate a supplied session token from `X-Session-Token` or `?token=...` (public)
+- `GET /api/auth/validate` - Validate a supplied bearer session token (public)
+- `POST /api/auth/reauth` - Verify the panel password again and return a short-lived reauth token for protected settings changes
+
+**Password Vault**
+- `GET /api/vault/status` - Return vault setup state, public vault KDF metadata, current revision, and current-device PIN metadata
+- `POST /api/vault/setup` - Create the initial encrypted vault document or replace the existing vault when `replaceExisting: true`
+- `POST /api/vault/unlock/challenge` - Issue a short-lived challenge for `master` or `pin` unlock proofs
+- `POST /api/vault/unlock/master` - Verify a master-password-derived proof and return the encrypted vault blob plus a short-lived vault access token
+- `POST /api/vault/unlock/pin` - Verify a device PIN proof, then return the device pepper, encrypted vault blob, and a short-lived vault access token
+- `POST /api/vault/reauth` - Verify a master-password-derived proof and return a fresh vault access token for sensitive vault actions
+- `PUT /api/vault` - Save a new encrypted vault blob when the supplied `expectedRevision` matches the current server revision
+- `POST /api/vault/pin/setup` - Register or replace the current device PIN slot using a fresh master-verified vault access token
+- `DELETE /api/vault/pin/:deviceId` - Remove the current device PIN slot using a fresh master-verified vault access token
 
 **Legacy Chat**
 - `POST /api/chat` - Legacy non-streaming LM Studio chat endpoint
@@ -150,7 +167,13 @@ Unless noted otherwise, all `/api/*` routes and `/mcp` require an authenticated 
 
 **Configuration**
 - `GET /api/config/settings` - Get current control panel settings
-- `PUT /api/config/settings` - Update control panel settings
+- `PUT /api/config/settings` - Update control panel settings, with panel-password reauth for `panelLoginRateLimitPerMinute` and vault-master reauth for vault security settings when a vault exists
+
+## Password Vault Notes
+
+The password manager lives inside `pages/password-manager.html` as a route-local secondary lock screen. The main panel session stays authenticated independently, but vault contents use browser-side AES-256-GCM encryption, PBKDF2-HMAC-SHA256 with a 600,000-iteration master-password KDF, RAM-only key handling, BroadcastChannel-based cross-tab unlock sharing, configurable idle relock, and device-scoped PIN unlock.
+
+The backend stores only public KDF metadata, a server-side vault auth key for challenge verification, the encrypted vault blob, and device PIN registrations. It never stores vault plaintext, the vault master password, or the vault encryption key. PIN unlock is device-scoped and uses a server-side pepper that is returned only after successful online PIN verification.
 
 **Application Backend**
 - `GET /api/app/backend/status` - Get full backend lifecycle state plus managed llama.cpp router status

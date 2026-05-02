@@ -7,15 +7,29 @@
 #include <unordered_map>
 #include <chrono>
 #include <json/json.h>
+#include <cstddef>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
 class CryptoService {
 public:
     // PBKDF2 key derivation: password + salt → 32-byte AES key
+    static std::vector<uint8_t> deriveBytes(const std::string& password,
+                                            const std::vector<uint8_t>& salt,
+                                            int iterations,
+                                            std::size_t length);
+
     static std::vector<uint8_t> deriveKey(const std::string& password,
                                           const std::vector<uint8_t>& salt,
                                           int iterations = 310000);
+
+    static std::vector<uint8_t> randomBytes(std::size_t length);
+    static std::vector<uint8_t> hmacSha256(const std::vector<uint8_t>& key,
+                                           const std::string& message);
+    static bool constantTimeEquals(const std::vector<uint8_t>& lhs,
+                                   const std::vector<uint8_t>& rhs);
+    static bool constantTimeEqualsHex(const std::string& lhs,
+                                      const std::string& rhs);
 
     // AES-256-GCM encrypt
     static std::string encrypt(const std::string& plaintext,

@@ -41,6 +41,40 @@
         </div>
     </section>
 
+    <section class="card" aria-labelledby="security-title">
+        <h2 class="card-title" id="security-title">Security</h2>
+        <div class="option-row">
+            <label for="panel-login-rate-limit">Panel Login Attempts / Minute</label>
+            <input id="panel-login-rate-limit" class="settings-number-wide" type="number" min="1" max="1000" step="1" value="5" />
+        </div>
+        <div class="option-row">
+            <label for="vault-login-rate-limit">Vault Unlock Attempts / Minute</label>
+            <input id="vault-login-rate-limit" class="settings-number-wide" type="number" min="1" max="1000" step="1" value="5" />
+        </div>
+        <div class="option-row settings-single-column">
+            <span id="vault-security-disabled-note" class="option-hint settings-note-full">Vault security settings stay disabled until a vault is configured.</span>
+        </div>
+        <div class="option-row">
+            <label for="vault-idle-timeout">Vault Idle Relock (seconds)</label>
+            <input id="vault-idle-timeout" class="settings-number-wide" type="number" min="30" max="86400" step="30" value="300" />
+        </div>
+        <div class="option-row settings-single-column settings-vault-pin-row">
+            <div class="settings-vault-pin-head">
+                <span class="settings-section-label">Vault PIN Unlock</span>
+                <span id="vault-pin-status" class="option-hint">Loading…</span>
+            </div>
+            <div class="input-group settings-top-gap settings-vault-pin-actions">
+                <button type="button" id="settings-vault-pin-setup" class="btn">Set Up PIN</button>
+                <button type="button" id="settings-vault-pin-remove" class="btn btn-danger" hidden>Remove PIN</button>
+                <span id="settings-vault-pin-action-status" class="option-hint settings-status-inline"></span>
+            </div>
+        </div>
+        <div class="input-group settings-top-gap">
+            <button type="button" id="save-security-settings" class="btn btn-primary">Save</button>
+            <span id="security-settings-status" class="option-hint settings-status-inline"></span>
+        </div>
+    </section>
+
     <section class="card" aria-labelledby="ai-behaviour-title">
         <h2 class="card-title" id="ai-behaviour-title">AI Behaviour</h2>
         <div class="option-row">

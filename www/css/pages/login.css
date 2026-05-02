@@ -42,38 +42,6 @@ body.login-page {
 	box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
 }
 
-.mode-banner {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 8px 12px;
-	font-size: 0.78rem;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.08em;
-	border: 1px solid;
-	width: fit-content;
-}
-
-.mode-banner.mode-unlock {
-	color: var(--ef-aqua, var(--ctp-teal, #83c092));
-	border-color: color-mix(in srgb, var(--ef-aqua, var(--ctp-teal, #83c092)) 40%, transparent);
-	background: color-mix(in srgb, var(--ef-aqua, var(--ctp-teal, #83c092)) 8%, transparent);
-}
-
-.mode-banner.mode-setup {
-	color: var(--ef-yellow, var(--ctp-yellow, #dbbc7f));
-	border-color: color-mix(in srgb, var(--ef-yellow, var(--ctp-yellow, #dbbc7f)) 40%, transparent);
-	background: color-mix(in srgb, var(--ef-yellow, var(--ctp-yellow, #dbbc7f)) 8%, transparent);
-}
-
-#mode-icon {
-	width: 14px;
-	height: 14px;
-	flex-shrink: 0;
-	display: block;
-}
-
 .auth-header {
 	display: flex;
 	flex-direction: column;

@@ -21,6 +21,8 @@ public:
     Json::Value saveSummariesMerged(const Json::Value& incoming);
     Json::Value saveChatMerged(const Json::Value& incomingChat);
     bool deleteChat(const std::string& chatId);
+    bool rotateEncryptionKey(const std::vector<uint8_t>& previousKey,
+                             const std::vector<uint8_t>& nextKey);
 
     bool appendAssistantMessage(
         const std::string& chatId,

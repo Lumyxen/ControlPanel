@@ -20,7 +20,7 @@ It is intentionally separate from `TODO.md`:
 
 | Area | Included |
 | --- | --- |
-| Secure local shell | Password setup/login, session validation, cross-tab unlock sharing, encrypted saved chat data, backend health monitoring |
+| Secure local shell | Password setup/login, bearer-authenticated protected routes, exact-origin request gating, encrypted saved chat data, zero-knowledge password vault, and backend health monitoring |
 | AI chat workflow | Graph-threaded chats, lazy chat loading, background generation tasks, reconnectable streaming, reasoning blocks, per-chat tool-pack scope, inline tool-call rendering |
 | Transcript UX | Message editing, regenerate-from-here, branching, raw-copy behavior, markdown rendering, code-block actions, colour previews |
 | Model management | LM Studio configuration, built-in `llama.cpp` backend building/switching, HuggingFace GGUF search/download/delete/tokenizer install |
@@ -38,11 +38,17 @@ The tool system ships with real bundled calculator and web-search packs plus the
 | Feature | What it does |
 | --- | --- |
 | First-run password bootstrap | The app starts with a password-setup flow when no password has been configured yet. |
-| Session-based login | Logging in returns a session token that gates protected `/api/*` and `/mcp` routes. |
-| Session validation and logout | Existing tokens can be validated, reused, and explicitly revoked. |
-| Cross-tab unlock sharing | Browser tabs can share the active session token so the locked/unlocked state stays in sync. |
+| Session-based login | Logging in returns a bearer session token that gates protected `/api/*` and `/mcp` routes. |
+| Session validation and logout | Existing bearer tokens can be validated, reused from `localStorage`, and explicitly revoked. |
+| Origin / referer allowlist | Protected backend routes accept only requests whose `Origin` or `Referer` resolve to `http://127.0.0.1:8080`. |
 | Encrypted saved chat data | Persisted chat payloads are stored as AES-256-GCM encrypted envelopes. |
-| PBKDF2 password derivation | The encryption key is derived with PBKDF2-HMAC-SHA256, with a 310,000-iteration default during setup. |
+| PBKDF2 password derivation | New panel auth setups use PBKDF2-HMAC-SHA256 at 600,000 iterations, with legacy 310,000-iteration setups transparently upgraded on successful login. |
+| Panel reauthentication | Protected settings changes can require a fresh panel-password reauth token instead of relying on the long-lived app session alone. |
+| Zero-knowledge password vault | The password manager has its own route-local lock screen, browser-side AES-256-GCM vault encryption, RAM-only vault keys, and a separate unlock flow from the main panel session. |
+| BroadcastChannel vault sharing | Unlocked vault keys can be shared across live tabs in RAM only, while page refreshes and browser restarts relock the vault. |
+| Idle vault relock | The app can automatically drop vault memory after a configurable panel-wide idle timeout. |
+| Device-scoped PIN unlock | Individual browsers can register a local PIN-wrapped unlock slot that depends on a server-side pepper returned only after successful online PIN verification. |
+| PIN lockout wipe | Repeated failed PIN attempts within the configured one-minute window delete that device slot until the master password is used again. |
 | Login presentation | The login page uses an animated starfield background rather than a static screen. |
 
 ### App Shell and Reliability

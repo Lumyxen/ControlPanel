@@ -3,6 +3,7 @@ import { loadFragment, prefetchFragment } from '../core/fragment-loader.js';
 import { initNavGroups, initSidebarToggle, setActive } from './navigation.js';
 import { bindQuickNewChat } from './sidebar.js';
 import { mountHomePage } from '../pages/home.js';
+import { mountPasswordManagerPage } from '../pages/password-manager.js';
 import { mountChatPage, prepareChatPageFragment } from '../pages/chat/page.js';
 import { renderChatList } from '../pages/chat/sidebar-list.js';
 import {
@@ -17,6 +18,7 @@ import { initTheme } from '../pages/settings/theme-section.js';
 import * as SettingsStore from '../services/settings.js';
 import { checkAndSuggest } from '../services/backend-suggest.js';
 import { logout } from '../services/auth.js';
+import { mountIdleLockService } from '../services/idle-lock.js';
 import {
 	startMonitoring,
 	stopMonitoring,
@@ -141,6 +143,8 @@ async function renderRoute(route) {
 	if (!root) return;
 	if (route.includes('pages/settings.html')) {
 		activeCleanup = mountSettingsPage(root, buildPageContext());
+	} else if (route.includes('pages/password-manager.html')) {
+		activeCleanup = mountPasswordManagerPage(root, buildPageContext());
 	} else if (route.includes('pages/ai-chat.html')) {
 		activeCleanup = mountChatPage(root, buildPageContext());
 		void checkAndSuggest().catch(() => {});
@@ -157,6 +161,7 @@ export async function mountAppShell() {
 
 	SettingsStore.init().catch(console.warn);
 	SettingsStore.startPolling();
+	const stopIdleLock = mountIdleLockService();
 
 	setConnectionChangeCallback(handleConnectionChange);
 	startMonitoring();
@@ -215,6 +220,7 @@ export async function mountAppShell() {
 	return () => {
 		router.stop();
 		stopMonitoring();
+		stopIdleLock();
 		hideConnectionModal();
 		stopQuickNewChat();
 		cleanupPage();

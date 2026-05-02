@@ -591,28 +591,139 @@ done
 
 base="http://127.0.0.1:$port"
 health="$(curl -sf "$base/health")"
-auth_before="$(curl -sf "$base/api/auth")"
-setup="$(curl -sf -X POST "$base/api/auth/setup" -H 'Content-Type: application/json' -d '{"password":"smoke-pass"}')"
+origin_header=("Origin: http://127.0.0.1:8080")
+auth_before="$(curl -sf "$base/api/auth" -H "${origin_header[0]}")"
+setup="$(curl -sf -X POST "$base/api/auth/setup" -H "${origin_header[0]}" -H 'Content-Type: application/json' -d '{"password":"smoke-pass"}')"
 token="$(printf '%s' "$setup" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sessionToken"])')"
-auth_header=("X-Session-Token: $token")
-validate="$(curl -sf "$base/api/auth/validate" -H "X-Session-Token: $token")"
-put_chats="$(curl -sf -X PUT "$base/api/chats" -H 'Content-Type: application/json' -H "X-Session-Token: $token" -d '{"chats":[],"currentChatId":"","pins":[]}')"
-get_chats="$(curl -sf "$base/api/chats" -H "X-Session-Token: $token")"
-mcp_tools="$(curl -sf "$base/api/mcp/tools" -H "${auth_header[0]}")"
-tool_packs="$(curl -sf "$base/api/tools/packs" -H "${auth_header[0]}")"
-llama_backend="$(curl -sf "$base/api/llamacpp/backend" -H "${auth_header[0]}")"
-put_chat="$(curl -sf -X PUT "$base/api/chats/smoke-logprobs" -H 'Content-Type: application/json' -H "X-Session-Token: $token" -d '{"title":"Smoke Logprobs"}')"
-task_submit="$(curl -sf -X POST "$base/api/tasks/generate" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"model":"stub-model","prompt":"User: hello","max_tokens":32,"logprobs":true,"chat_id":"smoke-logprobs"}')"
+auth_header=("Authorization: Bearer $token")
+validate="$(curl -sf "$base/api/auth/validate" -H "${origin_header[0]}" -H "${auth_header[0]}")"
+put_chats="$(curl -sf -X PUT "$base/api/chats" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"chats":[],"currentChatId":"","pins":[]}')"
+get_chats="$(curl -sf "$base/api/chats" -H "${origin_header[0]}" -H "${auth_header[0]}")"
+mcp_tools="$(curl -sf "$base/api/mcp/tools" -H "${origin_header[0]}" -H "${auth_header[0]}")"
+tool_packs="$(curl -sf "$base/api/tools/packs" -H "${origin_header[0]}" -H "${auth_header[0]}")"
+llama_backend="$(curl -sf "$base/api/llamacpp/backend" -H "${origin_header[0]}" -H "${auth_header[0]}")"
+put_chat="$(curl -sf -X PUT "$base/api/chats/smoke-logprobs" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"title":"Smoke Logprobs"}')"
+task_submit="$(curl -sf -X POST "$base/api/tasks/generate" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"model":"stub-model","prompt":"User: hello","max_tokens":32,"logprobs":true,"chat_id":"smoke-logprobs"}')"
 task_id="$(printf '%s' "$task_submit" | python3 -c 'import json,sys; print(json.load(sys.stdin)["task_id"])')"
-task_wait="$(curl -sf "$base/api/tasks/$task_id/wait" -H "${auth_header[0]}")"
-task_status="$(curl -sf "$base/api/tasks/$task_id" -H "${auth_header[0]}")"
-saved_chat="$(curl -sf "$base/api/chats/smoke-logprobs" -H "X-Session-Token: $token")"
-put_tool_chat="$(curl -sf -X PUT "$base/api/chats/smoke-tool-call" -H 'Content-Type: application/json' -H "X-Session-Token: $token" -d '{"title":"Smoke Tool Call","toolScope":{"enabledPackIds":["calculator"]}}')"
-tool_task_submit="$(curl -sf -X POST "$base/api/tasks/generate" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"model":"stub-model","prompt":"User: use tools to work out 6 * 7","max_tokens":64,"chat_id":"smoke-tool-call","tool_scope":{"enabledPackIds":["calculator"]}}')"
+task_wait="$(curl -sf "$base/api/tasks/$task_id/wait" -H "${origin_header[0]}" -H "${auth_header[0]}")"
+task_status="$(curl -sf "$base/api/tasks/$task_id" -H "${origin_header[0]}" -H "${auth_header[0]}")"
+saved_chat="$(curl -sf "$base/api/chats/smoke-logprobs" -H "${origin_header[0]}" -H "${auth_header[0]}")"
+put_tool_chat="$(curl -sf -X PUT "$base/api/chats/smoke-tool-call" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"title":"Smoke Tool Call","toolScope":{"enabledPackIds":["calculator"]}}')"
+tool_task_submit="$(curl -sf -X POST "$base/api/tasks/generate" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"model":"stub-model","prompt":"User: use tools to work out 6 * 7","max_tokens":64,"chat_id":"smoke-tool-call","tool_scope":{"enabledPackIds":["calculator"]}}')"
 tool_task_id="$(printf '%s' "$tool_task_submit" | python3 -c 'import json,sys; print(json.load(sys.stdin)["task_id"])')"
-tool_task_wait="$(curl -sf "$base/api/tasks/$tool_task_id/wait" -H "${auth_header[0]}")"
-tool_task_status="$(curl -sf "$base/api/tasks/$tool_task_id" -H "${auth_header[0]}")"
-saved_tool_chat="$(curl -sf "$base/api/chats/smoke-tool-call" -H "X-Session-Token: $token")"
+tool_task_wait="$(curl -sf "$base/api/tasks/$tool_task_id/wait" -H "${origin_header[0]}" -H "${auth_header[0]}")"
+tool_task_status="$(curl -sf "$base/api/tasks/$tool_task_id" -H "${origin_header[0]}" -H "${auth_header[0]}")"
+saved_tool_chat="$(curl -sf "$base/api/chats/smoke-tool-call" -H "${origin_header[0]}" -H "${auth_header[0]}")"
+
+vault_material="$(python3 - <<'PY'
+import hashlib
+import json
+import secrets
+
+password = "vault-master"
+salt = secrets.token_hex(32)
+derived = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 600000, dklen=64)
+print(json.dumps({
+    "kdf": {
+        "type": "pbkdf2",
+        "hash": "sha256",
+        "iterations": 600000,
+        "salt": salt,
+    },
+    "vaultAuthKey": derived[32:].hex(),
+    "vault": {
+        "version": 1,
+        "alg": "AES-256-GCM",
+        "revision": 1,
+        "createdAt": 1,
+        "updatedAt": 1,
+        "iv": "smoke-iv",
+        "ct": "smoke-ct",
+    },
+}))
+PY
+)"
+vault_auth_key="$(printf '%s' "$vault_material" | python3 -c 'import json,sys; print(json.load(sys.stdin)["vaultAuthKey"])')"
+vault_setup="$(curl -sf -X POST "$base/api/vault/setup" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d "$vault_material")"
+vault_status="$(curl -sf "$base/api/vault/status" -H "${origin_header[0]}" -H "${auth_header[0]}" -H 'X-Vault-Device-Id: smoke-device')"
+vault_challenge="$(curl -sf -X POST "$base/api/vault/unlock/challenge" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"mode":"master"}')"
+vault_challenge_id="$(printf '%s' "$vault_challenge" | python3 -c 'import json,sys; print(json.load(sys.stdin)["challenge"])')"
+vault_master_proof="$(python3 - <<'PY' "$vault_auth_key" "$vault_challenge_id"
+import hashlib
+import hmac
+import sys
+
+print(hmac.new(bytes.fromhex(sys.argv[1]), f"vault:master:{sys.argv[2]}".encode(), hashlib.sha256).hexdigest())
+PY
+)"
+vault_unlock="$(curl -sf -X POST "$base/api/vault/unlock/master" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d "{\"challenge\":\"$vault_challenge_id\",\"proof\":\"$vault_master_proof\"}")"
+vault_access_token="$(printf '%s' "$vault_unlock" | python3 -c 'import json,sys; print(json.load(sys.stdin)["vaultAccessToken"])')"
+vault_save_payload='{"expectedRevision":1,"vault":{"version":1,"alg":"AES-256-GCM","revision":2,"createdAt":1,"updatedAt":2,"iv":"smoke-iv-2","ct":"smoke-ct-2"}}'
+vault_save="$(curl -sf -X PUT "$base/api/vault" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -H "X-Vault-Access-Token: $vault_access_token" -d "$vault_save_payload")"
+vault_rechallenge="$(curl -sf -X POST "$base/api/vault/unlock/challenge" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"mode":"master"}')"
+vault_rechallenge_id="$(printf '%s' "$vault_rechallenge" | python3 -c 'import json,sys; print(json.load(sys.stdin)["challenge"])')"
+vault_reproof="$(python3 - <<'PY' "$vault_auth_key" "$vault_rechallenge_id"
+import hashlib
+import hmac
+import sys
+
+print(hmac.new(bytes.fromhex(sys.argv[1]), f"vault:master:{sys.argv[2]}".encode(), hashlib.sha256).hexdigest())
+PY
+)"
+vault_unlock_after_save="$(curl -sf -X POST "$base/api/vault/unlock/master" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d "{\"challenge\":\"$vault_rechallenge_id\",\"proof\":\"$vault_reproof\"}")"
+vault_reauth_challenge="$(curl -sf -X POST "$base/api/vault/unlock/challenge" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"mode":"master"}')"
+vault_reauth_challenge_id="$(printf '%s' "$vault_reauth_challenge" | python3 -c 'import json,sys; print(json.load(sys.stdin)["challenge"])')"
+vault_reauth_proof="$(python3 - <<'PY' "$vault_auth_key" "$vault_reauth_challenge_id"
+import hashlib
+import hmac
+import sys
+
+print(hmac.new(bytes.fromhex(sys.argv[1]), f"vault:master:{sys.argv[2]}".encode(), hashlib.sha256).hexdigest())
+PY
+)"
+vault_reauth="$(curl -sf -X POST "$base/api/vault/reauth" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d "{\"challenge\":\"$vault_reauth_challenge_id\",\"proof\":\"$vault_reauth_proof\"}")"
+vault_fresh_token="$(printf '%s' "$vault_reauth" | python3 -c 'import json,sys; print(json.load(sys.stdin)["vaultAccessToken"])')"
+pin_payload="$(python3 - <<'PY'
+import hashlib
+import json
+import secrets
+
+pin = "2468"
+salt = secrets.token_hex(16)
+verifier = hashlib.pbkdf2_hmac("sha256", pin.encode(), bytes.fromhex(salt), 310000, dklen=32).hex()
+print(json.dumps({
+    "deviceId": "smoke-device",
+    "pinAuthKdf": {
+        "type": "pbkdf2",
+        "hash": "sha256",
+        "iterations": 310000,
+        "salt": salt,
+    },
+    "pinAuthVerifier": verifier,
+}))
+PY
+)"
+pin_verifier="$(printf '%s' "$pin_payload" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pinAuthVerifier"])')"
+pin_setup="$(curl -sf -X POST "$base/api/vault/pin/setup" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -H "X-Vault-Access-Token: $vault_fresh_token" -d "$pin_payload")"
+vault_status_with_pin="$(curl -sf "$base/api/vault/status" -H "${origin_header[0]}" -H "${auth_header[0]}" -H 'X-Vault-Device-Id: smoke-device')"
+pin_challenge="$(curl -sf -X POST "$base/api/vault/unlock/challenge" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"mode":"pin","deviceId":"smoke-device"}')"
+pin_challenge_id="$(printf '%s' "$pin_challenge" | python3 -c 'import json,sys; print(json.load(sys.stdin)["challenge"])')"
+pin_proof="$(python3 - <<'PY' "$pin_verifier" "$pin_challenge_id"
+import hashlib
+import hmac
+import sys
+
+print(hmac.new(bytes.fromhex(sys.argv[1]), f"vault:pin:{sys.argv[2]}".encode(), hashlib.sha256).hexdigest())
+PY
+)"
+pin_unlock="$(curl -sf -X POST "$base/api/vault/unlock/pin" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d "{\"deviceId\":\"smoke-device\",\"challenge\":\"$pin_challenge_id\",\"proof\":\"$pin_proof\"}")"
+pin_fail_last=''
+for _ in $(seq 1 5); do
+	fail_challenge="$(curl -sf -X POST "$base/api/vault/unlock/challenge" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d '{"mode":"pin","deviceId":"smoke-device"}')"
+	fail_challenge_id="$(printf '%s' "$fail_challenge" | python3 -c 'import json,sys; print(json.load(sys.stdin)["challenge"])')"
+	pin_fail_last="$(curl -s -X POST "$base/api/vault/unlock/pin" -H "${origin_header[0]}" -H 'Content-Type: application/json' -H "${auth_header[0]}" -d "{\"deviceId\":\"smoke-device\",\"challenge\":\"$fail_challenge_id\",\"proof\":\"$(printf 'f%.0s' $(seq 1 64))\"}")"
+done
+vault_status_after_lockout="$(curl -sf "$base/api/vault/status" -H "${origin_header[0]}" -H "${auth_header[0]}" -H 'X-Vault-Device-Id: smoke-device')"
 
 [[ "$health" == *'"status":"ok"'* ]]
 [[ "$auth_before" == *'"setup":false'* ]]
@@ -629,6 +740,16 @@ saved_tool_chat="$(curl -sf "$base/api/chats/smoke-tool-call" -H "X-Session-Toke
 [[ "$task_status" == *'"id":"'"$task_id"'"'* ]]
 [[ "$tool_task_wait" == *'"status":"completed"'* ]]
 [[ "$tool_task_status" == *'"id":"'"$tool_task_id"'"'* ]]
+[[ "$vault_setup" == *'"success":true'* ]]
+[[ "$vault_status" == *'"setup":true'* ]]
+[[ "$vault_unlock" == *'"revision":1'* ]]
+[[ "$vault_save" == *'"revision":2'* ]]
+[[ "$vault_unlock_after_save" == *'"revision":2'* ]]
+[[ "$pin_setup" == *'"success":true'* ]]
+[[ "$vault_status_with_pin" == *'"configured":true'* ]]
+[[ "$pin_unlock" == *'"vaultAccessToken":'* ]]
+[[ "$pin_fail_last" == *'"pinDisabled":true'* ]]
+[[ "$vault_status_after_lockout" == *'"configured":false'* ]]
 SAVED_CHAT_JSON="$saved_chat" python3 - <<'PY'
 import json
 import math

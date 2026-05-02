@@ -48,6 +48,10 @@ Core principles:
 
         bool backendSuggestionDismissed = false;
 
+        int panelLoginRateLimitPerMinute = 5;
+        int vaultLoginRateLimitPerMinute = 5;
+        int vaultIdleTimeoutSeconds = 300;
+
         bool logprobHighlightHigh = false;
         bool logprobHighlightMedium = false;
         bool logprobHighlightLow = true;
@@ -136,6 +140,21 @@ Core principles:
             state.backendSuggestionDismissed = root["backendSuggestionDismissed"].asBool();
         }
 
+        if (root.isMember("panelLoginRateLimitPerMinute")) {
+            state.panelLoginRateLimitPerMinute =
+                std::clamp(root["panelLoginRateLimitPerMinute"].asInt(), 1, 1000);
+        }
+
+        if (root.isMember("vaultLoginRateLimitPerMinute")) {
+            state.vaultLoginRateLimitPerMinute =
+                std::clamp(root["vaultLoginRateLimitPerMinute"].asInt(), 1, 1000);
+        }
+
+        if (root.isMember("vaultIdleTimeoutSeconds")) {
+            state.vaultIdleTimeoutSeconds =
+                std::clamp(root["vaultIdleTimeoutSeconds"].asInt(), 30, 86400);
+        }
+
         if (root.isMember("logprobHighlightHigh")) state.logprobHighlightHigh = root["logprobHighlightHigh"].asBool();
         if (root.isMember("logprobHighlightMedium")) state.logprobHighlightMedium = root["logprobHighlightMedium"].asBool();
         if (root.isMember("logprobHighlightLow")) state.logprobHighlightLow = root["logprobHighlightLow"].asBool();
@@ -179,6 +198,9 @@ Core principles:
         root["llamacppConcurrentGeneration"] = state_.llamacppConcurrentGeneration;
 
         root["backendSuggestionDismissed"] = state_.backendSuggestionDismissed;
+        root["panelLoginRateLimitPerMinute"] = state_.panelLoginRateLimitPerMinute;
+        root["vaultLoginRateLimitPerMinute"] = state_.vaultLoginRateLimitPerMinute;
+        root["vaultIdleTimeoutSeconds"] = state_.vaultIdleTimeoutSeconds;
 
         root["logprobHighlightHigh"] = state_.logprobHighlightHigh;
         root["logprobHighlightMedium"] = state_.logprobHighlightMedium;
@@ -353,6 +375,21 @@ public:
     bool getBackendSuggestionDismissed() {
         std::lock_guard<std::mutex> lock(mutex_);
         return state_.backendSuggestionDismissed;
+    }
+
+    int getPanelLoginRateLimitPerMinute() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.panelLoginRateLimitPerMinute;
+    }
+
+    int getVaultLoginRateLimitPerMinute() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.vaultLoginRateLimitPerMinute;
+    }
+
+    int getVaultIdleTimeoutSeconds() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.vaultIdleTimeoutSeconds;
     }
 
     bool getLogprobHighlightHigh() {

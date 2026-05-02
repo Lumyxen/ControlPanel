@@ -1,65 +1,53 @@
-/**
- * auth.js — Client-side authentication for ctrlpanel.
- *
- * The backend handles all key derivation and encryption. The frontend only
- * needs to send the password and receive a session token.
- *
- * Session token stored in sessionStorage (per-tab), shared across tabs
- * via BroadcastChannel.
- *
- * Public API:
- *   isUnlocked()            → boolean          synchronous
- *   isFirstRun()            → Promise<boolean> checks backend (async)
- *   syncFromOtherTabs()     → Promise<boolean> try to get token from a peer tab
- *   startKeyShareServer()   → void             serve token-request messages
- *   login(password)         → Promise<void>    throws on bad password
- *   setupPassword(password) → Promise<void>    first-run only
- *   logout()                → Promise<void>    locks all open tabs
- *   getSessionToken()       → string|null      for API calls
- *   encryptPayload(obj)     → Promise<object>  pass-through (backend encrypts)
- *   decryptPayload(obj)     → Promise<any>     pass-through (backend decrypts)
- */
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
 const SESSION_TOKEN_KEY = 'ctrlpanel:sessionToken';
 const AUTH_PENDING_ATTR = 'data-auth-pending';
 const AUTH_REDIRECTING_ATTR = 'data-auth-redirecting';
 const LOGIN_PATH = '/login.html';
 
-const AUTH_SETUP   = '/api/auth/setup';
-const AUTH_LOGIN   = '/api/auth/login';
-const AUTH_LOGOUT  = '/api/auth/logout';
-const AUTH_STATUS  = '/api/auth';
+const AUTH_SETUP = '/api/auth/setup';
+const AUTH_LOGIN = '/api/auth/login';
+const AUTH_LOGOUT = '/api/auth/logout';
+const AUTH_STATUS = '/api/auth';
+const AUTH_REAUTH = '/api/auth/reauth';
 
-const BC_CHANNEL      = 'ctrlpanel:keyshare';
-const BC_TOKEN_REQUEST  = 'key-request';
-const BC_TOKEN_RESPONSE = 'key-response';
-const BC_TOKEN_REVOKE   = 'key-revoke';
+const BC_CHANNEL = 'ctrlpanel:auth';
+const BC_TOKEN_REVOKE = 'token-revoke';
 
-const SYNC_TIMEOUT_MS = 300;
 const AUTH_PUBLIC_PATHS = new Set([
 	'/api/auth',
 	'/api/auth/setup',
 	'/api/auth/login',
 	'/api/auth/validate',
 ]);
+
+let _channel = null;
+let _channelStarted = false;
 let _reauthInProgress = false;
 
-// ── Session token management ──────────────────────────────────────────────────
-
-/** Save session token to sessionStorage */
-function saveTokenToSession(token) {
-	sessionStorage.setItem(SESSION_TOKEN_KEY, token);
+async function isSessionExpiredResponse(response) {
+	if (response.status !== 401) return false;
+	try {
+		const body = await response.clone().json();
+		return body?.error === 'Not authenticated' || body?.error === 'Invalid session';
+	} catch {
+		return false;
+	}
 }
 
-function clearTokenFromSession() {
-	sessionStorage.removeItem(SESSION_TOKEN_KEY);
+function getChannel() {
+	if (!_channel) _channel = new BroadcastChannel(BC_CHANNEL);
+	return _channel;
 }
 
-/** Load session token from sessionStorage */
-function loadTokenFromSession() {
-	return sessionStorage.getItem(SESSION_TOKEN_KEY) || null;
+function saveToken(token) {
+	localStorage.setItem(SESSION_TOKEN_KEY, token);
+}
+
+function clearToken() {
+	localStorage.removeItem(SESSION_TOKEN_KEY);
+}
+
+function loadToken() {
+	return localStorage.getItem(SESSION_TOKEN_KEY) || null;
 }
 
 function setAuthUiBlocked(blocked, attrName = AUTH_PENDING_ATTR) {
@@ -99,24 +87,26 @@ function isProtectedBackendUrl(input) {
 	return url.pathname.startsWith('/api/') || url.pathname.startsWith('/mcp');
 }
 
-/** @returns {boolean} */
 export function isUnlocked() {
-	return !!loadTokenFromSession();
+	return !!loadToken();
 }
 
-/** @returns {string|null} */
 export function getSessionToken() {
-	return loadTokenFromSession();
+	return loadToken();
+}
+
+export function getAuthorizationHeader(token = loadToken()) {
+	return token ? `Bearer ${token}` : '';
+}
+
+export function buildAuthHeaders(headers = {}) {
+	const auth = getAuthorizationHeader();
+	return auth ? { ...headers, Authorization: auth } : { ...headers };
 }
 
 export function buildAuthenticatedBackendUrl(input) {
 	const url = normaliseRequestUrl(input);
-	if (!url) return String(input);
-	const token = loadTokenFromSession();
-	if (token && isProtectedBackendUrl(url)) {
-		url.searchParams.set('token', token);
-	}
-	return url.toString();
+	return url ? url.toString() : String(input);
 }
 
 export function releaseAuthGate() {
@@ -124,16 +114,14 @@ export function releaseAuthGate() {
 	const root = document.documentElement;
 	setAuthUiBlocked(false);
 	root?.removeAttribute(AUTH_REDIRECTING_ATTR);
-	if (root) {
-		root.style.visibility = '';
-	}
+	if (root) root.style.visibility = '';
 }
 
 export function redirectToLogin(options = {}) {
 	const { broadcast = false } = options;
 	if (_reauthInProgress) return;
 	_reauthInProgress = true;
-	clearTokenFromSession();
+	clearToken();
 	setAuthUiBlocked(true);
 	document.documentElement?.setAttribute(AUTH_REDIRECTING_ATTR, 'true');
 	blurActiveElement();
@@ -157,7 +145,7 @@ if (typeof globalThis.fetch === 'function' && !globalThis.__ctrlpanelAuthFetchPa
 				throw new Error('Session expired');
 			}
 
-			const token = loadTokenFromSession();
+			const token = loadToken();
 			if (!token) {
 				redirectToLogin({ broadcast: true });
 				throw new Error('Session expired');
@@ -165,15 +153,15 @@ if (typeof globalThis.fetch === 'function' && !globalThis.__ctrlpanelAuthFetchPa
 
 			const request = new Request(input, init);
 			const headers = new Headers(request.headers);
-			if (!headers.has('X-Session-Token')) {
-				headers.set('X-Session-Token', token);
+			if (!headers.has('Authorization')) {
+				headers.set('Authorization', `Bearer ${token}`);
 			}
 			requestInput = new Request(request, { headers });
 			requestInit = undefined;
 		}
 
 		const response = await originalFetch(requestInput, requestInit);
-		if (protectedRequest && response.status === 401) {
+		if (protectedRequest && await isSessionExpiredResponse(response)) {
 			redirectToLogin({ broadcast: true });
 			throw new Error('Session expired');
 		}
@@ -182,51 +170,27 @@ if (typeof globalThis.fetch === 'function' && !globalThis.__ctrlpanelAuthFetchPa
 	globalThis.__ctrlpanelAuthFetchPatched = true;
 }
 
-// ── BroadcastChannel cross-tab token sharing ─────────────────────────────────
-
-let _channel = null;
-
-function getChannel() {
-	if (!_channel) _channel = new BroadcastChannel(BC_CHANNEL);
-	return _channel;
-}
-
-/** Try to get the session token from another open tab. */
 export async function syncFromOtherTabs() {
-	return new Promise((resolve) => {
-		const ch = getChannel();
-		const handler = (e) => {
-			if (e.data?.type === BC_TOKEN_RESPONSE && e.data?.token) {
-				ch.removeEventListener('message', handler);
-				saveTokenToSession(e.data.token);
-				resolve(true);
-			}
-		};
-		ch.addEventListener('message', handler);
-		ch.postMessage({ type: BC_TOKEN_REQUEST });
-		setTimeout(() => {
-			ch.removeEventListener('message', handler);
-			resolve(false);
-		}, SYNC_TIMEOUT_MS);
-	});
+	return !!loadToken();
 }
 
-/** Listen for token requests from other tabs and respond. */
 export function startKeyShareServer() {
+	if (_channelStarted) return;
+	_channelStarted = true;
 	const ch = getChannel();
-	ch.onmessage = (e) => {
-		if (e.data?.type === BC_TOKEN_REQUEST) {
-			const token = loadTokenFromSession();
-			if (token) ch.postMessage({ type: BC_TOKEN_RESPONSE, token });
-		} else if (e.data?.type === BC_TOKEN_REVOKE) {
+	ch.onmessage = (event) => {
+		if (event.data?.type === BC_TOKEN_REVOKE) {
 			redirectToLogin();
 		}
 	};
+
+	window.addEventListener('storage', (event) => {
+		if (event.key === SESSION_TOKEN_KEY && !event.newValue) {
+			redirectToLogin();
+		}
+	});
 }
 
-// ── Backend API ───────────────────────────────────────────────────────────────
-
-/** Check if this is a first-run (no password set). */
 export async function isFirstRun() {
 	try {
 		const res = await fetch(AUTH_STATUS);
@@ -238,14 +202,12 @@ export async function isFirstRun() {
 	}
 }
 
-/** Validate current session with the backend. Returns false if the session
- *  is stale (e.g. server restarted and lost the AES key). */
 export async function validateSession() {
-	const token = loadTokenFromSession();
+	const token = loadToken();
 	if (!token) return false;
 	try {
 		const res = await fetch('/api/auth/validate', {
-			headers: { 'X-Session-Token': token },
+			headers: { Authorization: `Bearer ${token}` },
 		});
 		if (!res.ok) return false;
 		const data = await res.json();
@@ -255,70 +217,67 @@ export async function validateSession() {
 	}
 }
 
-/** First-time password setup. */
+async function submitPassword(endpoint, password) {
+	const res = await fetch(endpoint, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ password }),
+	});
+	if (!res.ok) {
+		const err = await res.json().catch(() => ({}));
+		throw new Error(err.error || 'Authentication failed');
+	}
+	return res.json();
+}
+
 export async function setupPassword(password) {
-	const res = await fetch(AUTH_SETUP, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ password }),
-	});
-	if (!res.ok) {
-		const err = await res.json().catch(() => ({}));
-		throw new Error(err.error || 'Setup failed');
-	}
-	const data = await res.json();
-	saveTokenToSession(data.sessionToken);
+	const data = await submitPassword(AUTH_SETUP, password);
+	saveToken(data.sessionToken);
 	startKeyShareServer();
 }
 
-/** Login with existing password. */
 export async function login(password) {
-	const res = await fetch(AUTH_LOGIN, {
+	const data = await submitPassword(AUTH_LOGIN, password);
+	saveToken(data.sessionToken);
+	startKeyShareServer();
+}
+
+export async function reauthPanelPassword(password) {
+	const res = await fetch(AUTH_REAUTH, {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: getAuthorizationHeader(),
+		},
 		body: JSON.stringify({ password }),
 	});
 	if (!res.ok) {
 		const err = await res.json().catch(() => ({}));
-		throw new Error(err.error || 'Login failed');
+		throw new Error(err.error || 'Panel reauthentication failed');
 	}
 	const data = await res.json();
-	saveTokenToSession(data.sessionToken);
-	startKeyShareServer();
+	return data.reauthToken;
 }
 
-/** Logout — revoke session on backend and broadcast to other tabs. */
 export async function logout() {
-	const token = loadTokenFromSession();
-	if (token) {
+	if (loadToken()) {
 		try {
 			await fetch(AUTH_LOGOUT, {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'X-Session-Token': token,
-				},
+				headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
 			});
-		} catch { /* ignore */ }
+		} catch {}
 	}
-	clearTokenFromSession();
-	getChannel().postMessage({ type: BC_TOKEN_REVOKE });
+	clearToken();
+	try {
+		getChannel().postMessage({ type: BC_TOKEN_REVOKE });
+	} catch {}
 }
 
-// ── Payload encryption/decryption (pass-through — backend handles it) ─────────
-
-/**
- * Encrypt payload — now a pass-through.
- * The backend encrypts data before storing it.
- */
 export async function encryptPayload(obj) {
 	return obj;
 }
 
-/**
- * Decrypt payload — now a pass-through.
- * The backend decrypts data before sending it.
- */
 export async function decryptPayload(obj) {
 	return obj;
 }

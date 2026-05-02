@@ -1,6 +1,8 @@
 // backend/src/services/crypto_service.cpp
 #include "services/crypto_service.h"
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
+#include <openssl/hmac.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
 #include <sstream>
@@ -12,21 +14,78 @@
 // CryptoService — PBKDF2 + AES-256-GCM using OpenSSL
 // ─────────────────────────────────────────────────────────────────────────────
 
-std::vector<uint8_t> CryptoService::deriveKey(const std::string& password,
-                                               const std::vector<uint8_t>& salt,
-                                               int iterations) {
-    std::vector<uint8_t> key(32); // AES-256
+std::vector<uint8_t> CryptoService::deriveBytes(const std::string& password,
+                                                const std::vector<uint8_t>& salt,
+                                                int iterations,
+                                                std::size_t length) {
+    std::vector<uint8_t> key(length);
     int rc = PKCS5_PBKDF2_HMAC(
         password.c_str(), static_cast<int>(password.size()),
         salt.data(), static_cast<int>(salt.size()),
         iterations,
         EVP_sha256(),
-        32, key.data()
+        static_cast<int>(key.size()), key.data()
     );
     if (rc != 1) {
         throw std::runtime_error("PBKDF2 key derivation failed");
     }
     return key;
+}
+
+std::vector<uint8_t> CryptoService::deriveKey(const std::string& password,
+                                              const std::vector<uint8_t>& salt,
+                                              int iterations) {
+    return deriveBytes(password, salt, iterations, 32);
+}
+
+std::vector<uint8_t> CryptoService::randomBytes(std::size_t length) {
+    std::vector<uint8_t> bytes(length);
+    if (length > 0 && RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1) {
+        throw std::runtime_error("RAND_bytes failed");
+    }
+    return bytes;
+}
+
+std::vector<uint8_t> CryptoService::hmacSha256(const std::vector<uint8_t>& key,
+                                               const std::string& message) {
+    unsigned int length = EVP_MAX_MD_SIZE;
+    std::vector<uint8_t> digest(length);
+
+    unsigned char* result = HMAC(EVP_sha256(),
+                                 key.data(),
+                                 static_cast<int>(key.size()),
+                                 reinterpret_cast<const unsigned char*>(message.data()),
+                                 message.size(),
+                                 digest.data(),
+                                 &length);
+    if (!result) {
+        throw std::runtime_error("HMAC-SHA256 failed");
+    }
+
+    digest.resize(length);
+    return digest;
+}
+
+bool CryptoService::constantTimeEquals(const std::vector<uint8_t>& lhs,
+                                       const std::vector<uint8_t>& rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    if (lhs.empty()) {
+        return true;
+    }
+    return CRYPTO_memcmp(lhs.data(), rhs.data(), lhs.size()) == 0;
+}
+
+bool CryptoService::constantTimeEqualsHex(const std::string& lhs,
+                                          const std::string& rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    if (lhs.empty()) {
+        return true;
+    }
+    return CRYPTO_memcmp(lhs.data(), rhs.data(), lhs.size()) == 0;
 }
 
 std::string CryptoService::encrypt(const std::string& plaintext,

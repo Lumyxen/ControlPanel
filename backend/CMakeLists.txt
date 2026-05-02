@@ -177,6 +177,7 @@ set(SOURCES
     src/controllers/auth_controller.cpp
     src/controllers/chat_controller.cpp
     src/controllers/mcp_controller.cpp
+    src/controllers/vault_controller.cpp
     src/controllers/generation_task_manager.cpp
     ${EMBED_CPP}
     ${EMBED_TOOLPACKS_CPP}
@@ -242,4 +243,23 @@ if(NOT CMAKE_CROSSCOMPILING)
         crypto
     )
     add_test(NAME ctrlpanel_web_search_test COMMAND ctrlpanel_web_search_test)
+
+    add_executable(ctrlpanel_auth_vault_test
+        src/tests/auth_vault_test.cpp
+        src/controllers/auth_controller.cpp
+        src/controllers/chat_controller.cpp
+        src/controllers/vault_controller.cpp
+        src/server/http_utils.cpp
+        src/services/crypto_service.cpp
+    )
+    target_link_libraries(ctrlpanel_auth_vault_test
+        ${JSONCPP_LIBRARIES}
+        ${LIBCURL_LIBRARIES}
+        ${SQLITE3_LIBRARIES}
+        pthread
+        dl
+        ssl
+        crypto
+    )
+    add_test(NAME ctrlpanel_auth_vault_test COMMAND ctrlpanel_auth_vault_test)
 endif()

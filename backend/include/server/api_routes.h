@@ -12,6 +12,7 @@ class McpService;
 class LlamaCppService;
 class AuthStore;
 class ChatStore;
+class VaultStore;
 class HuggingFaceService;
 struct LmStudioService;
 class ToolSystem;
@@ -40,6 +41,7 @@ struct ApiRouteContext {
     ToolSystem& toolSystem;
     AuthStore& authStore;
     ChatStore& chatStore;
+    VaultStore& vaultStore;
     std::shared_ptr<HuggingFaceService> huggingFaceService;
     LlamaCppService* llamaCppService;
     BuildState& buildState;

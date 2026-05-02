@@ -17,8 +17,16 @@
     flex-direction: column;
 }
 
+.content.content-bleed {
+    padding: 0;
+}
+
 body.sidebar-collapsed .content {
     padding-left: calc(24px + var(--toggle-stack));
+}
+
+body.sidebar-collapsed .content.content-bleed {
+    padding-left: 0;
 }
 
 .content h1 {
@@ -43,6 +51,10 @@ body.sidebar-collapsed .content {
 @media (max-width: 800px) {
     .content {
         padding-left: calc(24px + var(--toggle-stack));
+    }
+
+    .content.content-bleed {
+        padding-left: 0;
     }
 }
 

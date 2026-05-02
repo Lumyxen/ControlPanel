@@ -22,9 +22,6 @@ export async function mountLoginPage(root = document.body) {
 		return () => {};
 	}
 
-	const modeBanner    = /** @type {HTMLElement}       */ (document.getElementById('mode-banner'));
-	const modeIcon      = /** @type {SVGElement}        */ (document.getElementById('mode-icon'));
-	const modeLabel     = /** @type {HTMLElement}       */ (document.getElementById('mode-label'));
 	const authTitle     = /** @type {HTMLElement}       */ (document.getElementById('auth-title'));
 	const authSubtitle  = /** @type {HTMLElement}       */ (document.getElementById('auth-subtitle'));
 	const form          = /** @type {HTMLFormElement}   */ (document.getElementById('auth-form'));
@@ -39,12 +36,6 @@ export async function mountLoginPage(root = document.body) {
 	const firstRun = await isFirstRun();
 
 	if (firstRun) {
-		modeBanner.classList.replace('mode-unlock', 'mode-setup');
-		modeLabel.textContent = 'First-time setup';
-		modeIcon.innerHTML = `
-			<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-			<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-		`;
 		authTitle.textContent = 'Set up your password';
 		authSubtitle.textContent = 'Choose a password to encrypt your control panel. It encrypts all stored chat data. There is no recovery option, so don\'t forget it.';
 		confirmGroup.hidden = false;

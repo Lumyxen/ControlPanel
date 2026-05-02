@@ -25,6 +25,7 @@
 #include "controllers/chat_controller.h"
 #include "controllers/generation_task_manager.h"
 #include "controllers/lmstudio_controller.h"
+#include "controllers/vault_controller.h"
 #include "embedded_frontend.h"
 #include "embedded_toolpacks.h"
 #include "server/api_routes.h"
@@ -786,6 +787,7 @@ void runHttpServer(
         (paths.dataDir / "chats").string(),
         &authStore,
         (paths.dataDir / "chats.json").string());
+    VaultStore vaultStore((paths.dataDir / "password-vault.json").string());
     auto huggingFaceService = HuggingFaceService::create();
 
     server.set_logger([](const httplib::Request& req, const httplib::Response& res) {
@@ -801,6 +803,10 @@ void runHttpServer(
     server.Options(".*", [](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res);
         addCorsHeaders(res, req);
+        if (isProtectedApiPath(req.path) && !isAllowedFrontendRequest(req)) {
+            res.status = 403;
+            return;
+        }
         res.status = 200;
     });
 
@@ -809,10 +815,15 @@ void runHttpServer(
             return httplib::Server::HandlerResponse::Unhandled;
         }
 
-        const bool isApiRoute = req.path.rfind("/api/", 0) == 0;
-        const bool isMcpRoute = req.path.rfind("/mcp", 0) == 0;
-        if (!isApiRoute && !isMcpRoute) {
+        if (!isProtectedApiPath(req.path)) {
             return httplib::Server::HandlerResponse::Unhandled;
+        }
+
+        addSecurityHeaders(res);
+        addCorsHeaders(res, req);
+        if (!isAllowedFrontendRequest(req)) {
+            setJsonError(res, 403, "Blocked by frontend origin policy");
+            return httplib::Server::HandlerResponse::Handled;
         }
 
         const bool isPublicRoute =
@@ -824,8 +835,6 @@ void runHttpServer(
             return httplib::Server::HandlerResponse::Unhandled;
         }
 
-        addSecurityHeaders(res);
-        addCorsHeaders(res, req);
         if (!requireValidSession(req, res, &authStore)) {
             return httplib::Server::HandlerResponse::Handled;
         }
@@ -849,6 +858,7 @@ void runHttpServer(
         toolSystem,
         authStore,
         chatStore,
+        vaultStore,
         huggingFaceService,
         &llamaService,
         gBuildState,

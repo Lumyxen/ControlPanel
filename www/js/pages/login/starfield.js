@@ -31,12 +31,19 @@ const GIANT_CLASSES = normalizeWeights([
 	{ id: 'A', weight: 0.06, tempMin: 8000, tempMax: 9600, size: [1.08, 1.5], brightness: [0.82, 1.06] },
 ]);
 
-export function mountStarfield(canvas) {
+export function mountStarfield(canvas, options = {}) {
 	if (!canvas) return () => {};
 
 	const ctx = canvas.getContext('2d', { alpha: false });
 	if (!ctx) return () => {};
 
+	const getSize = typeof options.getSize === 'function'
+		? options.getSize
+		: () => ({
+			width: window.innerWidth || canvas.clientWidth || 0,
+			height: window.innerHeight || canvas.clientHeight || 0,
+		});
+	const observeTarget = options.observeTarget || null;
 	const motionQuery = typeof window.matchMedia === 'function'
 		? window.matchMedia(REDUCED_MOTION)
 		: null;
@@ -65,6 +72,7 @@ export function mountStarfield(canvas) {
 		reducedMotion: Boolean(motionQuery?.matches),
 		baseSky: '#1E2326',
 	};
+	let resizeObserver = null;
 
 	function applyMotionPreference() {
 		state.reducedMotion = Boolean(motionQuery?.matches);
@@ -73,8 +81,9 @@ export function mountStarfield(canvas) {
 	}
 
 	function resize() {
-		const width = Math.max(1, window.innerWidth || 0);
-		const height = Math.max(1, window.innerHeight || 0);
+		const nextSize = getSize() || {};
+		const width = Math.max(1, Math.round(nextSize.width || canvas.clientWidth || window.innerWidth || 0));
+		const height = Math.max(1, Math.round(nextSize.height || canvas.clientHeight || window.innerHeight || 0));
 
 		state.width = width;
 		state.height = height;
@@ -147,6 +156,10 @@ export function mountStarfield(canvas) {
 	}
 
 	window.addEventListener('resize', resize);
+	if (observeTarget && typeof ResizeObserver === 'function') {
+		resizeObserver = new ResizeObserver(() => resize());
+		resizeObserver.observe(observeTarget);
+	}
 	document.addEventListener('visibilitychange', handleVisibility);
 
 	if (motionQuery) {
@@ -164,6 +177,7 @@ export function mountStarfield(canvas) {
 	return () => {
 		stop();
 		window.removeEventListener('resize', resize);
+		resizeObserver?.disconnect();
 		document.removeEventListener('visibilitychange', handleVisibility);
 
 		if (motionQuery) {

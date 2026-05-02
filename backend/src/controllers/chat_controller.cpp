@@ -48,6 +48,27 @@ std::string stringValueOr(const Json::Value& value, const std::string& fallback 
     return fallback;
 }
 
+bool parseJsonString(const std::string& text, Json::Value& out) {
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream stream(text);
+    return Json::parseFromStream(reader, stream, &out, &errors);
+}
+
+bool writeJsonFileRaw(const fs::path& path, const Json::Value& value) {
+    fs::create_directories(path.parent_path());
+    std::ofstream file(path);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "    ";
+    std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+    writer->write(value, &file);
+    return true;
+}
+
 void appendUniqueChildId(Json::Value& children, const std::string& childId) {
     if (childId.empty()) {
         return;
@@ -792,6 +813,65 @@ bool ChatStore::deleteChat(const std::string& chatId) {
     std::error_code ec;
     fs::remove(chatFilePathForSummary(deletedSummary), ec);
     saveRootUnlocked(root);
+    return true;
+}
+
+bool ChatStore::rotateEncryptionKey(const std::vector<uint8_t>& previousKey,
+                                    const std::vector<uint8_t>& nextKey) {
+    if (previousKey.empty() || nextKey.empty()) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    fs::create_directories(directoryPath_);
+
+    std::vector<fs::path> files;
+    if (fs::exists(indexFilePath_)) {
+        files.push_back(indexFilePath_);
+    }
+
+    if (fs::exists(directoryPath_)) {
+        for (const auto& entry : fs::directory_iterator(directoryPath_)) {
+            if (!entry.is_regular_file() || entry.path().extension() != ".json") {
+                continue;
+            }
+            if (entry.path() == indexFilePath_) {
+                continue;
+            }
+            files.push_back(entry.path());
+        }
+    }
+
+    for (const auto& path : files) {
+        const Json::Value raw = readJsonFileUnlocked(path, Json::Value(Json::nullValue));
+        Json::Value plaintextValue = raw;
+
+        if (isEncryptedEnvelope(raw)) {
+            try {
+                const std::string plaintext = CryptoService::decryptWithKey(raw, previousKey);
+                if (!parseJsonString(plaintext, plaintextValue)) {
+                    return false;
+                }
+            } catch (...) {
+                return false;
+            }
+        }
+
+        Json::Value nextEnvelope;
+        try {
+            const std::string encrypted = CryptoService::encrypt(writeJson(plaintextValue), nextKey);
+            if (!parseJsonString(encrypted, nextEnvelope)) {
+                return false;
+            }
+        } catch (...) {
+            return false;
+        }
+
+        if (!writeJsonFileRaw(path, nextEnvelope)) {
+            return false;
+        }
+    }
+
     return true;
 }
 

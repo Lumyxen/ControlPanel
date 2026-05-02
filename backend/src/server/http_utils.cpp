@@ -12,21 +12,53 @@ void addSecurityHeaders(httplib::Response& res) {
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         "img-src 'self' data: blob: https:; "
         "font-src 'self' https://cdn.jsdelivr.net; "
-        "connect-src 'self' http://localhost:* http://127.0.0.1:*; "
+        "connect-src 'self' http://127.0.0.1:8080; "
         "frame-ancestors 'none'; base-uri 'self'; form-action 'self';");
     res.set_header("X-XSS-Protection", "1; mode=block");
     res.set_header("Referrer-Policy", "strict-origin-when-cross-origin");
 }
 
+bool isProtectedApiPath(std::string_view path) {
+    return path.starts_with("/api/") || path == "/mcp" || path.starts_with("/mcp/");
+}
+
+std::string extractOriginFromUrl(const std::string& value) {
+    const std::size_t schemePos = value.find("://");
+    if (schemePos == std::string::npos) {
+        return "";
+    }
+
+    const std::size_t originEnd = value.find_first_of("/?#", schemePos + 3);
+    if (originEnd == std::string::npos) {
+        return value;
+    }
+    return value.substr(0, originEnd);
+}
+
+bool isAllowedFrontendRequest(const httplib::Request& req) {
+    const std::string origin = req.get_header_value("Origin");
+    if (!origin.empty()) {
+        return origin == kAllowedFrontendOrigin;
+    }
+
+    const std::string referer = req.get_header_value("Referer");
+    if (!referer.empty()) {
+        return extractOriginFromUrl(referer) == kAllowedFrontendOrigin;
+    }
+
+    return false;
+}
+
 void addCorsHeaders(httplib::Response& res, const httplib::Request& req) {
     const std::string origin = req.get_header_value("Origin");
-    if (origin.empty() || origin.find("http://localhost") == 0 || origin.find("http://127.0.0.1") == 0) {
-        res.set_header("Access-Control-Allow-Origin", origin.empty() ? "*" : origin);
-        res.set_header("Access-Control-Allow-Credentials", "true");
+    if (origin == kAllowedFrontendOrigin) {
+        res.set_header("Access-Control-Allow-Origin", origin);
     }
 
     res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.set_header("Access-Control-Allow-Headers", "Content-Type, X-Chunk-Offset, X-Session-Token");
+    res.set_header(
+        "Access-Control-Allow-Headers",
+        "Authorization, Content-Type, X-Chunk-Offset, X-Panel-Reauth-Token, X-Vault-Access-Token, X-Vault-Device-Id");
     res.set_header("Access-Control-Max-Age", "86400");
 }
 
