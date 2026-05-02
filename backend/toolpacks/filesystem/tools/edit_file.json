@@ -1,0 +1,57 @@
+{
+    "id": "edit_file",
+    "title": "Edit File",
+    "description": "Create or modify a text file inside the active workspace directory. Every edit writes a checkpoint before changing the file.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "path": {
+                "type": "string"
+            },
+            "operation": {
+                "type": "string",
+                "enum": ["write", "append", "replace"]
+            },
+            "content": {
+                "type": "string",
+                "description": "Required for write and append operations. May be an empty string only when intentionally writing/appending no text."
+            },
+            "old_text": {
+                "type": "string",
+                "description": "Required for replace operations. The edit is rejected if this text is missing or ambiguous unless replace_all is true."
+            },
+            "new_text": {
+                "type": "string",
+                "description": "Replacement text for replace operations."
+            },
+            "replace_all": {
+                "type": "boolean"
+            },
+            "create_if_missing": {
+                "type": "boolean"
+            },
+            "create_parent_directories": {
+                "type": "boolean"
+            }
+        },
+        "required": ["path", "operation"]
+    },
+    "selection": {
+        "summary": "Create, append to, or replace text in a workspace-contained file with an automatic checkpoint.",
+        "tags": ["filesystem", "file", "edit", "write", "replace", "checkpoint", "workspace"],
+        "whenToUse": "Use when the user asks the AI to modify project files. Change the working directory first to set the workspace root, including a mounted or remote project path.",
+        "whenNotToUse": "Do not use for reading files, editing paths outside the active workspace, binary files, or destructive directory operations."
+    },
+    "policy": {
+        "riskTier": "write",
+        "approvalMode": "prompt",
+        "network": false,
+        "idempotent": false
+    },
+    "native": {
+        "handler": "filesystem_edit_file"
+    }
+}

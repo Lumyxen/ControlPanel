@@ -1,6 +1,7 @@
 #include "services/tools/tool_system.h"
 
 #include "services/tools/calculator_tool.h"
+#include "services/tools/file_edit_tool.h"
 #include "services/tools/file_reader_tool.h"
 #include "services/tools/filesystem_tool.h"
 #include "services/tools/tool_argument_validator.h"
@@ -1553,6 +1554,10 @@ struct ToolSystem::Impl {
 
         if (handler == "filesystem_directory_tree") {
             return filesystem_tool::directoryTree(args, fs::path(session.workingDirectory));
+        }
+
+        if (handler == "filesystem_edit_file") {
+            return file_edit_tool::editFile(args, fs::path(session.workingDirectory));
         }
 
         if (handler == "websearch_search") {

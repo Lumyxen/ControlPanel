@@ -178,6 +178,7 @@ set(SOURCES
     src/services/mcp_stdio_client.cpp
     src/services/mcp_registry.cpp
     src/services/tools/calculator_tool.cpp
+    src/services/tools/file_edit_tool.cpp
     src/services/tools/file_reader_tool.cpp
     src/services/tools/filesystem_tool.cpp
     src/services/tools/web_search_tool.cpp
@@ -269,6 +270,7 @@ if(NOT CMAKE_CROSSCOMPILING)
 
     add_executable(ctrlpanel_filesystem_test
         src/tests/filesystem_tool_test.cpp
+        src/services/tools/file_edit_tool.cpp
         src/services/tools/file_reader_tool.cpp
         src/services/tools/filesystem_tool.cpp
     )

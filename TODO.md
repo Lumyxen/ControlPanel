@@ -42,14 +42,15 @@
   - [ ] Read-only, location/date-aware
 - [x] File reading tool
 - [x] Directory tree / active-folder inspection tool
-- [ ] Sandboxed file editing tool
-  - [ ] Restrained to set workspace directory
-  - [ ] Remote editing, so for example, it could work on a project on duyfken despite running on skidbladnir
-  - [ ] Checkpoints before each AI file edit to keep edits reversible
+- [x] Sandboxed file editing tool
+  - [x] Restrained to set workspace directory
+  - [x] Remote editing, so for example, it could work on a project on duyfken despite running on skidbladnir
+  - [x] Checkpoints before each AI file edit to keep edits reversible
 - [ ] Sandboxed CLI tool
   - [ ] Approval gate for touchy commands like `rm`
 - [ ] Headless browser tool
-- [ ] Tool discovery/search agent
+- [ ] Tool discovery/search agent tool
+  - [ ] Use when the model wants to preserve context window space and avoid exposing tools it will not use
 - [ ] Fact-checking AI tool
 - [ ] GitHub repo viewer tool
 - [ ] Personal per-chat notes tool

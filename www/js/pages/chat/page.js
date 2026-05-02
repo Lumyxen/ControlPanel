@@ -33,6 +33,7 @@ import {
 	generateAiTitle,
 	approveToolApproval,
 	denyToolApproval,
+	rollbackFileEdit,
 	countChatTokens,
 } from '../../core/http.js';
 import * as SettingsStore from '../../services/settings.js';
@@ -681,6 +682,34 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			console.error('[ChatPage] Tool approval action failed:', err);
 			resolvingApprovalIds.delete(approvalId);
 			renderApprovalPanel();
+		}
+	};
+
+	const handleFileEditRollback = async (button) => {
+		const checkpointId = button?.dataset?.checkpointId;
+		const workspaceDirectory = button?.dataset?.workspaceDirectory;
+		const path = button?.dataset?.path;
+		if (!checkpointId || !workspaceDirectory || !path || button.disabled) return;
+
+		const previousHtml = button.innerHTML;
+		button.disabled = true;
+		button.dataset.rollbackState = 'running';
+		button.textContent = 'Rolling back...';
+
+		try {
+			await rollbackFileEdit({
+				checkpoint_id: checkpointId,
+				workspace_directory: workspaceDirectory,
+				path,
+			});
+			button.dataset.rollbackState = 'done';
+			button.textContent = 'Rolled back';
+		} catch (err) {
+			console.error('[ChatPage] File edit rollback failed:', err);
+			button.dataset.rollbackState = 'failed';
+			button.disabled = false;
+			button.innerHTML = previousHtml;
+			button.title = err?.message ? `Rollback failed: ${err.message}` : 'Rollback failed';
 		}
 	};
 
@@ -1540,6 +1569,12 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		const approvalBtn = e.target.closest('[data-approval-action][data-approval-id]');
 		if (approvalBtn) {
 			handleApprovalAction(approvalBtn);
+			return;
+		}
+
+		const rollbackBtn = e.target.closest('[data-file-edit-rollback="1"]');
+		if (rollbackBtn) {
+			handleFileEditRollback(rollbackBtn);
 			return;
 		}
 

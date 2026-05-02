@@ -289,3 +289,10 @@ export async function denyToolApproval(approvalId, note = '') {
 		body: JSON.stringify({ note }),
 	});
 }
+
+export async function rollbackFileEdit(params) {
+	return requestJson('/tools/file-edits/rollback', {
+		method: 'POST',
+		body: JSON.stringify(params || {}),
+	});
+}

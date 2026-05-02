@@ -23,6 +23,7 @@ const icons = {
 	branch:        s => `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M13 22H29C33.4183 22 37 25.5817 37 30V44" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="8.94365" r="5" transform="rotate(-90 13 8.94365)" stroke="currentColor" stroke-width="4"/><path d="M13 14V43" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 39L13 44L8 39" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M42 39L37 44L32 39" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 	trash:         s => `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
 	copy:          s => `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M8 5.00005C7.01165 5.00082 6.49359 5.01338 6.09202 5.21799C5.71569 5.40973 5.40973 5.71569 5.21799 6.09202C5 6.51984 5 7.07989 5 8.2V17.8C5 18.9201 5 19.4802 5.21799 19.908C5.40973 20.2843 5.71569 20.5903 6.09202 20.782C6.51984 21 7.07989 21 8.2 21H15.8C16.9201 21 17.4802 21 17.908 20.782C18.2843 20.5903 18.5903 20.2843 18.782 19.908C19 19.4802 19 18.9201 19 17.8V8.2C19 7.07989 19 6.51984 18.782 6.09202C18.5903 5.71569 18.2843 5.40973 17.908 5.21799C17.5064 5.01338 16.9884 5.00082 16 5.00005M8 5.00005V7H16V5.00005M8 5.00005V4.70711C8 4.25435 8.17986 3.82014 8.5 3.5C8.82014 3.17986 9.25435 3 9.70711 3H14.2929C14.7456 3 15.1799 3.17986 15.5 3.5C15.8201 3.82014 16 4.25435 16 4.70711V5.00005"/></svg>`,
+	undo:          s => `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg>`,
 };
 
 export function createActionButton({ action, label, title, iconName, disabled = false }) {
@@ -85,6 +86,62 @@ function formatToolName(name) {
 	return name.replace(/__/g, ' › ').replace(/_/g, ' ');
 }
 
+function getEditedFilesFromToolCall(tc) {
+	const output = tc?.output;
+	if (!output || typeof output !== 'object' || Array.isArray(output)) return [];
+	if (!Array.isArray(output.edited_files)) return [];
+	return output.edited_files.filter((file) => file && typeof file === 'object');
+}
+
+function buildEditedFilesElement(editedFiles) {
+	if (!editedFiles.length) return null;
+	const wrap = document.createElement('div');
+	wrap.className = 'tool-call-edited-files';
+
+	for (const file of editedFiles) {
+		const checkpoint = file.checkpoint || {};
+		const checkpointId = String(checkpoint.id || file.checkpoint_id || '');
+		const workspaceDirectory = String(file.workspace_directory || '');
+		const path = String(file.path || '');
+
+		const row = document.createElement('div');
+		row.className = 'tool-call-edited-file';
+
+		const info = document.createElement('div');
+		info.className = 'tool-call-edited-file-info';
+		const name = document.createElement('span');
+		name.className = 'tool-call-edited-file-path';
+		name.textContent = path || String(file.resolved_path || 'Edited file');
+		const meta = document.createElement('span');
+		meta.className = 'tool-call-edited-file-meta';
+		meta.textContent = [
+			file.operation ? String(file.operation) : '',
+			file.created_file ? 'created' : '',
+			checkpointId ? `checkpoint ${checkpointId}` : '',
+		].filter(Boolean).join(' • ');
+		info.append(name, meta);
+		row.appendChild(info);
+
+		if (checkpointId && workspaceDirectory && path) {
+			const button = document.createElement('button');
+			button.type = 'button';
+			button.className = 'tool-call-rollback-btn';
+			button.dataset.fileEditRollback = '1';
+			button.dataset.checkpointId = checkpointId;
+			button.dataset.workspaceDirectory = workspaceDirectory;
+			button.dataset.path = path;
+			button.title = 'Roll back this file';
+			button.setAttribute('aria-label', `Roll back ${path}`);
+			button.innerHTML = `${icons.undo(stroke)}<span>Roll back</span>`;
+			row.appendChild(button);
+		}
+
+		wrap.appendChild(row);
+	}
+
+	return wrap;
+}
+
 export function buildToolCallElement(tc) {
 	const details = document.createElement('details');
 	details.className = 'message-tool-call';
@@ -122,6 +179,11 @@ export function buildToolCallElement(tc) {
 		const code  = document.createElement('pre');  code.className  = 'tool-call-code';
 		code.textContent = typeof inputValue === 'object' ? JSON.stringify(inputValue, null, 2) : String(inputValue);
 		body.append(label, code);
+	}
+	const editedFilesEl = buildEditedFilesElement(getEditedFilesFromToolCall(tc));
+	if (editedFilesEl) {
+		const label = document.createElement('div'); label.className = 'tool-call-section-label'; label.textContent = 'Edited files';
+		body.append(label, editedFilesEl);
 	}
 	if (tc.output != null) {
 		const label = document.createElement('div'); label.className = 'tool-call-section-label'; label.textContent = 'Output';

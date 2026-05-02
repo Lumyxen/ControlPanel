@@ -24,6 +24,7 @@
 #include "services/lmstudio_service.h"
 #include "services/mcp_registry.h"
 #include "services/mcp_service.h"
+#include "services/tools/file_edit_tool.h"
 #include "services/tools/tool_system.h"
 
 namespace fs = std::filesystem;
@@ -1088,6 +1089,16 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
             false,
             body.get("note", "").asString());
         setJson(res, result, result.isMember("error") ? 404 : 200);
+    });
+
+    svr.Post("/api/tools/file-edits/rollback", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+        Json::Value body(Json::objectValue);
+        if (!parseJsonBody(req.body, body, res)) {
+            return;
+        }
+        Json::Value result = file_edit_tool::rollbackCheckpoint(body);
+        setJson(res, result, result.isMember("error") ? 400 : 200);
     });
 
     svr.Get("/api/mcp/tools", [&](const httplib::Request& req, httplib::Response& res) {

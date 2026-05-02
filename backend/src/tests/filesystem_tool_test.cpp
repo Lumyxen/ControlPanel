@@ -1,3 +1,4 @@
+#include "services/tools/file_edit_tool.h"
 #include "services/tools/file_reader_tool.h"
 #include "services/tools/filesystem_tool.h"
 
@@ -111,6 +112,94 @@ void testDirectoryErrors() {
     expect(result.isMember("error"), "changing to a file should return an error");
 }
 
+void testEditFileWritesCheckpoint() {
+    ScopedDir temp;
+    writeFile(temp.path() / "note.txt", "before\n");
+
+    Json::Value args(Json::objectValue);
+    args["path"] = "note.txt";
+    args["operation"] = "replace";
+    args["old_text"] = "before";
+    args["new_text"] = "after";
+
+    const Json::Value result = file_edit_tool::editFile(args, temp.path());
+    expect(!result.isMember("error"), "editFile returned an unexpected error");
+    expect(result["checkpoint"].isObject(), "editFile should return checkpoint metadata");
+    expect(fs::exists(result["checkpoint"]["content_path"].asString()), "checkpoint should include previous file content");
+
+    Json::Value readArgs(Json::objectValue);
+    readArgs["path"] = "note.txt";
+    readArgs["include_line_numbers"] = false;
+    const Json::Value readResult = file_reader_tool::readFile(readArgs, temp.path());
+    expect(readResult["content"].asString() == "after\n", "edited file content did not match");
+
+    Json::Value checkpointRead(Json::objectValue);
+    checkpointRead["path"] = result["checkpoint"]["content_path"].asString();
+    checkpointRead["include_line_numbers"] = false;
+    const Json::Value checkpointResult = file_reader_tool::readFile(checkpointRead);
+    expect(checkpointResult["content"].asString() == "before\n", "checkpoint content did not match previous content");
+
+    Json::Value rollbackArgs(Json::objectValue);
+    rollbackArgs["checkpoint_id"] = result["checkpoint"]["id"].asString();
+    rollbackArgs["workspace_directory"] = temp.path().string();
+    rollbackArgs["path"] = "note.txt";
+    const Json::Value rollbackResult = file_edit_tool::rollbackCheckpoint(rollbackArgs);
+    expect(!rollbackResult.isMember("error"), "rollbackCheckpoint returned an unexpected error");
+
+    const Json::Value restoredReadResult = file_reader_tool::readFile(readArgs, temp.path());
+    expect(restoredReadResult["content"].asString() == "before\n", "rollback should restore previous content");
+}
+
+void testEditFileRejectsWorkspaceEscape() {
+    ScopedDir temp;
+    ScopedDir outside;
+    writeFile(outside.path() / "outside.txt", "outside\n");
+
+    Json::Value args(Json::objectValue);
+    args["path"] = (outside.path() / "outside.txt").string();
+    args["operation"] = "write";
+    args["content"] = "changed\n";
+
+    const Json::Value result = file_edit_tool::editFile(args, temp.path());
+    expect(result.isMember("error"), "editFile should reject paths outside workspace");
+}
+
+void testEditFileCreatesRemoteLikeWorkspaceFiles() {
+    ScopedDir temp;
+    const fs::path mountedProject = temp.path() / "mnt" / "duyfken" / "project";
+    fs::create_directories(mountedProject);
+
+    Json::Value args(Json::objectValue);
+    args["path"] = "src/generated.txt";
+    args["operation"] = "write";
+    args["content"] = "remote workspace\n";
+    args["create_parent_directories"] = true;
+
+    const Json::Value result = file_edit_tool::editFile(args, mountedProject);
+    expect(!result.isMember("error"), "editFile should support any configured workspace directory");
+    expect(result["workspace_directory"].asString() == mountedProject.string(), "workspace directory should be preserved");
+    expect(fs::exists(mountedProject / "src" / "generated.txt"), "editFile should create file under workspace");
+
+    Json::Value rollbackArgs(Json::objectValue);
+    rollbackArgs["checkpoint_id"] = result["checkpoint"]["id"].asString();
+    rollbackArgs["workspace_directory"] = mountedProject.string();
+    rollbackArgs["path"] = "src/generated.txt";
+    const Json::Value rollbackResult = file_edit_tool::rollbackCheckpoint(rollbackArgs);
+    expect(!rollbackResult.isMember("error"), "rollbackCheckpoint should remove files created by edits");
+    expect(!fs::exists(mountedProject / "src" / "generated.txt"), "rollback should delete file created by edit");
+}
+
+void testEditFileRequiresContentForWrites() {
+    ScopedDir temp;
+
+    Json::Value args(Json::objectValue);
+    args["path"] = "empty.txt";
+    args["operation"] = "write";
+
+    const Json::Value result = file_edit_tool::editFile(args, temp.path());
+    expect(result.isMember("error"), "write without content should fail instead of silently writing an empty file");
+}
+
 } // namespace
 
 int main() {
@@ -119,6 +208,10 @@ int main() {
         testDirectoryListingSkipsHiddenByDefault();
         testDirectoryTreeIsBounded();
         testDirectoryErrors();
+        testEditFileWritesCheckpoint();
+        testEditFileRejectsWorkspaceEscape();
+        testEditFileCreatesRemoteLikeWorkspaceFiles();
+        testEditFileRequiresContentForWrites();
         return 0;
     } catch (const std::exception& exception) {
         std::cerr << "filesystem_tool_test failed: " << exception.what() << "\n";
