@@ -40,7 +40,7 @@
   - [x] Search-first interface; scraper backend only if needed
 - [ ] Weather tool
   - [ ] Read-only, location/date-aware
-- [ ] File reading tool
+- [x] File reading tool
 - [ ] Directory tree / active-folder inspection tool
 - [ ] Sandboxed file editing tool
   - [ ] Restrained to set workspace directory

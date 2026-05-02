@@ -129,13 +129,25 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/llama_cpp_headers-src/ggml/includ
 
 set(EMBED_H   "${CMAKE_BINARY_DIR}/embedded_frontend.h")
 set(EMBED_CPP "${CMAKE_BINARY_DIR}/embedded_frontend.cpp")
+set(FIREFOX_EXTENSION_SOURCE_DIR "${CMAKE_SOURCE_DIR}/../extensions/firefox/ctrlpanel-passwords")
+set(FIREFOX_EXTENSION_XPI "${CMAKE_BINARY_DIR}/ctrlpanel-passwords-firefox.xpi")
 file(GLOB_RECURSE FRONTEND_FILES "${CMAKE_SOURCE_DIR}/../www/*")
+file(GLOB_RECURSE FIREFOX_EXTENSION_FILES CONFIGURE_DEPENDS "${FIREFOX_EXTENSION_SOURCE_DIR}/*")
+add_custom_command(
+    OUTPUT ${FIREFOX_EXTENSION_XPI}
+    COMMAND Python3::Interpreter
+            "${CMAKE_SOURCE_DIR}/scripts/package_firefox_extension.py"
+            "${FIREFOX_EXTENSION_SOURCE_DIR}"
+            "${FIREFOX_EXTENSION_XPI}"
+    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/package_firefox_extension.py" ${FIREFOX_EXTENSION_FILES}
+    COMMENT "Packaging Firefox password extension...")
 add_custom_command(
     OUTPUT ${EMBED_H} ${EMBED_CPP}
     COMMAND Python3::Interpreter
             "${CMAKE_SOURCE_DIR}/scripts/embed_frontend.py"
             "${CMAKE_SOURCE_DIR}/../www" "${EMBED_H}" "${EMBED_CPP}"
-    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/embed_frontend.py" ${FRONTEND_FILES}
+            --extra-file "${FIREFOX_EXTENSION_XPI}" "/assets/extensions/ctrlpanel-passwords-firefox.xpi"
+    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/embed_frontend.py" ${FRONTEND_FILES} ${FIREFOX_EXTENSION_XPI}
     COMMENT "Embedding frontend files...")
 include_directories("${CMAKE_BINARY_DIR}")
 set(TOOLPACKS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/toolpacks")
@@ -166,6 +178,7 @@ set(SOURCES
     src/services/mcp_stdio_client.cpp
     src/services/mcp_registry.cpp
     src/services/tools/calculator_tool.cpp
+    src/services/tools/file_reader_tool.cpp
     src/services/tools/web_search_tool.cpp
     src/services/tools/tool_argument_validator.cpp
     src/services/tools/tool_system.cpp
@@ -243,6 +256,15 @@ if(NOT CMAKE_CROSSCOMPILING)
         crypto
     )
     add_test(NAME ctrlpanel_web_search_test COMMAND ctrlpanel_web_search_test)
+
+    add_executable(ctrlpanel_file_reader_test
+        src/tests/file_reader_tool_test.cpp
+        src/services/tools/file_reader_tool.cpp
+    )
+    target_link_libraries(ctrlpanel_file_reader_test
+        ${JSONCPP_LIBRARIES}
+    )
+    add_test(NAME ctrlpanel_file_reader_test COMMAND ctrlpanel_file_reader_test)
 
     add_executable(ctrlpanel_auth_vault_test
         src/tests/auth_vault_test.cpp

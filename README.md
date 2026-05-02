@@ -68,7 +68,7 @@ The app creates runtime state next to the binary on first start:
 - `data/chats/`, `data/models/`, `data/libs/`, `data/logs/`, `data/build-cache/`, and `data/web-search/`
 - `toolpacks/` for system packs and `data/toolpacks/` for user packs
 
-Fresh installs bundle system `calculator` and `websearch` packs in `toolpacks/`, alongside the synthetic internal control-plane pack used for deferred tool discovery and schema loading.
+Fresh installs bundle system `calculator`, `websearch`, and `file_reader` packs in `toolpacks/`, alongside the synthetic internal control-plane pack used for deferred tool discovery and schema loading.
 Bundled source packs live under `backend/toolpacks/`, are embedded into the backend binary at build time, and are synced into runtime `toolpacks/` on startup.
 
 The authenticated frontend is restricted to the exact origin `http://127.0.0.1:8080`. `/api/*` and `/mcp` requests are rejected unless `Origin` or `Referer` resolve to that exact frontend base URL. `/health` remains exempt for local startup and smoke checks.
@@ -79,6 +79,8 @@ The bundled `websearch` pack stores its crawl/index state under `data/web-search
 - `fetch_url` for robots-aware fetching, indexing, canonicalisation, and deduplication
 - `related_results` for graph- and host-based neighbors
 - `search_status` for index, queue, and worker health
+
+The bundled `file_reader` pack exposes a prompt-gated `read_file` tool for reading bounded, line-numbered slices from local text files by path.
 
 The backend watches `settings.json`, `mcp.json`, `tooling.json`, and tool-pack manifests for changes. The Settings page also polls for external `settings.json` edits so updates show up without restarting the server.
 

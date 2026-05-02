@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>CtrlPanel Passwords</title>
+	<link rel="stylesheet" href="options.css" />
+</head>
+<body>
+	<main class="options-shell">
+		<h1>CtrlPanel Passwords</h1>
+		<form id="settings-form" class="options-form">
+			<label class="field">
+				<span>CtrlPanel server</span>
+				<input id="server-origin" name="serverOrigin" type="url" placeholder="http://127.0.0.1:8080" required />
+			</label>
+			<div class="actions">
+				<button type="submit">Save</button>
+				<button id="lock-vault" type="button">Lock Vault</button>
+			</div>
+			<p id="status" class="status"></p>
+		</form>
+	</main>
+	<script src="options.js"></script>
+</body>
+</html>

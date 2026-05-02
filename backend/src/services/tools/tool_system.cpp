@@ -1,6 +1,7 @@
 #include "services/tools/tool_system.h"
 
 #include "services/tools/calculator_tool.h"
+#include "services/tools/file_reader_tool.h"
 #include "services/tools/tool_argument_validator.h"
 #include "services/tools/web_search_tool.h"
 
@@ -1519,6 +1520,10 @@ struct ToolSystem::Impl {
                 return error;
             }
             return parsed;
+        }
+
+        if (handler == "file_reader_read_file") {
+            return file_reader_tool::readFile(args);
         }
 
         if (handler == "websearch_search") {

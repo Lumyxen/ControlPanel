@@ -22,6 +22,10 @@ bool isProtectedApiPath(std::string_view path) {
     return path.starts_with("/api/") || path == "/mcp" || path.starts_with("/mcp/");
 }
 
+bool isExtensionApiPath(std::string_view path) {
+    return path == "/api/extension" || path.starts_with("/api/extension/");
+}
+
 std::string extractOriginFromUrl(const std::string& value) {
     const std::size_t schemePos = value.find("://");
     if (schemePos == std::string::npos) {
@@ -49,16 +53,30 @@ bool isAllowedFrontendRequest(const httplib::Request& req) {
     return false;
 }
 
+bool isAllowedExtensionRequest(const httplib::Request& req) {
+    const std::string origin = req.get_header_value("Origin");
+    if (!origin.empty()) {
+        return origin.starts_with("moz-extension://");
+    }
+
+    const std::string referer = req.get_header_value("Referer");
+    if (!referer.empty()) {
+        return extractOriginFromUrl(referer).starts_with("moz-extension://");
+    }
+
+    return req.get_header_value("X-CtrlPanel-Extension") == "firefox";
+}
+
 void addCorsHeaders(httplib::Response& res, const httplib::Request& req) {
     const std::string origin = req.get_header_value("Origin");
-    if (origin == kAllowedFrontendOrigin) {
+    if (origin == kAllowedFrontendOrigin || origin.starts_with("moz-extension://")) {
         res.set_header("Access-Control-Allow-Origin", origin);
     }
 
     res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     res.set_header(
         "Access-Control-Allow-Headers",
-        "Authorization, Content-Type, X-Chunk-Offset, X-Panel-Reauth-Token, X-Vault-Access-Token, X-Vault-Device-Id");
+        "Authorization, Content-Type, X-Chunk-Offset, X-CtrlPanel-Extension, X-Panel-Reauth-Token, X-Vault-Access-Token, X-Vault-Device-Id");
     res.set_header("Access-Control-Max-Age", "86400");
 }
 
@@ -70,6 +88,7 @@ std::string getMimeType(const std::string& path) {
     if (path.ends_with(".png")) return "image/png";
     if (path.ends_with(".jpg") || path.ends_with(".jpeg")) return "image/jpeg";
     if (path.ends_with(".svg")) return "image/svg+xml";
+    if (path.ends_with(".xpi")) return "application/x-xpinstall";
     return "application/octet-stream";
 }
 

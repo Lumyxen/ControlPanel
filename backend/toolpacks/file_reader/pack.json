@@ -1,0 +1,8 @@
+{
+    "id": "file_reader",
+    "title": "File Reading",
+    "version": "1",
+    "description": "Read local text files by path with bounded line and character slices.",
+    "sourceType": "system",
+    "defaultEnabled": true
+}

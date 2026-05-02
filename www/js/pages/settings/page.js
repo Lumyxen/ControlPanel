@@ -258,6 +258,44 @@ function mountVaultPinSection(root) {
 	};
 }
 
+function mountBrowserExtensionSection(root) {
+	const installBtn = root.querySelector('#install-firefox-extension');
+	const statusEl = root.querySelector('#browser-extension-install-status');
+	const extensionUrl = '/assets/extensions/ctrlpanel-passwords-firefox.xpi';
+	const isFirefox = (navigator.userAgent || '').toLowerCase().includes('firefox');
+
+	function setStatus(message = '', tone = '') {
+		if (!statusEl) return;
+		statusEl.textContent = message;
+		statusEl.style.color = tone === 'success'
+			? 'var(--green,green)'
+			: tone === 'error'
+				? 'var(--red,red)'
+				: '';
+	}
+
+	if (!installBtn) {
+		return { cleanup() {} };
+	}
+
+	if (!isFirefox) {
+		installBtn.textContent = 'Download Firefox Extension';
+		setStatus('Open Settings in Firefox to get the install prompt.');
+	}
+
+	const onClick = () => {
+		setStatus(isFirefox ? 'Opening Firefox install prompt...' : 'Downloading XPI...');
+		window.location.href = extensionUrl;
+	};
+	installBtn.addEventListener('click', onClick);
+
+	return {
+		cleanup() {
+			installBtn.removeEventListener('click', onClick);
+		},
+	};
+}
+
 function renderAppBackendStatus(root, data) {
 	const statusEl = root.querySelector('#app-backend-status');
 	const restartBtn = root.querySelector('#restart-app-backend');
@@ -722,6 +760,7 @@ function initSettingsPage(root) {
 	const llamacppSection = mountLlamacppSection(root, backendSection);
 	const securitySection = mountSecuritySection(root);
 	const vaultPinSection = mountVaultPinSection(root);
+	const browserExtensionSection = mountBrowserExtensionSection(root);
 
 	const paletteList = root.querySelector('[data-palette-list]');
 	const flavourList = root.querySelector('[data-flavour-list]');
@@ -1083,6 +1122,7 @@ function initSettingsPage(root) {
 	return () => {
 		unsub();
 		vaultPinSection.cleanup();
+		browserExtensionSection.cleanup();
 		obs.disconnect();
 		window.clearInterval(appBackendStatusPollId);
 	};

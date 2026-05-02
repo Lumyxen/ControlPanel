@@ -1,0 +1,50 @@
+{
+    "id": "read_file",
+    "title": "Read File",
+    "description": "Read a bounded slice from a local text file by path. Returns file metadata, optional line-numbered content, truncation state, and the next line to request when more content remains.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "path": {
+                "type": "string"
+            },
+            "start_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000
+            },
+            "max_lines": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 5000
+            },
+            "max_chars": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200000
+            },
+            "include_line_numbers": {
+                "type": "boolean"
+            }
+        },
+        "required": ["path"]
+    },
+    "selection": {
+        "summary": "Read known local text files safely in line-bounded chunks.",
+        "tags": ["file", "read", "filesystem", "local", "text", "source"],
+        "whenToUse": "Use when the user asks about a local file path or you need to inspect source/config text that already has a known path.",
+        "whenNotToUse": "Do not use for directory discovery, file editing, binary files, or web pages."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "prompt",
+        "network": false,
+        "idempotent": true
+    },
+    "native": {
+        "handler": "file_reader_read_file"
+    }
+}

@@ -177,6 +177,10 @@
 	flex-wrap: wrap;
 }
 
+.settings-extension-actions {
+	flex-wrap: wrap;
+}
+
 .settings-keepalive-display {
 	flex: none;
 	width: 5rem;

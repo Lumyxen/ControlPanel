@@ -803,7 +803,8 @@ void runHttpServer(
     server.Options(".*", [](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res);
         addCorsHeaders(res, req);
-        if (isProtectedApiPath(req.path) && !isAllowedFrontendRequest(req)) {
+        const bool allowedExtensionRoute = isExtensionApiPath(req.path) && isAllowedExtensionRequest(req);
+        if (isProtectedApiPath(req.path) && !isAllowedFrontendRequest(req) && !allowedExtensionRoute) {
             res.status = 403;
             return;
         }
@@ -821,6 +822,14 @@ void runHttpServer(
 
         addSecurityHeaders(res);
         addCorsHeaders(res, req);
+        if (isExtensionApiPath(req.path)) {
+            if (!isAllowedExtensionRequest(req)) {
+                setJsonError(res, 403, "Blocked by extension origin policy");
+                return httplib::Server::HandlerResponse::Handled;
+            }
+            return httplib::Server::HandlerResponse::Unhandled;
+        }
+
         if (!isAllowedFrontendRequest(req)) {
             setJsonError(res, 403, "Blocked by frontend origin policy");
             return httplib::Server::HandlerResponse::Handled;
