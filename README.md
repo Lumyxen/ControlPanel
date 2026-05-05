@@ -80,8 +80,8 @@ The bundled `websearch` pack stores its crawl/index state under `data/web-search
 - `related_results` for graph- and host-based neighbors
 - `search_status` for index, queue, and worker health
 
-The bundled `file_reader` pack exposes a `read_file` tool for reading bounded, line-numbered slices from local text files by path.
-The bundled `filesystem` pack exposes tools for listing directories, rendering bounded directory trees, inspecting the AI tool working directory, and changing that working directory for subsequent relative path calls.
+The bundled `file_reader` pack exposes a `read_file` tool for reading bounded exact-text slices from local text files by path, including document versions, EOL state, and compact line metadata for targeted follow-up edits.
+The bundled `filesystem` pack exposes tools for listing directories, rendering bounded directory trees, inspecting/changing the AI tool working directory, and checkpointed file editing with version-guarded range, line, and whole-file operations.
 
 The backend watches `settings.json`, `mcp.json`, `tooling.json`, and tool-pack manifests for changes. The Settings page also polls for external `settings.json` edits so updates show up without restarting the server.
 

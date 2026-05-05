@@ -23,7 +23,14 @@ import {
 	getKnownModelContextLength,
 	hasKnownModel,
 } from './context.js';
-import { renderThread, showTyping, patchMessageEditState, getSiblingNavState, createActionButton } from './thread-view.js';
+import {
+	renderThread,
+	showTyping,
+	patchMessageEditState,
+	getSiblingNavState,
+	buildMessageActionMenu,
+	getMessageFileEditRollbacks,
+} from './thread-view.js';
 import { InlineAttachmentManager } from './attachments.js';
 import {
 	submitGenerationTask,
@@ -39,8 +46,8 @@ import {
 import * as SettingsStore from '../../services/settings.js';
 import { initDropdowns, initTools, loadAndPopulateModels } from './model-picker.js';
 import { initUpload, initAutoResize } from './composer.js';
-import { buildNodeTextForHistory, buildApiMessages, buildApiMessagesFromNodes, buildConversationHistory } from './payloads.js';
-import { buildPartsWithUpdatedText, getNodeTextContent } from './message-parts.js';
+import { buildNodeTextForHistory, buildApiMessages, buildApiMessagesFromNodes, buildConversationHistory, parseStreamReasoning } from './payloads.js';
+import { buildPartsWithUpdatedText, getNodeRawTextContent, getNodeTextContent } from './message-parts.js';
 import { createStreamingMessageController } from './stream-view.js';
 import { htmlToMarkdown } from './clipboard.js';
 import { createChatSessionState } from './session.js';
@@ -80,6 +87,17 @@ function buildContextScopeKey({ chatId, model }) {
 function buildContextIndicatorKey({ chatId, model = '' }) {
 	if (!chatId) return '';
 	return model ? `${chatId}::${model}` : `${chatId}::indicator`;
+}
+
+function parseAssistantEditDraft(text) {
+	const parsed = parseStreamReasoning(text);
+	const hasReasoning = parsed.hasThinkTags && parsed.parts.some((part) => part?.type === 'reasoning');
+	if (!hasReasoning) return null;
+	return {
+		content: parsed.parsedContent,
+		reasoning: parsed.parsedReasoning.trim(),
+		parts: parsed.parts,
+	};
 }
 
 function getCachedContextCount(cacheKey) {
@@ -559,6 +577,8 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		for (const toolCall of toolCalls) {
 			const approval = toolCall?.approval;
 			const approvalId = approval?.id;
+			const toolStatus = String(toolCall?.status || '').toLowerCase();
+			if (toolStatus && toolStatus !== 'waiting_approval') continue;
 			if (!approvalId || approval?.status !== 'pending' || seen.has(approvalId)) continue;
 			seen.add(approvalId);
 			approvals.push({
@@ -685,31 +705,112 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		}
 	};
 
-	const handleFileEditRollback = async (button) => {
-		const checkpointId = button?.dataset?.checkpointId;
-		const workspaceDirectory = button?.dataset?.workspaceDirectory;
-		const path = button?.dataset?.path;
-		if (!checkpointId || !workspaceDirectory || !path || button.disabled) return;
+	const showConfirmationDialog = ({ title, message, confirmLabel = 'Confirm', confirmClassName = 'btn-primary' }) => (
+		new Promise((resolve) => {
+			const overlay = document.createElement('div');
+			overlay.className = 'modal-overlay';
+
+			const dialog = document.createElement('div');
+			dialog.className = 'modal-dialog';
+			dialog.setAttribute('role', 'dialog');
+			dialog.setAttribute('aria-modal', 'true');
+
+			const titleEl = document.createElement('h3');
+			titleEl.className = 'modal-title';
+			titleEl.textContent = title;
+			const messageEl = document.createElement('p');
+			messageEl.className = 'modal-message';
+			messageEl.textContent = message;
+
+			const actions = document.createElement('div');
+			actions.className = 'modal-actions';
+			const cancelBtn = document.createElement('button');
+			cancelBtn.type = 'button';
+			cancelBtn.className = 'btn modal-cancel';
+			cancelBtn.textContent = 'Cancel';
+			const confirmBtn = document.createElement('button');
+			confirmBtn.type = 'button';
+			confirmBtn.className = `btn modal-confirm ${confirmClassName}`;
+			confirmBtn.textContent = confirmLabel;
+			actions.append(cancelBtn, confirmBtn);
+			dialog.append(titleEl, messageEl, actions);
+			overlay.appendChild(dialog);
+			document.body.appendChild(overlay);
+
+			let settled = false;
+			const close = (confirmed) => {
+				if (settled) return;
+				settled = true;
+				overlay.remove();
+				resolve(Boolean(confirmed));
+			};
+
+			cancelBtn.addEventListener('click', () => close(false));
+			confirmBtn.addEventListener('click', () => close(true));
+			overlay.addEventListener('click', (event) => {
+				if (event.target === overlay) close(false);
+			});
+			dialog.addEventListener('keydown', (event) => {
+				if (event.key === 'Escape') {
+					event.preventDefault();
+					close(false);
+				}
+			});
+
+			requestAnimationFrame(() => {
+				overlay.classList.add('visible');
+				cancelBtn.focus();
+			});
+		})
+	);
+
+	const handleMessageFileEditRollback = async (node, button) => {
+		const rollbacks = getMessageFileEditRollbacks(node);
+		if (!rollbacks.length || !button || button.disabled) return;
+
+		const plural = rollbacks.length === 1 ? '' : 's';
+		const confirmed = await showConfirmationDialog({
+			title: 'Roll Back File Edits?',
+			message: `This will restore ${rollbacks.length} file edit${plural} from this message. Later changes to those files may be overwritten.`,
+			confirmLabel: 'Roll Back',
+			confirmClassName: 'btn-danger',
+		});
+		if (!confirmed) return;
 
 		const previousHtml = button.innerHTML;
+		const previousTitle = button.title;
 		button.disabled = true;
 		button.dataset.rollbackState = 'running';
-		button.textContent = 'Rolling back...';
+		button.title = 'Rolling back file edits...';
+		button.setAttribute('aria-label', 'Rolling back file edits');
 
 		try {
-			await rollbackFileEdit({
-				checkpoint_id: checkpointId,
-				workspace_directory: workspaceDirectory,
-				path,
-			});
+			for (const rollback of [...rollbacks].reverse()) {
+				await rollbackFileEdit({
+					checkpoint_id: rollback.checkpointId,
+					workspace_directory: rollback.workspaceDirectory,
+					path: rollback.path,
+				});
+			}
+
+			node.fileEditsRolledBackAt = Date.now();
+			node.fileEditsRolledBackCount = rollbacks.length;
+			const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+			if (chat) {
+				chat.updatedAt = Date.now();
+				saveChats();
+			}
+
 			button.dataset.rollbackState = 'done';
-			button.textContent = 'Rolled back';
+			button.title = `Rolled back ${rollbacks.length} file edit${plural}`;
+			button.setAttribute('aria-label', 'File edits rolled back');
 		} catch (err) {
-			console.error('[ChatPage] File edit rollback failed:', err);
+			console.error('[ChatPage] Message file edit rollback failed:', err);
 			button.dataset.rollbackState = 'failed';
 			button.disabled = false;
 			button.innerHTML = previousHtml;
-			button.title = err?.message ? `Rollback failed: ${err.message}` : 'Rollback failed';
+			button.title = err?.message ? `Rollback failed: ${err.message}` : previousTitle;
+			button.setAttribute('aria-label', `Roll back ${rollbacks.length} file edit${plural} from this message`);
 		}
 	};
 
@@ -774,10 +875,28 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				if (!node || (node.role !== 'user' && node.role !== 'assistant')) continue;
 
 				if (uiState.editingNodeId === node.id) {
-					effectiveNodes.push({
-						...node,
-						parts: buildPartsWithUpdatedText(node, uiState.editingDraft),
-					});
+					const assistantDraft = node.role === 'assistant'
+						? parseAssistantEditDraft(uiState.editingDraft)
+						: null;
+					if (assistantDraft) {
+						effectiveNodes.push({
+							...node,
+							content: assistantDraft.content,
+							reasoning: assistantDraft.reasoning,
+							parts: assistantDraft.parts,
+							reasoningParts: [],
+						});
+					} else {
+						effectiveNodes.push({
+							...node,
+							content: uiState.editingDraft,
+							parts: node.role === 'assistant'
+								? undefined
+								: buildPartsWithUpdatedText(node, uiState.editingDraft),
+							reasoning: node.role === 'assistant' ? '' : node.reasoning,
+							reasoningParts: node.role === 'assistant' ? [] : node.reasoningParts,
+						});
+					}
 				} else {
 					effectiveNodes.push(node);
 				}
@@ -1226,19 +1345,13 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		// Add the message menu
 		const nav = getSiblingNavState(graph, generatedNode.id);
 		const canResend = Boolean(generatedNode.parentId) && generatedNode.role !== 'system';
-		const menu = document.createElement('div');
-		menu.className = 'chat-message-menu';
-		menu.setAttribute('role', 'toolbar');
-		menu.setAttribute('aria-label', 'Message actions');
-		menu.append(
-			createActionButton({ action: 'branch-back',    label: 'Previous thread',                           title: 'Previous thread',                          iconName: 'chev-left',  disabled: !nav.canBack }),
-			createActionButton({ action: 'branch-forward', label: 'Next thread',                               title: 'Next thread',                              iconName: 'chev-right', disabled: !nav.canForward }),
-			createActionButton({ action: 'thread',         label: 'Create new thread from this message',       title: 'New thread',                               iconName: 'branch' }),
-			createActionButton({ action: 'edit',           label: 'Edit message',                              title: 'Edit',                                     iconName: 'edit' }),
-			createActionButton({ action: 'resend',         label: 'Regenerate from here',                      title: 'Regenerate',                               iconName: 'refresh',    disabled: !canResend }),
-			createActionButton({ action: 'delete',         label: 'Delete message',                            title: 'Delete (shift+click to delete only this)', iconName: 'trash' }),
-			createActionButton({ action: 'copy',           label: 'Copy raw message',                          title: 'Copy',                                     iconName: 'copy' })
-		);
+		const menu = buildMessageActionMenu({
+			node: generatedNode,
+			isEditing: false,
+			canBranchBack: nav.canBack,
+			canBranchForward: nav.canForward,
+			canResend,
+		});
 		preservedEl.appendChild(menu);
 
 		// Clear the reference so stopTyping doesn't try to remove it
@@ -1314,12 +1427,20 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				finalContent,
 				finalReasoning,
 				finalReasoningParts,
+				finalParts,
 				activeToolCalls,
 				tokenLogprobs,
 				errorFromStream,
 			} = streamController.buildFinalResult();
 			if (finalContent || finalReasoning || activeToolCalls.length > 0) {
-				const node = addChildMessageToChat(activeChatId, parentUserNodeId, 'assistant', finalContent);
+				const node = addChildMessageToChat(
+					activeChatId,
+					parentUserNodeId,
+					'assistant',
+					finalContent,
+					null,
+					finalParts.length > 0 ? finalParts : null,
+				);
 				if (node) {
 					if (finalReasoning)             node.reasoning  = finalReasoning;
 					if (finalReasoningParts.length > 0) node.reasoningParts = finalReasoningParts;
@@ -1572,12 +1693,6 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			return;
 		}
 
-		const rollbackBtn = e.target.closest('[data-file-edit-rollback="1"]');
-		if (rollbackBtn) {
-			handleFileEditRollback(rollbackBtn);
-			return;
-		}
-
 		const codeCopyBtn = e.target.closest('.md-code-copy');
 		if (codeCopyBtn) {
 			const wrapper = codeCopyBtn.closest('.md-code-wrapper');
@@ -1621,7 +1736,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		const handlers = {
 			edit: () => {
 				uiState.editingNodeId = nodeId;
-				uiState.editingDraft  = getNodeTextContent(node);
+				uiState.editingDraft  = node.role === 'assistant' ? getNodeRawTextContent(node) : getNodeTextContent(node);
 				uiState.editingSaveMode = null;
 				const patched = patchMessageEditState(messages, graph, node, true, uiState.editingDraft, SettingsStore.get());
 				if (!patched) rerender();
@@ -1643,9 +1758,31 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				const next   = (editEl?.innerText ?? '').replace(/\n$/, '');
 				const saveMode = uiState.editingSaveMode;
 
-				const sibling = createSiblingCopy(graph, nodeId, { content: next, timestamp: Date.now() });
+				const assistantDraft = node.role === 'assistant' ? parseAssistantEditDraft(next) : null;
+				const siblingOptions = {
+					content: assistantDraft ? assistantDraft.content : next,
+					timestamp: Date.now(),
+				};
+				if (node.role === 'assistant') {
+					siblingOptions.parts = assistantDraft ? assistantDraft.parts : null;
+					siblingOptions.reasoning = assistantDraft ? assistantDraft.reasoning : '';
+					siblingOptions.reasoningParts = null;
+				}
+
+				const sibling = createSiblingCopy(graph, nodeId, siblingOptions);
 				if (!sibling) return;
-				if (sibling.parts) {
+				if (node.role === 'assistant') {
+					sibling.content = assistantDraft ? assistantDraft.content : next;
+					if (assistantDraft) {
+						sibling.parts = assistantDraft.parts;
+						if (assistantDraft.reasoning) sibling.reasoning = assistantDraft.reasoning;
+						else delete sibling.reasoning;
+					} else {
+						delete sibling.parts;
+						delete sibling.reasoning;
+					}
+					delete sibling.reasoningParts;
+				} else if (sibling.parts) {
 					sibling.parts = buildPartsWithUpdatedText(sibling, next);
 				} else { sibling.content = next; }
 				sibling.editedAt = Date.now();
@@ -1700,15 +1837,13 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				startReply(chat.id, userNodeId);
 				checkScroll();
 			},
+			'rollback-files': () => {
+				handleMessageFileEditRollback(node, btn);
+			},
 			copy: async () => {
-				const chunks =[];
-				if (node.reasoning && node.reasoning.trim()) {
-					chunks.push(`<think>\n${node.reasoning.trim()}\n</think>`);
-				}
-				const txt = getNodeTextContent(node);
-				if (txt) chunks.push(txt);
+				const rawText = getNodeRawTextContent(node);
 				try {
-					await navigator.clipboard.writeText(chunks.join('\n\n'));
+					await navigator.clipboard.writeText(rawText);
 					const old = btn.innerHTML;
 					btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
 					setTimeout(()=>{ if(btn) btn.innerHTML=old; }, 2000);
@@ -1794,13 +1929,8 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			for (const m of selMsgEls) {
 				const node = graph ? getNode(graph, m.dataset.nodeId) : null;
 				if (!node) continue;
-				const chunks =[];
-				if (node.reasoning && node.reasoning.trim()) {
-					chunks.push(`<think>\n${node.reasoning.trim()}\n</think>`);
-				}
-				const txt = getNodeTextContent(node);
-				if (txt) chunks.push(txt);
-				if (chunks.length) parts.push(chunks.join('\n\n'));
+				const rawText = getNodeRawTextContent(node);
+				if (rawText) parts.push(rawText);
 			}
 			plain = parts.join('\n\n');
 		}

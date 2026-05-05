@@ -148,6 +148,12 @@ Json::Value stringOrJson(const std::string& value) {
     return Json::Value(value);
 }
 
+Json::Value makeToolErrorResult(const std::string& message) {
+    Json::Value result(Json::objectValue);
+    result["error"] = message;
+    return result;
+}
+
 Json::Value makeArray(const std::vector<std::string>& values) {
     Json::Value out(Json::arrayValue);
     for (const auto& value : values) {
@@ -1376,6 +1382,94 @@ struct ToolSystem::Impl {
         return result;
     }
 
+    bool isFailureResult(const Json::Value& result) const {
+        return (result.isObject() && result.isMember("error")) ||
+               (result.isObject() && result.isMember("success") && !result["success"].asBool());
+    }
+
+    std::optional<Json::Value> preflightToolCall(
+        ToolSession& session,
+        const ToolDefinition& tool,
+        const Json::Value& args) const {
+        if (tool.executor == "native") {
+            const std::string handler = getStringArg(tool.config["native"], "handler");
+            if (handler.empty()) {
+                return makeToolErrorResult("Native tool is missing native.handler");
+            }
+
+            if (handler == "filesystem_edit_file") {
+                Json::Value result = file_edit_tool::preflightEditFile(args, fs::path(session.workingDirectory));
+                if (!result.isNull()) {
+                    return result;
+                }
+                return std::nullopt;
+            }
+
+            if (handler == "websearch_search" ||
+                handler == "websearch_open_result" ||
+                handler == "websearch_fetch_url" ||
+                handler == "websearch_related_results" ||
+                handler == "websearch_status") {
+                if (!webSearch) {
+                    return makeToolErrorResult("Web search is not configured");
+                }
+                const Json::Value health = webSearch->health();
+                if (health.isObject() && health.isMember("available") && !health["available"].asBool()) {
+                    return makeToolErrorResult(health.get("reason", "Web search is unavailable").asString());
+                }
+                return std::nullopt;
+            }
+
+            if (handler == "search_tool_catalog" ||
+                handler == "load_tool_definitions" ||
+                handler == "calculator_calculate" ||
+                handler == "calculator_calculate_batch" ||
+                handler == "file_reader_read_file" ||
+                handler == "filesystem_get_working_directory" ||
+                handler == "filesystem_change_working_directory" ||
+                handler == "filesystem_list_directory" ||
+                handler == "filesystem_directory_tree") {
+                return std::nullopt;
+            }
+
+            return makeToolErrorResult("Unknown native tool handler: " + handler);
+        }
+
+        if (tool.executor == "http") {
+            const Json::Value config = interpolateJson(tool.config["http"], args);
+            if (getStringArg(config, "url").empty()) {
+                return makeToolErrorResult("HTTP tool is missing http.url");
+            }
+            return std::nullopt;
+        }
+
+        if (tool.executor == "sandbox") {
+            const Json::Value config = interpolateJson(tool.config["sandbox"], args);
+            if (getStringArg(config, "command").empty()) {
+                return makeToolErrorResult("Sandbox tool is missing sandbox.command");
+            }
+            const Json::Value health = sandbox.health();
+            if (!health.get("available", false).asBool()) {
+                return makeToolErrorResult(health.get("reason", "Sandbox executor is unavailable").asString());
+            }
+            return std::nullopt;
+        }
+
+        if (tool.executor == "mcp") {
+            if (!mcpRegistry) {
+                return makeToolErrorResult("No MCP registry configured");
+            }
+            const std::string serverName = getStringArg(tool.config["mcp"], "serverName");
+            const std::string toolName = getStringArg(tool.config["mcp"], "toolName");
+            if (serverName.empty() || toolName.empty()) {
+                return makeToolErrorResult("MCP tool is missing serverName or toolName");
+            }
+            return std::nullopt;
+        }
+
+        return makeToolErrorResult("Unsupported executor: " + tool.executor);
+    }
+
     Json::Value executeNative(
         ToolSession& session,
         const ToolDefinition& tool,
@@ -1901,8 +1995,49 @@ ToolSystem::ExecutionResult ToolSystem::executeToolCall(
         return failure;
     }
 
+    auto finishWithRawResult = [&](Json::Value rawResult) -> ExecutionResult {
+        if (impl_->isFailureResult(rawResult)) {
+            toolCall["status"] = "failed";
+            if (rawResult.isMember("error")) {
+                toolCall["error"] = rawResult["error"];
+            }
+            toolCall["output"] = rawResult;
+
+            ExecutionResult failure;
+            failure.success = false;
+            failure.modelOutput = rawResult.isMember("error")
+                ? rawResult["error"].asString()
+                : jsonToString(rawResult);
+            toolCall["modelOutput"] = failure.modelOutput;
+            if (emitEvent) {
+                emitEvent(impl_->makeToolEvent("failed", toolCall));
+            }
+
+            failure.toolCall = toolCall;
+            return failure;
+        }
+
+        toolCall["status"] = "completed";
+        toolCall["output"] = rawResult;
+
+        ExecutionResult success;
+        success.success = true;
+        success.modelOutput = impl_->modelOutputFromResult(rawResult);
+        toolCall["modelOutput"] = success.modelOutput;
+        if (emitEvent) {
+            emitEvent(impl_->makeToolEvent("completed", toolCall));
+        }
+
+        success.toolCall = toolCall;
+        return success;
+    };
+
     const bool needsApproval = tool.policy.get("approvalMode", "auto").asString() == "prompt";
     if (needsApproval) {
+        if (const auto preflightResult = impl_->preflightToolCall(*sessionPtr, tool, arguments); preflightResult.has_value()) {
+            return finishWithRawResult(*preflightResult);
+        }
+
         approval = std::make_shared<ApprovalRequestState>();
         approval->id = "approval_" + std::to_string(nowMillis()) + "_" + sanitizeIdentifier(toolCallId);
         approval->taskId = taskId;
@@ -1990,41 +2125,7 @@ ToolSystem::ExecutionResult ToolSystem::executeToolCall(
         rawResult["error"] = "Unsupported executor: " + tool.executor;
     }
 
-    if ((rawResult.isObject() && rawResult.isMember("error")) ||
-        (rawResult.isObject() && rawResult.isMember("success") && !rawResult["success"].asBool())) {
-        toolCall["status"] = "failed";
-        if (rawResult.isMember("error")) {
-            toolCall["error"] = rawResult["error"];
-        }
-        toolCall["output"] = rawResult;
-
-        ExecutionResult failure;
-        failure.success = false;
-        failure.modelOutput = rawResult.isMember("error")
-            ? rawResult["error"].asString()
-            : jsonToString(rawResult);
-        toolCall["modelOutput"] = failure.modelOutput;
-        if (emitEvent) {
-            emitEvent(impl_->makeToolEvent("failed", toolCall));
-        }
-
-        failure.toolCall = toolCall;
-        return failure;
-    }
-
-    toolCall["status"] = "completed";
-    toolCall["output"] = rawResult;
-
-    ExecutionResult success;
-    success.success = true;
-    success.modelOutput = impl_->modelOutputFromResult(rawResult);
-    toolCall["modelOutput"] = success.modelOutput;
-    if (emitEvent) {
-        emitEvent(impl_->makeToolEvent("completed", toolCall));
-    }
-
-    success.toolCall = toolCall;
-    return success;
+    return finishWithRawResult(rawResult);
 }
 
 Json::Value ToolSystem::getPackSummaries() const {

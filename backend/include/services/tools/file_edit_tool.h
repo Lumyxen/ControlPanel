@@ -7,6 +7,7 @@
 
 namespace file_edit_tool {
 
+Json::Value preflightEditFile(const Json::Value& arguments, const std::filesystem::path& workspaceDirectory);
 Json::Value editFile(const Json::Value& arguments, const std::filesystem::path& workspaceDirectory);
 Json::Value rollbackCheckpoint(const Json::Value& arguments);
 

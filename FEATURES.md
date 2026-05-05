@@ -68,8 +68,8 @@ The tool system ships with real bundled calculator and web-search packs plus the
 | --- | --- |
 | Bundled calculator pack | Ships schema-first native math tools, including a typed calculator and a batch fallback worker. |
 | Bundled web-search pack | Ships a real indexed web-search subsystem instead of example/demo HTTP tools. |
-| Bundled file-reader pack | Ships a native local text file reader with line and character limits. |
-| Bundled filesystem pack | Ships local directory listing, bounded directory trees, active-folder inspection, and session working-directory changes. |
+| Bundled file-reader pack | Ships a native local text file reader with line and character limits, exact text slices, document versions, EOL state, and compact line metadata. |
+| Bundled filesystem pack | Ships local directory listing, bounded directory trees, active-folder inspection, session working-directory changes, and checkpointed file editing with version-guarded range and line operations. |
 | Web search ranking and fallback | `search_web` ranks indexed pages with SQLite FTS5 and can fall back to live web results when the local index misses. |
 | Stored result opening | `open_result` returns cleaned indexed text, metadata, and discovered links by `doc_id`. |
 | Live fetch and indexing | `fetch_url` fetches live pages, obeys robots/sitemaps, canonicalises URLs, deduplicates content, and updates the local index. |

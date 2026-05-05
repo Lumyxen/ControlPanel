@@ -1,7 +1,7 @@
 {
     "id": "edit_file",
     "title": "Edit File",
-    "description": "Create or modify a text file inside the active workspace directory. Every edit writes a checkpoint before changing the file.",
+    "description": "Create or modify a text file inside the active workspace directory. The primary contract is version-guarded range edits over exact file text, with convenience line operations for common cases. Every real edit writes a checkpoint before changing the file.",
     "executor": "native",
     "alwaysVisible": true,
     "inputSchema": {
@@ -13,11 +13,90 @@
             },
             "operation": {
                 "type": "string",
-                "enum": ["write", "append", "replace"]
+                "enum": ["write", "append", "replace", "edit", "set_end_of_line", "set_line", "replace_line", "replace_lines", "insert_before", "insert_before_line", "insert_after", "insert_after_line", "delete_line", "delete_lines"],
+                "description": "edit applies transactional range edits. write replaces the entire file, append adds a line-aware block at EOF, replace swaps literal text, set_end_of_line converts document line endings, set_line/replace_line changes one line body while preserving its line ending, replace_lines swaps an inclusive line range, insert_before/after insert whole line blocks around an anchor line, and delete_line/delete_lines remove line ranges."
+            },
+            "expected_version": {
+                "type": "string",
+                "description": "Required for every edit. Use the version returned by read_file. Use the literal string \"missing\" only when intentionally creating a file that does not yet exist."
             },
             "content": {
                 "type": "string",
-                "description": "Required for write and append operations. May be an empty string only when intentionally writing/appending no text."
+                "description": "Required for write, append, set_line/replace_line, replace_lines, insert_before/insert_after, and their *_line aliases. For append, content is added as a line block at EOF: line endings are normalized to the document EOL, a missing boundary before the appended block is added, and a missing trailing line ending is added. For set_line this is the new line body without a newline. For replace_lines and range edit text, line endings are normalized to the document EOL. For inserts this is a line block; a missing trailing line ending is added automatically, and an empty string inserts a blank line."
+            },
+            "edits": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 100,
+                "description": "Required for operation=edit. Applies all edits transactionally against the original document. Positions use 1-based line and 0-based column offsets; ranges are end-exclusive. To include a line break, end the range at column 0 of the next line.",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "op": {
+                            "type": "string",
+                            "enum": ["insert", "replace", "delete"]
+                        },
+                        "at": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "line": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 1000000
+                                },
+                                "column": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 1000000
+                                }
+                            }
+                        },
+                        "range": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                                "start": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "line": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 1000000
+                                        },
+                                        "column": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 1000000
+                                        }
+                                    }
+                                },
+                                "end": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "line": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 1000000
+                                        },
+                                        "column": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 1000000
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "text": {
+                            "type": "string"
+                        }
+                    },
+                    "required": ["op"]
+                }
             },
             "old_text": {
                 "type": "string",
@@ -27,22 +106,51 @@
                 "type": "string",
                 "description": "Replacement text for replace operations."
             },
+            "line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000,
+                "description": "1-based line number for set_line/replace_line, delete_line, insert_before/insert_after, and aliases. insert_before with line 1 may create content in an empty existing file."
+            },
+            "start_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000,
+                "description": "1-based inclusive start line for replace_lines and delete_lines."
+            },
+            "end_line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000000,
+                "description": "1-based inclusive end line for replace_lines and delete_lines. Defaults to start_line when omitted."
+            },
+            "expected_old_text": {
+                "type": "string",
+                "description": "Optional safety check. For set_line and insert anchors, compare with the current line body without the line ending. For replace_lines and delete_lines, compare with the exact targeted range including line endings."
+            },
             "replace_all": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Only used by replace. When false, ambiguous old_text matches are rejected."
             },
             "create_if_missing": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Defaults to true for write and append, false for targeted edits."
             },
             "create_parent_directories": {
                 "type": "boolean"
+            },
+            "eol": {
+                "type": "string",
+                "enum": ["lf", "crlf"],
+                "description": "Required for set_end_of_line."
             }
         },
-        "required": ["path", "operation"]
+        "required": ["path", "operation", "expected_version"]
     },
     "selection": {
-        "summary": "Create, append to, or replace text in a workspace-contained file with an automatic checkpoint.",
-        "tags": ["filesystem", "file", "edit", "write", "replace", "checkpoint", "workspace"],
-        "whenToUse": "Use when the user asks the AI to modify project files. Change the working directory first to set the workspace root, including a mounted or remote project path.",
+        "summary": "Apply version-guarded range, line, or whole-file edits in a workspace-contained file with an automatic checkpoint.",
+        "tags": ["filesystem", "file", "edit", "write", "replace", "range", "line", "insert", "delete", "checkpoint", "workspace", "version"],
+        "whenToUse": "Use when the user asks the AI to modify project files. Read the file first, pass expected_version, and prefer operation=edit for precise range edits. Use line helpers for simple line operations and set_end_of_line only when explicitly changing document EOL. Change the working directory first to set the workspace root, including a mounted or remote project path.",
         "whenNotToUse": "Do not use for reading files, editing paths outside the active workspace, binary files, or destructive directory operations."
     },
     "policy": {

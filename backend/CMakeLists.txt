@@ -279,6 +279,31 @@ if(NOT CMAKE_CROSSCOMPILING)
     )
     add_test(NAME ctrlpanel_filesystem_test COMMAND ctrlpanel_filesystem_test)
 
+    add_executable(ctrlpanel_tool_system_test
+        src/tests/tool_system_test.cpp
+        src/services/tools/tool_system.cpp
+        src/services/tools/calculator_tool.cpp
+        src/services/tools/file_edit_tool.cpp
+        src/services/tools/file_reader_tool.cpp
+        src/services/tools/filesystem_tool.cpp
+        src/services/tools/web_search_tool.cpp
+        src/services/tools/tool_argument_validator.cpp
+        src/services/mcp_client.cpp
+        src/services/mcp_registry.cpp
+        src/services/mcp_stdio_client.cpp
+        src/server/http_utils.cpp
+    )
+    target_link_libraries(ctrlpanel_tool_system_test
+        ${JSONCPP_LIBRARIES}
+        ${LIBCURL_LIBRARIES}
+        ${SQLITE3_LIBRARIES}
+        pthread
+        dl
+        ssl
+        crypto
+    )
+    add_test(NAME ctrlpanel_tool_system_test COMMAND ctrlpanel_tool_system_test)
+
     add_executable(ctrlpanel_auth_vault_test
         src/tests/auth_vault_test.cpp
         src/controllers/auth_controller.cpp

@@ -880,6 +880,7 @@ bool ChatStore::appendAssistantMessage(
     const std::string& parentUserId,
     const std::string& content,
     const std::string& reasoning,
+    const Json::Value& parts,
     const Json::Value& reasoningParts,
     const Json::Value& toolCalls,
     const Json::Value& logprobs) {
@@ -931,6 +932,9 @@ bool ChatStore::appendAssistantMessage(
     node["children"] = Json::Value(Json::arrayValue);
     if (!content.empty()) {
         node["content"] = content;
+    }
+    if (parts.isArray() && !parts.empty()) {
+        node["parts"] = parts;
     }
     if (!reasoning.empty()) {
         node["reasoning"] = reasoning;

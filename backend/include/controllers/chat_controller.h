@@ -29,6 +29,7 @@ public:
         const std::string& parentUserId,
         const std::string& content,
         const std::string& reasoning = "",
+        const Json::Value& parts = Json::nullValue,
         const Json::Value& reasoningParts = Json::nullValue,
         const Json::Value& toolCalls = Json::nullValue,
         const Json::Value& logprobs = Json::nullValue);

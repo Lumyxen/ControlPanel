@@ -53,10 +53,10 @@ import {
 	getNode,
 	spliceDeleteNode,
 } from './www/js/pages/chat/graph.js';
-import { getNodeTextContent, buildPartsWithUpdatedText } from './www/js/pages/chat/message-parts.js';
-import { buildApiMessages, buildConversationHistory, parseStreamReasoning } from './www/js/pages/chat/payloads.js';
+import { getNodeRawTextContent, getNodeTextContent, buildPartsWithUpdatedText } from './www/js/pages/chat/message-parts.js';
+import { buildApiMessages, buildConversationHistory, parseStreamReasoning, parseStreamReasoningParts } from './www/js/pages/chat/payloads.js';
 import { getResolvedReasoningParts } from './www/js/pages/chat/reasoning-parts.js';
-import { buildReasoningElement, buildToolCallsElement } from './www/js/pages/chat/thread-view.js';
+import { buildContentContainer, buildReasoningElement, buildToolCallsElement, getMessageFileEditRollbacks } from './www/js/pages/chat/thread-view.js';
 import { coerceTheme } from './www/js/pages/settings/theme-section.js';
 import { renderMessageTextHtml } from './www/js/render/message.js';
 import { isFormattingOnlyTextContent, mapDomTextToTokenLogprobs } from './www/js/render/token-highlighting.js';
@@ -83,11 +83,24 @@ assert.equal(
 	getNodeTextContent({
 		parts: [
 			{ type: 'text', content: 'alpha' },
+			{ type: 'reasoning', content: 'thinking' },
 			{ type: 'attachment', name: 'demo.txt' },
 			{ type: 'text', content: 'beta' },
 		],
 	}),
 	'alphabeta'
+);
+assert.equal(
+	getNodeRawTextContent({
+		role: 'assistant',
+		parts: [
+			{ type: 'text', content: 'alpha' },
+			{ type: 'reasoning', content: 'thinking' },
+			{ type: 'text', content: 'beta' },
+		],
+		reasoning: 'aggregate',
+	}),
+	'alpha<think>\nthinking\n</think>beta'
 );
 
 assert.deepEqual(
@@ -111,6 +124,17 @@ assert.deepEqual(buildApiMessages(apiGraph, [apiUser.id, apiAssistant.id]), [
 	{ role: 'user', content: 'hi there' },
 	{ role: 'assistant', content: '<think>\nthinking\n</think>\n\ngeneral kenobi' },
 ]);
+
+apiAssistant.parts = [
+	{ type: 'text', content: 'Visible first. ' },
+	{ type: 'reasoning', content: 'Thinking again.' },
+	{ type: 'text', content: 'Visible second.' },
+];
+assert.deepEqual(buildApiMessages(apiGraph, [apiUser.id, apiAssistant.id]), [
+	{ role: 'user', content: 'hi there' },
+	{ role: 'assistant', content: 'Visible first. <think>\nThinking again.\n</think>Visible second.' },
+]);
+delete apiAssistant.parts;
 
 apiAssistant.reasoningParts = [
 	{ type: 'text', content: 'Thinking...' },
@@ -152,6 +176,33 @@ assert.deepEqual(buildApiMessages(apiGraph, [apiUser.id, apiAssistant.id]), [
 	{ role: 'assistant', content: '<think>\nthinking\n</think>\n\ngeneral kenobi' },
 ]);
 
+assert.deepEqual(
+	getMessageFileEditRollbacks({
+		role: 'assistant',
+		reasoningParts: [{ type: 'tool_call', toolCallId: 'edit_1' }],
+		toolCalls: [{
+			id: 'edit_1',
+			name: 'filesystem__edit_file',
+			output: {
+				edited_files: [{
+					path: 'src/app.js',
+					workspace_directory: '/tmp/project',
+					checkpoint: { id: 'checkpoint-1' },
+					rollback_available: true,
+				}],
+			},
+		}],
+	}),
+	[{
+		checkpointId: 'checkpoint-1',
+		workspaceDirectory: '/tmp/project',
+		path: 'src/app.js',
+		operation: '',
+		createdFile: false,
+		toolCallId: 'edit_1',
+	}]
+);
+
 const assistantSiblingCopy = createSiblingCopy(apiGraph, apiAssistant.id);
 assert.deepEqual(getNode(apiGraph, assistantSiblingCopy.id).reasoningParts, apiAssistant.reasoningParts);
 
@@ -180,9 +231,14 @@ class FakeElement {
 		this.tagName = String(tagName).toUpperCase();
 		this.className = '';
 		this.children = [];
+		this.attributes = {};
 		this.open = false;
 		this._textContent = '';
 		this._innerHTML = '';
+	}
+
+	setAttribute(name, value) {
+		this.attributes[String(name)] = String(value ?? '');
 	}
 
 	append(...nodes) {
@@ -255,6 +311,59 @@ try {
 	assert.equal(toolCallsEl.className, 'message-tool-calls');
 	assert.equal(toolCallsEl.children.length, 1);
 	assert.equal(toolCallsEl.children[0].className, 'message-tool-call');
+
+	const inlineContainer = buildContentContainer({
+		role: 'assistant',
+		parts: [
+			{ type: 'text', content: 'Before' },
+			{ type: 'reasoning', content: 'Inline thought' },
+			{ type: 'text', content: 'After' },
+		],
+		reasoning: 'Aggregate thought',
+		reasoningParts: [{ type: 'text', content: 'Aggregate thought' }],
+	}, false, null);
+	assert.equal(inlineContainer.children.length, 3);
+	assert.equal(inlineContainer.children[0].className, 'chat-message-text');
+	assert.equal(inlineContainer.children[1].className, 'message-reasoning');
+	assert.equal(inlineContainer.children[2].className, 'chat-message-text');
+
+	const inlineToolContainer = buildContentContainer({
+		role: 'assistant',
+		parts: [
+			{ type: 'text', content: 'Before' },
+			{ type: 'reasoning', content: 'Inline thought' },
+			{ type: 'text', content: 'After' },
+		],
+		reasoningParts: [{ type: 'tool_call', toolCallId: 'tool_inline' }],
+		toolCalls: [{ id: 'tool_inline', name: 'diag_tool', status: 'completed', output: { ok: true } }],
+	}, false, null);
+	assert.equal(inlineToolContainer.children.length, 3);
+	assert.equal(inlineToolContainer.children[1].className, 'message-reasoning');
+	assert.equal(inlineToolContainer.children[1].children[1].children.length, 2);
+	assert.equal(inlineToolContainer.children[1].children[1].children[1].className, 'message-tool-call');
+
+	const contentFallbackContainer = buildContentContainer({
+		role: 'assistant',
+		content: '<think>First</think>Visible<think>Second</think>Done',
+	}, false, null);
+	assert.equal(contentFallbackContainer.children.length, 4);
+	assert.equal(contentFallbackContainer.children[0].className, 'message-reasoning');
+	assert.equal(contentFallbackContainer.children[1].className, 'chat-message-text');
+	assert.match(contentFallbackContainer.children[1].innerHTML, /Visible/);
+	assert.equal(contentFallbackContainer.children[2].className, 'message-reasoning');
+	assert.equal(contentFallbackContainer.children[3].className, 'chat-message-text');
+	assert.match(contentFallbackContainer.children[3].innerHTML, /Done/);
+
+	const editRawContainer = buildContentContainer({
+		role: 'assistant',
+		parts: [
+			{ type: 'reasoning', content: 'First' },
+			{ type: 'text', content: 'Visible' },
+			{ type: 'reasoning', content: 'Second' },
+		],
+	}, true, null);
+	assert.equal(editRawContainer.children[0].className, 'chat-edit-input');
+	assert.equal(editRawContainer.children[0].innerText, '<think>\nFirst\n</think>Visible<think>\nSecond\n</think>');
 } finally {
 	if (previousDocument === undefined) {
 		delete globalThis.document;
@@ -285,7 +394,63 @@ assert.deepEqual(parseStreamReasoning('alpha<think>beta</think>gamma'), {
 	hasThinkTags: true,
 	isThinkingActive: false,
 	closedThinkBlocks: 1,
+	parts: [
+		{ type: 'text', content: 'alpha' },
+		{ type: 'reasoning', content: 'beta', reasoningParts: [{ type: 'text', content: 'beta' }] },
+		{ type: 'text', content: 'gamma' },
+	],
 });
+assert.deepEqual(parseStreamReasoning('a<think>b</think>c<think>d</think>e').parts, [
+	{ type: 'text', content: 'a' },
+	{ type: 'reasoning', content: 'b', reasoningParts: [{ type: 'text', content: 'b' }] },
+	{ type: 'text', content: 'c' },
+	{ type: 'reasoning', content: 'd', reasoningParts: [{ type: 'text', content: 'd' }] },
+	{ type: 'text', content: 'e' },
+]);
+assert.deepEqual(parseStreamReasoning('a<reasoning>b</reasoning>c').parts, [
+	{ type: 'text', content: 'a' },
+	{ type: 'reasoning', content: 'b', reasoningParts: [{ type: 'text', content: 'b' }] },
+	{ type: 'text', content: 'c' },
+]);
+assert.deepEqual(parseStreamReasoningParts([
+	{ type: 'reasoning', content: 'native one' },
+	{ type: 'text', content: 'visible' },
+	{ type: 'reasoning', content: 'native two' },
+	{ type: 'text', content: '<think>tagged</think>done' },
+]), {
+	parsedContent: 'visibledone',
+	parsedReasoning: 'native onenative twotagged\n\n',
+	hasThinkTags: true,
+	isThinkingActive: false,
+	closedThinkBlocks: 1,
+	parts: [
+		{ type: 'reasoning', content: 'native one', reasoningParts: [{ type: 'text', content: 'native one' }] },
+		{ type: 'text', content: 'visible' },
+		{
+			type: 'reasoning',
+			content: 'native twotagged',
+			reasoningParts: [{ type: 'text', content: 'native twotagged' }],
+		},
+		{ type: 'text', content: 'done' },
+	],
+});
+
+assert.deepEqual(parseStreamReasoningParts([
+	{ type: 'text', content: '<think>before ' },
+	{ type: 'tool_call', toolCallId: 'tool_inline', toolCall: { id: 'tool_inline', name: 'diag_tool' } },
+	{ type: 'text', content: 'after</think>done' },
+]).parts, [
+	{
+		type: 'reasoning',
+		content: 'before after',
+		reasoningParts: [
+			{ type: 'text', content: 'before ' },
+			{ type: 'tool_call', toolCallId: 'tool_inline', toolCall: { id: 'tool_inline', name: 'diag_tool' } },
+			{ type: 'text', content: 'after' },
+		],
+	},
+	{ type: 'text', content: 'done' },
+]);
 
 assert.equal(coerceTheme('bogus'), 'everforest-harddark-green');
 assert.equal(coerceTheme('catppuccin-invalid-red'), 'catppuccin-mocha-red');

@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -54,6 +55,24 @@ bool getBoolArg(const Json::Value& value, const std::string& key, bool fallback)
     }
     return fallback;
 }
+
+struct ReadLineMeta {
+    int number = 0;
+    std::string lineEnding;
+    bool empty = true;
+    bool truncated = false;
+};
+
+struct DocumentInfo {
+    std::string version;
+    std::string eol = "none";
+    bool hasTrailingNewline = false;
+    int lfLineEndings = 0;
+    int crlfLineEndings = 0;
+    int otherLineEndings = 0;
+    std::string error;
+    std::uintmax_t errorByteOffset = 0;
+};
 
 std::string byteOffsetMessage(const std::string& prefix, std::uintmax_t byteOffset) {
     return prefix + " at byte offset " + std::to_string(byteOffset);
@@ -152,6 +171,273 @@ std::string sanitizeUtf8(const std::string& input, bool& replacedInvalidUtf8, bo
     return output;
 }
 
+std::string formatVersion(std::uint64_t hash, std::uintmax_t size) {
+    std::ostringstream stream;
+    stream << "fnv1a64:" << std::hex << std::setw(16) << std::setfill('0') << hash
+           << ":" << std::dec << size;
+    return stream.str();
+}
+
+std::string chooseEol(int lfCount, int crlfCount, int otherCount) {
+    const int kinds = (lfCount > 0) + (crlfCount > 0) + (otherCount > 0);
+    if (kinds == 0) {
+        return "none";
+    }
+    if (kinds > 1) {
+        return "mixed";
+    }
+    if (crlfCount > 0) {
+        return "crlf";
+    }
+    if (lfCount > 0) {
+        return "lf";
+    }
+    return "other";
+}
+
+DocumentInfo inspectDocument(const fs::path& path, std::uintmax_t fileSize) {
+    constexpr std::uint64_t kFnvOffset = 14695981039346656037ULL;
+    constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
+
+    DocumentInfo info;
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open()) {
+        info.error = "Failed to open file for document inspection";
+        return info;
+    }
+
+    std::uint64_t hash = kFnvOffset;
+    std::uintmax_t byteOffset = 0;
+    bool pendingCarriageReturn = false;
+    bool sawAnyByte = false;
+    unsigned char lastByte = 0;
+
+    char ch = '\0';
+    while (file.get(ch)) {
+        const auto byte = static_cast<unsigned char>(ch);
+        sawAnyByte = true;
+        lastByte = byte;
+        hash ^= static_cast<std::uint64_t>(byte);
+        hash *= kFnvPrime;
+
+        if (byte == 0) {
+            info.error = byteOffsetMessage("Refusing to read likely binary file; found NUL byte", byteOffset);
+            info.errorByteOffset = byteOffset;
+            return info;
+        }
+
+        if (pendingCarriageReturn) {
+            if (byte == '\n') {
+                ++info.crlfLineEndings;
+                pendingCarriageReturn = false;
+                ++byteOffset;
+                continue;
+            }
+            ++info.otherLineEndings;
+            pendingCarriageReturn = false;
+        }
+
+        if (byte == '\r') {
+            pendingCarriageReturn = true;
+        } else if (byte == '\n') {
+            ++info.lfLineEndings;
+        }
+
+        ++byteOffset;
+    }
+
+    if (pendingCarriageReturn) {
+        ++info.otherLineEndings;
+    }
+
+    info.version = formatVersion(hash, fileSize);
+    info.eol = chooseEol(info.lfLineEndings, info.crlfLineEndings, info.otherLineEndings);
+    info.hasTrailingNewline = sawAnyByte && (lastByte == '\n' || lastByte == '\r');
+    return info;
+}
+
+std::string lineEndingCode(const std::string& lineEnding) {
+    if (lineEnding == "\r\n") {
+        return "crlf";
+    }
+    if (lineEnding == "\n") {
+        return "lf";
+    }
+    if (lineEnding.empty()) {
+        return "none";
+    }
+    return "other";
+}
+
+std::string compressLineRanges(const std::vector<int>& lineNumbers) {
+    if (lineNumbers.empty()) {
+        return "";
+    }
+
+    std::ostringstream stream;
+    int rangeStart = lineNumbers.front();
+    int previous = rangeStart;
+    bool firstRange = true;
+
+    auto appendRange = [&]() {
+        if (!firstRange) {
+            stream << ",";
+        }
+        firstRange = false;
+        stream << rangeStart;
+        if (previous != rangeStart) {
+            stream << "-" << previous;
+        }
+    };
+
+    for (std::size_t index = 1; index < lineNumbers.size(); ++index) {
+        const int lineNumber = lineNumbers[index];
+        if (lineNumber == previous + 1) {
+            previous = lineNumber;
+            continue;
+        }
+        appendRange();
+        rangeStart = lineNumber;
+        previous = lineNumber;
+    }
+    appendRange();
+    return stream.str();
+}
+
+std::string joinLineEndingOverrides(
+    const std::vector<ReadLineMeta>& lines,
+    const std::string& dominantLineEnding,
+    bool& truncated) {
+    constexpr std::size_t kMaxOverrides = 100;
+
+    std::ostringstream stream;
+    std::size_t emitted = 0;
+    bool first = true;
+    for (const auto& line : lines) {
+        const std::string code = lineEndingCode(line.lineEnding);
+        if (code == dominantLineEnding) {
+            continue;
+        }
+        if (emitted >= kMaxOverrides) {
+            truncated = true;
+            break;
+        }
+        if (!first) {
+            stream << ",";
+        }
+        first = false;
+        stream << line.number << ":" << code;
+        ++emitted;
+    }
+    return stream.str();
+}
+
+Json::Value buildLineMetadata(const std::vector<ReadLineMeta>& lines) {
+    Json::Value metadata(Json::objectValue);
+    if (lines.empty()) {
+        return metadata;
+    }
+
+    int lfCount = 0;
+    int crlfCount = 0;
+    int noneCount = 0;
+    int otherCount = 0;
+    std::vector<int> blankLines;
+    std::vector<int> truncatedLines;
+
+    for (const auto& line : lines) {
+        const std::string code = lineEndingCode(line.lineEnding);
+        if (code == "lf") {
+            ++lfCount;
+        } else if (code == "crlf") {
+            ++crlfCount;
+        } else if (code == "none") {
+            ++noneCount;
+        } else {
+            ++otherCount;
+        }
+        if (line.empty) {
+            blankLines.push_back(line.number);
+        }
+        if (line.truncated) {
+            truncatedLines.push_back(line.number);
+        }
+    }
+
+    std::string dominant = "lf";
+    int dominantCount = lfCount;
+    if (crlfCount > dominantCount) {
+        dominant = "crlf";
+        dominantCount = crlfCount;
+    }
+    if (noneCount > dominantCount) {
+        dominant = "none";
+        dominantCount = noneCount;
+    }
+    if (otherCount > dominantCount) {
+        dominant = "other";
+    }
+
+    metadata["first_line"] = lines.front().number;
+    metadata["last_line"] = lines.back().number;
+    const std::string blankLineRanges = compressLineRanges(blankLines);
+    if (!blankLineRanges.empty()) {
+        metadata["blank_line_ranges"] = blankLineRanges;
+    }
+    const std::string truncatedLineRanges = compressLineRanges(truncatedLines);
+    if (!truncatedLineRanges.empty()) {
+        metadata["truncated_line_ranges"] = truncatedLineRanges;
+    }
+
+    Json::Value lineEndings(Json::objectValue);
+    const int lineEndingKinds =
+        (lfCount > 0) + (crlfCount > 0) + (noneCount > 0) + (otherCount > 0);
+    lineEndings["dominant"] = dominant;
+    lineEndings["mixed"] = lineEndingKinds > 1;
+    if (lfCount > 0) {
+        lineEndings["lf"] = lfCount;
+    }
+    if (crlfCount > 0) {
+        lineEndings["crlf"] = crlfCount;
+    }
+    if (noneCount > 0) {
+        lineEndings["none"] = noneCount;
+    }
+    if (otherCount > 0) {
+        lineEndings["other"] = otherCount;
+    }
+    if (lineEndings["mixed"].asBool()) {
+        bool overridesTruncated = false;
+        const std::string overrides = joinLineEndingOverrides(lines, dominant, overridesTruncated);
+        if (!overrides.empty()) {
+            lineEndings["non_dominant_lines"] = overrides;
+            lineEndings["non_dominant_lines_truncated"] = overridesTruncated;
+        }
+    }
+    metadata["line_endings"] = lineEndings;
+    return metadata;
+}
+
+std::string buildNumberedContent(const std::string& content, int startLine) {
+    std::ostringstream stream;
+    int lineNumber = startLine;
+    std::size_t position = 0;
+
+    while (position < content.size()) {
+        stream << lineNumber << " | ";
+        const std::size_t newline = content.find('\n', position);
+        if (newline == std::string::npos) {
+            stream << content.substr(position);
+            break;
+        }
+        stream << content.substr(position, newline - position + 1);
+        position = newline + 1;
+        ++lineNumber;
+    }
+
+    return stream.str();
+}
+
 fs::path resolvePath(const std::string& pathText, const fs::path& workingDirectory) {
     const fs::path inputPath(pathText);
     const fs::path baseDirectory = workingDirectory.empty() ? fs::current_path() : workingDirectory;
@@ -182,7 +468,14 @@ Json::Value file_reader_tool::readFile(const Json::Value& arguments, const fs::p
     const int startLine = std::max(1, getIntArg(arguments, "start_line", 1));
     const int maxLines = std::clamp(getIntArg(arguments, "max_lines", kDefaultMaxLines), 1, kMaxLinesLimit);
     const int maxChars = std::clamp(getIntArg(arguments, "max_chars", kDefaultMaxChars), 1, kMaxCharsLimit);
-    const bool includeLineNumbers = getBoolArg(arguments, "include_line_numbers", true);
+    const std::string view = getStringArg(arguments, "view", "plain");
+    if (view != "plain" && view != "numbered") {
+        return makeError("view must be one of: plain, numbered");
+    }
+    const bool includeNumberedView =
+        view == "numbered" ||
+        getBoolArg(arguments, "include_numbered_view", false) ||
+        getBoolArg(arguments, "include_line_numbers", false);
     const fs::path baseDirectory = workingDirectory.empty() ? fs::current_path() : workingDirectory;
 
     const fs::path resolvedPath = resolvePath(pathText, baseDirectory);
@@ -209,6 +502,18 @@ Json::Value file_reader_tool::readFile(const Json::Value& arguments, const fs::p
         return error;
     }
 
+    const DocumentInfo documentInfo = inspectDocument(resolvedPath, fileSize);
+    if (!documentInfo.error.empty()) {
+        Json::Value error = makeError(documentInfo.error);
+        error["path"] = pathText;
+        error["resolved_path"] = resolvedPath.string();
+        error["size_bytes"] = static_cast<Json::UInt64>(fileSize);
+        if (documentInfo.errorByteOffset > 0) {
+            error["byte_offset"] = static_cast<Json::UInt64>(documentInfo.errorByteOffset);
+        }
+        return error;
+    }
+
     std::ifstream file(resolvedPath, std::ios::binary);
     if (!file.is_open()) {
         Json::Value error = makeError("Failed to open file");
@@ -230,6 +535,9 @@ Json::Value file_reader_tool::readFile(const Json::Value& arguments, const fs::p
     bool scanLimitReached = false;
     std::uintmax_t byteOffset = 0;
     int nextStartLine = 0;
+    std::vector<ReadLineMeta> readLineMetadata;
+    bool currentLineEmpty = true;
+    bool pendingReadableCarriageReturn = false;
 
     auto appendRaw = [&](std::string_view text) -> bool {
         if (rawContent.size() >= static_cast<std::size_t>(maxChars)) {
@@ -251,11 +559,17 @@ Json::Value file_reader_tool::readFile(const Json::Value& arguments, const fs::p
             return true;
         }
         lineStarted = true;
-        if (!includeLineNumbers) {
-            return true;
-        }
-        const std::string prefix = std::to_string(currentLine) + " | ";
-        return appendRaw(prefix);
+        return true;
+    };
+
+    auto finishReadableLine = [&](const std::string& lineEnding, bool lineWasTruncated) {
+        ReadLineMeta line;
+        line.number = currentLine;
+        line.lineEnding = lineEnding;
+        line.empty = currentLineEmpty;
+        line.truncated = lineWasTruncated;
+        readLineMetadata.push_back(std::move(line));
+        currentLineEmpty = true;
     };
 
     char ch = '\0';
@@ -289,13 +603,23 @@ Json::Value file_reader_tool::readFile(const Json::Value& arguments, const fs::p
             break;
         }
 
-        if (ch != '\r' && !appendRaw(std::string_view(&ch, 1))) {
+        if (ch != '\n' && ch != '\r') {
+            currentLineEmpty = false;
+        }
+        if (!appendRaw(std::string_view(&ch, 1))) {
+            finishReadableLine("", true);
             nextStartLine = currentLine;
             break;
         }
 
+        if (ch == '\r') {
+            pendingReadableCarriageReturn = true;
+        }
+
         endedWithNewline = ch == '\n';
         if (ch == '\n') {
+            finishReadableLine(pendingReadableCarriageReturn ? "\r\n" : "\n", false);
+            pendingReadableCarriageReturn = false;
             ++linesRead;
             lineStarted = false;
             ++currentLine;
@@ -306,6 +630,8 @@ Json::Value file_reader_tool::readFile(const Json::Value& arguments, const fs::p
                 }
                 break;
             }
+        } else if (ch != '\r') {
+            pendingReadableCarriageReturn = false;
         }
     }
 
@@ -321,6 +647,7 @@ Json::Value file_reader_tool::readFile(const Json::Value& arguments, const fs::p
 
     const bool reachedEof = file.eof();
     if (lineStarted && !truncatedByChars && !truncatedByLines) {
+        finishReadableLine("", false);
         ++linesRead;
     }
 
@@ -333,12 +660,25 @@ Json::Value file_reader_tool::readFile(const Json::Value& arguments, const fs::p
     result["resolved_path"] = resolvedPath.string();
     result["working_directory"] = baseDirectory.string();
     result["size_bytes"] = static_cast<Json::UInt64>(fileSize);
+    result["version"] = documentInfo.version;
+    result["encoding"] = "utf-8";
+    result["eol"] = documentInfo.eol;
+    result["has_trailing_newline"] = documentInfo.hasTrailingNewline;
     result["start_line"] = startLine;
+    result["end_line"] = linesRead > 0 ? startLine + linesRead - 1 : startLine - 1;
     result["lines_read"] = linesRead;
     result["max_lines"] = maxLines;
     result["max_chars"] = maxChars;
-    result["include_line_numbers"] = includeLineNumbers;
+    result["content_format"] = "plain";
+    result["content_is_exact_file_text"] = true;
     result["content"] = content;
+    if (includeNumberedView) {
+        result["view"] = "numbered";
+        result["numbered_content"] = buildNumberedContent(content, startLine);
+    } else {
+        result["view"] = "plain";
+    }
+    result["line_metadata"] = buildLineMetadata(readLineMetadata);
     result["truncated"] = truncatedByLines || truncatedByChars;
     result["truncated_by_lines"] = truncatedByLines;
     result["truncated_by_chars"] = truncatedByChars;

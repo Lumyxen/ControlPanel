@@ -219,6 +219,8 @@ export function createSiblingCopy(graph, nodeId, { content, timestamp, parts, at
     }
 
     if (node.toolCalls) sibling.toolCalls = JSON.parse(JSON.stringify(node.toolCalls));
+    if (node.fileEditsRolledBackAt) sibling.fileEditsRolledBackAt = node.fileEditsRolledBackAt;
+    if (node.fileEditsRolledBackCount) sibling.fileEditsRolledBackCount = node.fileEditsRolledBackCount;
 
     // Only copy tokenLogprobs if the content is unchanged.
     // When content is edited, the old logprobs don't match the new text.
@@ -263,6 +265,8 @@ export function branchFromNode(graph, nodeId, { preserveSelectedTail = false } =
     if (node.reasoning) sibling.reasoning = node.reasoning;
     if (node.reasoningParts) sibling.reasoningParts = JSON.parse(JSON.stringify(node.reasoningParts));
     if (node.toolCalls) sibling.toolCalls = JSON.parse(JSON.stringify(node.toolCalls));
+    if (node.fileEditsRolledBackAt) sibling.fileEditsRolledBackAt = node.fileEditsRolledBackAt;
+    if (node.fileEditsRolledBackCount) sibling.fileEditsRolledBackCount = node.fileEditsRolledBackCount;
     if (node.tokenLogprobs) sibling.tokenLogprobs = JSON.parse(JSON.stringify(node.tokenLogprobs));
 
 	graph.nodes[siblingId] = sibling;

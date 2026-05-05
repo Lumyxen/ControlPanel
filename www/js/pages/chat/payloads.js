@@ -3,7 +3,7 @@
 // These functions have no side-effects and do not touch the DOM.
 
 import { getNode } from './graph.js';
-import { getNodeTextContent } from './message-parts.js';
+import { getNodeRawTextContent, getNodeTextContent, hasInlineReasoningParts } from './message-parts.js';
 
 // ─── buildNodeTextForHistory ──────────────────────────────────────────────────
 // Converts a single graph node into a flat string for the legacy prompt history.
@@ -11,6 +11,8 @@ import { getNodeTextContent } from './message-parts.js';
 function buildNodeText(node, { includeToolCalls = true } = {}) {
 	if (!node) return '';
 	let nodeContent = '';
+
+	const hasInlineReasoning = hasInlineReasoningParts(node.parts);
 
 	if (node.parts && Array.isArray(node.parts)) {
 		const attachmentInfos = [];
@@ -37,13 +39,13 @@ function buildNodeText(node, { includeToolCalls = true } = {}) {
 			}
 		}
 
-		nodeContent = getNodeTextContent(node);
+		nodeContent = hasInlineReasoning ? getNodeRawTextContent(node) : getNodeTextContent(node);
 		if (attachmentInfos.length > 0) nodeContent += '\n' + attachmentInfos.join('\n');
 	} else if (node.content) {
 		nodeContent = getNodeTextContent(node);
 	}
 
-	if (node.reasoning) nodeContent = `<think>\n${node.reasoning}\n</think>\n\n` + nodeContent;
+	if (node.reasoning && !hasInlineReasoning) nodeContent = `<think>\n${node.reasoning}\n</think>\n\n` + nodeContent;
 
 	if (includeToolCalls && node.toolCalls && Array.isArray(node.toolCalls) && node.toolCalls.length > 0) {
 		let toolsText = '';
@@ -348,35 +350,215 @@ export function buildApiMessages(graph, nodeIds, settings = null) {
 // ─── parseStreamReasoning ─────────────────────────────────────────────────────
 // Extracts content and reasoning from a raw stream text containing <think> blocks.
 
-export function parseStreamReasoning(rawText) {
-	let parsedContent  = '';
-	let parsedReasoning = '';
-	let currentStr = rawText;
-	let hasThinkTags = false;
-	let isThinkingActive = false;
-	let closedThinkBlocks = 0;
+const REASONING_TAGS = [
+	{ open: '<think>', close: '</think>' },
+	{ open: '<thinking>', close: '</thinking>' },
+	{ open: '<reasoning>', close: '</reasoning>' },
+	{ open: '<thought>', close: '</thought>' },
+];
 
-	while (true) {
-		const startIdx = currentStr.indexOf('<think>');
-		if (startIdx === -1) { parsedContent += currentStr; break; }
-		hasThinkTags = true;
-		parsedContent += currentStr.substring(0, startIdx);
-		const endIdx = currentStr.indexOf('</think>', startIdx + 7);
-		if (endIdx === -1) {
-			parsedReasoning += currentStr.substring(startIdx + 7);
-			isThinkingActive = true;
-			break;
+function clonePlainObject(value) {
+	if (!value || typeof value !== 'object') return null;
+	try {
+		return JSON.parse(JSON.stringify(value));
+	} catch {
+		return { ...value };
+	}
+}
+
+function cloneParsedToolCallPart(part) {
+	if (!part || typeof part !== 'object') return null;
+	const toolCall = part.toolCall || part.tool_call || null;
+	const nextPart = { type: 'tool_call' };
+	if (part.toolCallId || part.tool_call_id) {
+		nextPart.toolCallId = String(part.toolCallId || part.tool_call_id);
+	} else if (toolCall?.id) {
+		nextPart.toolCallId = String(toolCall.id);
+	}
+	if (toolCall && typeof toolCall === 'object') {
+		nextPart.toolCall = clonePlainObject(toolCall);
+	}
+	if (!nextPart.toolCallId && !nextPart.toolCall) return null;
+	return nextPart;
+}
+
+function appendParsedReasoningDetail(reasoningPart, detailPart) {
+	if (!reasoningPart || reasoningPart.type !== 'reasoning') return;
+	if (!Array.isArray(reasoningPart.reasoningParts)) {
+		reasoningPart.reasoningParts = [];
+	}
+
+	if (detailPart?.type === 'text') {
+		const value = String(detailPart.content ?? '');
+		if (!value) return;
+		const lastDetail = reasoningPart.reasoningParts[reasoningPart.reasoningParts.length - 1];
+		if (lastDetail?.type === 'text') {
+			lastDetail.content = String(lastDetail.content ?? '') + value;
+			return;
 		}
-		parsedReasoning += currentStr.substring(startIdx + 7, endIdx) + '\n\n';
-		closedThinkBlocks += 1;
-		currentStr = currentStr.substring(endIdx + 8);
+		reasoningPart.reasoningParts.push({ type: 'text', content: value });
+		return;
+	}
+
+	const toolPart = cloneParsedToolCallPart(detailPart);
+	if (!toolPart) return;
+	const toolCallId = String(toolPart.toolCallId ?? toolPart.toolCall?.id ?? '');
+	if (toolCallId) {
+		const existingPart = reasoningPart.reasoningParts.find((part) =>
+			part?.type === 'tool_call' && String(part.toolCallId ?? part.toolCall?.id ?? '') === toolCallId);
+		if (existingPart) {
+			existingPart.toolCallId = toolCallId;
+			existingPart.toolCall = toolPart.toolCall;
+			return;
+		}
+	}
+	reasoningPart.reasoningParts.push(toolPart);
+}
+
+function appendParsedStreamPart(parts, type, content) {
+	const value = String(content ?? '');
+	if (type === 'text') {
+		if (!value) return;
+		const lastPart = parts[parts.length - 1];
+		if (lastPart?.type === 'text') {
+			lastPart.content += value;
+			return;
+		}
+		parts.push({ type, content: value });
+		return;
+	}
+
+	if (type === 'reasoning') {
+		if (!value) return;
+		const lastPart = parts[parts.length - 1];
+		if (lastPart?.type === 'reasoning') {
+			lastPart.content = String(lastPart.content ?? '') + value;
+			appendParsedReasoningDetail(lastPart, { type: 'text', content: value });
+			return;
+		}
+		const reasoningPart = { type: 'reasoning', content: value, reasoningParts: [] };
+		appendParsedReasoningDetail(reasoningPart, { type: 'text', content: value });
+		parts.push(reasoningPart);
+		return;
+	}
+
+	if (type === 'tool_call') {
+		const toolPart = cloneParsedToolCallPart(content);
+		if (toolPart) parts.push(toolPart);
+	}
+}
+
+function findNextReasoningOpen(value) {
+	const lower = String(value ?? '').toLowerCase();
+	let nextMatch = null;
+	for (const tag of REASONING_TAGS) {
+		const index = lower.indexOf(tag.open);
+		if (index === -1) continue;
+		if (!nextMatch || index < nextMatch.index) {
+			nextMatch = { index, ...tag };
+		}
+	}
+	return nextMatch;
+}
+
+export function parseStreamReasoning(rawText) {
+	return parseStreamReasoningParts([{ type: 'text', content: String(rawText ?? '') }]);
+}
+
+export function parseStreamReasoningParts(rawParts) {
+	const sourceParts = Array.isArray(rawParts) ? rawParts : [];
+	const parts = [];
+	let parsedContent = '';
+	let parsedReasoning = '';
+	let hasThinkTags = false;
+	let closedThinkBlocks = 0;
+	let activeReasoningClose = '';
+	let reasoningContextActive = false;
+
+	const appendToolCallPart = (part) => {
+		const toolPart = cloneParsedToolCallPart(part);
+		if (!toolPart) return;
+		const lastPart = parts[parts.length - 1];
+		if ((activeReasoningClose || reasoningContextActive) && lastPart?.type === 'reasoning') {
+			appendParsedReasoningDetail(lastPart, toolPart);
+			return;
+		}
+		parts.push(toolPart);
+	};
+
+	const appendTextOutsideReasoning = (text) => {
+		if (!text) return;
+		parsedContent += text;
+		appendParsedStreamPart(parts, 'text', text);
+		reasoningContextActive = false;
+	};
+
+	const appendReasoningText = (text, addBlockBreak = false) => {
+		if (!text && !addBlockBreak) return;
+		if (text) {
+			appendParsedStreamPart(parts, 'reasoning', text);
+			reasoningContextActive = true;
+		}
+		parsedReasoning += text;
+		if (addBlockBreak) parsedReasoning += '\n\n';
+	};
+
+	const consumeText = (value) => {
+		let remaining = String(value ?? '');
+		while (remaining) {
+			if (activeReasoningClose) {
+				const lowerRemaining = remaining.toLowerCase();
+				const closeIndex = lowerRemaining.indexOf(activeReasoningClose);
+				if (closeIndex === -1) {
+					appendReasoningText(remaining);
+					remaining = '';
+					break;
+				}
+
+				appendReasoningText(remaining.substring(0, closeIndex), true);
+				closedThinkBlocks += 1;
+				remaining = remaining.substring(closeIndex + activeReasoningClose.length);
+				activeReasoningClose = '';
+				continue;
+			}
+
+			const openMatch = findNextReasoningOpen(remaining);
+			if (!openMatch) {
+				appendTextOutsideReasoning(remaining);
+				remaining = '';
+				break;
+			}
+
+			hasThinkTags = true;
+			appendTextOutsideReasoning(remaining.substring(0, openMatch.index));
+			activeReasoningClose = openMatch.close;
+			remaining = remaining.substring(openMatch.index + openMatch.open.length);
+			reasoningContextActive = true;
+		}
+	};
+
+	for (const part of sourceParts) {
+		if (part?.type === 'reasoning') {
+			const reasoning = String(part.content ?? '');
+			if (!reasoning) continue;
+			appendReasoningText(reasoning);
+			continue;
+		}
+		if (part?.type === 'tool_call') {
+			appendToolCallPart(part);
+			continue;
+		}
+		if (part?.type === 'text') {
+			consumeText(part.content);
+		}
 	}
 
 	return {
 		parsedContent,
 		parsedReasoning,
 		hasThinkTags,
-		isThinkingActive,
+		isThinkingActive: Boolean(activeReasoningClose),
 		closedThinkBlocks,
+		parts,
 	};
 }

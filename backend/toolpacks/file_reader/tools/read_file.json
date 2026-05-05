@@ -1,7 +1,7 @@
 {
     "id": "read_file",
     "title": "Read File",
-    "description": "Read a bounded slice from a local text file by path. Returns file metadata, optional line-numbered content, truncation state, and the next line to request when more content remains.",
+    "description": "Read a bounded slice from a local text file by path. The content field is always the exact file text slice, never prefixed with synthetic line numbers. Returns document version, encoding, EOL style, trailing-newline state, compact line metadata, truncation state, and the next line to request when more content remains.",
     "executor": "native",
     "alwaysVisible": true,
     "inputSchema": {
@@ -26,16 +26,26 @@
                 "minimum": 1,
                 "maximum": 200000
             },
+            "view": {
+                "type": "string",
+                "enum": ["plain", "numbered"],
+                "description": "Defaults to plain. numbered adds numbered_content as a separate rendered view; content remains exact file text."
+            },
             "include_line_numbers": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Deprecated alias for include_numbered_view. When true, line numbers are returned in numbered_content; content remains exact file text."
+            },
+            "include_numbered_view": {
+                "type": "boolean",
+                "description": "When true, also return numbered_content as a separate rendered view for orientation. The content field remains exact file text."
             }
         },
         "required": ["path"]
     },
     "selection": {
-        "summary": "Read known local text files safely in line-bounded chunks.",
+        "summary": "Read exact local text file slices with compact line metadata for follow-up edits.",
         "tags": ["file", "read", "filesystem", "local", "text", "source"],
-        "whenToUse": "Use when the user asks about a local file path or you need to inspect source/config text that already has a known path.",
+        "whenToUse": "Use when the user asks about a local file path or you need to inspect source/config text that already has a known path. Treat content as exact file text and pass version as expected_version to edit_file. Use start_line/end_line and range positions for precise edits; request view=numbered only when you need a separate orientation aid.",
         "whenNotToUse": "Do not use for directory discovery, file editing, binary files, or web pages."
     },
     "policy": {

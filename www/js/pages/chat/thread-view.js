@@ -5,8 +5,9 @@
 import { computeThreadNodeIds, ensureGraph, getNode } from './graph.js';
 import { formatBytes, getFileExtension, getFiletypeIcon, getFiletypeName } from './util.js';
 import { applyTokenHighlighting } from '../../render/token-highlighting.js';
-import { getNodeTextContent } from './message-parts.js';
-import { getResolvedReasoningParts, getResolvedToolCalls } from './reasoning-parts.js';
+import { getNodeRawTextContent, getNodeTextContent, getReasoningPartContent, hasInlineReasoningParts } from './message-parts.js';
+import { parseStreamReasoning } from './payloads.js';
+import { cloneReasoningParts, getResolvedReasoningParts, getResolvedToolCalls } from './reasoning-parts.js';
 import { renderMessageTextInto } from '../../render/message.js';
 
 // ─── Action button icons ──────────────────────────────────────────────────────
@@ -23,7 +24,7 @@ const icons = {
 	branch:        s => `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M13 22H29C33.4183 22 37 25.5817 37 30V44" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="8.94365" r="5" transform="rotate(-90 13 8.94365)" stroke="currentColor" stroke-width="4"/><path d="M13 14V43" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 39L13 44L8 39" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M42 39L37 44L32 39" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 	trash:         s => `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
 	copy:          s => `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M8 5.00005C7.01165 5.00082 6.49359 5.01338 6.09202 5.21799C5.71569 5.40973 5.40973 5.71569 5.21799 6.09202C5 6.51984 5 7.07989 5 8.2V17.8C5 18.9201 5 19.4802 5.21799 19.908C5.40973 20.2843 5.71569 20.5903 6.09202 20.782C6.51984 21 7.07989 21 8.2 21H15.8C16.9201 21 17.4802 21 17.908 20.782C18.2843 20.5903 18.5903 20.2843 18.782 19.908C19 19.4802 19 18.9201 19 17.8V8.2C19 7.07989 19 6.51984 18.782 6.09202C18.5903 5.71569 18.2843 5.40973 17.908 5.21799C17.5064 5.01338 16.9884 5.00082 16 5.00005M8 5.00005V7H16V5.00005M8 5.00005V4.70711C8 4.25435 8.17986 3.82014 8.5 3.5C8.82014 3.17986 9.25435 3 9.70711 3H14.2929C14.7456 3 15.1799 3.17986 15.5 3.5C15.8201 3.82014 16 4.25435 16 4.70711V5.00005"/></svg>`,
-	undo:          s => `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg>`,
+	undo:          s => `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" ${s}><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>`,
 };
 
 export function createActionButton({ action, label, title, iconName, disabled = false }) {
@@ -89,8 +90,53 @@ function formatToolName(name) {
 function getEditedFilesFromToolCall(tc) {
 	const output = tc?.output;
 	if (!output || typeof output !== 'object' || Array.isArray(output)) return [];
-	if (!Array.isArray(output.edited_files)) return [];
-	return output.edited_files.filter((file) => file && typeof file === 'object');
+	if (Array.isArray(output.edited_files)) {
+		return output.edited_files.filter((file) => file && typeof file === 'object');
+	}
+	if (output.rollback_available && output.checkpoint && typeof output.checkpoint === 'object') {
+		return [output];
+	}
+	return [];
+}
+
+function getFileRollbackDescriptor(file, toolCallId = '') {
+	if (!file || typeof file !== 'object' || file.rollback_available === false) return null;
+	const checkpoint = file.checkpoint || {};
+	const checkpointId = String(checkpoint.id || file.checkpoint_id || '');
+	const workspaceDirectory = String(file.workspace_directory || '');
+	const path = String(file.path || '');
+	if (!checkpointId || !workspaceDirectory || !path) return null;
+	return {
+		checkpointId,
+		workspaceDirectory,
+		path,
+		operation: file.operation ? String(file.operation) : '',
+		createdFile: Boolean(file.created_file),
+		toolCallId: String(toolCallId || ''),
+	};
+}
+
+export function getMessageFileEditRollbacks(node) {
+	if (!node || node.role !== 'assistant') return [];
+	const toolCalls = getResolvedToolCalls({
+		reasoningParts: node.reasoningParts,
+		toolCalls: node.toolCalls,
+	});
+	const rollbacks = [];
+	const seen = new Set();
+
+	for (const toolCall of toolCalls) {
+		for (const file of getEditedFilesFromToolCall(toolCall)) {
+			const rollback = getFileRollbackDescriptor(file, toolCall?.id);
+			if (!rollback) continue;
+			const key = `${rollback.workspaceDirectory}\n${rollback.path}\n${rollback.checkpointId}`;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			rollbacks.push(rollback);
+		}
+	}
+
+	return rollbacks;
 }
 
 function buildEditedFilesElement(editedFiles) {
@@ -101,7 +147,6 @@ function buildEditedFilesElement(editedFiles) {
 	for (const file of editedFiles) {
 		const checkpoint = file.checkpoint || {};
 		const checkpointId = String(checkpoint.id || file.checkpoint_id || '');
-		const workspaceDirectory = String(file.workspace_directory || '');
 		const path = String(file.path || '');
 
 		const row = document.createElement('div');
@@ -122,20 +167,6 @@ function buildEditedFilesElement(editedFiles) {
 		info.append(name, meta);
 		row.appendChild(info);
 
-		if (checkpointId && workspaceDirectory && path) {
-			const button = document.createElement('button');
-			button.type = 'button';
-			button.className = 'tool-call-rollback-btn';
-			button.dataset.fileEditRollback = '1';
-			button.dataset.checkpointId = checkpointId;
-			button.dataset.workspaceDirectory = workspaceDirectory;
-			button.dataset.path = path;
-			button.title = 'Roll back this file';
-			button.setAttribute('aria-label', `Roll back ${path}`);
-			button.innerHTML = `${icons.undo(stroke)}<span>Roll back</span>`;
-			row.appendChild(button);
-		}
-
 		wrap.appendChild(row);
 	}
 
@@ -145,6 +176,8 @@ function buildEditedFilesElement(editedFiles) {
 export function buildToolCallElement(tc) {
 	const details = document.createElement('details');
 	details.className = 'message-tool-call';
+	const toolCallId = String(tc?.id ?? '');
+	if (toolCallId) details.setAttribute('data-tool-call-id', toolCallId);
 
 	const summary = document.createElement('summary');
 	summary.className = 'tool-call-summary';
@@ -210,6 +243,98 @@ function buildReasoningTextPart(text) {
 	return content;
 }
 
+function getInlineRenderableParts(node, isEditing) {
+	if (isEditing || node?.role !== 'assistant') return null;
+	if (hasInlineReasoningParts(node.parts)) return node.parts;
+	if (Array.isArray(node?.parts)) return null;
+
+	const content = String(node?.content ?? '');
+	if (!content) return null;
+	const parsed = parseStreamReasoning(content);
+	return parsed.hasThinkTags && hasInlineReasoningParts(parsed.parts) ? parsed.parts : null;
+}
+
+function getInlineReasoningPartCount(parts) {
+	if (!Array.isArray(parts)) return 0;
+	return parts.reduce((count, part) => part?.type === 'reasoning' ? count + 1 : count, 0);
+}
+
+function hasReasoningToolParts(reasoningParts) {
+	return cloneReasoningParts(reasoningParts).some((part) => part?.type === 'tool_call');
+}
+
+function buildInlineRenderParts(node, renderParts) {
+	if (!Array.isArray(renderParts)) return [];
+	const clonedParts = renderParts.map((part) => {
+		if (!part || typeof part !== 'object') return part;
+		if (part.type === 'reasoning') {
+			const nextPart = { ...part };
+			const reasoningParts = cloneReasoningParts(part.reasoningParts);
+			if (reasoningParts.length > 0) nextPart.reasoningParts = reasoningParts;
+			return nextPart;
+		}
+		if (part.type === 'tool_call') {
+			return cloneReasoningParts([part])[0] || part;
+		}
+		return { ...part };
+	});
+
+	const fallbackReasoningParts = cloneReasoningParts(node?.reasoningParts);
+	if (!hasReasoningToolParts(fallbackReasoningParts)) return clonedParts;
+	if (clonedParts.some((part) => part?.type === 'tool_call')) return clonedParts;
+	if (clonedParts.some((part) => part?.type === 'reasoning' && hasReasoningToolParts(part.reasoningParts))) {
+		return clonedParts;
+	}
+
+	const reasoningCount = getInlineReasoningPartCount(clonedParts);
+	const fallbackPartsForTarget = reasoningCount > 1
+		? fallbackReasoningParts.filter((part) => part?.type === 'tool_call')
+		: fallbackReasoningParts;
+	let targetReasoningIndex = -1;
+	let seenReasoning = 0;
+	for (let index = 0; index < clonedParts.length; index++) {
+		if (clonedParts[index]?.type !== 'reasoning') continue;
+		seenReasoning += 1;
+		if (reasoningCount === 1 || seenReasoning === reasoningCount) {
+			targetReasoningIndex = index;
+		}
+	}
+	if (targetReasoningIndex !== -1) {
+		clonedParts[targetReasoningIndex] = {
+			...clonedParts[targetReasoningIndex],
+			reasoningParts: fallbackPartsForTarget,
+		};
+	}
+	return clonedParts;
+}
+
+function getReferencedReasoningPartsFromInlineParts(parts) {
+	const referencedParts = [];
+	for (const part of Array.isArray(parts) ? parts : []) {
+		if (part?.type === 'tool_call') {
+			const toolPart = cloneReasoningParts([part])[0];
+			if (toolPart) referencedParts.push(toolPart);
+			continue;
+		}
+		if (part?.type !== 'reasoning') continue;
+		for (const reasoningPart of cloneReasoningParts(part.reasoningParts)) {
+			if (reasoningPart?.type === 'tool_call') referencedParts.push(reasoningPart);
+		}
+	}
+	return referencedParts;
+}
+
+function getToolCallFromPart(part, toolCalls) {
+	const toolPart = cloneReasoningParts([part])[0];
+	if (!toolPart) return null;
+	const toolCallId = String(toolPart.toolCallId ?? toolPart.toolCall?.id ?? '');
+	if (toolCallId && Array.isArray(toolCalls)) {
+		const matched = toolCalls.find((toolCall) => String(toolCall?.id ?? '') === toolCallId);
+		if (matched) return matched;
+	}
+	return toolPart.toolCall || null;
+}
+
 export function buildReasoningElement({
 	reasoning = '',
 	reasoningParts = null,
@@ -265,8 +390,13 @@ export function buildToolCallsElement({
 export function buildContentContainer(node, isEditing, editingDraft, settings = null) {
 	const container = document.createElement('div');
 	container.className = 'chat-message-content';
+	const inlineRenderableParts = getInlineRenderableParts(node, isEditing);
+	const hasInlineReasoning = Boolean(inlineRenderableParts);
+	const inlineRenderParts = hasInlineReasoning
+		? buildInlineRenderParts(node, inlineRenderableParts)
+		: null;
 
-	if (!isEditing && node.role === 'assistant') {
+	if (!isEditing && node.role === 'assistant' && !hasInlineReasoning) {
 		const reasoningEl = buildReasoningElement({
 			reasoning: node.reasoning,
 			reasoningParts: node.reasoningParts,
@@ -274,9 +404,22 @@ export function buildContentContainer(node, isEditing, editingDraft, settings = 
 		});
 		if (reasoningEl) container.appendChild(reasoningEl);
 
+		const referencedParts = [
+			...cloneReasoningParts(node.reasoningParts),
+			...getReferencedReasoningPartsFromInlineParts(node.parts),
+		];
 		const toolCallsEl = buildToolCallsElement({
 			reasoning: node.reasoning,
-			reasoningParts: node.reasoningParts,
+			reasoningParts: referencedParts,
+			toolCalls: node.toolCalls,
+		});
+		if (toolCallsEl) container.appendChild(toolCallsEl);
+	}
+
+	if (!isEditing && node.role === 'assistant' && hasInlineReasoning) {
+		const toolCallsEl = buildToolCallsElement({
+			reasoning: '',
+			reasoningParts: getReferencedReasoningPartsFromInlineParts(inlineRenderParts),
 			toolCalls: node.toolCalls,
 		});
 		if (toolCallsEl) container.appendChild(toolCallsEl);
@@ -291,15 +434,26 @@ export function buildContentContainer(node, isEditing, editingDraft, settings = 
 		editEl.setAttribute('aria-multiline', 'true');
 		editEl.setAttribute('aria-label', 'Edit message');
 		editEl.spellcheck = true;
-		editEl.innerText = editingDraft ?? getNodeTextContent(node);
+		editEl.innerText = editingDraft ?? (node.role === 'assistant' ? getNodeRawTextContent(node) : getNodeTextContent(node));
 		container.appendChild(editEl);
-	} else if (node.parts && Array.isArray(node.parts)) {
-		node.parts.forEach((part) => {
+	} else if (inlineRenderParts || (node.parts && Array.isArray(node.parts))) {
+		const renderParts = inlineRenderParts || node.parts;
+		renderParts.forEach((part) => {
 			if (part.type === 'text' && part.content) {
 				const wrapper = document.createElement('div');
 				wrapper.className = 'chat-message-text';
 				renderMessageTextInto(wrapper, part.content);
 				container.appendChild(wrapper);
+			} else if (node.role === 'assistant' && part.type === 'reasoning') {
+				const reasoningEl = buildReasoningElement({
+					reasoning: getReasoningPartContent(part),
+					reasoningParts: part.reasoningParts,
+					toolCalls: node.toolCalls,
+				});
+				if (reasoningEl) container.appendChild(reasoningEl);
+			} else if (node.role === 'assistant' && part.type === 'tool_call') {
+				const toolCall = getToolCallFromPart(part, node.toolCalls);
+				if (toolCall) container.appendChild(buildToolCallElement(toolCall));
 			} else if (part.type === 'attachment') {
 				container.appendChild(buildInlineAttachment(part));
 			}
@@ -324,17 +478,7 @@ export function buildContentContainer(node, isEditing, editingDraft, settings = 
 	return container;
 }
 
-// ─── Full message element ─────────────────────────────────────────────────────
-
-function buildMessageElement({ node, isEditing, editingDraft, canBranchBack, canBranchForward, canResend, settings }) {
-	const div = document.createElement('div');
-	div.className = `chat-message ${node.role}`;
-	div.setAttribute('role', 'article');
-	div.setAttribute('aria-label', node.role === 'user' ? 'You' : 'Assistant');
-	div.dataset.nodeId = node.id;
-
-	div.appendChild(buildContentContainer(node, isEditing, editingDraft, settings));
-
+export function buildMessageActionMenu({ node, isEditing, canBranchBack, canBranchForward, canResend }) {
 	const menu = document.createElement('div');
 	menu.className = 'chat-message-menu';
 	menu.setAttribute('role', 'toolbar');
@@ -345,19 +489,49 @@ function buildMessageElement({ node, isEditing, editingDraft, canBranchBack, can
 			createActionButton({ action: 'save',   label: 'Save edit',   title: 'Save',   iconName: 'check' }),
 			createActionButton({ action: 'cancel', label: 'Cancel edit', title: 'Cancel', iconName: 'x' })
 		);
-	} else {
-		menu.append(
-			createActionButton({ action: 'branch-back',    label: 'Previous thread',                           title: 'Previous thread',                          iconName: 'chev-left',  disabled: !canBranchBack }),
-			createActionButton({ action: 'branch-forward', label: 'Next thread',                               title: 'Next thread',                              iconName: 'chev-right', disabled: !canBranchForward }),
-			createActionButton({ action: 'thread',         label: 'Create new thread from this message',       title: 'New thread',                               iconName: 'branch' }),
-			createActionButton({ action: 'edit',           label: 'Edit message',                              title: 'Edit',                                     iconName: 'edit' }),
-			createActionButton({ action: 'resend',         label: 'Regenerate from here',                      title: 'Regenerate',                               iconName: 'refresh',    disabled: !canResend }),
-			createActionButton({ action: 'delete',         label: 'Delete message',                            title: 'Delete (shift+click to delete only this)', iconName: 'trash' }),
-			createActionButton({ action: 'copy',           label: 'Copy raw message',                          title: 'Copy',                                     iconName: 'copy' })
-		);
+		return menu;
 	}
 
-	div.appendChild(menu);
+	const rollbackCount = getMessageFileEditRollbacks(node).length;
+	const rollbackDone = Boolean(node?.fileEditsRolledBackAt);
+	const buttons = [
+		createActionButton({ action: 'branch-back',    label: 'Previous thread',                           title: 'Previous thread',                          iconName: 'chev-left',  disabled: !canBranchBack }),
+		createActionButton({ action: 'branch-forward', label: 'Next thread',                               title: 'Next thread',                              iconName: 'chev-right', disabled: !canBranchForward }),
+		createActionButton({ action: 'thread',         label: 'Create new thread from this message',       title: 'New thread',                               iconName: 'branch' }),
+		createActionButton({ action: 'edit',           label: 'Edit message',                              title: 'Edit',                                     iconName: 'edit' }),
+		createActionButton({ action: 'resend',         label: 'Regenerate from here',                      title: 'Regenerate',                               iconName: 'refresh',    disabled: !canResend }),
+	];
+
+	if (rollbackCount > 0) {
+		const plural = rollbackCount === 1 ? '' : 's';
+		buttons.push(createActionButton({
+			action: 'rollback-files',
+			label: rollbackDone ? 'File edits already rolled back' : `Roll back ${rollbackCount} file edit${plural} from this message`,
+			title: rollbackDone ? 'File edits rolled back' : 'Roll back file edits',
+			iconName: 'undo',
+			disabled: rollbackDone,
+		}));
+	}
+
+	buttons.push(
+		createActionButton({ action: 'delete', label: 'Delete message',   title: 'Delete (shift+click to delete only this)', iconName: 'trash' }),
+		createActionButton({ action: 'copy',   label: 'Copy raw message', title: 'Copy',                                     iconName: 'copy' })
+	);
+	menu.append(...buttons);
+	return menu;
+}
+
+// ─── Full message element ─────────────────────────────────────────────────────
+
+function buildMessageElement({ node, isEditing, editingDraft, canBranchBack, canBranchForward, canResend, settings }) {
+	const div = document.createElement('div');
+	div.className = `chat-message ${node.role}`;
+	div.setAttribute('role', 'article');
+	div.setAttribute('aria-label', node.role === 'user' ? 'You' : 'Assistant');
+	div.dataset.nodeId = node.id;
+
+	div.appendChild(buildContentContainer(node, isEditing, editingDraft, settings));
+	div.appendChild(buildMessageActionMenu({ node, isEditing, canBranchBack, canBranchForward, canResend }));
 	return div;
 }
 
@@ -419,27 +593,13 @@ export function patchMessageEditState(messagesEl, graph, node, isEditing, editin
 	const nav = getSiblingNavState(graph, node.id);
 	const canResend = Boolean(node.parentId) && node.role !== 'system';
 	const oldMenu = msgEl.querySelector('.chat-message-menu');
-	const newMenu = document.createElement('div');
-	newMenu.className = 'chat-message-menu';
-	newMenu.setAttribute('role', 'toolbar');
-	newMenu.setAttribute('aria-label', 'Message actions');
-
-	if (isEditing) {
-		newMenu.append(
-			createActionButton({ action: 'save',   label: 'Save edit',   title: 'Save',   iconName: 'check' }),
-			createActionButton({ action: 'cancel', label: 'Cancel edit', title: 'Cancel', iconName: 'x' })
-		);
-	} else {
-		newMenu.append(
-			createActionButton({ action: 'branch-back',    label: 'Previous thread',                           title: 'Previous thread', iconName: 'chev-left',  disabled: !nav.canBack }),
-			createActionButton({ action: 'branch-forward', label: 'Next thread',                               title: 'Next thread',     iconName: 'chev-right', disabled: !nav.canForward }),
-			createActionButton({ action: 'thread',         label: 'Create new thread from this message',       title: 'New thread',      iconName: 'branch' }),
-			createActionButton({ action: 'edit',           label: 'Edit message',                              title: 'Edit',            iconName: 'edit' }),
-			createActionButton({ action: 'resend',         label: 'Regenerate from here',                      title: 'Regenerate',      iconName: 'refresh',    disabled: !canResend }),
-			createActionButton({ action: 'delete',         label: 'Delete message',                            title: 'Delete (shift+click to delete only this)', iconName: 'trash' }),
-			createActionButton({ action: 'copy',           label: 'Copy raw message',                          title: 'Copy',            iconName: 'copy' })
-		);
-	}
+	const newMenu = buildMessageActionMenu({
+		node,
+		isEditing,
+		canBranchBack: nav.canBack,
+		canBranchForward: nav.canForward,
+		canResend,
+	});
 
 	if (oldMenu) msgEl.replaceChild(newMenu, oldMenu);
 	else msgEl.appendChild(newMenu);

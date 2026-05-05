@@ -3,7 +3,9 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <json/json.h>
 #include <curl/curl.h>
 

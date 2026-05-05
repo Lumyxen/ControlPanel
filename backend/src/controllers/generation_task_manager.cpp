@@ -3,6 +3,7 @@
 #include "app/server_app.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <sstream>
 #include <thread>
@@ -19,10 +20,33 @@ namespace {
 struct ParsedTaskOutput {
     std::string content;
     std::string reasoning;
+    Json::Value parts = Json::Value(Json::arrayValue);
     Json::Value reasoningParts = Json::Value(Json::arrayValue);
     Json::Value toolCalls = Json::Value(Json::arrayValue);
     Json::Value logprobs = Json::Value(Json::arrayValue);
 };
+
+struct ReasoningTag {
+    std::string open;
+    std::string close;
+};
+
+struct ReasoningOpenMatch {
+    bool found = false;
+    std::size_t index = std::string::npos;
+    std::string open;
+    std::string close;
+};
+
+const std::vector<ReasoningTag>& reasoningTags() {
+    static const std::vector<ReasoningTag> tags = {
+        {"<think>", "</think>"},
+        {"<thinking>", "</thinking>"},
+        {"<reasoning>", "</reasoning>"},
+        {"<thought>", "</thought>"},
+    };
+    return tags;
+}
 
 std::string generateTaskId() {
     const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -38,6 +62,31 @@ void trimWhitespace(std::string& value) {
     }
     const auto end = value.find_last_not_of(" \t\r\n");
     value = value.substr(start, end - start + 1);
+}
+
+std::string toLowerCopy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
+
+ReasoningOpenMatch findNextReasoningOpen(const std::string& value) {
+    const std::string lower = toLowerCopy(value);
+    ReasoningOpenMatch match;
+    for (const auto& tag : reasoningTags()) {
+        const std::size_t index = lower.find(tag.open);
+        if (index == std::string::npos) {
+            continue;
+        }
+        if (!match.found || index < match.index) {
+            match.found = true;
+            match.index = index;
+            match.open = tag.open;
+            match.close = tag.close;
+        }
+    }
+    return match;
 }
 
 std::vector<std::string> extractSsePayloads(const std::string& chunk) {
@@ -178,10 +227,113 @@ void upsertReasoningToolPart(Json::Value& reasoningParts, const Json::Value& too
     reasoningParts.append(part);
 }
 
+void appendMessagePart(Json::Value& parts, const std::string& type, const std::string& content) {
+    if (content.empty()) {
+        return;
+    }
+    if (!parts.isArray()) {
+        parts = Json::Value(Json::arrayValue);
+    }
+
+    if ((type == "text" || type == "reasoning") && !parts.empty()) {
+        Json::Value& last = parts[parts.size() - 1];
+        if (last.isObject() && last.get("type", "").asString() == type) {
+            last["content"] = last.get("content", "").asString() + content;
+            return;
+        }
+    }
+
+    Json::Value part(Json::objectValue);
+    part["type"] = type;
+    part["content"] = content;
+    parts.append(part);
+}
+
+bool hasReasoningMessagePart(const Json::Value& parts) {
+    if (!parts.isArray()) {
+        return false;
+    }
+    for (const auto& part : parts) {
+        if (part.isObject() && part.get("type", "").asString() == "reasoning" &&
+            !part.get("content", "").asString().empty()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+Json::Value normalizeMessageParts(
+    const Json::Value& rawParts,
+    std::string& outputContent,
+    std::string& outputReasoning,
+    bool& reasoningFromContent) {
+    Json::Value parsedParts(Json::arrayValue);
+    outputContent.clear();
+    outputReasoning.clear();
+    reasoningFromContent = false;
+
+    if (!rawParts.isArray()) {
+        return parsedParts;
+    }
+
+    for (const auto& rawPart : rawParts) {
+        if (!rawPart.isObject()) {
+            continue;
+        }
+
+        const std::string type = rawPart.get("type", "").asString();
+        const std::string value = rawPart.get("content", "").asString();
+        if (value.empty()) {
+            continue;
+        }
+
+        if (type == "reasoning") {
+            outputReasoning += value;
+            appendMessagePart(parsedParts, "reasoning", value);
+            continue;
+        }
+        if (type != "text") {
+            continue;
+        }
+
+        std::string remaining = value;
+        while (true) {
+            const ReasoningOpenMatch openMatch = findNextReasoningOpen(remaining);
+            if (!openMatch.found) {
+                outputContent += remaining;
+                appendMessagePart(parsedParts, "text", remaining);
+                break;
+            }
+
+            const std::string leadingContent = remaining.substr(0, openMatch.index);
+            outputContent += leadingContent;
+            appendMessagePart(parsedParts, "text", leadingContent);
+
+            const std::size_t contentStart = openMatch.index + openMatch.open.size();
+            const std::string lowerRemaining = toLowerCopy(remaining);
+            const std::size_t closeIndex = lowerRemaining.find(openMatch.close, contentStart);
+            if (closeIndex == std::string::npos) {
+                const std::string reasoning = remaining.substr(contentStart);
+                outputReasoning += reasoning;
+                appendMessagePart(parsedParts, "reasoning", reasoning);
+                reasoningFromContent = true;
+                break;
+            }
+
+            const std::string reasoning = remaining.substr(contentStart, closeIndex - contentStart);
+            outputReasoning += reasoning + "\n\n";
+            appendMessagePart(parsedParts, "reasoning", reasoning);
+            reasoningFromContent = true;
+            remaining = remaining.substr(closeIndex + openMatch.close.size());
+        }
+    }
+
+    return parsedParts;
+}
+
 ParsedTaskOutput parseTaskOutput(const std::deque<std::string>& chunks) {
     ParsedTaskOutput output;
-    std::string fullContent;
-    std::string fullReasoning;
+    Json::Value rawParts(Json::arrayValue);
     bool reasoningFromContent = false;
 
     for (const auto& chunk : chunks) {
@@ -199,8 +351,8 @@ ParsedTaskOutput parseTaskOutput(const std::deque<std::string>& chunks) {
             }
 
             if (json.get("type", "").asString() == "retract") {
-                fullContent.clear();
-                fullReasoning.clear();
+                rawParts = Json::Value(Json::arrayValue);
+                output.parts = Json::Value(Json::arrayValue);
                 output.reasoningParts = Json::Value(Json::arrayValue);
                 output.toolCalls = Json::Value(Json::arrayValue);
                 output.logprobs = Json::Value(Json::arrayValue);
@@ -224,43 +376,25 @@ ParsedTaskOutput parseTaskOutput(const std::deque<std::string>& chunks) {
             const Json::Value& delta = choice["delta"];
             if (delta.isMember("reasoning") && delta["reasoning"].isString()) {
                 const std::string reasoningDelta = delta["reasoning"].asString();
-                fullReasoning += reasoningDelta;
+                appendMessagePart(rawParts, "reasoning", reasoningDelta);
                 appendReasoningTextPart(output.reasoningParts, reasoningDelta);
             }
             if (delta.isMember("content") && delta["content"].isString()) {
                 const std::string token = delta["content"].asString();
-                fullContent += token;
+                appendMessagePart(rawParts, "text", token);
                 appendLogprobEntries(output.logprobs, choice, delta, token);
             }
         }
     }
 
-    std::string remaining = fullContent;
-    while (true) {
-        const std::size_t thinkStart = remaining.find("<think>");
-        if (thinkStart == std::string::npos) {
-            output.content += remaining;
-            break;
-        }
-
-        output.content += remaining.substr(0, thinkStart);
-        const std::size_t thinkEnd = remaining.find("</think>", thinkStart + 7);
-        if (thinkEnd == std::string::npos) {
-            output.reasoning += remaining.substr(thinkStart + 7);
-            reasoningFromContent = true;
-            break;
-        }
-
-        output.reasoning += remaining.substr(thinkStart + 7, thinkEnd - thinkStart - 7) + "\n\n";
-        reasoningFromContent = true;
-        remaining = remaining.substr(thinkEnd + 8);
-    }
-
-    if (!fullReasoning.empty()) {
-        if (!output.reasoning.empty()) {
-            output.reasoning += "\n\n";
-        }
-        output.reasoning += fullReasoning;
+    Json::Value parsedParts = normalizeMessageParts(
+        rawParts,
+        output.content,
+        output.reasoning,
+        reasoningFromContent);
+    const bool hasInlineReasoning = hasReasoningMessagePart(parsedParts);
+    if (hasInlineReasoning && parsedParts.isArray() && !parsedParts.empty()) {
+        output.parts = parsedParts;
     }
 
     trimWhitespace(output.content);
@@ -275,7 +409,7 @@ ParsedTaskOutput parseTaskOutput(const std::deque<std::string>& chunks) {
             }
         }
     }
-    if (reasoningFromContent && !output.reasoning.empty() && !hasReasoningTextPart) {
+    if (!hasInlineReasoning && !output.reasoning.empty() && !hasReasoningTextPart) {
         Json::Value textPart(Json::objectValue);
         textPart["type"] = "text";
         textPart["content"] = output.reasoning;
@@ -298,6 +432,7 @@ void saveParsedOutputToTask(
     std::lock_guard<std::mutex> lock(task->mutex);
     task->resultContent = output.content;
     task->resultReasoning = output.reasoning;
+    task->resultParts = output.parts;
     task->resultReasoningParts = output.reasoningParts;
     task->resultToolCalls = output.toolCalls;
     task->resultLogprobs = output.logprobs;
@@ -322,6 +457,7 @@ void persistParsedOutputToChat(
         parentUserId,
         output.content,
         output.reasoning,
+        output.parts,
         output.reasoningParts,
         output.toolCalls,
         output.logprobs);
@@ -420,10 +556,11 @@ Json::Value TaskManager::buildSnapshot(const std::shared_ptr<GenerationTask>& ta
 
     if (task->finalized.load() &&
         (!task->resultContent.empty() || !task->resultReasoning.empty() ||
-         !task->resultReasoningParts.empty() || !task->resultToolCalls.empty() ||
+         !task->resultParts.empty() || !task->resultReasoningParts.empty() || !task->resultToolCalls.empty() ||
          !task->resultLogprobs.empty())) {
         result["result"]["content"] = task->resultContent;
         result["result"]["reasoning"] = task->resultReasoning;
+        result["result"]["parts"] = task->resultParts;
         result["result"]["reasoningParts"] = task->resultReasoningParts;
         result["result"]["toolCalls"] = task->resultToolCalls;
         result["result"]["logprobs"] = task->resultLogprobs;
