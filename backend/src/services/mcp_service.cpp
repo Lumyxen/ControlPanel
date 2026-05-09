@@ -166,6 +166,12 @@ Json::Value McpService::builtinToolSchemas() {
         props["systemPrompt"]["type"]        = "string";
         props["systemPrompt"]["description"] = "Master system prompt";
 
+        props["chatResponseMode"]["type"]        = "string";
+        props["chatResponseMode"]["description"] = "Default chat response mode";
+        props["chatResponseMode"]["enum"]        = Json::Value(Json::arrayValue);
+        props["chatResponseMode"]["enum"].append("fast");
+        props["chatResponseMode"]["enum"].append("live");
+
         Json::Value schema;
         schema["type"]                 = "object";
         schema["properties"]           = props;

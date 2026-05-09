@@ -1430,6 +1430,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				finalParts,
 				activeToolCalls,
 				tokenLogprobs,
+				finalRevisionTrace,
 				errorFromStream,
 			} = streamController.buildFinalResult();
 			if (finalContent || finalReasoning || activeToolCalls.length > 0) {
@@ -1440,11 +1441,12 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 					finalContent,
 					null,
 					finalParts.length > 0 ? finalParts : null,
+					activeToolCalls.length > 0 ? activeToolCalls : null,
+					finalRevisionTrace,
 				);
 				if (node) {
 					if (finalReasoning)             node.reasoning  = finalReasoning;
 					if (finalReasoningParts.length > 0) node.reasoningParts = finalReasoningParts;
-					if (activeToolCalls.length > 0) node.toolCalls  = activeToolCalls;
 					if (tokenLogprobs.length > 0) {
 						node.tokenLogprobs = tokenLogprobs;
 					}
@@ -1466,22 +1468,24 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		// ── Submit the generation task to the backend ─────────────────────────
 		const toolScope = getChatToolScope(activeChatId);
 		const hasExplicitToolPacks = Array.isArray(toolScope?.enabledPackIds) && toolScope.enabledPackIds.length > 0;
-			const taskPayload = {
-				task_id: taskId,
-				model, prompt: conversationHistory, max_tokens: maxTokens,
-				system_prompt: systemPrompt, temperature, context_window: contextLimit,
-				logprobs: !hasExplicitToolPacks,
+		const revisionMode = settings?.chatResponseMode === 'live';
+		const taskPayload = {
+			task_id: taskId,
+			model, prompt: conversationHistory, max_tokens: maxTokens,
+			system_prompt: systemPrompt, temperature, context_window: contextLimit,
+			logprobs: !hasExplicitToolPacks && !revisionMode,
+			revision_mode: revisionMode,
 			chat_id: activeChatId,
 			parent_user_node_id: parentUserNodeId || '',
 			tool_scope: toolScope,
-			};
-			if (apiMessages.length > 0) taskPayload.messages = apiMessages;
+		};
+		if (apiMessages.length > 0) taskPayload.messages = apiMessages;
 
-			try {
-				const submitResult = await submitGenerationTask(taskPayload, { signal: currentSignal });
-				if (submitResult?.task_id) {
-					taskId = submitResult.task_id;
-				}
+		try {
+			const submitResult = await submitGenerationTask(taskPayload, { signal: currentSignal });
+			if (submitResult?.task_id) {
+				taskId = submitResult.task_id;
+			}
 			uiState.activeTaskId = taskId;
 
 			if (currentSignal.aborted) {
@@ -1504,9 +1508,10 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				rawStreamText,
 				officialReasoningText,
 				activeToolCalls,
+				revisionTrace,
 				errorFromStream,
 			} = streamState;
-			if (!rawStreamText && !officialReasoningText && activeToolCalls.length === 0 && !errorFromStream) {
+			if (!rawStreamText && !officialReasoningText && activeToolCalls.length === 0 && !revisionTrace && !errorFromStream) {
 				stopTyping();
 				setGeneratingState(false);
 				rerender();
@@ -1547,12 +1552,14 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				rawStreamText,
 				officialReasoningText,
 				activeToolCalls,
+				revisionTrace,
 				errorFromStream,
 			} = streamController.getState();
 			const hadPartialResponse =
 				Boolean(rawStreamText) ||
 				Boolean(officialReasoningText) ||
 				activeToolCalls.length > 0 ||
+				Boolean(revisionTrace) ||
 				Boolean(errorFromStream);
 			if (hadPartialResponse) {
 				if (!errorFromStream) {
@@ -1574,6 +1581,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			renderChatList();
 			setActiveCallback?.();
 		} finally {
+			streamController.dispose?.();
 			if (uiState.activeTaskId === taskId) uiState.activeTaskId = null;
 			if (uiState.streamAbort?.signal === currentSignal) uiState.streamAbort = null;
 		}
@@ -1657,6 +1665,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 					renderChatList();
 					setActiveCallback?.();
 				} finally {
+					streamController.dispose?.();
 					if (uiState.activeTaskId === task.id) uiState.activeTaskId = null;
 					if (uiState.streamAbort === reconnectAbort) uiState.streamAbort = null;
 				}

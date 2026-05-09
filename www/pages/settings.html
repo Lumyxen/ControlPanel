@@ -105,6 +105,19 @@
             <input id="max-tokens-input" class="settings-number-wide" type="number" min="256" max="131072" step="256" value="8192" />
         </div>
         <div class="option-row">
+            <label id="chat-response-mode-label">Response Mode</label>
+            <div id="chat-response-mode" class="settings-segmented" role="radiogroup" aria-labelledby="chat-response-mode-label">
+                <label class="settings-segmented-option selected">
+                    <input id="chat-response-mode-fast" type="radio" name="chat-response-mode" value="fast" checked />
+                    <span>Fast answer</span>
+                </label>
+                <label class="settings-segmented-option">
+                    <input id="chat-response-mode-live" type="radio" name="chat-response-mode" value="live" />
+                    <span>Live revision</span>
+                </label>
+            </div>
+        </div>
+        <div class="option-row">
             <label for="system-prompt-input">System Prompt</label>
             <textarea id="system-prompt-input" class="system-prompt-input" rows="6"></textarea>
         </div>

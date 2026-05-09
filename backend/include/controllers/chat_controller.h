@@ -32,7 +32,8 @@ public:
         const Json::Value& parts = Json::nullValue,
         const Json::Value& reasoningParts = Json::nullValue,
         const Json::Value& toolCalls = Json::nullValue,
-        const Json::Value& logprobs = Json::nullValue);
+        const Json::Value& logprobs = Json::nullValue,
+        const Json::Value& revisionTrace = Json::nullValue);
 
 private:
     Json::Value makeDefaultRoot() const;

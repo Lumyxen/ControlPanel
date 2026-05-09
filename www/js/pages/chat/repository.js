@@ -275,12 +275,12 @@ export async function addMessageToChat(chatId, role, content, attachments = null
 	return node;
 }
 
-export function addChildMessageToChat(chatId, parentId, role, content, attachments = null, parts = null, toolCalls = null) {
+export function addChildMessageToChat(chatId, parentId, role, content, attachments = null, parts = null, toolCalls = null, revisionTrace = null) {
 	const chat = getChatById(chatId);
 	if (!chat || !isChatLoaded(chat)) return null;
 
 	const graph = ensureGraph(chat);
-	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts, toolCalls });
+	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts, toolCalls, revisionTrace });
 	chat.updatedAt = Date.now();
 	return node;
 }

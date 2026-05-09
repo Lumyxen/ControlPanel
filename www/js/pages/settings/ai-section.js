@@ -8,7 +8,31 @@ function setToggle(root, selector, value) {
 	if (element && value != null) element.checked = Boolean(value);
 }
 
+function normalizeChatResponseMode(value) {
+	return value === 'live' ? 'live' : 'fast';
+}
+
+function syncChatResponseMode(root, value) {
+	const mode = normalizeChatResponseMode(value);
+	const group = root.querySelector('#chat-response-mode');
+	if (!group) return;
+	for (const input of group.querySelectorAll('input[name="chat-response-mode"]')) {
+		const selected = input.value === mode;
+		input.checked = selected;
+		input.closest('.settings-segmented-option')?.classList.toggle('selected', selected);
+	}
+}
+
+function readChatResponseMode(root) {
+	const selected = root.querySelector('input[name="chat-response-mode"]:checked');
+	return normalizeChatResponseMode(selected?.value);
+}
+
 export function mountAiSection(root) {
+	const responseModeGroup = root.querySelector('#chat-response-mode');
+	const onResponseModeChange = () => syncChatResponseMode(root, readChatResponseMode(root));
+	responseModeGroup?.addEventListener('change', onResponseModeChange);
+
 	return {
 		populate(settings) {
 			if (!settings) return;
@@ -16,6 +40,7 @@ export function mountAiSection(root) {
 			setValue(root, '#max-tokens-input', settings.fallbackMaxOutputTokens);
 			setValue(root, '#system-prompt-input', settings.systemPrompt);
 			setValue(root, '#lmstudio-url-input', settings.lmStudioUrl);
+			syncChatResponseMode(root, settings.chatResponseMode);
 
 			if (settings.temperature != null) {
 				const value = parseFloat(settings.temperature) || 0.7;
@@ -45,6 +70,7 @@ export function mountAiSection(root) {
 				temperature: parseFloat(input?.value ?? slider?.value ?? '0.7') || 0.7,
 				fallbackMaxOutputTokens: parseInt(root.querySelector('#max-tokens-input')?.value ?? '8192', 10) || 8192,
 				lmStudioUrl: root.querySelector('#lmstudio-url-input')?.value?.trim() || 'http://localhost:1234',
+				chatResponseMode: readChatResponseMode(root),
 				logprobHighlightHigh: root.querySelector('#logprob-highlight-high')?.checked ?? false,
 				logprobHighlightMedium: root.querySelector('#logprob-highlight-medium')?.checked ?? false,
 				logprobHighlightLow: root.querySelector('#logprob-highlight-low')?.checked ?? true,
@@ -57,6 +83,8 @@ export function mountAiSection(root) {
 			};
 		},
 
-		dispose() {},
+		dispose() {
+			responseModeGroup?.removeEventListener('change', onResponseModeChange);
+		},
 	};
 }

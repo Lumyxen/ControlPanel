@@ -47,6 +47,18 @@ public:
         bool emitLogprobs = false
     ) const;
 
+    void streamingMessagesWithCallback(
+        const std::string& model,
+        Json::Value messages,
+        int maxTokens,
+        std::function<bool(const std::string&)> onChunk,
+        std::function<void(const std::string&)> onError,
+        double temperature = -1.0,
+        int numCtx = 0,
+        std::function<bool()> cancelCheck = nullptr,
+        bool emitLogprobs = false
+    ) const;
+
     void streamingChatWithTools(
         const std::string&  model,
         Json::Value         messages,

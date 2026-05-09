@@ -56,6 +56,8 @@ Core principles:
         bool logprobHighlightMedium = false;
         bool logprobHighlightLow = true;
 
+        std::string chatResponseMode = "fast";
+
         bool logprobHistoryHigh = false;
         bool logprobHistoryMedium = false;
         bool logprobHistoryLow = false;
@@ -159,6 +161,13 @@ Core principles:
         if (root.isMember("logprobHighlightMedium")) state.logprobHighlightMedium = root["logprobHighlightMedium"].asBool();
         if (root.isMember("logprobHighlightLow")) state.logprobHighlightLow = root["logprobHighlightLow"].asBool();
 
+        if (root.isMember("chatResponseMode")) {
+            const std::string mode = root["chatResponseMode"].asString();
+            if (mode == "fast" || mode == "live") {
+                state.chatResponseMode = mode;
+            }
+        }
+
         if (root.isMember("logprobHistoryHigh")) state.logprobHistoryHigh = root["logprobHistoryHigh"].asBool();
         if (root.isMember("logprobHistoryMedium")) state.logprobHistoryMedium = root["logprobHistoryMedium"].asBool();
         if (root.isMember("logprobHistoryLow")) state.logprobHistoryLow = root["logprobHistoryLow"].asBool();
@@ -205,6 +214,8 @@ Core principles:
         root["logprobHighlightHigh"] = state_.logprobHighlightHigh;
         root["logprobHighlightMedium"] = state_.logprobHighlightMedium;
         root["logprobHighlightLow"] = state_.logprobHighlightLow;
+
+        root["chatResponseMode"] = state_.chatResponseMode;
 
         root["logprobHistoryHigh"] = state_.logprobHistoryHigh;
         root["logprobHistoryMedium"] = state_.logprobHistoryMedium;

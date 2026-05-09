@@ -956,7 +956,7 @@ function initSettingsPage(root) {
 		loadAppBackendStatus(root).catch(() => {});
 	}, 5000);
 
-	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#system-prompt-input','#lmstudio-url-input','#llamacpp-flash-attn','#llamacpp-kv-cache-reuse','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-parallel-slots','#llamacpp-max-loaded-models','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty','#llamacpp-keep-alive-slider','#llamacpp-kv-cache-type','#llamacpp-concurrent-generation','#ai-title-enabled','#ai-title-model-input','#ai-title-system-prompt-input','#panel-login-rate-limit','#vault-login-rate-limit','#vault-idle-timeout'];
+	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#chat-response-mode-fast','#chat-response-mode-live','#system-prompt-input','#lmstudio-url-input','#llamacpp-flash-attn','#llamacpp-kv-cache-reuse','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-parallel-slots','#llamacpp-max-loaded-models','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty','#llamacpp-keep-alive-slider','#llamacpp-kv-cache-type','#llamacpp-concurrent-generation','#ai-title-enabled','#ai-title-model-input','#ai-title-system-prompt-input','#panel-login-rate-limit','#vault-login-rate-limit','#vault-idle-timeout'];
 	const unsub = SettingsStore.subscribe((s) => {
 		const focused = document.activeElement;
 		if (!watchedFields.some(sel => root.querySelector(sel) === focused)) {
@@ -1121,6 +1121,7 @@ function initSettingsPage(root) {
 
 	return () => {
 		unsub();
+		aiSection.dispose?.();
 		vaultPinSection.cleanup();
 		browserExtensionSection.cleanup();
 		obs.disconnect();

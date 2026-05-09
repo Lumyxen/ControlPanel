@@ -883,7 +883,8 @@ bool ChatStore::appendAssistantMessage(
     const Json::Value& parts,
     const Json::Value& reasoningParts,
     const Json::Value& toolCalls,
-    const Json::Value& logprobs) {
+    const Json::Value& logprobs,
+    const Json::Value& revisionTrace) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     Json::Value root = loadRootUnlocked();
@@ -947,6 +948,9 @@ bool ChatStore::appendAssistantMessage(
     }
     if (logprobs.isArray() && !logprobs.empty()) {
         node["tokenLogprobs"] = logprobs;
+    }
+    if (revisionTrace.isObject() && !revisionTrace.empty()) {
+        node["revisionTrace"] = revisionTrace;
     }
 
     nodes[nodeId] = node;

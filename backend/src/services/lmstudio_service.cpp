@@ -7,6 +7,7 @@
 #include <iostream>
 #include <limits>
 #include <sstream>
+#include <utility>
 #include <vector>
 #include <map>
 #include <chrono>
@@ -607,9 +608,32 @@ void LmStudioService::streamingChatWithCallback(
         std::function<bool()> cancelCheck,
         bool emitLogprobs) const {
 
+    streamingMessagesWithCallback(
+        model,
+        buildMessages(prompt, systemPrompt),
+        maxTokens,
+        std::move(onChunk),
+        std::move(onError),
+        temperature,
+        numCtx,
+        std::move(cancelCheck),
+        emitLogprobs);
+}
+
+void LmStudioService::streamingMessagesWithCallback(
+        const std::string& model,
+        Json::Value messages,
+        int maxTokens,
+        std::function<bool(const std::string&)> onChunk,
+        std::function<void(const std::string&)> onError,
+        double temperature,
+        int numCtx,
+        std::function<bool()> cancelCheck,
+        bool emitLogprobs) const {
+
     Json::Value body;
     body["model"]      = model;
-    body["messages"]   = buildMessages(prompt, systemPrompt);
+    body["messages"]   = std::move(messages);
     body["max_tokens"] = maxTokens;
     body["stream"]     = true;
     if (temperature >= 0.0) body["temperature"] = temperature;
@@ -617,7 +641,16 @@ void LmStudioService::streamingChatWithCallback(
     if (emitLogprobs)       body["logprobs"]    = true;
 
     std::vector<StreamContext::ToolCallAccum> unused;
-    std::string finishReason = streamOneRound(body, onChunk, onError, unused);
+    std::string finishReason = streamOneRound(
+        body,
+        [&](const std::string& chunk) {
+            if (cancelCheck && cancelCheck()) {
+                return false;
+            }
+            return onChunk ? onChunk(chunk) : true;
+        },
+        onError,
+        unused);
 
     if (finishReason != "_cancelled_") {
         if (onChunk) onChunk("data: [DONE]\n\n");

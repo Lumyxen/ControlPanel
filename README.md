@@ -2,9 +2,9 @@
 A highly personal web interface to give me the information and tools I need all in 1 place
 
 ## Features
-- Password-gated local web UI with encrypted stored chat data, bearer-authenticated APIs, and a zero-knowledge secondary password-vault unlock
+- Password-gated local web UI with encrypted stored chat data, bearer-authenticated APIs, a zero-knowledge secondary password vault, and a bundled Firefox password-fill extension
 - AI chat harness with threaded chats, background task streaming, exact context metering, inline tool-call rendering, settings, themes, and model management
-- Supports LM Studio, built-in `llama-server` backends from llama.cpp, HuggingFace GGUF downloads, and a schema-first tool system with pack discovery, approvals, MCP bridging, and a bundled web-search pack backed by SQLite FTS5
+- Supports LM Studio, built-in `llama-server` backends from llama.cpp, HuggingFace GGUF downloads, and a schema-first tool system with pack discovery, approvals, MCP bridging, and bundled calculator, web-search, file-reading, and filesystem packs
 - Detailed shipped feature breakdown: [FEATURES.md](FEATURES.md)
 
 ## Installation
@@ -71,7 +71,9 @@ The app creates runtime state next to the binary on first start:
 Fresh installs bundle system `calculator`, `websearch`, `file_reader`, and `filesystem` packs in `toolpacks/`, alongside the synthetic internal control-plane pack used for deferred tool discovery and schema loading.
 Bundled source packs live under `backend/toolpacks/`, are embedded into the backend binary at build time, and are synced into runtime `toolpacks/` on startup.
 
-The authenticated frontend is restricted to the exact origin `http://127.0.0.1:8080`. `/api/*` and `/mcp` requests are rejected unless `Origin` or `Referer` resolve to that exact frontend base URL. `/health` remains exempt for local startup and smoke checks.
+The authenticated frontend is restricted to the exact origin `http://127.0.0.1:8080`. Protected `/api/*` and `/mcp` requests are rejected unless `Origin` or `Referer` resolve to that exact frontend base URL. Firefox extension vault routes under `/api/extension/*` are accepted only from `moz-extension://` origins or extension-marked requests. `/health` remains exempt for local startup and smoke checks.
+
+The build packages the bundled Firefox password extension from `extensions/firefox/ctrlpanel-passwords/` and embeds it as `/assets/extensions/ctrlpanel-passwords-firefox.xpi` so the Settings page can offer it for installation.
 
 The bundled `websearch` pack stores its crawl/index state under `data/web-search/` and exposes:
 - `search_web` for BM25-ranked local web search with snippets and site filters
@@ -116,7 +118,7 @@ Additional llama.cpp tuning fields are also stored there and can be changed from
 
 ## API Endpoints
 
-Unless noted otherwise, all `/api/*` routes and `/mcp` require `Authorization: Bearer <sessionToken>`. The frontend no longer relies on `X-Session-Token`, query-string `token`, or body `sessionToken` for normal authenticated flows.
+Unless noted otherwise, protected `/api/*` routes and `/mcp` require `Authorization: Bearer <sessionToken>`. The frontend no longer relies on `X-Session-Token`, query-string `token`, or body `sessionToken` for normal authenticated flows. Browser-extension vault routes under `/api/extension/*` are intentionally outside the panel bearer session; they are restricted by extension origin/header checks and then by vault challenge proofs or vault access tokens.
 
 **General**
 - `GET /health` - Check backend health status (public)
@@ -139,6 +141,13 @@ Unless noted otherwise, all `/api/*` routes and `/mcp` require `Authorization: B
 - `PUT /api/vault` - Save a new encrypted vault blob when the supplied `expectedRevision` matches the current server revision
 - `POST /api/vault/pin/setup` - Register or replace the current device PIN slot using a fresh master-verified vault access token
 - `DELETE /api/vault/pin/:deviceId` - Remove the current device PIN slot using a fresh master-verified vault access token
+
+**Firefox Extension Vault API**
+- `GET /api/extension/vault/status` - Extension-scoped vault status and current Firefox-profile PIN metadata
+- `POST /api/extension/vault/unlock/challenge` - Extension-scoped challenge for `master` or `pin` unlock proofs
+- `POST /api/extension/vault/unlock/master` - Verify a master-password-derived proof for extension unlock and return the encrypted vault blob
+- `POST /api/extension/vault/unlock/pin` - Verify a Firefox-profile PIN proof and return the encrypted vault blob plus the device pepper
+- `POST /api/extension/vault/pin/setup` - Register or replace the Firefox profile's PIN slot after a fresh master unlock
 
 **Legacy Chat**
 - `POST /api/chat` - Legacy non-streaming LM Studio chat endpoint
@@ -172,12 +181,6 @@ Unless noted otherwise, all `/api/*` routes and `/mcp` require `Authorization: B
 - `GET /api/config/settings` - Get current control panel settings
 - `PUT /api/config/settings` - Update control panel settings, with panel-password reauth for `panelLoginRateLimitPerMinute` and vault-master reauth for vault security settings when a vault exists
 
-## Password Vault Notes
-
-The password manager lives inside `pages/password-manager.html` as a route-local secondary lock screen. The main panel session stays authenticated independently, but vault contents use browser-side AES-256-GCM encryption, PBKDF2-HMAC-SHA256 with a 600,000-iteration master-password KDF, RAM-only key handling, BroadcastChannel-based cross-tab unlock sharing, configurable idle relock, and device-scoped PIN unlock.
-
-The backend stores only public KDF metadata, a server-side vault auth key for challenge verification, the encrypted vault blob, and device PIN registrations. It never stores vault plaintext, the vault master password, or the vault encryption key. PIN unlock is device-scoped and uses a server-side pepper that is returned only after successful online PIN verification.
-
 **Application Backend**
 - `GET /api/app/backend/status` - Get full backend lifecycle state plus managed llama.cpp router status
 - `POST /api/app/backend/restart` - Restart the entire backend process after the current response completes
@@ -190,6 +193,7 @@ The backend stores only public KDF metadata, a server-side vault auth key for ch
 - `GET /api/tools/approvals` - List tool approvals (`task_id` optional)
 - `POST /api/tools/approvals/:id/approve` - Approve a pending tool action
 - `POST /api/tools/approvals/:id/deny` - Deny a pending tool action
+- `POST /api/tools/file-edits/rollback` - Restore a filesystem tool edit from a checkpoint descriptor
 
 **llama.cpp Management**
 - `GET /api/llamacpp/backend` - Get backend info (available, hardware, active, suggestions)
@@ -216,6 +220,14 @@ The backend stores only public KDF metadata, a server-side vault auth key for ch
 - `POST /api/mcp/reload` - Reload `data/mcp.json` configuration
 - `POST /mcp` - Dispatch a JSON-RPC 2.0 request to an MCP server
 - `GET /mcp` - MCP Server-Sent Events (SSE) channel stub
+
+## Password Vault Notes
+
+The password manager lives inside `pages/password-manager.html` as a route-local secondary lock screen. The main panel session stays authenticated independently, but vault contents use browser-side AES-256-GCM encryption, PBKDF2-HMAC-SHA256 with a 600,000-iteration master-password KDF, RAM-only key handling, BroadcastChannel-based cross-tab unlock sharing, configurable idle relock, and device-scoped PIN unlock.
+
+The backend stores only public KDF metadata, a server-side vault auth key for challenge verification, the encrypted vault blob, and device PIN registrations. It never stores vault plaintext, the vault master password, or the vault encryption key. PIN unlock is device-scoped and uses a server-side pepper that is returned only after successful online PIN verification.
+
+The bundled Firefox extension injects CtrlPanel password chooser widgets into login fields, unlocks the vault with the master password or a Firefox-profile PIN, matches saved credentials by URL host/path, and fills usernames/passwords without requiring the main panel bearer session.
 
 ## Attribution
 

@@ -24,6 +24,7 @@ public:
         std::string chatId;
         Json::Value toolScope = Json::Value(Json::objectValue);
         Json::Value legacyTools = Json::Value(Json::arrayValue);
+        bool revisionMode = false;
         std::function<void(const std::string&)> onStatusChange;
     };
 

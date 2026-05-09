@@ -365,6 +365,249 @@ export function buildReasoningElement({
 	return details;
 }
 
+function formatRevisionModelPhaseLabel(stage, index) {
+	if (stage === 'review') return 'Review output';
+	if (stage === 'revise' || stage === 'commit') return 'Final answer output';
+	if (stage === 'draft') return 'First draft';
+	return `Model output ${index + 1}`;
+}
+
+function normalizeRevisionModelOutputs(trace) {
+	const source = Array.isArray(trace?.modelOutputs) ? trace.modelOutputs : [];
+	return source
+		.map((item, index) => {
+			if (!item || typeof item !== 'object') return null;
+			const content = String(item.content ?? '');
+			const reasoning = String(item.reasoning ?? '');
+			const toolCalls = Array.isArray(item.toolCalls)
+				? item.toolCalls.filter((toolCall) => toolCall && typeof toolCall === 'object')
+				: [];
+			const status = String(item.status || (item.completedAt ? 'completed' : 'streaming'));
+			if (!content && !reasoning && toolCalls.length === 0 && status !== 'streaming') return null;
+			const stage = String(item.stage || 'draft');
+			return {
+				id: String(item.id || item.phase_id || `phase_${index + 1}`),
+				stage,
+				label: String(item.label || formatRevisionModelPhaseLabel(stage, index)),
+				status,
+				content,
+				reasoning,
+				toolCalls,
+			};
+		})
+		.filter(Boolean);
+}
+
+function isRevisionModelOutputComplete(output) {
+	return ['completed', 'failed', 'cancelled'].includes(String(output?.status || '').toLowerCase());
+}
+
+function formatRevisionModelOutputStatus(output) {
+	const status = String(output?.status || '').replace(/_/g, ' ');
+	return status || (isRevisionModelOutputComplete(output) ? 'completed' : 'streaming');
+}
+
+function buildRevisionModelTextElement(text) {
+	const content = document.createElement('div');
+	content.className = 'revision-model-rendered-text';
+	renderMessageTextInto(content, text);
+	return content;
+}
+
+function buildRevisionModelOutputElement(modelOutputs, { live = false } = {}) {
+	if (!Array.isArray(modelOutputs) || modelOutputs.length === 0) return null;
+
+	const wrap = document.createElement('details');
+	wrap.className = 'revision-model-output';
+	wrap.open = live && modelOutputs.some((output) => !isRevisionModelOutputComplete(output));
+
+	const summary = document.createElement('summary');
+	summary.textContent = modelOutputs.length === 1
+		? 'Model output'
+		: `Model output (${modelOutputs.length} phases)`;
+	const body = document.createElement('div');
+	body.className = 'revision-model-output-body';
+
+	modelOutputs.forEach((output, index) => {
+		const phase = document.createElement('details');
+		phase.className = 'revision-model-phase';
+		phase.open = live && (!isRevisionModelOutputComplete(output) || index === modelOutputs.length - 1);
+
+		const phaseSummary = document.createElement('summary');
+		const label = document.createElement('span');
+		label.className = 'revision-model-phase-label';
+		label.textContent = output.label;
+		const meta = document.createElement('span');
+		meta.className = 'revision-model-phase-meta';
+		meta.textContent = formatRevisionModelOutputStatus(output);
+		phaseSummary.append(label, meta);
+		phase.appendChild(phaseSummary);
+
+		const phaseBody = document.createElement('div');
+		phaseBody.className = 'revision-model-phase-body';
+		if (output.toolCalls.length > 0) {
+			const labelEl = document.createElement('div');
+			labelEl.className = 'revision-model-section-label';
+			labelEl.textContent = output.toolCalls.length === 1 ? 'Tool call' : 'Tool calls';
+			const toolWrap = document.createElement('div');
+			toolWrap.className = 'revision-model-tool-calls';
+			output.toolCalls.forEach((toolCall) => {
+				toolWrap.appendChild(buildToolCallElement(toolCall));
+			});
+			phaseBody.append(labelEl, toolWrap);
+		}
+		if (output.reasoning) {
+			const labelEl = document.createElement('div');
+			labelEl.className = 'revision-model-section-label';
+			labelEl.textContent = 'Reasoning';
+			phaseBody.append(labelEl, buildRevisionModelTextElement(output.reasoning));
+		}
+		if (output.content) {
+			const labelEl = document.createElement('div');
+			labelEl.className = 'revision-model-section-label';
+			labelEl.textContent = 'Output';
+			phaseBody.append(labelEl, buildRevisionModelTextElement(output.content));
+		}
+		if (!output.reasoning && !output.content && output.toolCalls.length === 0) {
+			const empty = document.createElement('div');
+			empty.className = 'revision-model-empty';
+			empty.textContent = 'Waiting for tokens...';
+			phaseBody.appendChild(empty);
+		}
+		phase.appendChild(phaseBody);
+		body.appendChild(phase);
+	});
+
+	wrap.append(summary, body);
+	return wrap;
+}
+
+function normalizeRevisionTrace(trace) {
+	if (!trace || typeof trace !== 'object') return null;
+	const events = Array.isArray(trace.events) ? trace.events : [];
+	const issues = Array.isArray(trace.issues) ? trace.issues : [];
+	const modelOutputs = normalizeRevisionModelOutputs(trace);
+	const currentDraft = String(trace.currentDraft ?? trace.finalContent ?? '');
+	const startedAt = Number(trace.startedAt || events[0]?.timestamp || trace.updatedAt || 0);
+	if (!events.length && !issues.length && !currentDraft && !modelOutputs.length) return null;
+	return {
+		...trace,
+		events,
+		issues,
+		modelOutputs,
+		currentDraft,
+		startedAt: Number.isFinite(startedAt) ? startedAt : 0,
+		committed: Boolean(trace.committed || trace.finalContent),
+		stage: String(trace.stage || (trace.committed ? 'commit' : 'draft')),
+	};
+}
+
+function formatRevisionStage(trace) {
+	if (trace.committed) return 'Committed';
+	if (trace.stage === 'review') return 'Reviewing';
+	if (trace.stage === 'revise') return 'Revising';
+	if (trace.stage === 'commit') return 'Committing';
+	return 'Drafting';
+}
+
+function formatRevisionElapsed(trace) {
+	const started = Number(trace.startedAt || 0);
+	const updated = trace.committed ? Number(trace.updatedAt || Date.now()) : Date.now();
+	if (!Number.isFinite(started) || started <= 0) return '';
+	const seconds = Math.max(0, Math.round((updated - started) / 1000));
+	return `${seconds}s`;
+}
+
+export function buildRevisionTraceElement(traceValue, { live = false } = {}) {
+	const trace = normalizeRevisionTrace(traceValue);
+	if (!trace) return null;
+
+	const wrap = document.createElement('div');
+	wrap.className = 'message-revision-trace';
+	if (trace.committed) wrap.classList.add('committed');
+	if (live) wrap.classList.add('live');
+
+	const header = document.createElement('div');
+	header.className = 'revision-header';
+	const label = document.createElement('span');
+	label.className = 'revision-stage';
+	label.textContent = formatRevisionStage(trace);
+	const meta = document.createElement('span');
+	meta.className = 'revision-meta';
+	const editLabel = trace.events.length === 1 ? '1 edit' : `${trace.events.length} edits`;
+	meta.textContent = [formatRevisionElapsed(trace), editLabel].filter(Boolean).join(' • ');
+	header.append(label, meta);
+	wrap.appendChild(header);
+
+	const modelOutputEl = buildRevisionModelOutputElement(trace.modelOutputs, { live });
+	if (modelOutputEl) {
+		wrap.appendChild(modelOutputEl);
+	}
+
+	if (trace.issues.length > 0) {
+		const notes = document.createElement('details');
+		notes.className = 'revision-notes';
+		notes.open = live && !trace.committed;
+		const summary = document.createElement('summary');
+		summary.textContent = `Review notes (${trace.issues.length})`;
+		const list = document.createElement('div');
+		list.className = 'revision-note-list';
+		for (const issue of trace.issues) {
+			const item = document.createElement('div');
+			item.className = 'revision-note';
+			const title = document.createElement('div');
+			title.className = 'revision-note-title';
+			title.textContent = [issue.label, issue.severity].filter(Boolean).join(' • ') || 'Review note';
+			const note = document.createElement('div');
+			note.className = 'revision-note-text';
+			note.textContent = String(issue.note || issue.recommended_action || '');
+			item.append(title, note);
+			list.appendChild(item);
+		}
+		notes.append(summary, list);
+		wrap.appendChild(notes);
+	}
+
+	const detail = document.createElement('details');
+	detail.className = 'revision-draft';
+	detail.open = live && !trace.committed;
+	const detailSummary = document.createElement('summary');
+	detailSummary.textContent = trace.committed ? 'Changes made' : 'Working draft';
+	const body = document.createElement('div');
+	body.className = 'revision-draft-body';
+	if (trace.committed && trace.changeSummary) {
+		const changeSummary = document.createElement('div');
+		changeSummary.className = 'revision-change-summary';
+		changeSummary.textContent = String(trace.changeSummary);
+		body.appendChild(changeSummary);
+	}
+	const visibleEvents = trace.events.filter((event) => {
+		const summary = String(event?.changeSummary || event?.summary || '').trim();
+		return summary && event?.operation !== 'commit_final';
+	});
+	if (visibleEvents.length > 0) {
+		const eventList = document.createElement('div');
+		eventList.className = 'revision-event-list';
+		for (const event of visibleEvents) {
+			const item = document.createElement('div');
+			item.className = 'revision-event';
+			item.textContent = String(event.changeSummary || event.summary || '');
+			eventList.appendChild(item);
+		}
+		body.appendChild(eventList);
+	}
+	if (trace.currentDraft && !trace.committed) {
+		const draftText = document.createElement('div');
+		draftText.className = 'revision-draft-text';
+		renderMessageTextInto(draftText, trace.currentDraft);
+		body.appendChild(draftText);
+	}
+	detail.append(detailSummary, body);
+	wrap.appendChild(detail);
+
+	return wrap;
+}
+
 export function buildToolCallsElement({
 	reasoning = '',
 	reasoningParts = null,
@@ -395,6 +638,11 @@ export function buildContentContainer(node, isEditing, editingDraft, settings = 
 	const inlineRenderParts = hasInlineReasoning
 		? buildInlineRenderParts(node, inlineRenderableParts)
 		: null;
+
+	if (!isEditing && node.role === 'assistant') {
+		const revisionEl = buildRevisionTraceElement(node.revisionTrace);
+		if (revisionEl) container.appendChild(revisionEl);
+	}
 
 	if (!isEditing && node.role === 'assistant' && !hasInlineReasoning) {
 		const reasoningEl = buildReasoningElement({

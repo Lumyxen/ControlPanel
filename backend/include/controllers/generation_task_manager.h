@@ -39,6 +39,7 @@ struct GenerationTask {
     Json::Value resultReasoningParts = Json::Value(Json::arrayValue);
     Json::Value resultToolCalls = Json::Value(Json::arrayValue);
     Json::Value resultLogprobs = Json::Value(Json::arrayValue);
+    Json::Value resultRevisionTrace = Json::Value(Json::objectValue);
     TaskStatus status = TaskStatus::Pending;
     std::shared_ptr<std::future<void>> workerFuture;
 

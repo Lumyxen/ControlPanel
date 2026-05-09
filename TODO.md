@@ -251,7 +251,9 @@
 - [ ] None
 
 #### UX
-- [ ] None
+- [ ] Collapsing a menu in a chat in a way that does not move the view but make it so you can not scroll down anymore, the scroll-to-bottom button persists
+- [ ] Sort chats by most recently chatted in
+- [ ] Tool toggling is not functional
 
 ##### Firefox
 - [ ] ESC does not properly cancel message editing, requiring 2 presses of ESC

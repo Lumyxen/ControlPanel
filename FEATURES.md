@@ -20,14 +20,14 @@ It is intentionally separate from `TODO.md`:
 
 | Area | Included |
 | --- | --- |
-| Secure local shell | Password setup/login, bearer-authenticated protected routes, exact-origin request gating, encrypted saved chat data, zero-knowledge password vault, and backend health monitoring |
+| Secure local shell | Password setup/login, bearer-authenticated protected routes, exact-origin request gating, encrypted saved chat data, zero-knowledge password vault, Firefox password-fill extension, and backend health monitoring |
 | AI chat workflow | Graph-threaded chats, lazy chat loading, background generation tasks, reconnectable streaming, reasoning blocks, per-chat tool-pack scope, inline tool-call rendering |
 | Transcript UX | Message editing, regenerate-from-here, branching, raw-copy behavior, markdown rendering, code-block actions, colour previews |
 | Model management | LM Studio configuration, built-in `llama.cpp` backend building/switching, HuggingFace GGUF search/download/delete/tokenizer install |
 | Tuning and personalisation | Theme palettes, AI behavior settings, token-confidence display/history controls, title-generation settings |
-| Integration surface | REST API, task endpoints, tool-pack discovery/reload, approval endpoints, MCP client loading/bridging, built-in MCP config tools |
+| Integration surface | REST API, task endpoints, tool-pack discovery/reload, approval and file-edit rollback endpoints, extension-isolated vault routes, MCP client loading/bridging, built-in MCP config tools |
 
-The tool system ships with real bundled calculator and web-search packs plus the synthetic internal control-plane pack used for deferred discovery and schema loading. Additional packs can still be added locally or bridged in from MCP servers.
+The tool system ships with real bundled calculator, web-search, file-reader, and filesystem packs plus the synthetic internal control-plane pack used for deferred discovery and schema loading. Additional packs can still be added locally or bridged in from MCP servers.
 
 ---
 
@@ -38,9 +38,9 @@ The tool system ships with real bundled calculator and web-search packs plus the
 | Feature | What it does |
 | --- | --- |
 | First-run password bootstrap | The app starts with a password-setup flow when no password has been configured yet. |
-| Session-based login | Logging in returns a bearer session token that gates protected `/api/*` and `/mcp` routes. |
+| Session-based login | Logging in returns a bearer session token that gates panel-protected `/api/*` and `/mcp` routes. |
 | Session validation and logout | Existing bearer tokens can be validated, reused from `localStorage`, and explicitly revoked. |
-| Origin / referer allowlist | Protected backend routes accept only requests whose `Origin` or `Referer` resolve to `http://127.0.0.1:8080`. |
+| Origin / referer allowlist | Panel-protected backend routes accept only requests whose `Origin` or `Referer` resolve to `http://127.0.0.1:8080`. |
 | Encrypted saved chat data | Persisted chat payloads are stored as AES-256-GCM encrypted envelopes. |
 | PBKDF2 password derivation | New panel auth setups use PBKDF2-HMAC-SHA256 at 600,000 iterations, with legacy 310,000-iteration setups transparently upgraded on successful login. |
 | Panel reauthentication | Protected settings changes can require a fresh panel-password reauth token instead of relying on the long-lived app session alone. |
@@ -51,11 +51,24 @@ The tool system ships with real bundled calculator and web-search packs plus the
 | PIN lockout wipe | Repeated failed PIN attempts within the configured one-minute window delete that device slot until the master password is used again. |
 | Login presentation | The login page uses an animated starfield background rather than a static screen. |
 
+### Password Manager and Firefox Extension
+
+| Feature | What it does |
+| --- | --- |
+| Credential manager page | The Password Manager page can create, edit, delete, select, and lock saved credentials inside the encrypted vault. |
+| Credential fields | Vault entries store title, username, password, URL, notes, and created/updated timestamps. |
+| Separate vault setup and unlock screens | The vault has its own setup and unlock flow, including master-password unlock and device PIN unlock when configured. |
+| Firefox extension packaging | The build packages the bundled CtrlPanel Passwords WebExtension into an XPI and embeds it into the app for Settings-page installation. |
+| Login-field injection | The extension detects username/password fields on web pages and injects CtrlPanel chooser buttons/panels. |
+| Extension unlock modes | The extension can unlock the vault with the master password or a Firefox-profile PIN, and it keeps unlocked vault state in background memory for a short TTL. |
+| URL-matched credential fill | The extension filters saved credentials by URL host/path and fills username/password fields using native input/change events. |
+| Extension API isolation | `/api/extension/*` vault routes are accepted only from `moz-extension://` origins or extension-marked requests and do not rely on the main panel bearer session. |
+
 ### App Shell and Reliability
 
 | Feature | What it does |
 | --- | --- |
-| Multi-page shell | The app exposes dedicated Home, AI Chat, and Settings pages inside a shared shell. |
+| Multi-page shell | The app exposes dedicated Home, AI Chat, Password Manager, and Settings pages inside a shared shell. |
 | Collapsible sidebar | The main sidebar can be collapsed to free horizontal space. |
 | Collapsible AI chat group | The sidebar chat section can be expanded/collapsed independently. |
 | Quick new-chat action | A compact new-chat button remains available when the sidebar is collapsed. |
@@ -69,7 +82,7 @@ The tool system ships with real bundled calculator and web-search packs plus the
 | Bundled calculator pack | Ships schema-first native math tools, including a typed calculator and a batch fallback worker. |
 | Bundled web-search pack | Ships a real indexed web-search subsystem instead of example/demo HTTP tools. |
 | Bundled file-reader pack | Ships a native local text file reader with line and character limits, exact text slices, document versions, EOL state, and compact line metadata. |
-| Bundled filesystem pack | Ships local directory listing, bounded directory trees, active-folder inspection, session working-directory changes, and checkpointed file editing with version-guarded range and line operations. |
+| Bundled filesystem pack | Ships local directory listing, bounded directory trees, active-folder inspection, session working-directory changes, and checkpointed file editing with version-guarded range, line, and whole-file operations. |
 | Web search ranking and fallback | `search_web` ranks indexed pages with SQLite FTS5 and can fall back to live web results when the local index misses. |
 | Stored result opening | `open_result` returns cleaned indexed text, metadata, and discovered links by `doc_id`. |
 | Live fetch and indexing | `fetch_url` fetches live pages, obeys robots/sitemaps, canonicalises URLs, deduplicates content, and updates the local index. |
@@ -289,6 +302,7 @@ The tool system ships with real bundled calculator and web-search packs plus the
 
 The backend exposes API groups for:
 - Authentication setup, login, logout, and validation
+- Password-vault setup, unlock, save, reauth, PIN registration/removal, and extension-scoped vault unlock/PIN routes
 - Chat summary CRUD and per-chat detail CRUD
 - Legacy chat endpoints, prompt token counting, and task-based generation endpoints
 - Model listing and local-model deletion
@@ -296,7 +310,7 @@ The backend exposes API groups for:
 - Settings read/write
 - `llama.cpp` backend selection, building, logs, reloads, and pool status
 - HuggingFace search, metadata, file listing, download tracking, cancellation, and tokenizer installation
-- Tool-pack discovery, reload, catalog search, and approval resolution
+- Tool-pack discovery, reload, catalog search, approval resolution, and checkpointed file-edit rollback
 - MCP aggregation and config reload
 
 ### Tooling Infrastructure
@@ -316,6 +330,9 @@ The backend exposes API groups for:
 | Internal control-plane pack | Fresh installs include a synthetic pack for deferred tool-catalog search and schema loading. |
 | Bundled calculator pack | Fresh installs include a calculator pack with a native scientific calculator and a sandboxed batch-math fallback tool. |
 | Bundled web-search pack | Fresh installs include a web-search pack with SQLite FTS5 indexing, robots/sitemap-aware fetching, canonicalisation, deduplication, snippets, related-result lookup, and subsystem status reporting. |
+| Bundled file-reader pack | Fresh installs include exact local text-file reads with document versions, EOL metadata, truncation metadata, and optional numbered views. |
+| Bundled filesystem pack | Fresh installs include directory listing, bounded tree rendering, working-directory management, and checkpointed file editing. |
+| File-edit rollback API | Checkpoint descriptors from filesystem edits can be restored through `/api/tools/file-edits/rollback`. |
 | Current shipped tool state | The repository ships the internal control-plane pack plus bundled calculator, web-search, file-reader, and filesystem packs out of the box; additional packs can be added locally or via MCP. |
 
 ### MCP Support
@@ -343,6 +360,7 @@ The backend exposes API groups for:
 | Transcript-visible execution records | Tool executions are streamed back into the chat transcript with input, output, status, and approval details. |
 | Approval-aware task states | A generation task can enter a `waiting_approval` state until the user resolves a pending tool action. |
 | Malformed tool-call recovery | If a model emits malformed tool-call argument JSON, the backend turns it into a failed tool event instead of aborting the whole response. |
+| Message-level file edit rollback | Assistant messages that contain checkpointed filesystem edits expose a rollback action that restores the affected checkpoints in reverse order. |
 | Bundled calculator tools | Out-of-the-box installs provide real calculator capabilities via a native scientific calculator and a sandboxed batch-math tool. |
 
 ---
@@ -354,3 +372,4 @@ The backend exposes API groups for:
 | Linux | Primary development and build target |
 | Windows | Build output exists in the current CMake/build flow |
 | ARM | Optional ARM binary can be produced when the cross-toolchain and dependencies are available |
+| Firefox extension | The bundled password-fill WebExtension is packaged as an XPI and embedded into the frontend asset set during builds |

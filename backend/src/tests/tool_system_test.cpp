@@ -139,6 +139,20 @@ void beginSession(ToolSystem& toolSystem, const std::string& taskId) {
     toolSystem.beginTaskSession(options);
 }
 
+bool hasModelTool(const Json::Value& tools, const std::string& name) {
+    if (!tools.isArray()) {
+        return false;
+    }
+    for (const auto& tool : tools) {
+        if (tool.isObject() &&
+            tool["function"].isObject() &&
+            tool["function"].get("name", "").asString() == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void testInvalidPromptToolFailsWithoutApproval() {
     ScopedDir temp;
     const fs::path packRoot = temp.path() / "packs";
@@ -214,12 +228,73 @@ void testNoopPromptToolCompletesWithoutApproval() {
     toolSystem.endTaskSession("task_noop");
 }
 
+void testRevisionModeActivatesDraftEditor() {
+    ScopedDir temp;
+    const fs::path packRoot = temp.path() / "packs";
+    const fs::path dataRoot = temp.path() / "data";
+    ToolSystem toolSystem(makeRuntimePaths(packRoot, dataRoot));
+    toolSystem.initialize();
+
+    ToolSystem::SessionOptions options;
+    options.taskId = "task_revision";
+    options.revisionMode = true;
+    toolSystem.beginTaskSession(options);
+
+    const Json::Value tools = toolSystem.getModelToolsForTask("task_revision");
+    expect(hasModelTool(tools, "draft_editor__create_draft"), "revision mode should expose create_draft");
+    expect(hasModelTool(tools, "draft_editor__annotate_issue"), "revision mode should expose annotate_issue");
+    expect(hasModelTool(tools, "draft_editor__commit_final"), "revision mode should expose commit_final");
+
+    Json::Value createArgs(Json::objectValue);
+    createArgs["content"] = "Draft answer.";
+    createArgs["summary"] = "Created draft.";
+    const ToolSystem::ExecutionResult createResult = toolSystem.executeToolCall(
+        "task_revision",
+        "draft_editor__create_draft",
+        "call_create",
+        createArgs,
+        nullptr);
+    expect(createResult.success, "create_draft should complete");
+    expect(createResult.toolCall["output"].get("operation", "").asString() == "create_draft",
+        "create_draft should report its operation");
+
+    Json::Value issueArgs(Json::objectValue);
+    issueArgs["label"] = "none";
+    issueArgs["severity"] = "none";
+    issueArgs["note"] = "No material issues.";
+    const ToolSystem::ExecutionResult issueResult = toolSystem.executeToolCall(
+        "task_revision",
+        "draft_editor__annotate_issue",
+        "call_issue",
+        issueArgs,
+        nullptr);
+    expect(issueResult.success, "annotate_issue should complete");
+    expect(issueResult.toolCall["output"]["issues"].isArray() &&
+           !issueResult.toolCall["output"]["issues"].empty(),
+        "annotate_issue should record issues");
+
+    Json::Value commitArgs(Json::objectValue);
+    commitArgs["change_summary"] = "Reviewed and finalized.";
+    const ToolSystem::ExecutionResult commitResult = toolSystem.executeToolCall(
+        "task_revision",
+        "draft_editor__commit_final",
+        "call_commit",
+        commitArgs,
+        nullptr);
+    expect(commitResult.success, "commit_final should complete");
+    expect(commitResult.toolCall["output"].get("final", false).asBool(),
+        "commit_final should mark the draft final");
+
+    toolSystem.endTaskSession("task_revision");
+}
+
 } // namespace
 
 int main() {
     try {
         testInvalidPromptToolFailsWithoutApproval();
         testNoopPromptToolCompletesWithoutApproval();
+        testRevisionModeActivatesDraftEditor();
         return 0;
     } catch (const std::exception& exception) {
         std::cerr << "tool_system_test failed: " << exception.what() << "\n";

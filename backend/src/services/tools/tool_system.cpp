@@ -449,6 +449,10 @@ struct ToolSession {
     std::unordered_set<std::string> enabledPackIds;
     std::unordered_set<std::string> loadedToolIds;
     std::function<void(const std::string&)> onStatusChange;
+    std::string draftContent;
+    Json::Value draftIssues = Json::Value(Json::arrayValue);
+    int nextDraftIssueId = 1;
+    bool draftCommitted = false;
 };
 
 struct SandboxResult {
@@ -927,6 +931,161 @@ struct ToolSystem::Impl {
         registerToolUnlocked(load);
     }
 
+    void installDraftEditorToolsUnlocked() {
+        ToolPackRecord pack;
+        pack.id = "draft_editor";
+        pack.title = "Draft Editor";
+        pack.version = "1";
+        pack.description = "Synthetic assistant-draft editing tools for transparent revision mode.";
+        pack.sourceType = "system";
+        pack.rootPath = "";
+        pack.defaultEnabled = false;
+        pack.synthetic = true;
+        registerPackUnlocked(pack);
+
+        auto makePolicy = []() {
+            Json::Value policy(Json::objectValue);
+            policy["riskTier"] = "read";
+            policy["approvalMode"] = "auto";
+            policy["network"] = false;
+            policy["idempotent"] = false;
+            return policy;
+        };
+
+        auto makeSelection = [](const std::string& summary) {
+            Json::Value selection(Json::objectValue);
+            selection["summary"] = summary;
+            selection["tags"] = Json::Value(Json::arrayValue);
+            selection["tags"].append("revision");
+            selection["tags"].append("draft");
+            selection["whenToUse"] = "Use inside transparent revision mode to edit the temporary assistant draft.";
+            selection["whenNotToUse"] = "Do not use for user files, filesystem edits, or ordinary answer text outside revision mode.";
+            return selection;
+        };
+
+        auto baseSchema = []() {
+            Json::Value schema(Json::objectValue);
+            schema["type"] = "object";
+            schema["additionalProperties"] = false;
+            return schema;
+        };
+
+        auto stringProperty = [](Json::Value& schema, const std::string& name, const std::string& description) {
+            schema["properties"][name]["type"] = "string";
+            schema["properties"][name]["description"] = description;
+        };
+
+        auto required = [](std::initializer_list<const char*> names) {
+            Json::Value result(Json::arrayValue);
+            for (const char* name : names) {
+                result.append(name);
+            }
+            return result;
+        };
+
+        auto registerDraftTool = [&](const std::string& toolId,
+                                     const std::string& title,
+                                     const std::string& description,
+                                     const Json::Value& schema,
+                                     const std::string& handler) {
+            ToolDefinition tool;
+            tool.canonicalId = pack.id + "/" + toolId;
+            tool.packId = pack.id;
+            tool.toolId = toolId;
+            tool.modelName = sanitizeIdentifier(pack.id) + "__" + toolId;
+            tool.title = title;
+            tool.description = description;
+            tool.executor = "native";
+            tool.sourceType = "system";
+            tool.inputSchema = schema;
+            tool.selection = makeSelection(description);
+            tool.policy = makePolicy();
+            tool.defaultEnabled = false;
+            tool.alwaysVisible = true;
+            tool.listedInCatalog = false;
+            tool.listedInPackSummary = false;
+            tool.config["native"]["handler"] = handler;
+            registerToolUnlocked(tool);
+        };
+
+        Json::Value createSchema = baseSchema();
+        stringProperty(createSchema, "content", "The complete current working draft.");
+        stringProperty(createSchema, "summary", "A short user-visible note describing the draft pass.");
+        createSchema["required"] = required({"content"});
+        registerDraftTool(
+            "create_draft",
+            "Create Draft",
+            "Create or replace the temporary assistant draft with a complete first version.",
+            createSchema,
+            "draft_editor_create");
+
+        Json::Value annotateSchema = baseSchema();
+        stringProperty(annotateSchema, "label", "Issue category such as unclear_thesis, unsupported_claim, repetition, ordering, uncertain_fact, code_risk, or none.");
+        stringProperty(annotateSchema, "severity", "Issue severity: low, medium, high, or none.");
+        stringProperty(annotateSchema, "span", "The short draft span or section this issue refers to.");
+        stringProperty(annotateSchema, "note", "Concrete user-visible review note.");
+        stringProperty(annotateSchema, "recommended_action", "Targeted edit that should address the issue.");
+        annotateSchema["required"] = required({"label", "severity", "note"});
+        registerDraftTool(
+            "annotate_issue",
+            "Annotate Issue",
+            "Record one concrete review note against the current draft.",
+            annotateSchema,
+            "draft_editor_annotate_issue");
+
+        Json::Value replaceSchema = baseSchema();
+        stringProperty(replaceSchema, "target", "Exact text in the current draft to replace.");
+        stringProperty(replaceSchema, "replacement", "Replacement text.");
+        stringProperty(replaceSchema, "summary", "Short user-visible note explaining the edit.");
+        replaceSchema["properties"]["occurrence"]["type"] = "integer";
+        replaceSchema["properties"]["occurrence"]["description"] = "One-based occurrence number to replace. Defaults to 1.";
+        replaceSchema["required"] = required({"target", "replacement"});
+        registerDraftTool(
+            "replace_text",
+            "Replace Text",
+            "Replace a targeted span in the current assistant draft.",
+            replaceSchema,
+            "draft_editor_replace_text");
+
+        Json::Value insertSchema = baseSchema();
+        stringProperty(insertSchema, "target", "Exact text in the current draft to insert after.");
+        stringProperty(insertSchema, "insertion", "Text to insert after the target.");
+        stringProperty(insertSchema, "summary", "Short user-visible note explaining the edit.");
+        insertSchema["properties"]["occurrence"]["type"] = "integer";
+        insertSchema["properties"]["occurrence"]["description"] = "One-based occurrence number to insert after. Defaults to 1.";
+        insertSchema["required"] = required({"target", "insertion"});
+        registerDraftTool(
+            "insert_after",
+            "Insert After",
+            "Insert text after a targeted span in the current assistant draft.",
+            insertSchema,
+            "draft_editor_insert_after");
+
+        Json::Value deleteSchema = baseSchema();
+        stringProperty(deleteSchema, "target", "Exact text in the current draft to delete.");
+        stringProperty(deleteSchema, "summary", "Short user-visible note explaining the edit.");
+        deleteSchema["properties"]["occurrence"]["type"] = "integer";
+        deleteSchema["properties"]["occurrence"]["description"] = "One-based occurrence number to delete. Defaults to 1.";
+        deleteSchema["required"] = required({"target"});
+        registerDraftTool(
+            "delete_text",
+            "Delete Text",
+            "Delete a targeted span in the current assistant draft.",
+            deleteSchema,
+            "draft_editor_delete_text");
+
+        Json::Value commitSchema = baseSchema();
+        stringProperty(commitSchema, "change_summary", "Concise summary of meaningful changes made before committing.");
+        stringProperty(commitSchema, "content", "Optional complete final answer. If omitted, the current draft is committed.");
+        commitSchema["required"] = required({"change_summary"});
+        registerDraftTool(
+            "commit_final",
+            "Commit Final",
+            "Commit the current assistant draft as the final answer for the transcript.",
+            commitSchema,
+            "draft_editor_commit_final");
+    }
+
     void loadManifestPackUnlocked(const fs::path& packDir, const std::string& fallbackSourceType) {
         const fs::path packPath = packDir / "pack.json";
         if (!fs::exists(packPath)) {
@@ -1110,6 +1269,7 @@ struct ToolSystem::Impl {
         clearUnlocked();
         toolingConfig = parseToolingConfig(paths.toolingConfigPath);
         installControlPlaneToolsUnlocked();
+        installDraftEditorToolsUnlocked();
         loadManifestRootsUnlocked();
         if (mcpRegistry) {
             mcpRegistry->loadFromFile(paths.mcpConfigPath);
@@ -1290,7 +1450,7 @@ struct ToolSystem::Impl {
                 continue;
             }
             const ToolPackRecord& pack = packIt->second;
-            if (pack.synthetic && pack.id == "system-control") {
+            if (pack.synthetic && (pack.id == "system-control" || pack.id == "draft_editor")) {
                 continue;
             }
 
@@ -1422,6 +1582,7 @@ struct ToolSystem::Impl {
 
             if (handler == "search_tool_catalog" ||
                 handler == "load_tool_definitions" ||
+                handler.rfind("draft_editor_", 0) == 0 ||
                 handler == "calculator_calculate" ||
                 handler == "calculator_calculate_batch" ||
                 handler == "file_reader_read_file" ||
@@ -1476,6 +1637,10 @@ struct ToolSystem::Impl {
         const Json::Value& args,
         std::function<bool()> cancelCheck) {
         const std::string handler = getStringArg(tool.config["native"], "handler");
+
+        if (handler.rfind("draft_editor_", 0) == 0) {
+            return executeDraftEditor(session, handler, args);
+        }
 
         if (handler == "search_tool_catalog") {
             Json::Value result(Json::objectValue);
@@ -1793,6 +1958,155 @@ struct ToolSystem::Impl {
         return result;
     }
 
+    std::optional<std::size_t> findDraftOccurrence(
+        const std::string& content,
+        const std::string& target,
+        int occurrence) const {
+        if (target.empty()) {
+            return std::nullopt;
+        }
+        occurrence = std::max(1, occurrence);
+        std::size_t position = 0;
+        for (int index = 1; index <= occurrence; ++index) {
+            position = content.find(target, position);
+            if (position == std::string::npos) {
+                return std::nullopt;
+            }
+            if (index == occurrence) {
+                return position;
+            }
+            position += target.size();
+        }
+        return std::nullopt;
+    }
+
+    Json::Value makeDraftEditorError(const std::string& message) const {
+        Json::Value error(Json::objectValue);
+        error["error"] = message;
+        error["operation"] = "draft_error";
+        error["stage"] = "review";
+        error["timestamp"] = nowMillis();
+        return error;
+    }
+
+    Json::Value makeDraftEditorResult(
+        const ToolSession& session,
+        const std::string& operation,
+        const std::string& stage,
+        const std::string& summary,
+        bool final = false,
+        const Json::Value& issue = Json::Value(Json::nullValue)) const {
+        Json::Value result(Json::objectValue);
+        result["operation"] = operation;
+        result["stage"] = stage;
+        result["timestamp"] = nowMillis();
+        result["content"] = session.draftContent;
+        result["summary"] = summary;
+        result["issues"] = session.draftIssues;
+        if (!issue.isNull()) {
+            result["issue"] = issue;
+        }
+        if (final) {
+            result["final"] = true;
+        }
+
+        Json::Value patch(Json::objectValue);
+        patch["op"] = "replace";
+        patch["path"] = "/content";
+        patch["value"] = session.draftContent;
+        result["patch"] = Json::Value(Json::arrayValue);
+        result["patch"].append(patch);
+
+        std::string output = summary;
+        if (output.empty()) {
+            output = final ? "Final answer committed." : "Draft updated.";
+        }
+        if (final) {
+            output += "\n\nCommitted final answer:\n" + session.draftContent;
+        } else {
+            output += "\n\nCurrent draft:\n" + session.draftContent;
+        }
+        result["output"] = output;
+        return result;
+    }
+
+    Json::Value executeDraftEditor(ToolSession& session, const std::string& handler, const Json::Value& args) {
+        if (handler == "draft_editor_create") {
+            session.draftContent = getStringArg(args, "content");
+            session.draftCommitted = false;
+            const std::string summary = getStringArg(args, "summary", "Created a working draft.");
+            return makeDraftEditorResult(session, "create_draft", "draft", summary);
+        }
+
+        if (handler == "draft_editor_annotate_issue") {
+            Json::Value issue(Json::objectValue);
+            issue["id"] = "issue_" + std::to_string(session.nextDraftIssueId++);
+            issue["label"] = getStringArg(args, "label", "issue");
+            issue["severity"] = getStringArg(args, "severity", "medium");
+            issue["span"] = getStringArg(args, "span");
+            issue["note"] = getStringArg(args, "note");
+            issue["recommended_action"] = getStringArg(args, "recommended_action");
+            issue["timestamp"] = nowMillis();
+            session.draftIssues.append(issue);
+
+            std::string summary = issue.get("note", "").asString();
+            if (summary.empty()) {
+                summary = "Added a review note.";
+            }
+            return makeDraftEditorResult(session, "annotate_issue", "review", summary, false, issue);
+        }
+
+        if (handler == "draft_editor_replace_text" ||
+            handler == "draft_editor_insert_after" ||
+            handler == "draft_editor_delete_text") {
+            if (session.draftContent.empty()) {
+                return makeDraftEditorError("No draft exists yet. Call create_draft first.");
+            }
+
+            const std::string target = getStringArg(args, "target");
+            const int occurrence = getIntArg(args, "occurrence", 1);
+            const auto position = findDraftOccurrence(session.draftContent, target, occurrence);
+            if (!position.has_value()) {
+                return makeDraftEditorError("Target text was not found in the current draft.");
+            }
+
+            std::string operation;
+            if (handler == "draft_editor_replace_text") {
+                operation = "replace_text";
+                session.draftContent.replace(*position, target.size(), getStringArg(args, "replacement"));
+            } else if (handler == "draft_editor_insert_after") {
+                operation = "insert_after";
+                session.draftContent.insert(*position + target.size(), getStringArg(args, "insertion"));
+            } else {
+                operation = "delete_text";
+                session.draftContent.erase(*position, target.size());
+            }
+
+            std::string summary = getStringArg(args, "summary");
+            if (summary.empty()) {
+                summary = "Applied a targeted edit.";
+            }
+            return makeDraftEditorResult(session, operation, "revise", summary);
+        }
+
+        if (handler == "draft_editor_commit_final") {
+            const std::string providedContent = getStringArg(args, "content");
+            if (!providedContent.empty()) {
+                session.draftContent = providedContent;
+            }
+            if (session.draftContent.empty()) {
+                return makeDraftEditorError("Cannot commit an empty draft.");
+            }
+            session.draftCommitted = true;
+            const std::string summary = getStringArg(args, "change_summary", "Committed the final answer.");
+            Json::Value result = makeDraftEditorResult(session, "commit_final", "commit", summary, true);
+            result["change_summary"] = summary;
+            return result;
+        }
+
+        return makeDraftEditorError("Unknown draft editor operation.");
+    }
+
     Json::Value executeMcp(const ToolDefinition& tool, const Json::Value& args) const {
         if (!mcpRegistry) {
             Json::Value error(Json::objectValue);
@@ -1877,6 +2191,9 @@ void ToolSystem::beginTaskSession(const SessionOptions& options) {
         session.enabledPackIds = impl_->defaultEnabledPacksUnlocked();
     }
     session.enabledPackIds.insert("system-control");
+    if (options.revisionMode) {
+        session.enabledPackIds.insert("draft_editor");
+    }
     session.onStatusChange = options.onStatusChange;
     impl_->sessions[options.taskId] = std::move(session);
 }

@@ -17,6 +17,9 @@ function normalizeStoredNode(node) {
 	if (node.tokenLogprobs == null && Array.isArray(node.token_logprobs)) {
 		node.tokenLogprobs = cloneStructured(node.token_logprobs);
 	}
+	if (node.revisionTrace == null && node.revision_trace && typeof node.revision_trace === "object") {
+		node.revisionTrace = cloneStructured(node.revision_trace);
+	}
 
 	return node;
 }
@@ -86,6 +89,9 @@ export function ensureGraph(chat) {
 		if (m.tokenLogprobs || m.token_logprobs) {
 			node.tokenLogprobs = cloneStructured(m.tokenLogprobs || m.token_logprobs);
 		}
+		if (m.revisionTrace || m.revision_trace) {
+			node.revisionTrace = cloneStructured(m.revisionTrace || m.revision_trace);
+		}
 		normalizeStoredNode(node);
 
 		graph.nodes[nodeId] = node;
@@ -138,7 +144,7 @@ export function recomputeLeafId(graph) {
 	graph.leafId = path.length ? path[path.length - 1] : null;
 }
 
-export function appendNode(graph, { parentId, role, content, timestamp, attachments, parts, reasoningParts, toolCalls }) {
+export function appendNode(graph, { parentId, role, content, timestamp, attachments, parts, reasoningParts, toolCalls, revisionTrace }) {
 	// If no parent specified, use the leaf (last message in thread)
 	if (parentId == null) {
 		parentId = graph.leafId ?? graph.rootId;
@@ -167,6 +173,9 @@ export function appendNode(graph, { parentId, role, content, timestamp, attachme
 	}
 	if (reasoningParts && reasoningParts.length > 0) {
 		node.reasoningParts = reasoningParts;
+	}
+	if (revisionTrace && typeof revisionTrace === "object") {
+		node.revisionTrace = cloneStructured(revisionTrace);
 	}
 	
 	graph.nodes[id] = node;
@@ -231,6 +240,9 @@ export function createSiblingCopy(graph, nodeId, { content, timestamp, parts, at
     if (!contentChanged && node.tokenLogprobs) {
         sibling.tokenLogprobs = JSON.parse(JSON.stringify(node.tokenLogprobs));
     }
+    if (!contentChanged && node.revisionTrace) {
+        sibling.revisionTrace = JSON.parse(JSON.stringify(node.revisionTrace));
+    }
 
 	graph.nodes[siblingId] = sibling;
 	parent.children.push(siblingId);
@@ -268,6 +280,7 @@ export function branchFromNode(graph, nodeId, { preserveSelectedTail = false } =
     if (node.fileEditsRolledBackAt) sibling.fileEditsRolledBackAt = node.fileEditsRolledBackAt;
     if (node.fileEditsRolledBackCount) sibling.fileEditsRolledBackCount = node.fileEditsRolledBackCount;
     if (node.tokenLogprobs) sibling.tokenLogprobs = JSON.parse(JSON.stringify(node.tokenLogprobs));
+    if (node.revisionTrace) sibling.revisionTrace = JSON.parse(JSON.stringify(node.revisionTrace));
 
 	graph.nodes[siblingId] = sibling;
 	parent.children.push(siblingId);
@@ -299,6 +312,7 @@ export function branchFromNode(graph, nodeId, { preserveSelectedTail = false } =
         if (oldNext.reasoningParts) cloned.reasoningParts = JSON.parse(JSON.stringify(oldNext.reasoningParts));
         if (oldNext.toolCalls) cloned.toolCalls = JSON.parse(JSON.stringify(oldNext.toolCalls));
         if (oldNext.tokenLogprobs) cloned.tokenLogprobs = JSON.parse(JSON.stringify(oldNext.tokenLogprobs));
+        if (oldNext.revisionTrace) cloned.revisionTrace = JSON.parse(JSON.stringify(oldNext.revisionTrace));
 
 		graph.nodes[newId] = cloned;
 		graph.nodes[prevNewId].children.push(newId);

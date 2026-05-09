@@ -102,6 +102,232 @@
     overflow-wrap: break-word;
 }
 
+.message-revision-trace {
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--ctp-mantle) 55%, transparent);
+}
+
+.revision-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--ctp-mantle) 74%, transparent);
+}
+
+.revision-stage {
+    color: var(--text);
+    font-size: 0.84rem;
+    font-weight: 650;
+    min-width: 0;
+}
+
+.revision-meta {
+    color: var(--muted);
+    font-size: 0.75rem;
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.revision-model-output,
+.revision-model-phase {
+    border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.revision-model-output:first-of-type {
+    border-top: 0;
+}
+
+.revision-model-output summary,
+.revision-model-phase summary {
+    cursor: pointer;
+    user-select: none;
+}
+
+.revision-model-output > summary {
+    padding: 7px 12px;
+    color: var(--muted);
+    font-size: 0.8rem;
+}
+
+.revision-model-output[open] > summary {
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+}
+
+.revision-model-output-body {
+    display: grid;
+    gap: 0;
+}
+
+.revision-model-phase summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    background: color-mix(in srgb, var(--ctp-mantle) 55%, transparent);
+}
+
+.revision-model-phase[open] summary {
+    color: var(--text);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.revision-model-phase-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.revision-model-phase-meta {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 0.72rem;
+    white-space: nowrap;
+}
+
+.revision-model-phase-body {
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px 12px;
+}
+
+.revision-model-section-label {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.revision-model-tool-calls {
+    display: grid;
+    gap: 8px;
+}
+
+.revision-model-tool-calls .message-tool-call {
+    margin: 0;
+}
+
+.revision-model-rendered-text {
+    margin: 0;
+    max-height: 220px;
+    overflow: auto;
+    padding: 10px;
+    border: 1px solid var(--border);
+    background: var(--ctp-mantle);
+    color: var(--text);
+    font-size: 0.84rem;
+    line-height: 1.45;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+.revision-model-rendered-text > :first-child {
+    margin-top: 0;
+}
+
+.revision-model-rendered-text > :last-child {
+    margin-bottom: 0;
+}
+
+.revision-model-empty {
+    color: var(--muted);
+    font-size: 0.8rem;
+    padding: 2px 0;
+}
+
+.revision-notes,
+.revision-draft {
+    border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.revision-notes:first-of-type,
+.revision-draft:first-of-type {
+    border-top: 0;
+}
+
+.revision-notes summary,
+.revision-draft summary {
+    padding: 7px 12px;
+    color: var(--muted);
+    font-size: 0.8rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.revision-notes[open] summary,
+.revision-draft[open] summary {
+    color: var(--text);
+    border-bottom: 1px solid var(--border);
+}
+
+.revision-note-list {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px 12px;
+}
+
+.revision-note {
+    display: grid;
+    gap: 3px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--panel) 72%, transparent);
+}
+
+.revision-note-title {
+    color: var(--text);
+    font-size: 0.76rem;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+.revision-note-text {
+    color: var(--muted);
+    font-size: 0.8rem;
+    overflow-wrap: break-word;
+}
+
+.revision-draft-body {
+    display: grid;
+    gap: 10px;
+    padding: 10px 12px 12px;
+}
+
+.revision-change-summary {
+    color: var(--muted);
+    font-size: 0.82rem;
+    overflow-wrap: break-word;
+}
+
+.revision-event-list {
+    display: grid;
+    gap: 6px;
+}
+
+.revision-event {
+    color: var(--muted);
+    font-size: 0.8rem;
+    overflow-wrap: break-word;
+}
+
+.revision-draft-text {
+    max-height: 280px;
+    overflow: auto;
+    padding: 10px;
+    border: 1px solid var(--border);
+    background: var(--ctp-mantle);
+    color: var(--text);
+    font-size: 0.86rem;
+    line-height: 1.5;
+    overflow-wrap: break-word;
+}
+
 .chat-message-inline-flow {
     display: flex;
     flex-direction: column;

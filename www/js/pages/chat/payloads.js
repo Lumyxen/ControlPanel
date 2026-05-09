@@ -67,6 +67,10 @@ export function buildNodeTextForHistory(node) {
 
 function buildAssistantHistoryText(node, settings = null) {
 	let textContent = buildNodeTextForHistory(node);
+	const revisionSummary = buildRevisionSummaryAnnotation(node);
+	if (revisionSummary) {
+		textContent += textContent ? `\n\n${revisionSummary}` : revisionSummary;
+	}
 	const includeLogprobs = settings && (
 		settings.logprobHistoryHigh || settings.logprobHistoryMedium || settings.logprobHistoryLow
 	);
@@ -83,6 +87,10 @@ function buildAssistantHistoryText(node, settings = null) {
 
 function buildAssistantApiText(node, settings = null) {
 	let textContent = buildNodeText(node, { includeToolCalls: false });
+	const revisionSummary = buildRevisionSummaryAnnotation(node);
+	if (revisionSummary) {
+		textContent += textContent ? `\n\n${revisionSummary}` : revisionSummary;
+	}
 	const includeLogprobs = settings && (
 		settings.logprobHistoryHigh || settings.logprobHistoryMedium || settings.logprobHistoryLow
 	);
@@ -95,6 +103,12 @@ function buildAssistantApiText(node, settings = null) {
 	}
 
 	return textContent;
+}
+
+function buildRevisionSummaryAnnotation(node) {
+	const summary = String(node?.revisionTrace?.changeSummary || '').trim();
+	if (!summary) return '';
+	return `<revision_summary>${summary}</revision_summary>`;
 }
 
 // ─── buildConversationHistory ────────────────────────────────────────────────

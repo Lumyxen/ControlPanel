@@ -26,6 +26,7 @@
 #include <sstream>
 #include <thread>
 #include <tuple>
+#include <utility>
 
 #ifndef _WIN32
 #include <arpa/inet.h>
@@ -2542,9 +2543,31 @@ void LlamaCppService::streamingChatWithCallback(
     int numCtx,
     std::function<bool()> cancelCheck,
     bool emitLogprobs) {
+    streamingMessagesWithCallback(
+        model,
+        buildMessages(prompt, systemPrompt),
+        maxTokens,
+        std::move(onChunk),
+        std::move(onError),
+        temperature,
+        numCtx,
+        std::move(cancelCheck),
+        emitLogprobs);
+}
+
+void LlamaCppService::streamingMessagesWithCallback(
+    const std::string& model,
+    Json::Value messages,
+    int maxTokens,
+    std::function<bool(const std::string&)> onChunk,
+    std::function<void(const std::string&)> onError,
+    double temperature,
+    int numCtx,
+    std::function<bool()> cancelCheck,
+    bool emitLogprobs) {
     Json::Value body(Json::objectValue);
     body["model"] = model;
-    body["messages"] = buildMessages(prompt, systemPrompt);
+    body["messages"] = std::move(messages);
     body["max_tokens"] = maxTokens;
     body["stream"] = true;
     body["reasoning_format"] = "deepseek";

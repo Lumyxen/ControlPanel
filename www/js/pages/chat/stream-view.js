@@ -1,5 +1,5 @@
 import { parseStreamReasoningParts } from './payloads.js';
-import { buildReasoningElement, buildToolCallElement, buildToolCallsElement } from './thread-view.js';
+import { buildReasoningElement, buildRevisionTraceElement, buildToolCallElement, buildToolCallsElement } from './thread-view.js';
 import {
 	appendReasoningTextPart,
 	cloneReasoningParts,
@@ -14,6 +14,15 @@ function cloneToolCalls(toolCalls) {
 
 function cloneTokenLogprobs(tokenLogprobs) {
 	return tokenLogprobs.map((entry) => ({ ...entry }));
+}
+
+function cloneRevisionTrace(trace) {
+	if (!trace || typeof trace !== 'object') return null;
+	try {
+		return JSON.parse(JSON.stringify(trace));
+	} catch {
+		return { ...trace };
+	}
 }
 
 function cloneMessageParts(parts) {
@@ -263,6 +272,7 @@ export function createStreamingMessageController({
 	let reasoningParts = [];
 	let activeToolCalls = [];
 	let tokenLogprobs = [];
+	let revisionTrace = null;
 	let errorFromStream = null;
 	let pendingChunks = [];
 	let isProcessingChunks = false;
@@ -275,6 +285,8 @@ export function createStreamingMessageController({
 	let finalTokenHighlightingEnabled = false;
 	let pointerSelectingInMessage = false;
 	let processingScheduled = false;
+	let revisionTimerId = null;
+	let revisionTimerEnabled = true;
 
 	const clearPointerSelectionFlag = () => {
 		setTimeout(() => {
@@ -311,6 +323,161 @@ export function createStreamingMessageController({
 		}
 	};
 
+	const isDraftEditorToolCall = (toolCall) => {
+		if (!toolCall || typeof toolCall !== 'object') return false;
+		const packId = String(toolCall.packId || '');
+		const canonicalId = String(toolCall.canonicalId || '');
+		const name = String(toolCall.name || '');
+		return packId === 'draft_editor' ||
+			canonicalId.startsWith('draft_editor/') ||
+			name.startsWith('draft_editor__');
+	};
+
+	const stopRevisionTimer = () => {
+		if (revisionTimerId) {
+			clearInterval(revisionTimerId);
+			revisionTimerId = null;
+		}
+	};
+
+	const ensureRevisionTrace = (startedAt = Date.now()) => {
+		if (!revisionTrace || typeof revisionTrace !== 'object') {
+			const started = Number(startedAt);
+			revisionTrace = {
+				mode: 'live_revision',
+				startedAt: Number.isFinite(started) && started > 0 ? started : Date.now(),
+				events: [],
+				issues: [],
+				stage: 'draft',
+			};
+		}
+		if (!Array.isArray(revisionTrace.events)) revisionTrace.events = [];
+		if (!Array.isArray(revisionTrace.issues)) revisionTrace.issues = [];
+		return revisionTrace;
+	};
+
+	const upsertRevisionIssue = (issue) => {
+		if (!issue || typeof issue !== 'object') return;
+		const trace = ensureRevisionTrace();
+		const issueId = String(issue.id || '');
+		if (issueId) {
+			const existing = trace.issues.findIndex((candidate) => String(candidate?.id || '') === issueId);
+			if (existing !== -1) {
+				trace.issues[existing] = { ...issue };
+				return;
+			}
+		}
+		trace.issues.push({ ...issue });
+	};
+
+	const applyDraftEditorOutput = (toolCall) => {
+		const output = toolCall?.output;
+		if (!output || typeof output !== 'object' || Array.isArray(output)) return false;
+		const operation = String(output.operation || '');
+		if (!operation || operation === 'draft_error') return false;
+
+		const timestamp = Number(output.timestamp || Date.now());
+		const trace = ensureRevisionTrace(timestamp);
+		trace.updatedAt = Number.isFinite(timestamp) ? timestamp : Date.now();
+		trace.stage = String(output.stage || 'draft');
+		trace.committed = Boolean(output.final);
+		if (typeof output.content === 'string') {
+			trace.currentDraft = output.content;
+			if (output.final) trace.finalContent = output.content;
+		}
+		if (typeof output.change_summary === 'string') {
+			trace.changeSummary = output.change_summary;
+		} else if (output.final && typeof output.summary === 'string') {
+			trace.changeSummary = output.summary;
+		}
+		if (output.issue && typeof output.issue === 'object') {
+			upsertRevisionIssue(output.issue);
+		} else if (Array.isArray(output.issues)) {
+			output.issues.forEach(upsertRevisionIssue);
+		}
+
+		const event = {
+			operation,
+			stage: String(output.stage || 'draft'),
+			timestamp: trace.updatedAt,
+		};
+		if (output.event_id) event.id = String(output.event_id);
+		if (typeof output.summary === 'string') event.summary = output.summary;
+		if (typeof output.change_summary === 'string') event.changeSummary = output.change_summary;
+		if (Array.isArray(output.patch)) event.patch = cloneRevisionTrace(output.patch);
+		if (output.issue?.id) event.issueId = String(output.issue.id);
+		if (event.id) {
+			const existingIndex = trace.events.findIndex((candidate) => String(candidate?.id || '') === event.id);
+			if (existingIndex !== -1) {
+				trace.events[existingIndex] = event;
+				return true;
+			}
+		}
+		trace.events.push(event);
+		return true;
+	};
+
+	const applyRevisionModelOutput = (event) => {
+		if (!event || typeof event !== 'object') return false;
+		const phaseId = String(event.phase_id || event.phaseId || event.id || '');
+		if (!phaseId) return false;
+
+		const timestamp = Number(event.timestamp || Date.now());
+		const trace = ensureRevisionTrace(timestamp);
+		if (!Array.isArray(trace.modelOutputs)) trace.modelOutputs = [];
+
+		let phase = trace.modelOutputs.find((candidate) => String(candidate?.id || '') === phaseId);
+		if (!phase) {
+			phase = {
+				id: phaseId,
+				stage: String(event.stage || 'draft'),
+				label: String(event.label || 'Model output'),
+				status: String(event.status || 'streaming'),
+				content: '',
+				reasoning: '',
+				startedAt: Number.isFinite(timestamp) ? timestamp : Date.now(),
+			};
+			trace.modelOutputs.push(phase);
+		}
+		if (!Array.isArray(phase.toolCalls)) phase.toolCalls = [];
+
+		if (event.stage) {
+			phase.stage = String(event.stage);
+			trace.stage = phase.stage;
+		}
+		if (event.label) phase.label = String(event.label);
+		if (event.status) {
+			phase.status = String(event.status);
+			if (phase.status === 'completed') {
+				phase.completedAt = Number.isFinite(timestamp) ? timestamp : Date.now();
+			}
+		}
+		if (typeof event.delta === 'string') {
+			phase.content = String(phase.content || '') + event.delta;
+		}
+		if (typeof event.reasoning_delta === 'string') {
+			phase.reasoning = String(phase.reasoning || '') + event.reasoning_delta;
+		}
+		if (event.tool_call && typeof event.tool_call === 'object') {
+			const nextToolCall = {
+				...event.tool_call,
+				input: event.tool_call.input ?? event.tool_call.arguments ?? null,
+			};
+			const toolCallId = String(nextToolCall.id || '');
+			const index = toolCallId
+				? phase.toolCalls.findIndex((candidate) => String(candidate?.id || '') === toolCallId)
+				: -1;
+			if (index === -1) {
+				phase.toolCalls.push(nextToolCall);
+			} else {
+				phase.toolCalls[index] = { ...phase.toolCalls[index], ...nextToolCall };
+			}
+		}
+		phase.updatedAt = Number.isFinite(timestamp) ? timestamp : Date.now();
+		trace.updatedAt = phase.updatedAt;
+		return true;
+	};
+
 	const getDisplayState = () => {
 		const {
 			parsedContent,
@@ -345,6 +512,9 @@ export function createStreamingMessageController({
 			reasoningParts: cloneReasoningParts(reasoningParts),
 			toolCalls: cloneToolCalls(activeToolCalls),
 		};
+		if (revisionTrace) {
+			liveNode.revisionTrace = cloneRevisionTrace(revisionTrace);
+		}
 		if (hasInlineReasoning) {
 			liveNode.parts = inlineParts;
 		}
@@ -437,7 +607,40 @@ export function createStreamingMessageController({
 			return;
 		}
 		bindReasoningElement(nextReasoningEl);
-		content.insertBefore(nextReasoningEl, content.firstChild);
+		const revisionEl = content.querySelector(':scope > .message-revision-trace');
+		content.insertBefore(nextReasoningEl, revisionEl?.nextSibling || content.firstChild);
+	};
+
+	const renderRevisionTrace = (content) => {
+		const existing = content.querySelector(':scope > .message-revision-trace');
+		const nextRevisionEl = buildRevisionTraceElement(revisionTrace, { live: true });
+		if (!nextRevisionEl) {
+			existing?.remove();
+			return;
+		}
+		if (existing) {
+			morphNode(existing, nextRevisionEl);
+			return;
+		}
+		content.insertBefore(nextRevisionEl, content.firstChild);
+	};
+
+	const syncRevisionTimer = () => {
+		if (!revisionTimerEnabled || !revisionTrace || revisionTrace.committed) {
+			stopRevisionTimer();
+			return;
+		}
+		if (revisionTimerId) return;
+		revisionTimerId = setInterval(() => {
+			if (!revisionTimerEnabled || !revisionTrace || revisionTrace.committed) {
+				stopRevisionTimer();
+				return;
+			}
+			const content = typingEl.querySelector('.chat-message-content');
+			if (!content) return;
+			renderRevisionTrace(content);
+			afterRender();
+		}, 1000);
 	};
 
 	const renderToolCalls = (content, displayState) => {
@@ -553,14 +756,19 @@ export function createStreamingMessageController({
 	const renderDom = () => {
 		const content = ensureMessageContent();
 		const displayState = getDisplayState();
+		renderRevisionTrace(content);
 		renderReasoning(content, displayState);
 		renderToolCalls(content, displayState);
 		if (displayState.hasInlineReasoning) {
 			renderInlineParts(content, displayState);
 		} else {
 			content.querySelector(':scope > .chat-message-inline-flow')?.remove();
-			renderText(content, displayState.parsedContent);
+			const committedRevisionContent = revisionTrace?.committed && revisionTrace?.finalContent
+				? String(revisionTrace.finalContent)
+				: '';
+			renderText(content, displayState.parsedContent || committedRevisionContent);
 		}
+		syncRevisionTimer();
 		afterRender();
 	};
 
@@ -600,6 +808,9 @@ export function createStreamingMessageController({
 			reasoningParts = [];
 			activeToolCalls = [];
 			tokenLogprobs = [];
+			revisionTrace = null;
+			stopRevisionTimer();
+			revisionTimerEnabled = true;
 			reasoningOpen = true;
 			reasoningSummaryText = 'Thinking...';
 			reasoningPhaseActive = false;
@@ -610,7 +821,17 @@ export function createStreamingMessageController({
 			return true;
 		}
 
+		if (chunk.type === 'revision_model_output') {
+			return applyRevisionModelOutput(chunk);
+		}
+
 		if ((chunk.type === 'tool_execution' || chunk.type === 'tool_event') && chunk.tool_call) {
+			if (isDraftEditorToolCall(chunk.tool_call)) {
+				return applyDraftEditorOutput(chunk.tool_call);
+			}
+			if (revisionTrace?.mode === 'live_revision') {
+				return true;
+			}
 			chunkHasLiveReasoning = true;
 			const nextToolCall = {
 				...chunk.tool_call,
@@ -728,6 +949,8 @@ export function createStreamingMessageController({
 		},
 		closeReasoning() {
 			reasoningSummaryText = 'Thinking';
+			revisionTimerEnabled = false;
+			stopRevisionTimer();
 			if (!reasoningUserToggledDuringGeneration) {
 				reasoningOpen = false;
 			}
@@ -737,6 +960,10 @@ export function createStreamingMessageController({
 			pendingReasoningUserToggle = false;
 			renderDom();
 		},
+		dispose() {
+			revisionTimerEnabled = false;
+			stopRevisionTimer();
+		},
 		getState() {
 			return {
 				rawStreamText,
@@ -745,6 +972,7 @@ export function createStreamingMessageController({
 				reasoningParts: cloneReasoningParts(reasoningParts),
 				activeToolCalls: cloneToolCalls(activeToolCalls),
 				tokenLogprobs: cloneTokenLogprobs(tokenLogprobs),
+				revisionTrace: cloneRevisionTrace(revisionTrace),
 				errorFromStream,
 			};
 		},
@@ -757,6 +985,10 @@ export function createStreamingMessageController({
 				hasInlineReasoning,
 			} = getDisplayState();
 			let finalContent = parsedContent.trim();
+			const finalRevisionTrace = cloneRevisionTrace(revisionTrace);
+			if (!finalContent && finalRevisionTrace?.finalContent) {
+				finalContent = String(finalRevisionTrace.finalContent).trim();
+			}
 			const finalReasoning = displayReasoning.trim();
 			const finalParts = hasInlineReasoning ? cloneMessageParts(inlineParts) : [];
 			const finalReasoningParts = cloneReasoningParts(reasoningParts);
@@ -781,6 +1013,7 @@ export function createStreamingMessageController({
 				finalParts,
 				activeToolCalls: cloneToolCalls(activeToolCalls),
 				tokenLogprobs: cloneTokenLogprobs(tokenLogprobs),
+				finalRevisionTrace,
 				errorFromStream,
 			};
 		},
