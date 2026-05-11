@@ -29,10 +29,17 @@
     flex-direction: column;
 }
 
-/* Remove bottom padding from .content when hosting the chat page so the
-   sticky form sits flush with the viewport bottom edge */
+/* Remove bottom padding from the chat scroll root so the sticky form sits flush
+   with the viewport bottom edge. Keep the vertical scrollbar allocated on chat
+   even before overflow so expanding message details cannot resize the composer. */
+.content.chat-page {
+    padding-bottom: 0;
+    overflow-y: scroll;
+}
+
 .content:has(.chat-page) {
     padding-bottom: 0;
+    overflow-y: scroll;
 }
 
 /* Ensure hidden state actually hides, even if other rules set display */

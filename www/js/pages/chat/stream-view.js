@@ -123,6 +123,27 @@ function nextFrame(callback) {
 	return raf(callback);
 }
 
+function hasVisibleOutput(displayState) {
+	return String(displayState?.parsedContent ?? '').length > 0;
+}
+
+export function shouldAutoOpenReasoningPhase({
+	previousDisplayState = null,
+	nextDisplayState = null,
+	chunkHasLiveReasoning = false,
+	reasoningPhaseActive = false,
+	visibleOutputHasStarted = false,
+} = {}) {
+	const visibleOutputAlreadyStarted =
+		visibleOutputHasStarted || hasVisibleOutput(previousDisplayState);
+	if (visibleOutputAlreadyStarted) return false;
+
+	const startedThinkingThisChunk =
+		!previousDisplayState?.isThinkingActive && Boolean(nextDisplayState?.isThinkingActive);
+	return startedThinkingThisChunk ||
+		(!nextDisplayState?.hasThinkTags && chunkHasLiveReasoning && !reasoningPhaseActive);
+}
+
 function getElementKey(node) {
 	if (!node || node.nodeType !== 1) return '';
 	return node.getAttribute('data-tool-call-id') ||
@@ -281,6 +302,7 @@ export function createStreamingMessageController({
 	let reasoningPhaseActive = false;
 	let reasoningPhaseUserToggled = false;
 	let pendingReasoningUserToggle = false;
+	let visibleOutputHasStarted = false;
 	let finalTokenHighlightingEnabled = false;
 	let pointerSelectingInMessage = false;
 	let processingScheduled = false;
@@ -834,6 +856,7 @@ export function createStreamingMessageController({
 			reasoningPhaseActive = false;
 			reasoningPhaseUserToggled = false;
 			pendingReasoningUserToggle = false;
+			visibleOutputHasStarted = false;
 			finalTokenHighlightingEnabled = false;
 			return true;
 		}
@@ -886,11 +909,13 @@ export function createStreamingMessageController({
 		}
 
 		const nextDisplayState = getDisplayState();
-		const startedThinkingThisChunk =
-			!previousDisplayState.isThinkingActive && nextDisplayState.isThinkingActive;
-		const shouldStartReasoningPhase =
-			startedThinkingThisChunk ||
-			(!nextDisplayState.hasThinkTags && chunkHasLiveReasoning && !reasoningPhaseActive);
+		const shouldStartReasoningPhase = shouldAutoOpenReasoningPhase({
+			previousDisplayState,
+			nextDisplayState,
+			chunkHasLiveReasoning,
+			reasoningPhaseActive,
+			visibleOutputHasStarted,
+		});
 		const closedThinkingThisChunk =
 			nextDisplayState.closedThinkBlocks > previousDisplayState.closedThinkBlocks;
 		const mainOutputStartedThisChunk =
@@ -910,6 +935,9 @@ export function createStreamingMessageController({
 		}
 		if (closedThinkingThisChunk || mainOutputStartedThisChunk || visibleOutputStarted) {
 			closeReasoningPhase();
+		}
+		if (hasVisibleOutput(nextDisplayState)) {
+			visibleOutputHasStarted = true;
 		}
 
 		return true;

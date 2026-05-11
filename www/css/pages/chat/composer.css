@@ -490,6 +490,7 @@
     align-items: center;
     gap: 10px;
     min-width: 0;
+    min-height: 36px;
 }
 
 .chat-toolbar-left {
@@ -498,6 +499,7 @@
     gap: 8px;
     flex-wrap: wrap;
     min-width: 0;
+    min-height: 36px;
 }
 
 .chat-toolbar-right {
@@ -505,6 +507,7 @@
     align-items: center;
     gap: 10px;
     margin-left: auto;
+    min-height: 36px;
 }
 
 /* Context indicator (left of send button) */
@@ -585,6 +588,8 @@
     color: var(--muted);
     font: inherit;
     font-size: 0.85rem;
+    line-height: 1;
+    height: 36px;
     padding: 6px 12px;
     display: inline-flex;
     align-items: center;

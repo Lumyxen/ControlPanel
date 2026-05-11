@@ -56,6 +56,7 @@ import {
 import { getNodeRawTextContent, getNodeTextContent, buildPartsWithUpdatedText } from './www/js/pages/chat/message-parts.js';
 import { buildApiMessages, buildConversationHistory, parseStreamReasoning, parseStreamReasoningParts } from './www/js/pages/chat/payloads.js';
 import { getResolvedReasoningParts } from './www/js/pages/chat/reasoning-parts.js';
+import { shouldAutoOpenReasoningPhase } from './www/js/pages/chat/stream-view.js';
 import { buildContentContainer, buildReasoningElement, buildToolCallsElement, getMessageFileEditRollbacks } from './www/js/pages/chat/thread-view.js';
 import { coerceTheme } from './www/js/pages/settings/theme-section.js';
 import { renderMessageTextHtml } from './www/js/render/message.js';
@@ -119,6 +120,8 @@ assert.deepEqual(
 const apiGraph = createEmptyGraph();
 const apiUser = appendNode(apiGraph, { role: 'user', content: 'hi there' });
 const apiAssistant = appendNode(apiGraph, { role: 'assistant', content: 'general kenobi' });
+apiUser.timestamp = 0;
+apiAssistant.timestamp = 0;
 apiAssistant.reasoning = 'thinking';
 assert.deepEqual(buildApiMessages(apiGraph, [apiUser.id, apiAssistant.id]), [
 	{ role: 'user', content: 'hi there' },
@@ -458,6 +461,28 @@ assert.deepEqual(parseStreamReasoningParts([
 	},
 	{ type: 'text', content: 'done' },
 ]);
+
+assert.equal(shouldAutoOpenReasoningPhase({
+	previousDisplayState: { parsedContent: '', isThinkingActive: false },
+	nextDisplayState: { parsedContent: '', isThinkingActive: false, hasThinkTags: false },
+	chunkHasLiveReasoning: true,
+	reasoningPhaseActive: false,
+	visibleOutputHasStarted: false,
+}), true);
+assert.equal(shouldAutoOpenReasoningPhase({
+	previousDisplayState: { parsedContent: 'answer started', isThinkingActive: false },
+	nextDisplayState: { parsedContent: 'answer started', isThinkingActive: false, hasThinkTags: false },
+	chunkHasLiveReasoning: true,
+	reasoningPhaseActive: false,
+	visibleOutputHasStarted: true,
+}), false);
+assert.equal(shouldAutoOpenReasoningPhase({
+	previousDisplayState: { parsedContent: '', isThinkingActive: false },
+	nextDisplayState: { parsedContent: '', isThinkingActive: true, hasThinkTags: true },
+	chunkHasLiveReasoning: false,
+	reasoningPhaseActive: false,
+	visibleOutputHasStarted: false,
+}), true);
 
 assert.equal(coerceTheme('bogus'), 'everforest-harddark-green');
 assert.equal(coerceTheme('catppuccin-invalid-red'), 'catppuccin-mocha-red');
