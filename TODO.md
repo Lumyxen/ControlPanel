@@ -133,7 +133,7 @@
 - [ ] Smooth fade-in text streaming instead of sharp blocky streaming
 - [ ] Smooth buttery typing and cursor (like monkeytype)
 - [x] Favicon
-- [ ] Add message timestamps (visible to AI and user)
+- [x] Add message timestamps (visible to AI and user)
 - [ ] Chat referencing (forwards/references entire chat)
 - [ ] Cross-chat and same-chat message forwarding (forwards response and prompt)
 - [ ] Allow editing of the model's thinking

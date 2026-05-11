@@ -29,7 +29,7 @@ import {
 	showTyping,
 	patchMessageEditState,
 	getSiblingNavState,
-	buildMessageActionMenu,
+	buildMessageNudgeElement,
 	getMessageFileEditRollbacks,
 } from './thread-view.js';
 import { InlineAttachmentManager } from './attachments.js';
@@ -578,7 +578,7 @@ export function loadCurrentChat(setActiveCallback) {
 		const hasMessages = Boolean(graph && computeThreadNodeIds(graph).length > 0);
 		if (empty) empty.hidden = hasMessages;
 		if (chat) renderThread(messages, chat, { editingNodeId: null, editingDraft: '' }, SettingsStore.get());
-		else messages.querySelectorAll('.chat-message, .chat-typing').forEach((el) => el.remove());
+		else messages.querySelectorAll('.chat-message-group, .chat-message, .chat-typing').forEach((el) => el.remove());
 		document.querySelector('.chat-page')?._syncToolPackPicker?.();
 		renderChatList();
 		setActiveCallback?.();
@@ -874,16 +874,196 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	const scrollToBottomBtn = root.querySelector('#scrollToBottomBtn');
 
 	let lastScrollTop = contentEl.scrollTop;
+	let lastScrollSampleAt = 0;
+	let recentScrollTravelPx = 0;
 	let scrollRefreshFrame = 0;
+	let nudgePlacementFrame = 0;
+	let pendingNudgePlacementAnimation = false;
+	const nudgePlacementAnimations = new WeakMap();
+	const nudgePlacementAnimationMs = 180;
+	const compactToolbarAnimationMs = 180;
 	const getMaxScrollTop = () => Math.max(0, contentEl.scrollHeight - contentEl.clientHeight);
+	const nowMs = () => window.performance?.now?.() ?? Date.now();
+
+	const prefersReducedMotion = () => {
+		try {
+			return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+		} catch {
+			return false;
+		}
+	};
+
+	const stopMessageNudgePlacementAnimation = (groupEl) => {
+		const cleanup = nudgePlacementAnimations.get(groupEl);
+		if (cleanup) cleanup();
+	};
+
+	const getNextMessageGroup = (groupEl) => {
+		let nextEl = groupEl?.nextElementSibling || null;
+		while (nextEl && !nextEl.matches?.('.chat-message-group[data-node-id]')) {
+			nextEl = nextEl.nextElementSibling;
+		}
+		return nextEl;
+	};
+
+	const getRecentScrollTravel = () => {
+		return nowMs() - lastScrollSampleAt <= 140 ? recentScrollTravelPx : 0;
+	};
+
+	const getMessageNudgePlacementAnimationMs = (groupEl, nudgeHeight) => {
+		if (getNextMessageGroup(groupEl)) return nudgePlacementAnimationMs;
+
+		const scrollBottom = Math.max(0, getMaxScrollTop() - contentEl.scrollTop);
+		const recentTravel = getRecentScrollTravel();
+		const edgeTravel = recentTravel > 0 && scrollBottom > 0
+			? Math.min(recentTravel, scrollBottom)
+			: recentTravel || scrollBottom;
+		if (edgeTravel <= 0) return Math.round(nudgePlacementAnimationMs * 0.55);
+
+		const fullTravel = Math.max(48, nudgeHeight * 1.75);
+		const ratio = Math.max(0, Math.min(1, edgeTravel / fullTravel));
+		return Math.round(90 + (nudgePlacementAnimationMs - 90) * ratio);
+	};
+
+	const animateMessageNudgePlacement = (groupEl, messageEl, nudgeEl, shouldMoveTop, nudgeHeight, durationMs) => {
+		const height = Math.max(0, Number(nudgeHeight) || 0);
+		if (height <= 0) return;
+
+		const duration = Math.max(80, Math.min(nudgePlacementAnimationMs, Number(durationMs) || nudgePlacementAnimationMs));
+		const messageStartY = shouldMoveTop ? -height : height;
+		const nudgeStartY = shouldMoveTop ? height : -height;
+		const transformTransition = `transform ${duration}ms cubic-bezier(0.2, 0, 0, 1)`;
+		const nudgeTransition = `${transformTransition}, opacity ${Math.min(140, duration)}ms ease`;
+		let frameId = 0;
+		let timeoutId = 0;
+		let cleaned = false;
+
+		const cleanup = () => {
+			if (cleaned) return;
+			cleaned = true;
+			if (frameId) cancelAnimationFrame(frameId);
+			if (timeoutId) window.clearTimeout(timeoutId);
+			groupEl.classList.remove('nudge-placement-animating');
+			messageEl.style.transition = '';
+			messageEl.style.transform = '';
+			nudgeEl.style.transition = '';
+			nudgeEl.style.transform = '';
+			nudgeEl.style.opacity = '';
+			if (nudgePlacementAnimations.get(groupEl) === cleanup) {
+				nudgePlacementAnimations.delete(groupEl);
+			}
+		};
+
+		nudgePlacementAnimations.set(groupEl, cleanup);
+		groupEl.classList.add('nudge-placement-animating');
+		messageEl.style.transition = 'none';
+		messageEl.style.transform = `translate3d(0, ${messageStartY}px, 0)`;
+		nudgeEl.style.transition = 'none';
+		nudgeEl.style.transform = `translate3d(0, ${nudgeStartY}px, 0)`;
+		nudgeEl.style.opacity = '0';
+
+		messageEl.getBoundingClientRect();
+		frameId = requestAnimationFrame(() => {
+			frameId = 0;
+			messageEl.style.transition = transformTransition;
+			nudgeEl.style.transition = nudgeTransition;
+			messageEl.style.transform = 'translate3d(0, 0, 0)';
+			nudgeEl.style.transform = 'translate3d(0, 0, 0)';
+			nudgeEl.style.opacity = '1';
+			timeoutId = window.setTimeout(cleanup, duration + 40);
+		});
+	};
+
+	const setMessageNudgePlacement = (groupEl, shouldMoveTop, { animate = true } = {}) => {
+		const currentlyTop = groupEl.classList.contains('nudge-top');
+		if (currentlyTop === shouldMoveTop) return;
+
+		const messageEl = groupEl.querySelector(':scope > .chat-message');
+		const nudgeEl = groupEl.querySelector(':scope > .chat-message-nudge');
+		const canAnimate = animate && messageEl && nudgeEl && !prefersReducedMotion();
+		const nudgeHeight = canAnimate ? nudgeEl.getBoundingClientRect().height : 0;
+
+		stopMessageNudgePlacementAnimation(groupEl);
+		groupEl.classList.toggle('nudge-top', shouldMoveTop);
+
+		if (canAnimate) {
+			animateMessageNudgePlacement(
+				groupEl,
+				messageEl,
+				nudgeEl,
+				shouldMoveTop,
+				nudgeHeight,
+				getMessageNudgePlacementAnimationMs(groupEl, nudgeHeight)
+			);
+		}
+	};
+
+	const refreshMessageNudgePlacement = ({ animate = false } = {}) => {
+		const viewportRect = contentEl.getBoundingClientRect();
+		let visibleTop = viewportRect.top;
+		let visibleBottom = viewportRect.bottom;
+		const formRect = form.getBoundingClientRect();
+		const formOverlapsViewport = formRect.top < visibleBottom && formRect.bottom > visibleTop;
+		if (formOverlapsViewport) {
+			visibleBottom = Math.min(visibleBottom, Math.max(visibleTop, formRect.top));
+		}
+
+		const visibleHeight = visibleBottom - visibleTop;
+		if (!Number.isFinite(visibleHeight) || visibleHeight <= 0) return;
+
+		const enterTopOffset = 8;
+		const exitTopOffset = 48;
+
+		for (const groupEl of messages.querySelectorAll('.chat-message-group[data-node-id]')) {
+			const rect = groupEl.getBoundingClientRect();
+			const intersectsVisibleArea = rect.bottom > visibleTop && rect.top < visibleBottom;
+			if (!intersectsVisibleArea) {
+				setMessageNudgePlacement(groupEl, false, { animate: false });
+				continue;
+			}
+
+			const nudgeEl = groupEl.querySelector(':scope > .chat-message-nudge');
+			const nudgeHeight = nudgeEl?.getBoundingClientRect().height || 30;
+			const bottomNudgeBottom = rect.bottom;
+			const bottomNudgeTop = bottomNudgeBottom - nudgeHeight;
+			const longerThanVisibleArea = rect.height > visibleHeight + 1;
+			const bottomNudgeIsVisible = bottomNudgeTop >= visibleTop && bottomNudgeBottom <= visibleBottom;
+			const currentlyTop = groupEl.classList.contains('nudge-top');
+			const bottomNudgeIsObscured = bottomNudgeBottom > visibleBottom - enterTopOffset;
+			const bottomNudgeIsComfortablyVisible = bottomNudgeBottom <= visibleBottom - exitTopOffset;
+			const shouldMoveTop = currentlyTop
+				? !bottomNudgeIsComfortablyVisible
+				: bottomNudgeIsObscured && (longerThanVisibleArea || !bottomNudgeIsVisible);
+
+			setMessageNudgePlacement(groupEl, shouldMoveTop, { animate });
+		}
+	};
+	const scheduleMessageNudgePlacementRefresh = ({ animate = false } = {}) => {
+		pendingNudgePlacementAnimation = pendingNudgePlacementAnimation || Boolean(animate);
+		if (nudgePlacementFrame) return;
+		nudgePlacementFrame = requestAnimationFrame(() => {
+			nudgePlacementFrame = 0;
+			const shouldAnimate = pendingNudgePlacementAnimation;
+			pendingNudgePlacementAnimation = false;
+			refreshMessageNudgePlacement({ animate: shouldAnimate });
+		});
+	};
 	const setScrolledUp = (isScrolledUp) => {
 		uiState.isScrolledUp = Boolean(isScrolledUp);
 		scrollToBottomBtn?.classList.toggle('visible', uiState.isScrolledUp);
 	};
 	const checkScroll = () => {
-		if (!scrollToBottomBtn) return;
 		const currentScrollTop = contentEl.scrollTop;
 		const scrollBottom = getMaxScrollTop() - currentScrollTop;
+		const scrollDelta = currentScrollTop - lastScrollTop;
+		if (scrollDelta !== 0) {
+			const now = nowMs();
+			if (now - lastScrollSampleAt > 140) {
+				recentScrollTravelPx = 0;
+			}
+			recentScrollTravelPx = Math.min(240, recentScrollTravelPx + Math.abs(scrollDelta));
+			lastScrollSampleAt = now;
+		}
 		
 		if (scrollBottom <= 10) {
 			setScrolledUp(false);
@@ -905,15 +1085,20 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				contentEl.scrollTop = maxScrollTop;
 			}
 			checkScroll();
+			refreshMessageNudgePlacement({ animate: false });
 		});
 	};
 
 	contentEl.addEventListener('scroll', checkScroll, { signal });
+	contentEl.addEventListener('scroll', () => {
+		scheduleMessageNudgePlacementRefresh({ animate: true });
+	}, { signal, passive: true });
 	window.addEventListener('resize', () => {
 		if (!uiState.isScrolledUp) {
 			contentEl.scrollTop = getMaxScrollTop();
 		}
 		checkScroll();
+		scheduleMessageNudgePlacementRefresh({ animate: false });
 	}, { signal });
 
 	if (scrollToBottomBtn) {
@@ -933,6 +1118,10 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		scrollResizeObserver.observe(form);
 		signal.addEventListener('abort', () => scrollResizeObserver.disconnect(), { once: true });
 	}
+	signal.addEventListener('abort', () => {
+		if (nudgePlacementFrame) cancelAnimationFrame(nudgePlacementFrame);
+		nudgePlacementFrame = 0;
+	}, { once: true });
 
 	const buildContextCountPayload = () => {
 		const settings = SettingsStore.get();
@@ -1312,16 +1501,18 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	const rerender = () => {
 		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
 		if (!chat || !isChatLoaded(chat)) {
-			messages.querySelectorAll('.chat-message, .chat-typing').forEach(el => el.remove());
+			messages.querySelectorAll('.chat-message-group, .chat-message, .chat-typing').forEach(el => el.remove());
 			if (empty) empty.hidden = false;
 			root._syncToolPackPicker?.();
 			updateLiveContext(0);
+			scheduleMessageNudgePlacementRefresh();
 			return;
 		}
 		renderThread(messages, chat, { editingNodeId: uiState.editingNodeId, editingDraft: uiState.editingDraft }, SettingsStore.get());
 		if (empty) empty.hidden = computeThreadNodeIds(ensureGraph(chat)).length > 0;
 		root._syncToolPackPicker?.();
 		updateLiveContext(0);
+		scheduleMessageNudgePlacementRefresh();
 	};
 
 	const unsubscribeSettings = SettingsStore.subscribe(() => {
@@ -1364,6 +1555,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		afterRender: () => {
 			if (!uiState.isScrolledUp) contentEl.scrollTop = getMaxScrollTop();
 			else checkScroll();
+			scheduleMessageNudgePlacementRefresh();
 		},
 	});
 
@@ -1457,17 +1649,33 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		// Patch the element with proper attributes
 		preservedEl.dataset.nodeId = generatedNode.id;
 
-		// Add the message menu
+		// Add the nudge row with timestamp and message actions.
 		const nav = getSiblingNavState(graph, generatedNode.id);
 		const canResend = Boolean(generatedNode.parentId) && generatedNode.role !== 'system';
-		const menu = buildMessageActionMenu({
+		const nudge = buildMessageNudgeElement({
 			node: generatedNode,
+			settings: SettingsStore.get(),
 			isEditing: false,
 			canBranchBack: nav.canBack,
 			canBranchForward: nav.canForward,
 			canResend,
+			showFullToolbar: true,
 		});
-		preservedEl.appendChild(menu);
+		const content = preservedEl.querySelector(':scope > .chat-message-content');
+		preservedEl.querySelector(':scope > .chat-message-nudge')?.remove();
+		let group = preservedEl.closest('.chat-message-group');
+		if (!group) {
+			group = document.createElement('div');
+			group.className = `chat-message-group ${generatedNode.role}`;
+			group.dataset.nodeId = generatedNode.id;
+			preservedEl.before(group);
+			group.appendChild(preservedEl);
+		}
+		group.dataset.nodeId = generatedNode.id;
+		group.className = `chat-message-group ${generatedNode.role}`;
+		if (content) preservedEl.after(nudge);
+		else group.appendChild(nudge);
+		scheduleMessageNudgePlacementRefresh();
 
 		// Clear the reference so stopTyping doesn't try to remove it
 		uiState.typingEl = null;
@@ -1848,10 +2056,35 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		}
 
 		const btn = e.target.closest('[data-action]');
+		const nudgeToggle = e.target.closest('[data-message-nudge-toggle]');
+		if (nudgeToggle) {
+			const nudge = nudgeToggle.closest('.chat-message-nudge.compact');
+			if (!nudge) return;
+			const expanded = nudge.classList.contains('expanded');
+			if (expanded) {
+				nudge.classList.remove('expanded');
+				nudge.classList.add('closing');
+				nudgeToggle.setAttribute('aria-expanded', 'false');
+				window.setTimeout(() => {
+					nudge.classList.remove('closing');
+					scheduleScrollStateRefresh();
+					scheduleMessageNudgePlacementRefresh({ animate: false });
+				}, compactToolbarAnimationMs + 20);
+			} else {
+				nudge.classList.remove('closing');
+				nudge.classList.add('expanded');
+				nudgeToggle.setAttribute('aria-expanded', 'true');
+			}
+			scheduleScrollStateRefresh();
+			scheduleMessageNudgePlacementRefresh({ animate: false });
+			return;
+		}
+
 		if (!btn) return;
 		const action  = btn.dataset.action;
-		const msgEl   = btn.closest('.chat-message[data-node-id]');
-		const nodeId  = msgEl?.dataset?.nodeId;
+		const groupEl = btn.closest('.chat-message-group[data-node-id]');
+		const msgEl   = groupEl?.querySelector(':scope > .chat-message') || btn.closest('.chat-message[data-node-id]');
+		const nodeId  = groupEl?.dataset?.nodeId || msgEl?.dataset?.nodeId;
 		if (!nodeId) return;
 		const chat  = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
 		if (!chat) return;

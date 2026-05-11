@@ -56,6 +56,7 @@ export function mountAiSection(root) {
 			setToggle(root, '#logprob-history-high', settings.logprobHistoryHigh);
 			setToggle(root, '#logprob-history-medium', settings.logprobHistoryMedium);
 			setToggle(root, '#logprob-history-low', settings.logprobHistoryLow);
+			setToggle(root, '#message-timestamps-24-hour', settings.messageTimestamps24Hour !== false);
 			setToggle(root, '#ai-title-enabled', settings.aiTitleEnabled !== false);
 			setValue(root, '#ai-title-model-input', settings.aiTitleModel || '');
 			setValue(root, '#ai-title-system-prompt-input', settings.aiTitleSystemPrompt || '');
@@ -77,6 +78,7 @@ export function mountAiSection(root) {
 				logprobHistoryHigh: root.querySelector('#logprob-history-high')?.checked ?? false,
 				logprobHistoryMedium: root.querySelector('#logprob-history-medium')?.checked ?? false,
 				logprobHistoryLow: root.querySelector('#logprob-history-low')?.checked ?? false,
+				messageTimestamps24Hour: root.querySelector('#message-timestamps-24-hour')?.checked ?? true,
 				aiTitleEnabled: root.querySelector('#ai-title-enabled')?.checked ?? true,
 				aiTitleModel: root.querySelector('#ai-title-model-input')?.value?.trim() ?? '',
 				aiTitleSystemPrompt: root.querySelector('#ai-title-system-prompt-input')?.value ?? '',

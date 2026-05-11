@@ -9,6 +9,7 @@ import { getNodeRawTextContent, getNodeTextContent, getReasoningPartContent, has
 import { parseStreamReasoning } from './payloads.js';
 import { cloneReasoningParts, getResolvedReasoningParts, getResolvedToolCalls } from './reasoning-parts.js';
 import { renderMessageTextInto } from '../../render/message.js';
+import { formatAiMessageTimestamp, formatUserMessageTimestamp, getMessageTimestampDateTime } from './timestamps.js';
 
 // ─── Action button icons ──────────────────────────────────────────────────────
 
@@ -48,6 +49,17 @@ export function getSiblingNavState(graph, nodeId) {
 	const siblings = parent?.children || [];
 	const index    = siblings.indexOf(nodeId);
 	return { parentId: node.parentId, siblings, index, canBack: index > 0, canForward: index >= 0 && index < siblings.length - 1 };
+}
+
+function getLatestActionNodeIds(graph, nodeIds = computeThreadNodeIds(graph)) {
+	const latestByRole = new Map();
+	for (const nodeId of nodeIds) {
+		const node = getNode(graph, nodeId);
+		if (node?.role === 'user' || node?.role === 'assistant') {
+			latestByRole.set(node.role, nodeId);
+		}
+	}
+	return new Set([...latestByRole.values()]);
 }
 
 // ─── Inline attachment preview (message display) ──────────────────────────────
@@ -771,7 +783,94 @@ export function buildMessageActionMenu({ node, isEditing, canBranchBack, canBran
 
 // ─── Full message element ─────────────────────────────────────────────────────
 
-function buildMessageElement({ node, isEditing, editingDraft, canBranchBack, canBranchForward, canResend, settings }) {
+export function buildMessageTimestampElement(node, settings = null) {
+	const text = formatUserMessageTimestamp(node?.timestamp, {
+		use24Hour: settings?.messageTimestamps24Hour !== false,
+	});
+	if (!text) return null;
+
+	const time = document.createElement('time');
+	time.className = 'chat-message-timestamp';
+	time.dateTime = getMessageTimestampDateTime(node.timestamp);
+	time.textContent = text;
+
+	const fullTimestamp = formatAiMessageTimestamp(node.timestamp);
+	if (fullTimestamp) time.title = fullTimestamp;
+	return time;
+}
+
+function buildMessageNudgeToggle(timestampEl, node) {
+	const toggle = document.createElement('button');
+	toggle.type = 'button';
+	toggle.className = 'chat-message-nudge-toggle';
+	toggle.dataset.messageNudgeToggle = 'true';
+	toggle.setAttribute('aria-expanded', 'false');
+	toggle.setAttribute('aria-label', node?.role === 'user' ? 'Show user message actions' : 'Show assistant message actions');
+	if (timestampEl) {
+		toggle.appendChild(timestampEl);
+	} else {
+		const label = document.createElement('span');
+		label.className = 'chat-message-timestamp empty';
+		label.textContent = 'Message actions';
+		toggle.appendChild(label);
+	}
+	const iconWrap = document.createElement('span');
+	iconWrap.className = 'chat-message-nudge-toggle-icon';
+	iconWrap.setAttribute('aria-hidden', 'true');
+	iconWrap.innerHTML = icons['chev-right']?.(stroke) || '';
+	toggle.appendChild(iconWrap);
+	return toggle;
+}
+
+export function buildMessageNudgeElement({
+	node,
+	settings,
+	isEditing,
+	canBranchBack,
+	canBranchForward,
+	canResend,
+	showFullToolbar = false,
+}) {
+	const nudge = document.createElement('div');
+	nudge.className = 'chat-message-nudge';
+	const isCompact = !showFullToolbar && !isEditing;
+	if (isCompact) nudge.classList.add('compact');
+
+	const timestampEl = buildMessageTimestampElement(node, settings);
+	if (isCompact) {
+		nudge.appendChild(buildMessageNudgeToggle(timestampEl, node));
+	} else if (timestampEl) {
+		nudge.appendChild(timestampEl);
+	} else {
+		const spacer = document.createElement('span');
+		spacer.className = 'chat-message-timestamp empty';
+		nudge.appendChild(spacer);
+	}
+
+	nudge.appendChild(buildMessageActionMenu({
+		node,
+		isEditing,
+		canBranchBack,
+		canBranchForward,
+		canResend,
+	}));
+	return nudge;
+}
+
+function buildMessageGroupElement({
+	node,
+	isEditing,
+	editingDraft,
+	canBranchBack,
+	canBranchForward,
+	canResend,
+	settings,
+	showFullToolbar = false,
+}) {
+	const group = document.createElement('div');
+	group.className = `chat-message-group ${node.role}`;
+	group.dataset.nodeId = node.id;
+
 	const div = document.createElement('div');
 	div.className = `chat-message ${node.role}`;
 	div.setAttribute('role', 'article');
@@ -779,8 +878,19 @@ function buildMessageElement({ node, isEditing, editingDraft, canBranchBack, can
 	div.dataset.nodeId = node.id;
 
 	div.appendChild(buildContentContainer(node, isEditing, editingDraft, settings));
-	div.appendChild(buildMessageActionMenu({ node, isEditing, canBranchBack, canBranchForward, canResend }));
-	return div;
+	group.append(
+		div,
+		buildMessageNudgeElement({
+			node,
+			settings,
+			isEditing,
+			canBranchBack,
+			canBranchForward,
+			canResend,
+			showFullToolbar,
+		}),
+	);
+	return group;
 }
 
 // ─── Scroll helper ────────────────────────────────────────────────────────────
@@ -805,19 +915,23 @@ export function showTyping(container) {
 export function renderThread(messagesEl, chat, uiState, settings = null) {
 	if (!messagesEl || !chat) return;
 	const graph = ensureGraph(chat);
-	messagesEl.querySelectorAll('.chat-message, .chat-typing').forEach(el => el.remove());
+	messagesEl.querySelectorAll('.chat-message-group, .chat-message, .chat-typing').forEach(el => el.remove());
 
-	computeThreadNodeIds(graph).forEach((id) => {
+	const threadIds = computeThreadNodeIds(graph);
+	const latestActionNodeIds = getLatestActionNodeIds(graph, threadIds);
+
+	threadIds.forEach((id) => {
 		const node = getNode(graph, id);
 		if (!node) return;
 		const nav = getSiblingNavState(graph, id);
-		messagesEl.appendChild(buildMessageElement({
+		messagesEl.appendChild(buildMessageGroupElement({
 			node,
 			isEditing:        uiState?.editingNodeId === node.id,
 			editingDraft:     uiState?.editingDraft,
 			canBranchBack:    nav.canBack,
 			canBranchForward: nav.canForward,
 			canResend:        Boolean(node.parentId) && node.role !== 'system',
+			showFullToolbar:  uiState?.editingNodeId === node.id || latestActionNodeIds.has(id),
 			settings,
 		}));
 	});
@@ -830,26 +944,33 @@ export function renderThread(messagesEl, chat, uiState, settings = null) {
  * Returns false if the element wasn't found — caller should fall back to renderThread.
  */
 export function patchMessageEditState(messagesEl, graph, node, isEditing, editingDraft, settings = null) {
-	const msgEl = messagesEl.querySelector(`[data-node-id="${node.id}"]`);
+	const groupEl = messagesEl.querySelector(`.chat-message-group[data-node-id="${node.id}"]`);
+	const msgEl = groupEl?.querySelector(':scope > .chat-message') || messagesEl.querySelector(`.chat-message[data-node-id="${node.id}"]`);
 	if (!msgEl) return false;
 
 	const oldContent = msgEl.querySelector('.chat-message-content');
 	const newContent = buildContentContainer(node, isEditing, editingDraft, settings);
 	if (oldContent) msgEl.replaceChild(newContent, oldContent);
-	else msgEl.insertBefore(newContent, msgEl.querySelector('.chat-message-menu'));
+	else {
+		const nudge = msgEl.querySelector('.chat-message-nudge');
+		msgEl.insertBefore(newContent, nudge || null);
+	}
 
 	const nav = getSiblingNavState(graph, node.id);
 	const canResend = Boolean(node.parentId) && node.role !== 'system';
-	const oldMenu = msgEl.querySelector('.chat-message-menu');
-	const newMenu = buildMessageActionMenu({
+	const oldNudge = groupEl?.querySelector(':scope > .chat-message-nudge') || msgEl.querySelector('.chat-message-nudge');
+	const newNudge = buildMessageNudgeElement({
 		node,
+		settings,
 		isEditing,
 		canBranchBack: nav.canBack,
 		canBranchForward: nav.canForward,
 		canResend,
+		showFullToolbar: isEditing || getLatestActionNodeIds(graph).has(node.id),
 	});
 
-	if (oldMenu) msgEl.replaceChild(newMenu, oldMenu);
-	else msgEl.appendChild(newMenu);
+	if (oldNudge) oldNudge.replaceWith(newNudge);
+	else if (groupEl) groupEl.appendChild(newNudge);
+	else msgEl.after(newNudge);
 	return true;
 }

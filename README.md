@@ -99,6 +99,7 @@ Representative `data/settings.json` keys:
     "systemPrompt": "You are in an advanced AI harness with access to a deferred internal tool system.",
     "temperature": 0.7,
     "logprobHighlightLow": true,
+    "messageTimestamps24Hour": true,
     "aiTitleEnabled": true,
     "panelLoginRateLimitPerMinute": 5,
     "vaultLoginRateLimitPerMinute": 5,
@@ -118,7 +119,7 @@ Additional llama.cpp tuning fields are also stored there and can be changed from
 
 ## API Endpoints
 
-Unless noted otherwise, protected `/api/*` routes and `/mcp` require `Authorization: Bearer <sessionToken>`. The frontend no longer relies on `X-Session-Token`, query-string `token`, or body `sessionToken` for normal authenticated flows. Browser-extension vault routes under `/api/extension/*` are intentionally outside the panel bearer session; they are restricted by extension origin/header checks and then by vault challenge proofs or vault access tokens.
+Unless noted otherwise, protected `/api/*` routes and `/mcp` require `Authorization: Bearer <sessionToken>`. Public exceptions are `GET /health`, `GET /api/auth`, `POST /api/auth/setup`, `POST /api/auth/login`, and `GET /api/auth/validate`. Browser-extension vault routes under `/api/extension/*` are intentionally outside the panel bearer session; they are restricted by extension origin/header checks and then by vault challenge proofs or vault access tokens.
 
 **General**
 - `GET /health` - Check backend health status (public)
@@ -126,9 +127,9 @@ Unless noted otherwise, protected `/api/*` routes and `/mcp` require `Authorizat
 **Authentication**
 - `GET /api/auth` - Check whether a password has been set up (public)
 - `POST /api/auth/setup` - Set up the initial panel password using PBKDF2-HMAC-SHA256 at 600,000 iterations (public, fails if already set up)
-- `POST /api/auth/login` - Log in with an existing password and receive a session token (public)
+- `POST /api/auth/login` - Log in with an existing password and receive a session token (public, rate-limited)
 - `POST /api/auth/logout` - Revoke the current session
-- `GET /api/auth/validate` - Validate a supplied bearer session token (public)
+- `GET /api/auth/validate` - Validate a supplied session token and return whether it is still valid (public)
 - `POST /api/auth/reauth` - Verify the panel password again and return a short-lived reauth token for protected settings changes
 
 **Password Vault**
@@ -198,7 +199,7 @@ Unless noted otherwise, protected `/api/*` routes and `/mcp` require `Authorizat
 **llama.cpp Management**
 - `GET /api/llamacpp/backend` - Get backend info (available, hardware, active, suggestions)
 - `POST /api/llamacpp/backend` - Switch the active llama.cpp backend
-- `DELETE /api/llamacpp/backend/:name` - Remove a built backend runtime from disk
+- `DELETE /api/llamacpp/backend/:backend` - Remove a built backend runtime from disk (`cpu`, `cuda`, `rocm`, or `vulkan`)
 - `POST /api/llamacpp/reload-model` - Reload the managed llama.cpp model/router so config changes apply
 - `POST /api/llamacpp/build` - Start building a new backend-specific `llama-server` runtime
 - `GET /api/llamacpp/build/status` - Get the status of the current build

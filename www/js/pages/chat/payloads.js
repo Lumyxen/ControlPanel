@@ -4,9 +4,22 @@
 
 import { getNode } from './graph.js';
 import { getNodeRawTextContent, getNodeTextContent, hasInlineReasoningParts } from './message-parts.js';
+import { formatAiMessageTimestamp } from './timestamps.js';
 
 // ─── buildNodeTextForHistory ──────────────────────────────────────────────────
 // Converts a single graph node into a flat string for the legacy prompt history.
+
+function buildAiTimestampAnnotation(node) {
+	const timestamp = formatAiMessageTimestamp(node?.timestamp);
+	return timestamp ? `[Message timestamp: ${timestamp}]` : '';
+}
+
+function prependAiTimestamp(node, text) {
+	const timestamp = buildAiTimestampAnnotation(node);
+	const body = String(text ?? '');
+	if (!timestamp) return body;
+	return body ? `${timestamp}\n${body}` : timestamp;
+}
 
 function buildNodeText(node, { includeToolCalls = true } = {}) {
 	if (!node) return '';
@@ -58,7 +71,7 @@ function buildNodeText(node, { includeToolCalls = true } = {}) {
 		nodeContent += toolsText;
 	}
 
-	return nodeContent;
+	return prependAiTimestamp(node, nodeContent);
 }
 
 export function buildNodeTextForHistory(node) {
@@ -268,17 +281,21 @@ function buildApiMessagesFromNode(node, settings = null) {
 
 		const combinedText = textParts.join('');
 		if (hasImages) {
+			const timestamp = buildAiTimestampAnnotation(node);
+			if (timestamp) contentBlocks.unshift({ type: 'text', text: timestamp });
 			if (combinedText) contentBlocks.push({ type: 'text', text: combinedText });
 			return [{ role, content: contentBlocks }];
 		}
-		if (combinedText) {
-			return [{ role, content: combinedText }];
+		const textContent = prependAiTimestamp(node, combinedText);
+		if (textContent) {
+			return [{ role, content: textContent }];
 		}
 		return [];
 	}
 
-	if (node.content) {
-		return [{ role, content: node.content }];
+	const textContent = prependAiTimestamp(node, node.content || '');
+	if (textContent) {
+		return [{ role, content: textContent }];
 	}
 
 	return [];

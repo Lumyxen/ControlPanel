@@ -62,6 +62,8 @@ Core principles:
         bool logprobHistoryMedium = false;
         bool logprobHistoryLow = false;
 
+        bool messageTimestamps24Hour = true;
+
         bool aiTitleEnabled = true;
         std::string aiTitleModel;
         std::string aiTitleSystemPrompt =
@@ -172,6 +174,8 @@ Core principles:
         if (root.isMember("logprobHistoryMedium")) state.logprobHistoryMedium = root["logprobHistoryMedium"].asBool();
         if (root.isMember("logprobHistoryLow")) state.logprobHistoryLow = root["logprobHistoryLow"].asBool();
 
+        if (root.isMember("messageTimestamps24Hour")) state.messageTimestamps24Hour = root["messageTimestamps24Hour"].asBool();
+
         if (root.isMember("aiTitleEnabled")) state.aiTitleEnabled = root["aiTitleEnabled"].asBool();
         if (root.isMember("aiTitleModel")) state.aiTitleModel = root["aiTitleModel"].asString();
         if (root.isMember("aiTitleSystemPrompt")) state.aiTitleSystemPrompt = root["aiTitleSystemPrompt"].asString();
@@ -220,6 +224,8 @@ Core principles:
         root["logprobHistoryHigh"] = state_.logprobHistoryHigh;
         root["logprobHistoryMedium"] = state_.logprobHistoryMedium;
         root["logprobHistoryLow"] = state_.logprobHistoryLow;
+
+        root["messageTimestamps24Hour"] = state_.messageTimestamps24Hour;
 
         root["aiTitleEnabled"] = state_.aiTitleEnabled;
         root["aiTitleModel"] = state_.aiTitleModel;
@@ -431,6 +437,11 @@ public:
     bool getLogprobHistoryLow() {
         std::lock_guard<std::mutex> lock(mutex_);
         return state_.logprobHistoryLow;
+    }
+
+    bool getMessageTimestamps24Hour() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.messageTimestamps24Hour;
     }
 
     bool getAiTitleEnabled() {

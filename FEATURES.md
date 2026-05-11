@@ -25,7 +25,7 @@ It is intentionally separate from `TODO.md`:
 | Transcript UX | Message editing, regenerate-from-here, branching, raw-copy behavior, markdown rendering, code-block actions, colour previews |
 | Model management | LM Studio configuration, built-in `llama.cpp` backend building/switching, HuggingFace GGUF search/download/delete/tokenizer install |
 | Tuning and personalisation | Theme palettes, AI behavior settings, token-confidence display/history controls, title-generation settings |
-| Integration surface | REST API, task endpoints, tool-pack discovery/reload, approval and file-edit rollback endpoints, extension-isolated vault routes, MCP client loading/bridging, built-in MCP config tools |
+| Integration surface | REST API, backend lifecycle/status endpoints, task endpoints, tool-pack discovery/reload, approval and file-edit rollback endpoints, extension-isolated vault routes, MCP client loading/bridging, built-in MCP config tools, `/mcp` JSON-RPC surface |
 
 The tool system ships with real bundled calculator, web-search, file-reader, and filesystem packs plus the synthetic internal control-plane pack used for deferred discovery and schema loading. Additional packs can still be added locally or bridged in from MCP servers.
 
@@ -301,17 +301,18 @@ The tool system ships with real bundled calculator, web-search, file-reader, and
 ### REST API Coverage
 
 The backend exposes API groups for:
-- Authentication setup, login, logout, and validation
-- Password-vault setup, unlock, save, reauth, PIN registration/removal, and extension-scoped vault unlock/PIN routes
+- Health check plus authentication setup, login, logout, validation, and panel reauthentication
+- Password-vault status/setup/unlock/save/reauth, PIN registration/removal, and extension-scoped vault status/unlock/PIN routes
 - Chat summary CRUD and per-chat detail CRUD
-- Legacy chat endpoints, prompt token counting, and task-based generation endpoints
+- Legacy chat endpoints, prompt token counting, and title generation
+- Task-based generation submit/list/by-chat/status/wait/stream/cancel endpoints
 - Model listing and local-model deletion
 - LM Studio model listing
-- Settings read/write
-- `llama.cpp` backend selection, building, logs, reloads, and pool status
+- Settings read/write and backend lifecycle status/restart/stop controls
+- `llama.cpp` backend selection/removal, building, build logs/status, reloads, dismissal, and pool status
 - HuggingFace search, metadata, file listing, download tracking, cancellation, and tokenizer installation
 - Tool-pack discovery, reload, catalog search, approval resolution, and checkpointed file-edit rollback
-- MCP aggregation and config reload
+- MCP aggregated tools/config reload plus `/mcp` JSON-RPC POST and SSE-stub GET routes
 
 ### Tooling Infrastructure
 
