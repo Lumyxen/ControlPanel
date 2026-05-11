@@ -31,6 +31,7 @@ import {
 	getSiblingNavState,
 	buildMessageNudgeElement,
 	getMessageFileEditRollbacks,
+	refreshRenderedMessageNudges,
 } from './thread-view.js';
 import { InlineAttachmentManager } from './attachments.js';
 import {
@@ -1675,6 +1676,10 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		group.className = `chat-message-group ${generatedNode.role}`;
 		if (content) preservedEl.after(nudge);
 		else group.appendChild(nudge);
+		refreshRenderedMessageNudges(messages, graph, {
+			editingNodeId: uiState.editingNodeId,
+			editingDraft: uiState.editingDraft,
+		}, SettingsStore.get());
 		scheduleMessageNudgePlacementRefresh();
 
 		// Clear the reference so stopTyping doesn't try to remove it

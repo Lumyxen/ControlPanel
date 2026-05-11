@@ -181,6 +181,7 @@ set(SOURCES
     src/services/tools/file_edit_tool.cpp
     src/services/tools/file_reader_tool.cpp
     src/services/tools/filesystem_tool.cpp
+    src/services/tools/local_ecosystem_tool.cpp
     src/services/tools/weather_tool.cpp
     src/services/tools/web_search_tool.cpp
     src/services/tools/tool_argument_validator.cpp
@@ -274,6 +275,7 @@ if(NOT CMAKE_CROSSCOMPILING)
         src/services/tools/file_edit_tool.cpp
         src/services/tools/file_reader_tool.cpp
         src/services/tools/filesystem_tool.cpp
+        src/services/tools/local_ecosystem_tool.cpp
     )
     target_link_libraries(ctrlpanel_filesystem_test
         ${JSONCPP_LIBRARIES}
@@ -287,6 +289,7 @@ if(NOT CMAKE_CROSSCOMPILING)
         src/services/tools/file_edit_tool.cpp
         src/services/tools/file_reader_tool.cpp
         src/services/tools/filesystem_tool.cpp
+        src/services/tools/local_ecosystem_tool.cpp
         src/services/tools/weather_tool.cpp
         src/services/tools/web_search_tool.cpp
         src/services/tools/tool_argument_validator.cpp

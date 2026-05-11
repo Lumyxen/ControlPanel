@@ -102,6 +102,37 @@ void installFilesystemEditPack(const fs::path& root) {
     writeJsonFile(root / "filesystem" / "tools" / "edit_file.json", tool);
 }
 
+void installLocalEcosystemPack(const fs::path& root) {
+    Json::Value pack(Json::objectValue);
+    pack["id"] = "local_ecosystem";
+    pack["title"] = "Local Ecosystem";
+    pack["version"] = "test";
+    pack["description"] = "Test local ecosystem pack";
+    pack["sourceType"] = "system";
+    pack["defaultEnabled"] = false;
+    writeJsonFile(root / "local_ecosystem" / "pack.json", pack);
+
+    Json::Value tool(Json::objectValue);
+    tool["id"] = "inspect_local_ecosystem";
+    tool["title"] = "Inspect Local Ecosystem";
+    tool["description"] = "Inspect the local machine";
+    tool["executor"] = "native";
+    tool["alwaysVisible"] = true;
+    tool["inputSchema"]["type"] = "object";
+    tool["inputSchema"]["additionalProperties"] = false;
+    tool["inputSchema"]["properties"] = Json::Value(Json::objectValue);
+    tool["selection"]["summary"] = "Inspect local ecosystem";
+    tool["selection"]["tags"] = Json::Value(Json::arrayValue);
+    tool["selection"]["whenToUse"] = "Use for tests";
+    tool["selection"]["whenNotToUse"] = "Do not use outside tests";
+    tool["policy"]["riskTier"] = "read";
+    tool["policy"]["approvalMode"] = "auto";
+    tool["policy"]["network"] = false;
+    tool["policy"]["idempotent"] = true;
+    tool["native"]["handler"] = "local_ecosystem_inspect";
+    writeJsonFile(root / "local_ecosystem" / "tools" / "inspect_local_ecosystem.json", tool);
+}
+
 ToolSystem::RuntimePaths makeRuntimePaths(const fs::path& systemPackRoot, const fs::path& dataRoot) {
     ToolSystem::RuntimePaths paths;
     paths.systemPackRoot = systemPackRoot.string();
@@ -114,6 +145,12 @@ ToolSystem::RuntimePaths makeRuntimePaths(const fs::path& systemPackRoot, const 
 Json::Value filesystemScope() {
     Json::Value scope(Json::objectValue);
     scope["enabledPackIds"].append("filesystem");
+    return scope;
+}
+
+Json::Value localEcosystemScope() {
+    Json::Value scope(Json::objectValue);
+    scope["enabledPackIds"].append("local_ecosystem");
     return scope;
 }
 
@@ -283,6 +320,38 @@ void testRevisionModeActivatesDraftEditor() {
     toolSystem.endTaskSession("task_revision");
 }
 
+void testLocalEcosystemInspectionCompletes() {
+    ScopedDir temp;
+    const fs::path packRoot = temp.path() / "packs";
+    const fs::path dataRoot = temp.path() / "data";
+    installLocalEcosystemPack(packRoot);
+    ToolSystem toolSystem(makeRuntimePaths(packRoot, dataRoot));
+    toolSystem.initialize();
+
+    ToolSystem::SessionOptions options;
+    options.taskId = "task_local_ecosystem";
+    options.toolScope = localEcosystemScope();
+    toolSystem.beginTaskSession(options);
+
+    const Json::Value tools = toolSystem.getModelToolsForTask("task_local_ecosystem");
+    expect(hasModelTool(tools, "local_ecosystem__inspect_local_ecosystem"),
+        "local ecosystem tool should be exposed");
+
+    const ToolSystem::ExecutionResult result = toolSystem.executeToolCall(
+        "task_local_ecosystem",
+        "local_ecosystem__inspect_local_ecosystem",
+        "call_local_ecosystem",
+        Json::Value(Json::objectValue),
+        nullptr);
+
+    expect(result.success, "local ecosystem inspection should complete");
+    expect(result.toolCall["output"]["os"].isObject(), "inspection should include os details");
+    expect(result.toolCall["output"]["hardware"].isObject(), "inspection should include hardware details");
+    expect(result.toolCall["output"]["software"].isObject(), "inspection should include software details");
+
+    toolSystem.endTaskSession("task_local_ecosystem");
+}
+
 } // namespace
 
 int main() {
@@ -290,6 +359,7 @@ int main() {
         testInvalidPromptToolFailsWithoutApproval();
         testNoopPromptToolCompletesWithoutApproval();
         testRevisionModeActivatesDraftEditor();
+        testLocalEcosystemInspectionCompletes();
         return 0;
     } catch (const std::exception& exception) {
         std::cerr << "tool_system_test failed: " << exception.what() << "\n";

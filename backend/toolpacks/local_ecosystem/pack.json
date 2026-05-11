@@ -1,0 +1,8 @@
+{
+    "id": "local_ecosystem",
+    "title": "Local Ecosystem",
+    "version": "1",
+    "description": "Inspect this machine's local operating system, hardware, kernel, installed software surface, and runtime environment.",
+    "sourceType": "system",
+    "defaultEnabled": true
+}

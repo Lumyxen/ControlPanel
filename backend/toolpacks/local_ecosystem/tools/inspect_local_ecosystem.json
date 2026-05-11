@@ -1,0 +1,27 @@
+{
+    "id": "inspect_local_ecosystem",
+    "title": "Inspect Local Ecosystem",
+    "description": "Return a structured snapshot of the local machine: OS type and version, best-effort OS age, CPU, GPU names resolved from the local PCI ID catalog when available, RAM module details when exposed by the OS, storage, kernel version, installed software surface, and other runtime facts.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+    },
+    "selection": {
+        "summary": "Inspect the local OS, kernel, CPU, GPU, RAM, software tools, and environment.",
+        "tags": ["local", "system", "os", "kernel", "hardware", "gpu", "ram", "memory", "software", "environment", "diagnostics"],
+        "whenToUse": "Use when the user asks what this machine is running, needs environment diagnostics, or wants local OS, kernel, CPU, GPU, RAM brand/configuration/frequency when available, package manager, runtime, build tool, container, uptime, or installation-age details.",
+        "whenNotToUse": "Do not use for internet research, remote machines, file content inspection, or exhaustive package inventories."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": false,
+        "idempotent": true
+    },
+    "native": {
+        "handler": "local_ecosystem_inspect"
+    }
+}

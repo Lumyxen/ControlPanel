@@ -38,8 +38,8 @@
   - [x] Typed math function; keep sandboxed code execution as fallback for batch math
 - [x] Web search tool
   - [x] Search-first interface; scraper backend only if needed
-- [ ] Weather tool
-  - [ ] Read-only, location/date-aware
+- [x] Weather tool
+  - [x] Read-only, location/date-aware
 - [x] File reading tool
 - [x] Directory tree / active-folder inspection tool
 - [x] Sandboxed file editing tool

@@ -938,6 +938,36 @@ export function renderThread(messagesEl, chat, uiState, settings = null) {
 	scrollToBottom(messagesEl);
 }
 
+export function refreshRenderedMessageNudges(messagesEl, graph, uiState = null, settings = null) {
+	if (!messagesEl || !graph) return;
+	const threadIds = computeThreadNodeIds(graph);
+	const visibleThreadIds = new Set(threadIds);
+	const latestActionNodeIds = getLatestActionNodeIds(graph, threadIds);
+
+	for (const groupEl of messagesEl.querySelectorAll('.chat-message-group[data-node-id]')) {
+		const nodeId = groupEl.dataset.nodeId;
+		if (!visibleThreadIds.has(nodeId)) continue;
+		const node = getNode(graph, nodeId);
+		if (!node) continue;
+
+		const nav = getSiblingNavState(graph, nodeId);
+		const isEditing = uiState?.editingNodeId === node.id;
+		const oldNudge = groupEl.querySelector(':scope > .chat-message-nudge');
+		const newNudge = buildMessageNudgeElement({
+			node,
+			settings,
+			isEditing,
+			canBranchBack: nav.canBack,
+			canBranchForward: nav.canForward,
+			canResend: Boolean(node.parentId) && node.role !== 'system',
+			showFullToolbar: isEditing || latestActionNodeIds.has(nodeId),
+		});
+
+		if (oldNudge) oldNudge.replaceWith(newNudge);
+		else groupEl.appendChild(newNudge);
+	}
+}
+
 /**
  * Swap a single message element between normal and editing state without
  * rebuilding the entire thread. Avoids the Chromium flash during full re-renders.
