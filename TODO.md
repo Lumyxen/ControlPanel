@@ -61,10 +61,10 @@
   - [x] Software stuff
 - [ ] Summarise tool
 - [ ] Deep research tool
-- [ ] Internet testing tool
-  - [ ] Returns if WAN is available
-  - [ ] If so, the WAN speeds (a speed test), latency, and jitter
-  - [ ] Returns local speeds, latency, and jitter (between the localhost ecosystem)
+- [x] Internet testing tool
+  - [x] Returns if WAN is available
+  - [x] If so, the WAN speeds (a speed test), latency, and jitter
+  - [x] Returns local speeds, latency, and jitter (between the localhost ecosystem)
 - [ ] Agent swarm tool (Democratic (models work together to form 1 final product) and Leadership (1 main orchestrating AI) versions)
 - [ ] TTS
 - [ ] STT

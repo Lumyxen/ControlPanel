@@ -1,0 +1,8 @@
+{
+    "id": "internet_testing",
+    "title": "Internet Testing",
+    "version": "1",
+    "description": "Test WAN availability, WAN network performance, and local loopback network performance.",
+    "sourceType": "system",
+    "defaultEnabled": true
+}

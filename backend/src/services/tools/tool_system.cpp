@@ -7,6 +7,7 @@
 #include "services/tools/file_edit_tool.h"
 #include "services/tools/file_reader_tool.h"
 #include "services/tools/filesystem_tool.h"
+#include "services/tools/internet_testing_tool.h"
 #include "services/tools/local_ecosystem_tool.h"
 #include "services/tools/tool_argument_validator.h"
 #include "services/tools/weather_tool.h"
@@ -1713,6 +1714,7 @@ struct ToolSystem::Impl {
                 handler == "filesystem_change_working_directory" ||
                 handler == "filesystem_list_directory" ||
                 handler == "filesystem_directory_tree" ||
+                handler == "internet_testing_run" ||
                 handler == "local_ecosystem_inspect" ||
                 handler == "weather_get_weather") {
                 return std::nullopt;
@@ -1954,6 +1956,10 @@ struct ToolSystem::Impl {
 
         if (handler == "filesystem_edit_file") {
             return file_edit_tool::editFile(args, fs::path(session.workingDirectory));
+        }
+
+        if (handler == "internet_testing_run") {
+            return internet_testing_tool::runTest(args, cancelCheck);
         }
 
         if (handler == "local_ecosystem_inspect") {

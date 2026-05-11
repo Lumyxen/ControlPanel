@@ -134,6 +134,39 @@ void installLocalEcosystemPack(const fs::path& root) {
     writeJsonFile(root / "local_ecosystem" / "tools" / "inspect_local_ecosystem.json", tool);
 }
 
+void installInternetTestingPack(const fs::path& root) {
+    Json::Value pack(Json::objectValue);
+    pack["id"] = "internet_testing";
+    pack["title"] = "Internet Testing";
+    pack["version"] = "test";
+    pack["description"] = "Test internet pack";
+    pack["sourceType"] = "system";
+    pack["defaultEnabled"] = false;
+    writeJsonFile(root / "internet_testing" / "pack.json", pack);
+
+    Json::Value tool(Json::objectValue);
+    tool["id"] = "test_internet_connection";
+    tool["title"] = "Test Internet Connection";
+    tool["description"] = "Test WAN and local network performance";
+    tool["executor"] = "native";
+    tool["alwaysVisible"] = true;
+    tool["inputSchema"]["type"] = "object";
+    tool["inputSchema"]["additionalProperties"] = false;
+    tool["inputSchema"]["properties"]["include_wan"]["type"] = "boolean";
+    tool["inputSchema"]["properties"]["include_local"]["type"] = "boolean";
+    tool["inputSchema"]["properties"]["local_test_bytes"]["type"] = "integer";
+    tool["selection"]["summary"] = "Test internet";
+    tool["selection"]["tags"] = Json::Value(Json::arrayValue);
+    tool["selection"]["whenToUse"] = "Use for tests";
+    tool["selection"]["whenNotToUse"] = "Do not use outside tests";
+    tool["policy"]["riskTier"] = "read";
+    tool["policy"]["approvalMode"] = "auto";
+    tool["policy"]["network"] = true;
+    tool["policy"]["idempotent"] = true;
+    tool["native"]["handler"] = "internet_testing_run";
+    writeJsonFile(root / "internet_testing" / "tools" / "test_internet_connection.json", tool);
+}
+
 void installAssistantWorkspacePack(const fs::path& root) {
     Json::Value pack(Json::objectValue);
     pack["id"] = "assistant_workspace";
@@ -226,6 +259,12 @@ Json::Value filesystemScope() {
 Json::Value localEcosystemScope() {
     Json::Value scope(Json::objectValue);
     scope["enabledPackIds"].append("local_ecosystem");
+    return scope;
+}
+
+Json::Value internetTestingScope() {
+    Json::Value scope(Json::objectValue);
+    scope["enabledPackIds"].append("internet_testing");
     return scope;
 }
 
@@ -439,6 +478,48 @@ void testLocalEcosystemInspectionCompletes() {
     toolSystem.endTaskSession("task_local_ecosystem");
 }
 
+void testInternetTestingLocalBenchmarkCompletes() {
+    ScopedDir temp;
+    const fs::path packRoot = temp.path() / "packs";
+    const fs::path dataRoot = temp.path() / "data";
+    installInternetTestingPack(packRoot);
+    ToolSystem toolSystem(makeRuntimePaths(packRoot, dataRoot));
+    toolSystem.initialize();
+
+    ToolSystem::SessionOptions options;
+    options.taskId = "task_internet_testing";
+    options.toolScope = internetTestingScope();
+    toolSystem.beginTaskSession(options);
+
+    const Json::Value tools = toolSystem.getModelToolsForTask("task_internet_testing");
+    expect(hasModelTool(tools, "internet_testing__test_internet_connection"),
+        "internet testing tool should be exposed");
+
+    Json::Value args(Json::objectValue);
+    args["include_wan"] = false;
+    args["include_local"] = true;
+    args["local_test_bytes"] = 1024 * 1024;
+    const ToolSystem::ExecutionResult result = toolSystem.executeToolCall(
+        "task_internet_testing",
+        "internet_testing__test_internet_connection",
+        "call_internet_testing",
+        args,
+        nullptr);
+
+    expect(result.success, "internet testing tool should complete");
+    expect(result.toolCall["output"]["local"].isObject(), "internet testing should include local results");
+#ifndef _WIN32
+    expect(result.toolCall["output"]["local"].get("available", false).asBool(),
+        "local loopback benchmark should be available on Linux");
+    expect(result.toolCall["output"]["local"]["latency_ms"].isObject(),
+        "local benchmark should include latency stats");
+    expect(result.toolCall["output"]["local"]["download"].isObject(),
+        "local benchmark should include download stats");
+#endif
+
+    toolSystem.endTaskSession("task_internet_testing");
+}
+
 void testAssistantWorkspacePersistsPerChat() {
     ScopedDir temp;
     const fs::path packRoot = temp.path() / "packs";
@@ -645,6 +726,7 @@ int main() {
         testNoopPromptToolCompletesWithoutApproval();
         testRevisionModeActivatesDraftEditor();
         testLocalEcosystemInspectionCompletes();
+        testInternetTestingLocalBenchmarkCompletes();
         testAssistantWorkspacePersistsPerChat();
         testCliRiskAssessment();
         testCliTouchyCommandRequestsApprovalBeforeExecution();

@@ -183,6 +183,7 @@ set(SOURCES
     src/services/tools/file_edit_tool.cpp
     src/services/tools/file_reader_tool.cpp
     src/services/tools/filesystem_tool.cpp
+    src/services/tools/internet_testing_tool.cpp
     src/services/tools/local_ecosystem_tool.cpp
     src/services/tools/weather_tool.cpp
     src/services/tools/web_search_tool.cpp
@@ -293,6 +294,7 @@ if(NOT CMAKE_CROSSCOMPILING)
         src/services/tools/file_edit_tool.cpp
         src/services/tools/file_reader_tool.cpp
         src/services/tools/filesystem_tool.cpp
+        src/services/tools/internet_testing_tool.cpp
         src/services/tools/local_ecosystem_tool.cpp
         src/services/tools/weather_tool.cpp
         src/services/tools/web_search_tool.cpp

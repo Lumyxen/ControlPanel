@@ -1,0 +1,84 @@
+{
+    "id": "test_internet_connection",
+    "title": "Test Internet Connection",
+    "description": "Return whether WAN is reachable. When reachable, measure WAN download speed, upload speed, latency, and jitter. Also measure local TCP loopback download speed, upload speed, latency, and jitter for the localhost ecosystem.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "include_wan": {
+                "type": "boolean",
+                "description": "Whether to run WAN probes. Defaults to true."
+            },
+            "include_local": {
+                "type": "boolean",
+                "description": "Whether to run the localhost loopback benchmark. Defaults to true."
+            },
+            "latency_samples": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20,
+                "description": "Number of WAN latency samples. Defaults to 5."
+            },
+            "local_latency_samples": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20,
+                "description": "Number of localhost latency samples. Defaults to 5."
+            },
+            "wan_download_bytes": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 134217728,
+                "description": "Bytes to download for the WAN speed test. Defaults to 8388608."
+            },
+            "wan_upload_bytes": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 134217728,
+                "description": "Bytes to upload for the WAN speed test. Defaults to 2097152."
+            },
+            "local_test_bytes": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 134217728,
+                "description": "Bytes to transfer each direction for the local loopback speed test. Defaults to 33554432."
+            },
+            "http_timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 30000,
+                "description": "Timeout per WAN HTTP probe. Defaults to 8000."
+            },
+            "wan_latency_url": {
+                "type": "string",
+                "description": "Optional HTTPS endpoint used for WAN latency checks."
+            },
+            "wan_download_url": {
+                "type": "string",
+                "description": "Optional HTTPS endpoint used for WAN download testing."
+            },
+            "wan_upload_url": {
+                "type": "string",
+                "description": "Optional HTTPS endpoint used for WAN upload testing."
+            }
+        }
+    },
+    "selection": {
+        "summary": "Test WAN availability, WAN speed/latency/jitter, and localhost loopback speed/latency/jitter.",
+        "tags": ["internet", "network", "wan", "speedtest", "latency", "jitter", "localhost", "loopback", "diagnostics"],
+        "whenToUse": "Use when the user asks whether internet/WAN is working, asks for a speed test, network latency, jitter, or localhost/local ecosystem network performance.",
+        "whenNotToUse": "Do not use for general web research, packet capture, router configuration, or remote host diagnostics beyond the configured HTTPS probes."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": true,
+        "idempotent": true
+    },
+    "native": {
+        "handler": "internet_testing_run"
+    }
+}
