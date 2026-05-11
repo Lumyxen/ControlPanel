@@ -2,10 +2,13 @@ import { appendNode, createEmptyGraph, ensureGraph } from "./graph.js";
 import { deleteChatData, getChatData, getChatsData, saveChatData, saveChatsData } from "../../core/http.js";
 
 const LAST_MODEL_KEY = "ctrlpanel:lastModel";
+const LAST_TOOL_SCOPE_KEY = "ctrlpanel:lastToolScope";
+const DEFAULT_TOOL_SCOPE = Object.freeze({ useDefaultPacks: true, enabledPackIds: [] });
 
 let chats = [];
 let currentChatId = null;
 let pins = [];
+let chatWriteQueue = Promise.resolve();
 
 function isValidTimestamp(value) {
 	const num = Number(value);
@@ -30,8 +33,38 @@ function buildChatSummary(chat) {
 		updatedAt,
 	};
 	if (chat?.model) summary.model = chat.model;
-	if (chat?.toolScope && typeof chat.toolScope === 'object') summary.toolScope = chat.toolScope;
+	if (chat?.toolScope && typeof chat.toolScope === 'object') summary.toolScope = normalizeToolScope(chat.toolScope);
 	return summary;
+}
+
+function getChatSortTime(chat) {
+	const createdAt = normalizeTimestamp(chat?.createdAt, 0);
+	const updatedAt = normalizeTimestamp(chat?.updatedAt, createdAt);
+	return Math.max(updatedAt, createdAt);
+}
+
+function compareChatsByRecentActivity(a, b) {
+	const timeDiff = getChatSortTime(b) - getChatSortTime(a);
+	if (timeDiff !== 0) return timeDiff;
+	return normalizeTimestamp(b?.createdAt, 0) - normalizeTimestamp(a?.createdAt, 0);
+}
+
+function sortChatsByRecentActivity() {
+	chats.sort(compareChatsByRecentActivity);
+}
+
+function normalizeEnabledPackIds(enabledPackIds) {
+	return Array.isArray(enabledPackIds)
+		? [...new Set(enabledPackIds.filter(Boolean).map(String))]
+		: [];
+}
+
+function normalizeToolScope(toolScope, fallback = DEFAULT_TOOL_SCOPE) {
+	const source = toolScope && typeof toolScope === 'object' ? toolScope : fallback;
+	return {
+		useDefaultPacks: source?.useDefaultPacks === true,
+		enabledPackIds: normalizeEnabledPackIds(source?.enabledPackIds),
+	};
 }
 
 function replaceChatAt(index, chat) {
@@ -48,6 +81,7 @@ function getLoadedChatIds() {
 }
 
 function buildSavePayload() {
+	sortChatsByRecentActivity();
 	return {
 		chats: chats.map(buildChatSummary),
 		currentChatId: currentChatId || "",
@@ -66,6 +100,12 @@ async function saveLoadedChatAwaitable(chatId) {
 	return saved;
 }
 
+function enqueueChatWrite(operation) {
+	const run = chatWriteQueue.then(operation, operation);
+	chatWriteQueue = run.catch(() => {});
+	return run;
+}
+
 export async function loadChats() {
 	const previousCurrentChatId = currentChatId;
 	const previousById = new Map(chats.map((chat) => [chat.id, chat]));
@@ -81,6 +121,7 @@ export async function loadChats() {
 			}
 			return normalized;
 		});
+		sortChatsByRecentActivity();
 
 		const backendCurrentChatId = data?.currentChatId || null;
 		const hasPreviousCurrentChat = previousCurrentChatId &&
@@ -121,14 +162,12 @@ export async function ensureChatLoaded(chatId, options = {}) {
 }
 
 export function saveChats() {
-	(async () => {
-		await saveChatsAwaitable();
-	})().catch((err) => {
+	saveChatsAwaitable().catch((err) => {
 		console.error("[Store] Failed to save chats:", err);
 	});
 }
 
-export async function saveChatsAwaitable(chatIds = null) {
+async function persistChatsAwaitable(chatIds = null) {
 	await saveChatsData(buildSavePayload());
 
 	const idsToSave = Array.isArray(chatIds) ? chatIds : getLoadedChatIds();
@@ -136,12 +175,18 @@ export async function saveChatsAwaitable(chatIds = null) {
 	await Promise.all(uniqueIds.map((chatId) => saveLoadedChatAwaitable(chatId)));
 }
 
-export async function saveChatAwaitable(chatId) {
-	await saveChatsData(buildSavePayload());
-	return saveLoadedChatAwaitable(chatId);
+export async function saveChatsAwaitable(chatIds = null) {
+	return enqueueChatWrite(() => persistChatsAwaitable(chatIds));
 }
 
-export function getChats()          { return chats; }
+export async function saveChatAwaitable(chatId) {
+	return enqueueChatWrite(async () => {
+		await saveChatsData(buildSavePayload());
+		return saveLoadedChatAwaitable(chatId);
+	});
+}
+
+export function getChats()          { sortChatsByRecentActivity(); return chats; }
 export function getChatById(id)     { return chats.find((chat) => chat.id === id); }
 export function getCurrentChatId()  { return currentChatId; }
 export function setCurrentChatId(id){ currentChatId = id; }
@@ -162,10 +207,11 @@ export function createNewChat() {
 		createdAt,
 		updatedAt: createdAt,
 		graph: createEmptyGraph(),
-		toolScope: { enabledPackIds: [] },
+		toolScope: normalizeToolScope(getLastSelectedToolScope() || DEFAULT_TOOL_SCOPE),
 	};
 
 	chats.unshift(chat);
+	sortChatsByRecentActivity();
 	currentChatId = chat.id;
 	saveChats();
 	return chat;
@@ -176,6 +222,7 @@ export function updateChatTitle(chatId, firstMessage) {
 	if (chat && chat.title === "New Chat" && firstMessage) {
 		chat.title = firstMessage.slice(0, 30) + (firstMessage.length > 30 ? "..." : "");
 		chat.updatedAt = Date.now();
+		sortChatsByRecentActivity();
 		saveChats();
 	}
 }
@@ -185,6 +232,7 @@ export function renameChat(chatId, newTitle) {
 	if (chat && typeof newTitle === "string" && newTitle.trim()) {
 		chat.title = newTitle.trim();
 		chat.updatedAt = Date.now();
+		sortChatsByRecentActivity();
 		saveChats();
 		return true;
 	}
@@ -196,13 +244,14 @@ export function deleteChat(chatId) {
 	if (!id) return;
 
 	chats = chats.filter((chat) => chat.id !== id);
+	sortChatsByRecentActivity();
 	if (currentChatId === id) currentChatId = chats.length ? chats[0].id : null;
 	pins = pins.filter((pinId) => pinId !== id);
 
-	(async () => {
+	enqueueChatWrite(async () => {
 		await deleteChatData(id);
 		await saveChatsData(buildSavePayload());
-	})().catch((err) => {
+	}).catch((err) => {
 		console.error("[Store] Failed to delete chat:", err);
 	});
 }
@@ -226,9 +275,7 @@ export function getChatModel(chatId) {
 
 export function getChatToolScope(chatId) {
 	const toolScope = getChatById(chatId)?.toolScope;
-	return toolScope && typeof toolScope === 'object'
-		? { enabledPackIds: Array.isArray(toolScope.enabledPackIds) ? [...toolScope.enabledPackIds] : [] }
-		: { enabledPackIds: [] };
+	return normalizeToolScope(toolScope);
 }
 
 export function setChatModel(chatId, model) {
@@ -239,15 +286,14 @@ export function setChatModel(chatId, model) {
 	saveChats();
 }
 
-export function setChatToolScope(chatId, enabledPackIds) {
+export function setChatToolScope(chatId, enabledPackIds, options = {}) {
 	const chat = getChatById(chatId);
 	if (!chat) return;
-	chat.toolScope = {
-		enabledPackIds: Array.isArray(enabledPackIds)
-			? [...new Set(enabledPackIds.filter(Boolean).map(String))]
-			: [],
-	};
-	chat.updatedAt = Date.now();
+	chat.toolScope = normalizeToolScope({
+		useDefaultPacks: options.useDefaultPacks === true,
+		enabledPackIds,
+	});
+	setLastSelectedToolScope(chat.toolScope);
 	saveChats();
 }
 
@@ -262,6 +308,31 @@ export function setLastSelectedModel(model) {
 	} catch {}
 }
 
+export function getLastSelectedToolScope() {
+	try {
+		const raw = localStorage.getItem(LAST_TOOL_SCOPE_KEY);
+		if (!raw) return null;
+		const parsed = JSON.parse(raw);
+		if (Array.isArray(parsed)) {
+			return { useDefaultPacks: false, enabledPackIds: normalizeEnabledPackIds(parsed) };
+		}
+		if (!parsed || typeof parsed !== 'object') return null;
+		return normalizeToolScope(parsed);
+	} catch {
+		return null;
+	}
+}
+
+export function setLastSelectedToolScope(toolScope) {
+	try {
+		if (!toolScope) {
+			localStorage.removeItem(LAST_TOOL_SCOPE_KEY);
+			return;
+		}
+		localStorage.setItem(LAST_TOOL_SCOPE_KEY, JSON.stringify(normalizeToolScope(toolScope)));
+	} catch {}
+}
+
 export async function addMessageToChat(chatId, role, content, attachments = null, parts = null) {
 	const chat = await ensureChatLoaded(chatId);
 	if (!chat) return null;
@@ -271,6 +342,7 @@ export async function addMessageToChat(chatId, role, content, attachments = null
 	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts });
 
 	chat.updatedAt = Date.now();
+	sortChatsByRecentActivity();
 	await saveChatAwaitable(chatId);
 	return node;
 }
@@ -282,6 +354,7 @@ export function addChildMessageToChat(chatId, parentId, role, content, attachmen
 	const graph = ensureGraph(chat);
 	const node = appendNode(graph, { parentId, role, content, timestamp: Date.now(), attachments, parts, toolCalls, revisionTrace });
 	chat.updatedAt = Date.now();
+	sortChatsByRecentActivity();
 	return node;
 }
 

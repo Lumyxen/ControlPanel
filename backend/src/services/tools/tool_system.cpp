@@ -769,8 +769,15 @@ ToolSystemConfig parseToolingConfig(const fs::path& path) {
 
 Json::Value normalizeScope(const Json::Value& input) {
     Json::Value scope = input.isObject() ? input : Json::Value(Json::objectValue);
+    const bool hasExplicitEnabledPacks =
+        input.isObject() &&
+        input.isMember("enabledPackIds") &&
+        input["enabledPackIds"].isArray();
     if (!scope.isMember("enabledPackIds") || !scope["enabledPackIds"].isArray()) {
         scope["enabledPackIds"] = Json::Value(Json::arrayValue);
+    }
+    if (!scope.isMember("useDefaultPacks") || !scope["useDefaultPacks"].isBool()) {
+        scope["useDefaultPacks"] = !hasExplicitEnabledPacks;
     }
     return scope;
 }
@@ -2186,11 +2193,13 @@ void ToolSystem::beginTaskSession(const SessionOptions& options) {
     }
     session.toolScope = normalizeScope(options.toolScope);
     session.legacyTools = options.legacyTools.isArray() ? options.legacyTools : Json::Value(Json::arrayValue);
-    session.enabledPackIds = scopeToSet(session.toolScope);
-    if (session.enabledPackIds.empty()) {
-        session.enabledPackIds = impl_->defaultEnabledPacksUnlocked();
+    const bool useDefaultPacks = session.toolScope.get("useDefaultPacks", false).asBool();
+    session.enabledPackIds = useDefaultPacks
+        ? impl_->defaultEnabledPacksUnlocked()
+        : scopeToSet(session.toolScope);
+    if (!session.enabledPackIds.empty()) {
+        session.enabledPackIds.insert("system-control");
     }
-    session.enabledPackIds.insert("system-control");
     if (options.revisionMode) {
         session.enabledPackIds.insert("draft_editor");
     }
@@ -2457,11 +2466,14 @@ Json::Value ToolSystem::getCatalog(const std::string& query, const Json::Value& 
     std::lock_guard<std::mutex> lock(impl_->mutex);
 
     ToolSession tempSession;
-    tempSession.enabledPackIds = scopeToSet(normalizeScope(scope));
-    if (tempSession.enabledPackIds.empty()) {
-        tempSession.enabledPackIds = impl_->defaultEnabledPacksUnlocked();
+    tempSession.toolScope = normalizeScope(scope);
+    const bool useDefaultPacks = tempSession.toolScope.get("useDefaultPacks", false).asBool();
+    tempSession.enabledPackIds = useDefaultPacks
+        ? impl_->defaultEnabledPacksUnlocked()
+        : scopeToSet(tempSession.toolScope);
+    if (!tempSession.enabledPackIds.empty()) {
+        tempSession.enabledPackIds.insert("system-control");
     }
-    tempSession.enabledPackIds.insert("system-control");
 
     Json::Value result(Json::objectValue);
     result["query"] = query;

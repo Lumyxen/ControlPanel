@@ -77,7 +77,8 @@ public:
     Json::Value getModels() const;
     int countTokens(
         const std::string& model,
-        const Json::Value& messages
+        const Json::Value& messages,
+        const Json::Value& tools = Json::Value(Json::arrayValue)
     ) const;
 
     void        setLmStudioUrl(const std::string& url) { lmStudioUrl_ = url; }

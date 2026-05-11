@@ -15,7 +15,8 @@ void handleTokenCount(
     const httplib::Request& req,
     httplib::Response& res,
     LmStudioService& service,
-    LlamaCppService* llamaCppService = nullptr);
+    LlamaCppService* llamaCppService = nullptr,
+    ToolSystem* toolSystem = nullptr);
 void handleStreaming(
     const httplib::Request& req,
     httplib::Response& res,

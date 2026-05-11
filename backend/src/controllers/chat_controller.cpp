@@ -101,6 +101,12 @@ Json::Value mergeGraphState(const Json::Value& currentGraph, const Json::Value& 
     if (!incomingGraph.isObject()) {
         return currentGraph;
     }
+    if (incomingGraph.isMember("_replace") && incomingGraph["_replace"].isBool() &&
+        incomingGraph["_replace"].asBool()) {
+        Json::Value replacement = incomingGraph;
+        replacement.removeMember("_replace");
+        return replacement;
+    }
 
     Json::Value merged = incomingGraph;
     if (!merged.isMember("nodes") || !merged["nodes"].isObject()) {
@@ -423,6 +429,7 @@ Json::Value ChatStore::normalizeChat(Json::Value chat) const {
         normalized["graph"]["rootId"].asString().empty()) {
         normalized["graph"]["rootId"] = "root";
     }
+    normalized["graph"].removeMember("_replace");
 
     const std::string rootId = normalized["graph"]["rootId"].asString();
     if (!normalized["graph"]["nodes"].isMember(rootId) || !normalized["graph"]["nodes"][rootId].isObject()) {
@@ -730,7 +737,17 @@ Json::Value ChatStore::saveSummariesMerged(const Json::Value& incoming) {
 Json::Value ChatStore::saveChatMerged(const Json::Value& incomingChat) {
     std::lock_guard<std::mutex> lock(mutex_);
 
+    const bool replaceIncomingGraph = incomingChat.isObject() &&
+        incomingChat.isMember("graph") &&
+        incomingChat["graph"].isObject() &&
+        incomingChat["graph"].isMember("_replace") &&
+        incomingChat["graph"]["_replace"].isBool() &&
+        incomingChat["graph"]["_replace"].asBool();
+
     Json::Value normalizedIncoming = normalizeChat(incomingChat);
+    if (replaceIncomingGraph) {
+        normalizedIncoming["graph"]["_replace"] = true;
+    }
     const std::string chatId = normalizedIncoming.get("id", "").asString();
     if (chatId.empty()) {
         return Json::Value(Json::nullValue);

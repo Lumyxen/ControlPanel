@@ -176,6 +176,9 @@ export async function mountAppShell() {
 
 	renderChatList(() => {
 		setActive(currentRoute(), getCurrentChatId());
+		if (currentRoute().includes('pages/ai-chat.html')) {
+			void renderRoute(currentRoute()).catch(console.error);
+		}
 	});
 	setActive(initial, getCurrentChatId());
 

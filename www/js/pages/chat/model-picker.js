@@ -11,6 +11,8 @@ import {
 	setChatToolScope,
 	setLastSelectedModel,
 	getLastSelectedModel,
+	getLastSelectedToolScope,
+	setLastSelectedToolScope,
 } from './repository.js';
 import * as SettingsStore from '../../services/settings.js';
 
@@ -73,9 +75,28 @@ export function initTools(root, signal) {
 
 	root._toolPackCache = [];
 
+	const getDefaultEnabledPackIds = () => (
+		Array.isArray(root._toolPackCache) ? root._toolPackCache : []
+	)
+		.filter((pack) => pack?.defaultEnabled === true)
+		.map((pack) => String(pack.id || ''))
+		.filter(Boolean);
+
+	const getActiveScopePackIds = (toolScope) => (
+		toolScope?.useDefaultPacks === true
+			? getDefaultEnabledPackIds()
+			: Array.isArray(toolScope?.enabledPackIds)
+				? toolScope.enabledPackIds
+				: []
+	);
+
 	const syncSelection = () => {
 		const chatId = getCurrentChatId();
-		const enabled = new Set(chatId ? getChatToolScope(chatId).enabledPackIds : []);
+		const toolScope = chatId
+			? getChatToolScope(chatId)
+			: (getLastSelectedToolScope() || { useDefaultPacks: true, enabledPackIds: [] });
+		if (chatId) setLastSelectedToolScope(toolScope);
+		const enabled = new Set(getActiveScopePackIds(toolScope));
 		const checkboxes = [...menu.querySelectorAll('input[type="checkbox"][name="tool-pack"]')];
 		checkboxes.forEach((cb) => {
 			cb.checked = enabled.has(cb.value);
@@ -123,11 +144,15 @@ export function initTools(root, signal) {
 			[...menu.querySelectorAll('input[type="checkbox"][name="tool-pack"]')].forEach((cb) => {
 				cb.addEventListener('change', () => {
 					const chatId = getCurrentChatId();
-					if (!chatId) return;
 					const enabledPackIds = [...menu.querySelectorAll('input[type="checkbox"][name="tool-pack"]:checked')]
 						.map((input) => input.value);
-					setChatToolScope(chatId, enabledPackIds);
+					if (chatId) {
+						setChatToolScope(chatId, enabledPackIds, { useDefaultPacks: false });
+					} else {
+						setLastSelectedToolScope({ useDefaultPacks: false, enabledPackIds });
+					}
 					syncSelection();
+					root._updateLiveContext?.();
 				}, { signal });
 			});
 

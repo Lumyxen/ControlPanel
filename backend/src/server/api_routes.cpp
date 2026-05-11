@@ -42,8 +42,10 @@ Json::Value parsePackScope(const httplib::Request& req) {
     Json::Value scope(Json::objectValue);
     scope["enabledPackIds"] = Json::Value(Json::arrayValue);
     if (!req.has_param("enabled_pack_ids")) {
+        scope["useDefaultPacks"] = true;
         return scope;
     }
+    scope["useDefaultPacks"] = false;
 
     std::stringstream stream(req.get_param_value("enabled_pack_ids"));
     std::string item;
@@ -601,7 +603,7 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
 
     svr.Post("/api/chat/token-count", [&](const httplib::Request& req, httplib::Response& res) {
         applyRouteHeaders(req, res);
-        handleTokenCount(req, res, ctx.lmstudioService, ctx.llamaCppService);
+        handleTokenCount(req, res, ctx.lmstudioService, ctx.llamaCppService, &ctx.toolSystem);
     });
 
     svr.Post("/api/chat/stream", [&](const httplib::Request& req, httplib::Response& res) {

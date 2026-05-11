@@ -11,7 +11,8 @@ import {
 import {
 	addChildMessageToChat, addMessageToChat, createNewChat,
 	ensureChatLoaded, getChatById, getCurrentChatId, getChatToolScope, isChatLoaded,
-	loadChats, saveChats, setChatModel, setCurrentChatId, getLastSelectedModel, setLastSelectedModel,
+	loadChats, saveChatAwaitable, saveChats, setChatModel, setCurrentChatId,
+	getLastSelectedModel, setLastSelectedModel, getLastSelectedToolScope,
 } from './repository.js';
 import { renderChatList } from './sidebar-list.js';
 import {
@@ -281,17 +282,62 @@ function buildSystemPromptForMessages(apiMessages, settings) {
 	return systemPrompt;
 }
 
-function buildContextCountCacheKey({ model, messages, systemPrompt }) {
+function normalizeContextToolScope(toolScope) {
+	return {
+		useDefaultPacks: toolScope?.useDefaultPacks === true,
+		enabledPackIds: Array.isArray(toolScope?.enabledPackIds)
+			? [...new Set(toolScope.enabledPackIds.filter(Boolean).map(String))]
+			: [],
+	};
+}
+
+function getActiveToolScope(chatId) {
+	return chatId
+		? getChatToolScope(chatId)
+		: (getLastSelectedToolScope() || { useDefaultPacks: true, enabledPackIds: [] });
+}
+
+function markGraphForReplacement(graph) {
+	if (graph && typeof graph === 'object') graph._replace = true;
+}
+
+function hasToolContextForCount(toolScope, revisionMode = false) {
+	const normalized = normalizeContextToolScope(toolScope);
+	return revisionMode === true ||
+		normalized.useDefaultPacks === true ||
+		normalized.enabledPackIds.length > 0;
+}
+
+function buildContextCountCacheKey({ model, messages, systemPrompt, toolScope = null, revisionMode = false }) {
 	if (!model) return '';
 	return JSON.stringify({
 		model,
 		system_prompt: systemPrompt || '',
 		messages: Array.isArray(messages) ? messages : [],
+		tool_scope: normalizeContextToolScope(toolScope),
+		revision_mode: revisionMode === true,
 	});
 }
 
-async function fetchExactContextCount({ model, messages, systemPrompt, chatId }, options = {}) {
-	const cacheKey = buildContextCountCacheKey({ model, messages, systemPrompt });
+function buildContextScopeSignature({ model, systemPrompt, toolScope = null, revisionMode = false }) {
+	if (!model) return '';
+	return JSON.stringify({
+		model,
+		system_prompt: systemPrompt || '',
+		tool_scope: normalizeContextToolScope(toolScope),
+		revision_mode: revisionMode === true,
+	});
+}
+
+async function fetchExactContextCount({ model, messages, systemPrompt, chatId, toolScope = null, revisionMode = false }, options = {}) {
+	const normalizedToolScope = normalizeContextToolScope(toolScope);
+	const cacheKey = buildContextCountCacheKey({
+		model,
+		messages,
+		systemPrompt,
+		toolScope: normalizedToolScope,
+		revisionMode,
+	});
 	const cachedTokens = getCachedContextCount(cacheKey);
 	if (Number.isFinite(cachedTokens)) {
 		rememberExactContextCount({ chatId, model, usedTokens: cachedTokens });
@@ -302,6 +348,8 @@ async function fetchExactContextCount({ model, messages, systemPrompt, chatId },
 		model,
 		messages,
 		system_prompt: systemPrompt,
+		tool_scope: normalizedToolScope,
+		revision_mode: revisionMode === true,
 	}, options);
 	const promptTokens = Number.parseInt(result?.prompt_tokens, 10);
 	if (Number.isFinite(promptTokens) && promptTokens >= 0) {
@@ -315,6 +363,8 @@ function buildStaticContextCountPayload(chatId, settings) {
 	const chat = chatId ? getChatById(chatId) : null;
 	const chatLoaded = isChatLoaded(chat);
 	const model = resolvePreferredModelId(chatId);
+	const toolScope = getActiveToolScope(chatId);
+	const revisionMode = settings?.chatResponseMode === 'live';
 	const cachedIndicator = getCachedContextIndicator({ chatId, model });
 	const knownModelContextLimit = getKnownModelContextLength(model);
 	const contextLimitKnown = Boolean(
@@ -342,6 +392,8 @@ function buildStaticContextCountPayload(chatId, settings) {
 		model,
 		messages,
 		systemPrompt,
+		toolScope,
+		revisionMode,
 		estimatedUsedTokens: estimatePreparedMessagesTokens(messages, systemPrompt),
 		contextLimit,
 		contextLimitKnown,
@@ -373,7 +425,9 @@ async function seedExactContextIndicator(root, chatId) {
 		if (!payload.model) return false;
 	}
 
-	if (!payload.systemPrompt && payload.messages.length === 0) {
+	if (!payload.systemPrompt &&
+		payload.messages.length === 0 &&
+		!hasToolContextForCount(payload.toolScope, payload.revisionMode)) {
 		rememberExactContextCount({ chatId, model: payload.model, usedTokens: 0 });
 		rememberContextIndicator({
 			chatId,
@@ -398,6 +452,8 @@ async function seedExactContextIndicator(root, chatId) {
 			messages: payload.messages,
 			systemPrompt: payload.systemPrompt,
 			chatId,
+			toolScope: payload.toolScope,
+			revisionMode: payload.revisionMode,
 		});
 		const promptTokens = Number.parseInt(result?.prompt_tokens, 10);
 		if (!Number.isFinite(promptTokens) || promptTokens < 0) {
@@ -818,41 +874,64 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	const scrollToBottomBtn = root.querySelector('#scrollToBottomBtn');
 
 	let lastScrollTop = contentEl.scrollTop;
+	let scrollRefreshFrame = 0;
+	const getMaxScrollTop = () => Math.max(0, contentEl.scrollHeight - contentEl.clientHeight);
+	const setScrolledUp = (isScrolledUp) => {
+		uiState.isScrolledUp = Boolean(isScrolledUp);
+		scrollToBottomBtn?.classList.toggle('visible', uiState.isScrolledUp);
+	};
 	const checkScroll = () => {
 		if (!scrollToBottomBtn) return;
 		const currentScrollTop = contentEl.scrollTop;
-		const scrollBottom = contentEl.scrollHeight - currentScrollTop - contentEl.clientHeight;
+		const scrollBottom = getMaxScrollTop() - currentScrollTop;
 		
 		if (scrollBottom <= 10) {
-			uiState.isScrolledUp = false;
+			setScrolledUp(false);
 		} else if (currentScrollTop < lastScrollTop) {
-			uiState.isScrolledUp = true;
+			setScrolledUp(true);
 		}
 		
 		lastScrollTop = currentScrollTop;
-		
-		if (uiState.isScrolledUp) {
-			scrollToBottomBtn.classList.add('visible');
-		} else {
-			scrollToBottomBtn.classList.remove('visible');
-		}
+	};
+
+	const scheduleScrollStateRefresh = () => {
+		if (scrollRefreshFrame) return;
+		scrollRefreshFrame = requestAnimationFrame(() => {
+			scrollRefreshFrame = 0;
+			const maxScrollTop = getMaxScrollTop();
+			if (!uiState.isScrolledUp) {
+				contentEl.scrollTop = maxScrollTop;
+			} else if (contentEl.scrollTop > maxScrollTop) {
+				contentEl.scrollTop = maxScrollTop;
+			}
+			checkScroll();
+		});
 	};
 
 	contentEl.addEventListener('scroll', checkScroll, { signal });
 	window.addEventListener('resize', () => {
 		if (!uiState.isScrolledUp) {
-			contentEl.scrollTop = contentEl.scrollHeight;
+			contentEl.scrollTop = getMaxScrollTop();
 		}
 		checkScroll();
 	}, { signal });
 
 	if (scrollToBottomBtn) {
 		scrollToBottomBtn.addEventListener('click', () => {
+			setScrolledUp(false);
 			contentEl.scrollTo({
-				top: contentEl.scrollHeight,
+				top: getMaxScrollTop(),
 				behavior: 'smooth'
 			});
+			scheduleScrollStateRefresh();
 		}, { signal });
+	}
+
+	if (typeof ResizeObserver !== 'undefined') {
+		const scrollResizeObserver = new ResizeObserver(scheduleScrollStateRefresh);
+		scrollResizeObserver.observe(messages);
+		scrollResizeObserver.observe(form);
+		signal.addEventListener('abort', () => scrollResizeObserver.disconnect(), { once: true });
 	}
 
 	const buildContextCountPayload = () => {
@@ -865,6 +944,8 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			|| resolvePreferredModelId(activeChatId)
 			|| '';
 		const contextInfo = getModelContextInfoFromUI(root);
+		const toolScope = getActiveToolScope(activeChatId);
+		const revisionMode = settings?.chatResponseMode === 'live';
 		const effectiveNodes = [];
 
 		if (chatLoaded) {
@@ -920,6 +1001,8 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			model,
 			messages,
 			systemPrompt,
+			toolScope,
+			revisionMode,
 			estimatedUsedTokens: estimatePreparedMessagesTokens(messages, systemPrompt),
 			contextLimit: contextInfo.contextLimit,
 			contextLimitKnown: contextInfo.isKnown,
@@ -935,6 +1018,8 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	let lastRenderedContextScope = {
 		chatId: '',
 		model: '',
+		cacheKey: '',
+		scopeSignature: '',
 		exactCountUnavailable: false,
 	};
 
@@ -961,10 +1046,18 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		return Number.isFinite(usedTokens) && usedTokens >= 0 ? usedTokens : null;
 	};
 
-	const recordRenderedContextScope = ({ chatId, model, exactCountUnavailable = false } = {}) => {
+	const recordRenderedContextScope = ({
+		chatId,
+		model,
+		cacheKey = '',
+		scopeSignature = '',
+		exactCountUnavailable = false,
+	} = {}) => {
 		lastRenderedContextScope = {
 			chatId: chatId || '',
 			model: model || '',
+			cacheKey: cacheKey || '',
+			scopeSignature: scopeSignature || '',
 			exactCountUnavailable: exactCountUnavailable === true,
 		};
 	};
@@ -978,23 +1071,39 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			model,
 			messages: apiMessages,
 			systemPrompt,
+			toolScope,
+			revisionMode,
 			estimatedUsedTokens,
 			contextLimit,
 			contextLimitKnown,
 			chatLoaded,
 		} = payload;
-		const cacheKey = buildContextCountCacheKey({ model, messages: apiMessages, systemPrompt });
+		const cacheKey = buildContextCountCacheKey({
+			model,
+			messages: apiMessages,
+			systemPrompt,
+			toolScope,
+			revisionMode,
+		});
+		const scopeSignature = buildContextScopeSignature({
+			model,
+			systemPrompt,
+			toolScope,
+			revisionMode,
+		});
 		const cachedIndicator = getCachedContextIndicator({ chatId: activeChatId, model });
 		const staleTokens = getCachedScopeContextCount({ chatId: activeChatId, model });
 		const displayedUsedTokens = readDisplayedUsedTokens();
-		const canReuseDisplayedTokens = (
+		const canReuseScopeTokens = (
 			getDisplayScopeKey(lastRenderedContextScope.chatId, lastRenderedContextScope.model)
 			=== getDisplayScopeKey(activeChatId, model)
-		) && lastRenderedContextScope.exactCountUnavailable !== true
+			&& lastRenderedContextScope.scopeSignature === scopeSignature
+		) && lastRenderedContextScope.exactCountUnavailable !== true;
+		const canReuseDisplayedTokens = canReuseScopeTokens
 			&& Number.isFinite(displayedUsedTokens);
 		const fallbackUsedTokens = canReuseDisplayedTokens
 			? displayedUsedTokens
-			: Number.isFinite(staleTokens)
+			: canReuseScopeTokens && Number.isFinite(staleTokens)
 			? staleTokens
 			: Number.isFinite(estimatedUsedTokens)
 			? estimatedUsedTokens
@@ -1043,6 +1152,8 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			recordRenderedContextScope({
 				chatId: activeChatId,
 				model,
+				cacheKey,
+				scopeSignature,
 				exactCountUnavailable,
 			});
 		};
@@ -1066,7 +1177,9 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			renderContextIndicator(fallbackUsedTokens, fallbackContextLimit, { persistIndicator: false });
 			return;
 		}
-		if (!systemPrompt && apiMessages.length === 0) {
+		if (!systemPrompt &&
+			apiMessages.length === 0 &&
+			!hasToolContextForCount(toolScope, revisionMode)) {
 			clearScheduledContextCount();
 			abortPendingContextCount();
 			setCachedContextCount(cacheKey, 0);
@@ -1115,6 +1228,8 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 					messages: apiMessages,
 					systemPrompt,
 					chatId: activeChatId,
+					toolScope,
+					revisionMode,
 				}, { signal: abortController.signal });
 
 				if (signal.aborted || requestId !== contextCountRequestId) return;
@@ -1247,7 +1362,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			updateLiveContext(120);
 		},
 		afterRender: () => {
-			if (!uiState.isScrolledUp) contentEl.scrollTop = contentEl.scrollHeight;
+			if (!uiState.isScrolledUp) contentEl.scrollTop = getMaxScrollTop();
 			else checkScroll();
 		},
 	});
@@ -1401,6 +1516,10 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 
 		let systemPrompt = buildSystemPromptForMessages(apiMessages, settings);
 		let temperature = settings?.temperature ?? 1.0;
+		const toolScope = getChatToolScope(activeChatId);
+		const revisionMode = settings?.chatResponseMode === 'live';
+		const hasActiveToolPacks = toolScope.useDefaultPacks === true ||
+			(Array.isArray(toolScope?.enabledPackIds) && toolScope.enabledPackIds.length > 0);
 
 		try {
 			const countResult = await fetchExactContextCount({
@@ -1408,6 +1527,8 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				messages: apiMessages,
 				systemPrompt,
 				chatId: activeChatId,
+				toolScope,
+				revisionMode,
 			}, { signal: currentSignal });
 			const promptTokens = Number.parseInt(countResult?.prompt_tokens, 10);
 			if (Number.isFinite(promptTokens) && contextLimit > 0 && promptTokens + maxTokens > contextLimit) {
@@ -1466,14 +1587,11 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		};
 
 		// ── Submit the generation task to the backend ─────────────────────────
-		const toolScope = getChatToolScope(activeChatId);
-		const hasExplicitToolPacks = Array.isArray(toolScope?.enabledPackIds) && toolScope.enabledPackIds.length > 0;
-		const revisionMode = settings?.chatResponseMode === 'live';
 		const taskPayload = {
 			task_id: taskId,
 			model, prompt: conversationHistory, max_tokens: maxTokens,
 			system_prompt: systemPrompt, temperature, context_window: contextLimit,
-			logprobs: !hasExplicitToolPacks && !revisionMode,
+			logprobs: !hasActiveToolPacks && !revisionMode,
 			revision_mode: revisionMode,
 			chat_id: activeChatId,
 			parent_user_node_id: parentUserNodeId || '',
@@ -1724,6 +1842,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			const wrapper = codeHeader.closest('.md-code-wrapper');
 			if (wrapper) {
 				wrapper.classList.toggle('collapsed');
+				scheduleScrollStateRefresh();
 			}
 			return;
 		}
@@ -1840,6 +1959,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				[...(userNode.children||[])].forEach(cid => deleteSubtree(graph, cid));
 				delete graph.selections[userNodeId];
 				if (userNode.parentId) setSelectedChildId(graph, userNode.parentId, userNodeId);
+				markGraphForReplacement(graph);
 				recomputeLeafId(graph); chat.updatedAt = Date.now(); saveChats();
 				resetEdit(); rerender(); setActiveCallback?.();
 				if (empty) empty.hidden = true;
@@ -1860,13 +1980,24 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			},
 			delete: () => {
 				stopTyping();
-				if (e.shiftKey) spliceDeleteNode(graph, nodeId); else deleteSubtree(graph, nodeId);
-				recomputeLeafId(graph); chat.updatedAt = Date.now(); saveChats();
+				const didDelete = e.shiftKey ? spliceDeleteNode(graph, nodeId) : (deleteSubtree(graph, nodeId), true);
+				if (!didDelete) return;
+				markGraphForReplacement(graph);
+				recomputeLeafId(graph); chat.updatedAt = Date.now();
+				saveChatAwaitable(chat.id).catch((err) => {
+					console.error('[Chat] Failed to save message deletion:', err);
+				});
 				resetEdit(); rerender(); renderChatList(); setActiveCallback?.();
 			},
 		};
 		handlers[action]?.();
 	}, { signal });
+
+	messages.addEventListener('toggle', (e) => {
+		if (e.target?.matches?.('details')) {
+			scheduleScrollStateRefresh();
+		}
+	}, { capture: true, signal });
 
 	messages.addEventListener('keydown', (e) => {
 		const editEl = e.target.closest('.chat-edit-input');

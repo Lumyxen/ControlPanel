@@ -1003,11 +1003,15 @@ Json::Value LmStudioService::getModels() const {
     return out;
 }
 
-int LmStudioService::countTokens(const std::string& model, const Json::Value& messages) const {
+int LmStudioService::countTokens(
+    const std::string& model,
+    const Json::Value& messages,
+    const Json::Value& tools) const {
     Json::Value preparedMessages = messages;
     if (!preparedMessages.isArray()) {
         preparedMessages = Json::Value(Json::arrayValue);
     }
+    const bool hasTools = tools.isArray() && !tools.empty();
 
     std::string lastError = "LM Studio did not return prompt token usage";
     const bool hasRichParts = [&preparedMessages]() {
@@ -1036,6 +1040,10 @@ int LmStudioService::countTokens(const std::string& model, const Json::Value& me
             body["temperature"] = 0.0;
             body["reasoning_effort"] = "none";
             body["reasoning_tokens"] = 0;
+            if (hasTools) {
+                body["tools"] = tools;
+                body["tool_choice"] = "auto";
+            }
 
             const Json::Value response = makeRequestToPath(path, body);
             if (response.isMember("error")) {
@@ -1048,6 +1056,12 @@ int LmStudioService::countTokens(const std::string& model, const Json::Value& me
                 return promptTokens;
             }
         }
+    }
+
+    if (hasTools) {
+        const int baseTokens = countTokens(model, preparedMessages, Json::Value(Json::arrayValue));
+        const int toolTokens = static_cast<int>((writeJson(tools).size() + 3) / 4);
+        return baseTokens + (toolTokens > 0 ? toolTokens : 1);
     }
 
     throw std::runtime_error(lastError);

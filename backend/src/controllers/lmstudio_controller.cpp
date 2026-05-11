@@ -3,6 +3,8 @@
 #include "app/server_app.h"
 
 #include <chrono>
+#include <atomic>
+#include <cstdint>
 #include <deque>
 #include <future>
 #include <mutex>
@@ -20,6 +22,11 @@ namespace {
 Json::Int64 nowMillis() {
     return static_cast<Json::Int64>(std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count());
+}
+
+std::string makeTokenCountSessionId() {
+    static std::atomic<std::uint64_t> counter{0};
+    return "token_count_" + std::to_string(nowMillis()) + "_" + std::to_string(++counter);
 }
 
 struct ScopeGuard {
@@ -206,6 +213,45 @@ Json::Value buildCountMessages(
     return service.buildMessages(prompt, systemPrompt);
 }
 
+Json::Value buildCountTools(const Json::Value& body, ToolSystem* toolSystem) {
+    Json::Value legacyTools = body.isMember("tools") && body["tools"].isArray()
+        ? body["tools"]
+        : Json::Value(Json::arrayValue);
+
+    if (!toolSystem || !body.isMember("tool_scope") || !body["tool_scope"].isObject()) {
+        return legacyTools;
+    }
+
+    const std::string sessionId = makeTokenCountSessionId();
+    ToolSystem::SessionOptions options;
+    options.taskId = sessionId;
+    options.toolScope = body["tool_scope"];
+    options.legacyTools = legacyTools;
+    options.revisionMode = body.get("revision_mode", false).asBool();
+
+    toolSystem->beginTaskSession(options);
+    ScopeGuard sessionGuard{[toolSystem, sessionId]() {
+        toolSystem->endTaskSession(sessionId);
+    }};
+
+    return toolSystem->getModelToolsForTask(sessionId);
+}
+
+Json::Value appendSyntheticToolContext(Json::Value messages, const Json::Value& tools) {
+    if (!messages.isArray()) {
+        messages = Json::Value(Json::arrayValue);
+    }
+    if (!tools.isArray() || tools.empty()) {
+        return messages;
+    }
+
+    Json::Value toolContext(Json::objectValue);
+    toolContext["role"] = "system";
+    toolContext["content"] = "Available tool schemas:\n" + writeJson(tools);
+    messages.append(toolContext);
+    return messages;
+}
+
 } // namespace
 
 void startStreamCleanupLoop() {
@@ -260,7 +306,8 @@ void handleTokenCount(
     const httplib::Request& req,
     httplib::Response& res,
     LmStudioService& service,
-    LlamaCppService* llamaCppService) {
+    LlamaCppService* llamaCppService,
+    ToolSystem* toolSystem) {
     Json::Value body;
     if (!parseJsonBody(req.body, body, res)) {
         return;
@@ -292,10 +339,11 @@ void handleTokenCount(
             isLlamaCpp,
             service,
             llamaCppService);
+        const Json::Value tools = buildCountTools(body, toolSystem);
 
         const int promptTokens = isLlamaCpp
-            ? llamaCppService->countTokens(model, messages)
-            : service.countTokens(model, messages);
+            ? llamaCppService->countTokens(model, appendSyntheticToolContext(messages, tools))
+            : service.countTokens(model, messages, tools);
 
         Json::Value result(Json::objectValue);
         result["prompt_tokens"] = promptTokens;

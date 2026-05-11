@@ -280,7 +280,6 @@ export function createStreamingMessageController({
 	let reasoningSummaryText = 'Thinking...';
 	let reasoningPhaseActive = false;
 	let reasoningPhaseUserToggled = false;
-	let reasoningUserToggledDuringGeneration = false;
 	let pendingReasoningUserToggle = false;
 	let finalTokenHighlightingEnabled = false;
 	let pointerSelectingInMessage = false;
@@ -538,19 +537,23 @@ export function createStreamingMessageController({
 
 	const bindReasoningElement = (reasoningEl) => {
 		if (!reasoningEl || reasoningEl.dataset.streamingBound === 'true') return;
+		const isCurrentReasoningElement = () => reasoningEl.dataset.streamCurrentReasoning === 'true';
 		const summaryEl = reasoningEl.querySelector('summary');
 		summaryEl?.addEventListener('click', () => {
-			pendingReasoningUserToggle = true;
+			if (isCurrentReasoningElement()) pendingReasoningUserToggle = true;
 		});
 		summaryEl?.addEventListener('keydown', (event) => {
 			if (event.key === 'Enter' || event.key === ' ') {
-				pendingReasoningUserToggle = true;
+				if (isCurrentReasoningElement()) pendingReasoningUserToggle = true;
 			}
 		});
 		reasoningEl.addEventListener('toggle', () => {
+			if (!isCurrentReasoningElement()) {
+				pendingReasoningUserToggle = false;
+				return;
+			}
 			reasoningOpen = reasoningEl.open;
 			if (pendingReasoningUserToggle) {
-				reasoningUserToggledDuringGeneration = true;
 				if (reasoningPhaseActive) {
 					reasoningPhaseUserToggled = true;
 				}
@@ -564,6 +567,7 @@ export function createStreamingMessageController({
 		if (!reasoningEl || !nextReasoningEl) return;
 		const currentSummaryEl = reasoningEl.querySelector('summary');
 		const nextSummaryEl = nextReasoningEl.querySelector('summary');
+		reasoningEl.dataset.streamCurrentReasoning = 'true';
 		if (currentSummaryEl && nextSummaryEl) {
 			currentSummaryEl.textContent = nextSummaryEl.textContent;
 		}
@@ -596,6 +600,9 @@ export function createStreamingMessageController({
 			open: reasoningOpen,
 			summaryText: reasoningSummaryText,
 		});
+		if (nextReasoningEl) {
+			nextReasoningEl.dataset.streamCurrentReasoning = 'true';
+		}
 		const existingReasoningEl = content.querySelector(':scope > .message-reasoning');
 		if (!nextReasoningEl) {
 			existingReasoningEl?.remove();
@@ -726,15 +733,19 @@ export function createStreamingMessageController({
 				continue;
 			}
 			if (part.type === 'reasoning' && (part.content || cloneReasoningParts(part.reasoningParts).length > 0)) {
-				const isActiveReasoning = (displayState.isThinkingActive || reasoningPhaseActive) && index === lastReasoningIndex;
+				const isCurrentReasoning = index === lastReasoningIndex;
+				const isActiveReasoning = (displayState.isThinkingActive || reasoningPhaseActive) && isCurrentReasoning;
 				const reasoningEl = buildReasoningElement({
 					reasoning: part.content,
 					reasoningParts: part.reasoningParts,
 					toolCalls: activeToolCalls,
-					open: isActiveReasoning ? reasoningOpen : false,
+					open: isCurrentReasoning ? reasoningOpen : false,
 					summaryText: isActiveReasoning ? reasoningSummaryText : 'Thinking',
 				});
-				if (reasoningEl) nextFlowEl.appendChild(reasoningEl);
+				if (reasoningEl) {
+					if (isCurrentReasoning) reasoningEl.dataset.streamCurrentReasoning = 'true';
+					nextFlowEl.appendChild(reasoningEl);
+				}
 				continue;
 			}
 			if (part.type === 'tool_call') {
@@ -751,6 +762,13 @@ export function createStreamingMessageController({
 			return;
 		}
 		morphNode(flowEl, nextFlowEl);
+		const currentReasoningEl = flowEl.querySelector(':scope > .message-reasoning[data-stream-current-reasoning="true"]');
+		if (currentReasoningEl) {
+			bindReasoningElement(currentReasoningEl);
+			if (currentReasoningEl.open !== reasoningOpen) {
+				currentReasoningEl.open = reasoningOpen;
+			}
+		}
 	};
 
 	const renderDom = () => {
@@ -815,7 +833,6 @@ export function createStreamingMessageController({
 			reasoningSummaryText = 'Thinking...';
 			reasoningPhaseActive = false;
 			reasoningPhaseUserToggled = false;
-			reasoningUserToggledDuringGeneration = false;
 			pendingReasoningUserToggle = false;
 			finalTokenHighlightingEnabled = false;
 			return true;
@@ -951,9 +968,7 @@ export function createStreamingMessageController({
 			reasoningSummaryText = 'Thinking';
 			revisionTimerEnabled = false;
 			stopRevisionTimer();
-			if (!reasoningUserToggledDuringGeneration) {
-				reasoningOpen = false;
-			}
+			// Open state is settled when the reasoning phase ends, not when generation ends.
 			finalTokenHighlightingEnabled = true;
 			reasoningPhaseActive = false;
 			reasoningPhaseUserToggled = false;

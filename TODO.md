@@ -91,8 +91,8 @@
 - [ ] Shift+Click to copy entire message including thinking block and tool calls
 - [ ] Custom theme setting (list of variables and hex/rgb values)
 - [ ] More animated UI during generation to give more livelihood to the chat-box
-- [ ] Turn the response into a back-and-forth for the AI.
-  - [ ] Allow it to generate drafts, relook through the drafts, refine it, edit mistakes, and push the finalised result to the user
+- [x] Turn the response into a back-and-forth for the AI.
+  - [x] Allow it to generate drafts, relook through the drafts, refine it, edit mistakes, and push the finalised result to the user
   - [ ] Show the user the live process of editing as the output so the user gets a sense of progression
 - [x] Do exact token counting instead of estimation
   - [x] Show a warning indicator next to the context window usage block when exact token counting is unavailable
@@ -251,9 +251,7 @@
 - [ ] None
 
 #### UX
-- [ ] Collapsing a menu in a chat in a way that does not move the view but make it so you can not scroll down anymore, the scroll-to-bottom button persists
-- [ ] Sort chats by most recently chatted in
-- [ ] Tool toggling is not functional
+- [ ] None
 
 ##### Firefox
 - [ ] ESC does not properly cancel message editing, requiring 2 presses of ESC
