@@ -1,3 +1,4 @@
+#include "config/config.h"
 #include "services/tools/file_reader_tool.h"
 #include "services/tools/tool_system.h"
 
@@ -33,22 +34,6 @@ public:
 
 private:
     fs::path path_;
-};
-
-class ScopedCurrentPath {
-public:
-    explicit ScopedCurrentPath(const fs::path& nextPath)
-        : previousPath_(fs::current_path()) {
-        fs::current_path(nextPath);
-    }
-
-    ~ScopedCurrentPath() {
-        std::error_code ec;
-        fs::current_path(previousPath_, ec);
-    }
-
-private:
-    fs::path previousPath_;
 };
 
 void expect(bool condition, const std::string& message) {
@@ -139,6 +124,12 @@ void beginSession(ToolSystem& toolSystem, const std::string& taskId) {
     toolSystem.beginTaskSession(options);
 }
 
+void setDefaultWorkingDirectory(Config& config, const fs::path& path) {
+    Json::Value settings(Json::objectValue);
+    settings["aiToolsDefaultWorkingDirectory"] = path.string();
+    config.updateFromJson(settings);
+}
+
 bool hasModelTool(const Json::Value& tools, const std::string& name) {
     if (!tools.isArray()) {
         return false;
@@ -158,9 +149,11 @@ void testInvalidPromptToolFailsWithoutApproval() {
     const fs::path packRoot = temp.path() / "packs";
     const fs::path dataRoot = temp.path() / "data";
     installFilesystemEditPack(packRoot);
-    ToolSystem toolSystem(makeRuntimePaths(packRoot, dataRoot));
+    Config config((dataRoot / "settings.json").string());
+    config.load();
+    setDefaultWorkingDirectory(config, temp.path());
+    ToolSystem toolSystem(makeRuntimePaths(packRoot, dataRoot), nullptr, &config);
     toolSystem.initialize();
-    ScopedCurrentPath workspace(temp.path());
     beginSession(toolSystem, "task_invalid");
 
     Json::Value args(Json::objectValue);
@@ -196,9 +189,11 @@ void testNoopPromptToolCompletesWithoutApproval() {
     const fs::path dataRoot = temp.path() / "data";
     installFilesystemEditPack(packRoot);
     writeFile(temp.path() / "same.txt", "same\n");
-    ToolSystem toolSystem(makeRuntimePaths(packRoot, dataRoot));
+    Config config((dataRoot / "settings.json").string());
+    config.load();
+    setDefaultWorkingDirectory(config, temp.path());
+    ToolSystem toolSystem(makeRuntimePaths(packRoot, dataRoot), nullptr, &config);
     toolSystem.initialize();
-    ScopedCurrentPath workspace(temp.path());
     beginSession(toolSystem, "task_noop");
 
     Json::Value args(Json::objectValue);

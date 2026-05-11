@@ -1,10 +1,12 @@
 #include "services/tools/tool_system.h"
 
+#include "config/config.h"
 #include "services/tools/calculator_tool.h"
 #include "services/tools/file_edit_tool.h"
 #include "services/tools/file_reader_tool.h"
 #include "services/tools/filesystem_tool.h"
 #include "services/tools/tool_argument_validator.h"
+#include "services/tools/weather_tool.h"
 #include "services/tools/web_search_tool.h"
 
 #include <algorithm>
@@ -799,11 +801,32 @@ std::unordered_set<std::string> scopeToSet(const Json::Value& scope) {
     return result;
 }
 
+fs::path defaultSessionWorkingDirectory(const Config* config) {
+    const fs::path configuredPath = config
+        ? fs::path(config->getAiToolsDefaultWorkingDirectory())
+        : fs::path(Config::normalizeAiToolsDefaultWorkingDirectory(""));
+
+    std::error_code ec;
+    if (!configuredPath.empty() && fs::is_directory(configuredPath, ec) && !ec) {
+        return configuredPath;
+    }
+
+    ec.clear();
+    const fs::path homePath(Config::normalizeAiToolsDefaultWorkingDirectory(""));
+    if (!homePath.empty() && fs::is_directory(homePath, ec) && !ec) {
+        return homePath;
+    }
+
+    ec.clear();
+    const fs::path cwd = fs::current_path(ec);
+    return ec ? fs::path(".") : cwd;
+}
+
 } // namespace
 
 struct ToolSystem::Impl {
-    explicit Impl(const RuntimePaths& inPaths, McpRegistry* registry)
-        : paths(inPaths), mcpRegistry(registry) {
+    explicit Impl(const RuntimePaths& inPaths, McpRegistry* registry, Config* inConfig)
+        : paths(inPaths), mcpRegistry(registry), config(inConfig) {
         if (!paths.webSearchRoot.empty()) {
             WebSearchTool::Options options;
             options.storageRoot = paths.webSearchRoot;
@@ -818,6 +841,7 @@ struct ToolSystem::Impl {
 
     RuntimePaths paths;
     McpRegistry* mcpRegistry = nullptr;
+    Config* config = nullptr;
     mutable std::mutex mutex;
     ToolSystemConfig toolingConfig;
     SandboxRuntime sandbox;
@@ -1596,7 +1620,8 @@ struct ToolSystem::Impl {
                 handler == "filesystem_get_working_directory" ||
                 handler == "filesystem_change_working_directory" ||
                 handler == "filesystem_list_directory" ||
-                handler == "filesystem_directory_tree") {
+                handler == "filesystem_directory_tree" ||
+                handler == "weather_get_weather") {
                 return std::nullopt;
             }
 
@@ -1869,6 +1894,10 @@ struct ToolSystem::Impl {
                 return error;
             }
             return webSearch->status();
+        }
+
+        if (handler == "weather_get_weather") {
+            return weather_tool::getWeather(args, config);
         }
 
         Json::Value error(Json::objectValue);
@@ -2155,8 +2184,8 @@ struct ToolSystem::Impl {
     }
 };
 
-ToolSystem::ToolSystem(const RuntimePaths& paths, McpRegistry* mcpRegistry)
-    : impl_(std::make_unique<Impl>(paths, mcpRegistry)) {}
+ToolSystem::ToolSystem(const RuntimePaths& paths, McpRegistry* mcpRegistry, Config* config)
+    : impl_(std::make_unique<Impl>(paths, mcpRegistry, config)) {}
 
 ToolSystem::~ToolSystem() = default;
 
@@ -2181,7 +2210,7 @@ void ToolSystem::beginTaskSession(const SessionOptions& options) {
     ToolSession session;
     session.taskId = options.taskId;
     session.chatId = options.chatId;
-    session.workingDirectory = fs::current_path().string();
+    session.workingDirectory = defaultSessionWorkingDirectory(impl_->config).string();
     if (!session.chatId.empty()) {
         const auto cwdIt = impl_->chatWorkingDirectories.find(session.chatId);
         if (cwdIt != impl_->chatWorkingDirectories.end()) {

@@ -181,6 +181,7 @@ set(SOURCES
     src/services/tools/file_edit_tool.cpp
     src/services/tools/file_reader_tool.cpp
     src/services/tools/filesystem_tool.cpp
+    src/services/tools/weather_tool.cpp
     src/services/tools/web_search_tool.cpp
     src/services/tools/tool_argument_validator.cpp
     src/services/tools/tool_system.cpp
@@ -286,6 +287,7 @@ if(NOT CMAKE_CROSSCOMPILING)
         src/services/tools/file_edit_tool.cpp
         src/services/tools/file_reader_tool.cpp
         src/services/tools/filesystem_tool.cpp
+        src/services/tools/weather_tool.cpp
         src/services/tools/web_search_tool.cpp
         src/services/tools/tool_argument_validator.cpp
         src/services/mcp_client.cpp

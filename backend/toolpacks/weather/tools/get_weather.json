@@ -1,0 +1,36 @@
+{
+    "id": "get_weather",
+    "title": "Get Weather",
+    "description": "Get compact current and daily weather for the user's configured weather location. Optional dates use YYYY-MM-DD and are resolved in the matched location timezone.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "start_date": {
+                "type": "string",
+                "description": "Optional start date in YYYY-MM-DD format. Leave blank for current conditions and a short forecast. Explicit ranges are limited to 7 days."
+            },
+            "end_date": {
+                "type": "string",
+                "description": "Optional end date in YYYY-MM-DD format. Defaults to start_date when start_date is set."
+            }
+        }
+    },
+    "selection": {
+        "summary": "Retrieve compact current and daily weather for the configured user location, with optional date range.",
+        "tags": ["weather", "forecast", "temperature", "rain", "snow", "wind", "date", "location"],
+        "whenToUse": "Use when the task asks for current weather, forecasts, or weather conditions for a date at the user's configured location.",
+        "whenNotToUse": "Do not use for weather at arbitrary locations unless the user first updates the configured weather location setting."
+    },
+    "policy": {
+        "riskTier": "read",
+        "approvalMode": "auto",
+        "network": true,
+        "idempotent": true
+    },
+    "native": {
+        "handler": "weather_get_weather"
+    }
+}

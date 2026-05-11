@@ -24,10 +24,10 @@ It is intentionally separate from `TODO.md`:
 | AI chat workflow | Graph-threaded chats, lazy chat loading, background generation tasks, reconnectable streaming, reasoning blocks, per-chat tool-pack scope, inline tool-call rendering |
 | Transcript UX | Message editing, regenerate-from-here, branching, raw-copy behavior, markdown rendering, code-block actions, colour previews |
 | Model management | LM Studio configuration, built-in `llama.cpp` backend building/switching, HuggingFace GGUF search/download/delete/tokenizer install |
-| Tuning and personalisation | Theme palettes, AI behavior settings, token-confidence display/history controls, title-generation settings |
+| Tuning and personalisation | Theme palettes, AI behavior settings, token-confidence display/history controls, title-generation settings, default AI tool working directory, and weather location/unit settings |
 | Integration surface | REST API, backend lifecycle/status endpoints, task endpoints, tool-pack discovery/reload, approval and file-edit rollback endpoints, extension-isolated vault routes, MCP client loading/bridging, built-in MCP config tools, `/mcp` JSON-RPC surface |
 
-The tool system ships with real bundled calculator, web-search, file-reader, and filesystem packs plus the synthetic internal control-plane pack used for deferred discovery and schema loading. Additional packs can still be added locally or bridged in from MCP servers.
+The tool system ships with real bundled calculator, web-search, file-reader, filesystem, and weather packs plus the synthetic internal control-plane pack used for deferred discovery and schema loading. Additional packs can still be added locally or bridged in from MCP servers.
 
 ---
 
@@ -83,11 +83,16 @@ The tool system ships with real bundled calculator, web-search, file-reader, and
 | Bundled web-search pack | Ships a real indexed web-search subsystem instead of example/demo HTTP tools. |
 | Bundled file-reader pack | Ships a native local text file reader with line and character limits, exact text slices, document versions, EOL state, and compact line metadata. |
 | Bundled filesystem pack | Ships local directory listing, bounded directory trees, active-folder inspection, session working-directory changes, and checkpointed file editing with version-guarded range, line, and whole-file operations. |
+| Configurable AI tool working directory | New tool sessions start in the configured default working directory, which is normalised from Settings and falls back to the user's home directory. |
+| Bundled weather pack | Ships a read-only native weather tool for the configured user location, with current conditions, daily forecasts, and historical daily weather lookups. |
 | Web search ranking and fallback | `search_web` ranks indexed pages with SQLite FTS5 and can fall back to live web results when the local index misses. |
 | Stored result opening | `open_result` returns cleaned indexed text, metadata, and discovered links by `doc_id`. |
 | Live fetch and indexing | `fetch_url` fetches live pages, obeys robots/sitemaps, canonicalises URLs, deduplicates content, and updates the local index. |
 | Related-page discovery | `related_results` returns linked and same-host neighbors for already indexed pages. |
 | Search health visibility | `search_status` reports index counts, queue depth, worker state, and storage details. |
+| Weather location setting | The weather tool uses a Settings-page location string and returns a configuration error if no weather location has been set. |
+| Weather unit presets | Weather output supports metric, imperial, mixed, and custom temperature/wind/precipitation units. |
+| Weather date validation | Explicit weather lookups use `YYYY-MM-DD`, are limited to seven days, and cannot mix historical archive dates with forecast dates in one request. |
 
 ---
 
@@ -309,6 +314,7 @@ The backend exposes API groups for:
 - Model listing and local-model deletion
 - LM Studio model listing
 - Settings read/write and backend lifecycle status/restart/stop controls
+- Default AI tool working directory plus weather location/unit settings through the shared settings API
 - `llama.cpp` backend selection/removal, building, build logs/status, reloads, dismissal, and pool status
 - HuggingFace search, metadata, file listing, download tracking, cancellation, and tokenizer installation
 - Tool-pack discovery, reload, catalog search, approval resolution, and checkpointed file-edit rollback
@@ -333,8 +339,9 @@ The backend exposes API groups for:
 | Bundled web-search pack | Fresh installs include a web-search pack with SQLite FTS5 indexing, robots/sitemap-aware fetching, canonicalisation, deduplication, snippets, related-result lookup, and subsystem status reporting. |
 | Bundled file-reader pack | Fresh installs include exact local text-file reads with document versions, EOL metadata, truncation metadata, and optional numbered views. |
 | Bundled filesystem pack | Fresh installs include directory listing, bounded tree rendering, working-directory management, and checkpointed file editing. |
+| Bundled weather pack | Fresh installs include read-only weather lookup for the configured location, with current conditions, daily forecast/archive output, geocoding, and configurable units. |
 | File-edit rollback API | Checkpoint descriptors from filesystem edits can be restored through `/api/tools/file-edits/rollback`. |
-| Current shipped tool state | The repository ships the internal control-plane pack plus bundled calculator, web-search, file-reader, and filesystem packs out of the box; additional packs can be added locally or via MCP. |
+| Current shipped tool state | The repository ships the internal control-plane pack plus bundled calculator, web-search, file-reader, filesystem, and weather packs out of the box; additional packs can be added locally or via MCP. |
 
 ### MCP Support
 
@@ -363,6 +370,7 @@ The backend exposes API groups for:
 | Malformed tool-call recovery | If a model emits malformed tool-call argument JSON, the backend turns it into a failed tool event instead of aborting the whole response. |
 | Message-level file edit rollback | Assistant messages that contain checkpointed filesystem edits expose a rollback action that restores the affected checkpoints in reverse order. |
 | Bundled calculator tools | Out-of-the-box installs provide real calculator capabilities via a native scientific calculator and a sandboxed batch-math tool. |
+| Bundled weather tool | Out-of-the-box installs provide a native `get_weather` tool that calls Open-Meteo services for the configured user location. |
 
 ---
 

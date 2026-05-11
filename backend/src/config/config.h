@@ -2,6 +2,8 @@
 #define CONFIG_H
 
 #include <algorithm>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <json/json.h>
 #include <mutex>
@@ -68,11 +70,54 @@ Core principles:
         std::string aiTitleModel;
         std::string aiTitleSystemPrompt =
             "Describe the chat in 1-3 words. Output only the title text. No quotes. No explanation.";
+        std::string aiToolsDefaultWorkingDirectory;
+        std::string weatherLocation;
+        std::string weatherMeasurementSystem = "metric";
+        Json::Value weatherCustomUnits = Json::Value(Json::objectValue);
     };
 
     State state_;
     std::string settingsPath_;
     mutable std::mutex mutex_;
+
+    static std::string trimCopy(const std::string& value) {
+        const auto start = value.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos) {
+            return "";
+        }
+        const auto end = value.find_last_not_of(" \t\r\n");
+        return value.substr(start, end - start + 1);
+    }
+
+    static std::string homeDirectoryPath() {
+#ifdef _WIN32
+        if (const char* userProfile = std::getenv("USERPROFILE"); userProfile && *userProfile) {
+            return userProfile;
+        }
+        const char* homeDrive = std::getenv("HOMEDRIVE");
+        const char* homePath = std::getenv("HOMEPATH");
+        if (homeDrive && *homeDrive && homePath && *homePath) {
+            return std::string(homeDrive) + homePath;
+        }
+#else
+        if (const char* home = std::getenv("HOME"); home && *home) {
+            return home;
+        }
+#endif
+        std::error_code ec;
+        const std::filesystem::path cwd = std::filesystem::current_path(ec);
+        return ec ? std::string(".") : cwd.string();
+    }
+
+    static std::string expandHomeDirectoryPrefix(const std::string& value) {
+        if (value == "~") {
+            return homeDirectoryPath();
+        }
+        if (value.size() > 1 && value[0] == '~' && (value[1] == '/' || value[1] == '\\')) {
+            return homeDirectoryPath() + value.substr(1);
+        }
+        return value;
+    }
 
     static void applyGeneralJson(State& state, const Json::Value& root) {
         if (root.isMember("port")) state.port = root["port"].asInt();
@@ -179,6 +224,22 @@ Core principles:
         if (root.isMember("aiTitleEnabled")) state.aiTitleEnabled = root["aiTitleEnabled"].asBool();
         if (root.isMember("aiTitleModel")) state.aiTitleModel = root["aiTitleModel"].asString();
         if (root.isMember("aiTitleSystemPrompt")) state.aiTitleSystemPrompt = root["aiTitleSystemPrompt"].asString();
+        if (root.isMember("aiToolsDefaultWorkingDirectory")) {
+            state.aiToolsDefaultWorkingDirectory =
+                normalizeAiToolsDefaultWorkingDirectory(root["aiToolsDefaultWorkingDirectory"].asString());
+        }
+        if (root.isMember("weatherLocation") && root["weatherLocation"].isString()) {
+            state.weatherLocation = trimCopy(root["weatherLocation"].asString());
+        }
+        if (root.isMember("weatherMeasurementSystem") && root["weatherMeasurementSystem"].isString()) {
+            const std::string system = root["weatherMeasurementSystem"].asString();
+            if (system == "imperial" || system == "metric" || system == "mixed" || system == "custom") {
+                state.weatherMeasurementSystem = system;
+            }
+        }
+        if (root.isMember("weatherCustomUnits") && root["weatherCustomUnits"].isObject()) {
+            state.weatherCustomUnits = normalizeWeatherCustomUnits(root["weatherCustomUnits"]);
+        }
     }
 
     Json::Value toJsonUnlocked() const {
@@ -230,6 +291,10 @@ Core principles:
         root["aiTitleEnabled"] = state_.aiTitleEnabled;
         root["aiTitleModel"] = state_.aiTitleModel;
         root["aiTitleSystemPrompt"] = state_.aiTitleSystemPrompt;
+        root["aiToolsDefaultWorkingDirectory"] = state_.aiToolsDefaultWorkingDirectory;
+        root["weatherLocation"] = state_.weatherLocation;
+        root["weatherMeasurementSystem"] = state_.weatherMeasurementSystem;
+        root["weatherCustomUnits"] = normalizeWeatherCustomUnits(state_.weatherCustomUnits);
         return root;
     }
 
@@ -247,7 +312,56 @@ Core principles:
     }
 
 public:
-    explicit Config(const std::string& path) : settingsPath_(path) {}
+    static Json::Value normalizeWeatherCustomUnits(const Json::Value& value) {
+        Json::Value units(Json::objectValue);
+        units["temperature"] = "celsius";
+        units["windSpeed"] = "kmh";
+        units["precipitation"] = "mm";
+
+        if (!value.isObject()) {
+            return units;
+        }
+
+        const std::string temperature = value.get("temperature", units["temperature"]).asString();
+        if (temperature == "celsius" || temperature == "fahrenheit") {
+            units["temperature"] = temperature;
+        }
+
+        const std::string windSpeed = value.get("windSpeed", units["windSpeed"]).asString();
+        if (windSpeed == "kmh" || windSpeed == "ms" || windSpeed == "mph" || windSpeed == "kn") {
+            units["windSpeed"] = windSpeed;
+        }
+
+        const std::string precipitation = value.get("precipitation", units["precipitation"]).asString();
+        if (precipitation == "mm" || precipitation == "inch") {
+            units["precipitation"] = precipitation;
+        }
+
+        return units;
+    }
+
+    static std::string normalizeAiToolsDefaultWorkingDirectory(const std::string& value) {
+        const std::string trimmed = trimCopy(value);
+        const std::string expanded = expandHomeDirectoryPrefix(trimmed);
+        std::filesystem::path path = expanded.empty()
+            ? std::filesystem::path(homeDirectoryPath())
+            : std::filesystem::path(expanded);
+
+        std::error_code ec;
+        if (path.is_relative()) {
+            const std::filesystem::path absolutePath = std::filesystem::absolute(path, ec);
+            if (!ec) {
+                path = absolutePath;
+            }
+        }
+
+        return path.lexically_normal().string();
+    }
+
+    explicit Config(const std::string& path) : settingsPath_(path) {
+        state_.aiToolsDefaultWorkingDirectory = normalizeAiToolsDefaultWorkingDirectory("");
+        state_.weatherCustomUnits = normalizeWeatherCustomUnits(Json::Value(Json::objectValue));
+    }
 
     void load() {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -457,6 +571,26 @@ public:
     std::string getAiTitleSystemPrompt() {
         std::lock_guard<std::mutex> lock(mutex_);
         return state_.aiTitleSystemPrompt;
+    }
+
+    std::string getAiToolsDefaultWorkingDirectory() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.aiToolsDefaultWorkingDirectory;
+    }
+
+    std::string getWeatherLocation() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.weatherLocation;
+    }
+
+    std::string getWeatherMeasurementSystem() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return state_.weatherMeasurementSystem;
+    }
+
+    Json::Value getWeatherCustomUnits() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return normalizeWeatherCustomUnits(state_.weatherCustomUnits);
     }
 
     bool getLlamacppConcurrentGeneration() {

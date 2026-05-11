@@ -193,10 +193,16 @@
 .md-comment { color: var(--muted); font-style: italic; }
 
 /* Tables */
+.md-table-wrapper {
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 0.75em 0;
+}
+
 .md-table {
     width: 100%;
     border-collapse: collapse;
-    margin: 0.75em 0;
+    margin: 0;
     font-size: 0.9em;
     border: 1px solid var(--border);
     border-radius: var(--radius-none, 0);

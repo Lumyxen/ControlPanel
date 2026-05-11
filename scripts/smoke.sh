@@ -222,6 +222,13 @@ assert.equal(historyWithLogprobs.includes('MEDIUM='), false);
 const markdownCss = readFileSync('./www/css/pages/chat/markdown.css', 'utf8');
 assert.match(markdownCss, /\.md-link\s*\{[^}]*border-bottom:\s*none;/s);
 assert.match(markdownCss, /\.md-link:hover\s*\{[^}]*border-bottom:\s*none;/s);
+assert.match(markdownCss, /\.md-table-wrapper\s*\{[^}]*overflow-x:\s*auto;/s);
+
+const adjacentTableHtml = renderMessageTextHtml('Daily Outlook:\n| Date | Conditions |\n| :--- | :--- |\n| May 11 | Clear |');
+assert.match(adjacentTableHtml, /<p class="md-paragraph">Daily Outlook:<\/p>/);
+assert.match(adjacentTableHtml, /<table class="md-table">/);
+assert.match(adjacentTableHtml, /<th class="md-table-header" align="left">Date<\/th>/);
+assert.match(adjacentTableHtml, /<td class="md-table-cell" align="left">Clear<\/td>/);
 
 const tokenHighlightingCss = readFileSync('./www/css/components/content/token-highlighting.css', 'utf8');
 assert.match(tokenHighlightingCss, /\.token-logprob-tooltip\s*\{/);

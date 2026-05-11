@@ -1003,7 +1003,8 @@ int ServerApp::run() {
                 paths.mcpConfigPath.string(),
                 (paths.dataDir / "web-search").string(),
             },
-            &registry);
+            &registry,
+            &config);
         toolSystem->initialize();
 
         auto llamaService = std::make_unique<LlamaCppService>(paths.modelsDir.string(), paths.libsDir.string(), config);

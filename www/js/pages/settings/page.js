@@ -836,6 +836,7 @@ function initSettingsPage(root) {
 	const cached = SettingsStore.get();
 	if (cached) {
 		aiSection.populate(cached);
+		toolsSection.populate(cached);
 		llamacppSection.populate(cached);
 		securitySection.populate(cached);
 		vaultPinSection.populate(cached);
@@ -956,11 +957,12 @@ function initSettingsPage(root) {
 		loadAppBackendStatus(root).catch(() => {});
 	}, 5000);
 
-	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#chat-response-mode-fast','#chat-response-mode-live','#message-timestamps-24-hour','#system-prompt-input','#lmstudio-url-input','#llamacpp-flash-attn','#llamacpp-kv-cache-reuse','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-parallel-slots','#llamacpp-max-loaded-models','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty','#llamacpp-keep-alive-slider','#llamacpp-kv-cache-type','#llamacpp-concurrent-generation','#ai-title-enabled','#ai-title-model-input','#ai-title-system-prompt-input','#panel-login-rate-limit','#vault-login-rate-limit','#vault-idle-timeout'];
+	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#chat-response-mode-fast','#chat-response-mode-live','#message-timestamps-24-hour','#system-prompt-input','#lmstudio-url-input','#ai-tools-working-directory-input','#weather-location-input','#weather-measurement-system','#weather-unit-temperature','#weather-unit-wind-speed','#weather-unit-precipitation','#llamacpp-flash-attn','#llamacpp-kv-cache-reuse','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-parallel-slots','#llamacpp-max-loaded-models','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty','#llamacpp-keep-alive-slider','#llamacpp-kv-cache-type','#llamacpp-concurrent-generation','#ai-title-enabled','#ai-title-model-input','#ai-title-system-prompt-input','#panel-login-rate-limit','#vault-login-rate-limit','#vault-idle-timeout'];
 	const unsub = SettingsStore.subscribe((s) => {
 		const focused = document.activeElement;
 		if (!watchedFields.some(sel => root.querySelector(sel) === focused)) {
 			aiSection.populate(s);
+			toolsSection.populate(s);
 			llamacppSection.populate(s);
 			securitySection.populate(s);
 			vaultPinSection.populate(s);
@@ -986,6 +988,30 @@ function initSettingsPage(root) {
 			} catch (err) {
 				if (statusEl) { statusEl.textContent = 'Error: ' + err.message; statusEl.style.color = 'var(--red,red)'; }
 			} finally { saveBtn.disabled = false; }
+		});
+	}
+
+	const saveToolSettingsBtn = root.querySelector('#save-tool-settings');
+	const toolSettingsStatus = root.querySelector('#tool-settings-status');
+	if (saveToolSettingsBtn) {
+		saveToolSettingsBtn.addEventListener('click', async () => {
+			saveToolSettingsBtn.disabled = true;
+			if (toolSettingsStatus) { toolSettingsStatus.textContent = 'Saving...'; toolSettingsStatus.style.color = ''; }
+			try {
+				await SettingsStore.save(toolsSection.read());
+				if (toolSettingsStatus) {
+					toolSettingsStatus.textContent = 'Saved.';
+					toolSettingsStatus.style.color = 'var(--green,green)';
+					setTimeout(() => { toolSettingsStatus.textContent = ''; }, 3000);
+				}
+			} catch (err) {
+				if (toolSettingsStatus) {
+					toolSettingsStatus.textContent = 'Error: ' + err.message;
+					toolSettingsStatus.style.color = 'var(--red,red)';
+				}
+			} finally {
+				saveToolSettingsBtn.disabled = false;
+			}
 		});
 	}
 
@@ -1112,6 +1138,7 @@ function initSettingsPage(root) {
 	if (!SettingsStore.get()) {
 		SettingsStore.init().then((s) => {
 			aiSection.populate(s);
+			toolsSection.populate(s);
 			llamacppSection.populate(s);
 			securitySection.populate(s);
 			vaultPinSection.populate(s);

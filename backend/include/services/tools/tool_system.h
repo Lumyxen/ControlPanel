@@ -8,6 +8,7 @@
 #include <json/json.h>
 
 class McpRegistry;
+class Config;
 
 class ToolSystem {
 public:
@@ -34,7 +35,7 @@ public:
         Json::Value toolCall = Json::Value(Json::objectValue);
     };
 
-    ToolSystem(const RuntimePaths& paths, McpRegistry* mcpRegistry = nullptr);
+    ToolSystem(const RuntimePaths& paths, McpRegistry* mcpRegistry = nullptr, Config* config = nullptr);
     ~ToolSystem();
 
     ToolSystem(const ToolSystem&) = delete;

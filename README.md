@@ -83,7 +83,7 @@ The bundled `websearch` pack stores its crawl/index state under `data/web-search
 - `search_status` for index, queue, and worker health
 
 The bundled `file_reader` pack exposes a `read_file` tool for reading bounded exact-text slices from local text files by path, including document versions, EOL state, and compact line metadata for targeted follow-up edits.
-The bundled `filesystem` pack exposes tools for listing directories, rendering bounded directory trees, inspecting/changing the AI tool working directory, and checkpointed file editing with version-guarded range, line, and whole-file operations.
+The bundled `filesystem` pack exposes tools for listing directories, rendering bounded directory trees, inspecting/changing the AI tool working directory, and checkpointed file editing with version-guarded range, line, and whole-file operations. New tool sessions start in the configured default AI working directory, which defaults to the user's home directory.
 
 The backend watches `settings.json`, `mcp.json`, `tooling.json`, and tool-pack manifests for changes. The Settings page also polls for external `settings.json` edits so updates show up without restarting the server.
 
@@ -101,6 +101,7 @@ Representative `data/settings.json` keys:
     "logprobHighlightLow": true,
     "messageTimestamps24Hour": true,
     "aiTitleEnabled": true,
+    "aiToolsDefaultWorkingDirectory": "/home/alice",
     "panelLoginRateLimitPerMinute": 5,
     "vaultLoginRateLimitPerMinute": 5,
     "vaultIdleTimeoutSeconds": 300,

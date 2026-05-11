@@ -392,6 +392,20 @@ function tryParseTable(src) {
 	return { header, align, cells, consumed };
 }
 
+function findInterruptingTableOffset(block) {
+	const lines = block.split('\n');
+	let offset = 0;
+
+	for (let i = 0; i < lines.length - 2; i++) {
+		if (i > 0 && tryParseTable(lines.slice(i).join('\n'))) {
+			return offset;
+		}
+		offset += lines[i].length + 1;
+	}
+
+	return -1;
+}
+
 function tryParseDefList(src) {
 	const lines = src.split('\n');
 	if (lines.length < 2) return null;
@@ -633,11 +647,13 @@ function tokenize(src) {
 
 		const paraMatch = src.match(/^([^\n]+(?:\n(?! {0,3}#{1,6}\s| {0,3}>| {0,3}[-*+]| {0,3}\d+\.| {0,3}`{3}| {0,3}~{3}| {0,3}[*_-]{3,}|\n)[^\n]+)*)/);
 		if (paraMatch) {
-			const text = paraMatch[1].trim();
+			const tableOffset = findInterruptingTableOffset(paraMatch[1]);
+			const paragraphBlock = tableOffset > 0 ? paraMatch[1].slice(0, tableOffset) : paraMatch[1];
+			const text = paragraphBlock.trim();
 			if (text) {
 				tokens.push({ type: 'paragraph', text });
 			}
-			src = src.substring(paraMatch[0].length);
+			src = src.substring(tableOffset > 0 ? tableOffset : paraMatch[0].length);
 			continue;
 		}
 

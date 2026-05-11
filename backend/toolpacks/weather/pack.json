@@ -1,0 +1,8 @@
+{
+    "id": "weather",
+    "title": "Weather",
+    "version": "1",
+    "description": "Read-only location-aware weather forecasts and historical weather lookups using the user's configured location and measurement units.",
+    "sourceType": "system",
+    "defaultEnabled": true
+}
