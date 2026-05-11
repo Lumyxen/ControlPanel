@@ -1,0 +1,50 @@
+{
+    "id": "run_command",
+    "title": "Run CLI Command",
+    "description": "Run a bounded shell command inside a bubblewrap sandbox rooted at the active AI working directory. Read-only inspection commands run automatically; touchy or mutating operations such as rm, redirects, chmod, mv, git reset, and network-enabled commands require approval first.",
+    "executor": "native",
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "command": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000,
+                "description": "Shell command to run from the active AI working directory inside the sandbox."
+            },
+            "timeout_ms": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 60000,
+                "description": "Maximum runtime in milliseconds. Defaults to 15000."
+            },
+            "max_output_chars": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 200000,
+                "description": "Maximum combined stdout/stderr characters to retain before stopping the command. Defaults to 20000."
+            },
+            "allow_network": {
+                "type": "boolean",
+                "description": "Allow network access inside the sandbox. Defaults to false and always requires approval when true."
+            }
+        },
+        "required": ["command"]
+    },
+    "selection": {
+        "summary": "Run sandboxed shell commands from the current AI working directory with approval for risky operations.",
+        "tags": ["cli", "shell", "terminal", "command", "sandbox", "bash", "workspace"],
+        "whenToUse": "Use when the task needs local command output such as listing, build/test status, git inspection, code search, or other bounded shell diagnostics from the active workspace. Change the working directory first when relative command paths should run somewhere else.",
+        "whenNotToUse": "Do not use for file edits that fit the filesystem edit tool, long-running services, interactive programs, unsandboxed host access, or network commands unless the user approves network access."
+    },
+    "policy": {
+        "riskTier": "write",
+        "approvalMode": "conditional",
+        "network": false,
+        "idempotent": false
+    },
+    "native": {
+        "handler": "cli_run_command"
+    }
+}

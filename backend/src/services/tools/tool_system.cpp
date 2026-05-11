@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "services/tools/assistant_workspace_tool.h"
 #include "services/tools/calculator_tool.h"
+#include "services/tools/cli_tool.h"
 #include "services/tools/file_edit_tool.h"
 #include "services/tools/file_reader_tool.h"
 #include "services/tools/filesystem_tool.h"
@@ -402,6 +403,8 @@ struct ApprovalRequestState {
     std::string packId;
     std::string executor;
     std::string riskTier;
+    std::string reason;
+    Json::Value details = Json::Value(Json::objectValue);
     Json::Value input = Json::Value(Json::objectValue);
     Json::Int64 createdAt = nowMillis();
     Json::Int64 resolvedAt = 0;
@@ -410,6 +413,13 @@ struct ApprovalRequestState {
 
     mutable std::mutex mutex;
     std::condition_variable cv;
+};
+
+struct ApprovalDecision {
+    bool requiresApproval = false;
+    std::string riskTier;
+    std::string reason;
+    Json::Value details = Json::Value(Json::objectValue);
 };
 
 struct ToolDefinition {
@@ -507,6 +517,8 @@ public:
         const std::string workspaceRoot = getStringArg(sandboxConfig, "workspaceRoot");
         const bool allowNetwork = getBoolArg(sandboxConfig, "allowNetwork", false);
         const int timeoutMs = std::max(1000, getIntArg(sandboxConfig, "timeoutMs", 15000));
+        const std::size_t maxOutputBytes = static_cast<std::size_t>(
+            std::clamp(getIntArg(sandboxConfig, "maxOutputBytes", 200000), 1000, 1000000));
 
         fs::path tempDir;
         try {
@@ -626,6 +638,7 @@ public:
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
         bool stdoutOpen = true;
         bool stderrOpen = true;
+        bool outputLimitExceeded = false;
         int status = 0;
         while (stdoutOpen || stderrOpen) {
             fd_set readSet;
@@ -659,12 +672,25 @@ public:
                 break;
             }
 
-            auto drainPipe = [](int fd, bool& open, std::string& output) {
+            auto drainPipe = [&](int fd, bool& open, std::string& output) {
                 char buffer[4096];
                 for (;;) {
                     const ssize_t bytes = read(fd, buffer, sizeof(buffer));
                     if (bytes > 0) {
-                        output.append(buffer, static_cast<std::size_t>(bytes));
+                        const std::size_t totalOutput = result.stdoutText.size() + result.stderrText.size();
+                        const std::size_t remaining = maxOutputBytes > totalOutput ? maxOutputBytes - totalOutput : 0;
+                        const std::size_t chunkSize = static_cast<std::size_t>(bytes);
+                        if (chunkSize > remaining) {
+                            if (remaining > 0) {
+                                output.append(buffer, remaining);
+                            }
+                            outputLimitExceeded = true;
+                            result.error = "Sandbox command exceeded output limit";
+                            kill(pid, SIGKILL);
+                            open = false;
+                            return;
+                        }
+                        output.append(buffer, chunkSize);
                         continue;
                     }
                     if (bytes == 0) {
@@ -680,6 +706,9 @@ public:
             if (stderrOpen && FD_ISSET(stderrPipe[0], &readSet)) {
                 drainPipe(stderrPipe[0], stderrOpen, result.stderrText);
             }
+            if (outputLimitExceeded) {
+                break;
+            }
 
             const pid_t waitResult = waitpid(pid, &status, WNOHANG);
             if (waitResult == pid && !stdoutOpen && !stderrOpen) {
@@ -691,6 +720,15 @@ public:
         close(stdoutPipe[0]);
         close(stderrPipe[0]);
         fs::remove_all(tempDir);
+
+        if (outputLimitExceeded) {
+            result.exitCode = 124;
+            result.success = false;
+            if (result.error.empty()) {
+                result.error = "Sandbox command exceeded output limit";
+            }
+            return result;
+        }
 
         if (result.timedOut) {
             result.exitCode = 124;
@@ -1562,12 +1600,39 @@ struct ToolSystem::Impl {
         json["packId"] = approval.packId;
         json["executor"] = approval.executor;
         json["riskTier"] = approval.riskTier;
+        json["reason"] = approval.reason;
+        json["details"] = approval.details;
         json["input"] = approval.input;
         json["status"] = approvalStatusToString(approval.status);
         json["note"] = approval.note;
         json["createdAt"] = approval.createdAt;
         json["resolvedAt"] = approval.resolvedAt;
         return json;
+    }
+
+    ApprovalDecision approvalDecision(const ToolDefinition& tool, const Json::Value& args) const {
+        ApprovalDecision decision;
+        const std::string approvalMode = tool.policy.get("approvalMode", "auto").asString();
+        decision.riskTier = tool.policy.get("riskTier", "read").asString();
+
+        if (approvalMode == "prompt") {
+            decision.requiresApproval = true;
+            return decision;
+        }
+
+        if (approvalMode != "conditional") {
+            return decision;
+        }
+
+        if (tool.executor == "native" && getStringArg(tool.config["native"], "handler") == "cli_run_command") {
+            const cli_tool::RiskAssessment assessment = cli_tool::assessRisk(args);
+            decision.requiresApproval = assessment.requiresApproval;
+            decision.riskTier = assessment.riskTier;
+            decision.reason = assessment.reason;
+            decision.details = assessment.toJson();
+        }
+
+        return decision;
     }
 
     Json::Value makeToolEvent(
@@ -1640,6 +1705,7 @@ struct ToolSystem::Impl {
                 handler.rfind("draft_editor_", 0) == 0 ||
                 handler == "calculator_calculate" ||
                 handler == "calculator_calculate_batch" ||
+                handler == "cli_run_command" ||
                 handler == "assistant_workspace_chat_notes" ||
                 handler == "assistant_workspace_todo_list" ||
                 handler == "file_reader_read_file" ||
@@ -1844,6 +1910,10 @@ struct ToolSystem::Impl {
             return parsed;
         }
 
+        if (handler == "cli_run_command") {
+            return executeCliRunCommand(session, args);
+        }
+
         if (handler == "assistant_workspace_chat_notes") {
             return assistant_workspace_tool::manageChatNotes(args, assistantWorkspaceRoot(), session.chatId);
         }
@@ -2030,6 +2100,51 @@ struct ToolSystem::Impl {
         if (!sandboxResult.error.empty()) {
             result["error"] = sandboxResult.error;
         }
+        return result;
+    }
+
+    Json::Value executeCliRunCommand(const ToolSession& session, const Json::Value& args) {
+        const std::string command = trimCopy(getStringArg(args, "command"));
+        if (command.empty()) {
+            return makeToolErrorResult("command is required");
+        }
+
+        Json::Value sandboxConfig(Json::objectValue);
+        sandboxConfig["command"] = command;
+        sandboxConfig["workspaceRoot"] = session.workingDirectory;
+        sandboxConfig["allowNetwork"] = getBoolArg(args, "allow_network", false);
+        sandboxConfig["timeoutMs"] = std::clamp(getIntArg(args, "timeout_ms", 15000), 1000, 60000);
+        sandboxConfig["maxOutputBytes"] = std::clamp(getIntArg(args, "max_output_chars", 20000), 1000, 200000);
+
+        const SandboxResult sandboxResult = sandbox.execute(sandboxConfig, Json::Value(Json::objectValue));
+        const cli_tool::RiskAssessment riskAssessment = cli_tool::assessRisk(args);
+
+        Json::Value result(Json::objectValue);
+        result["success"] = sandboxResult.success;
+        result["sandboxed"] = true;
+        result["command"] = command;
+        result["working_directory"] = session.workingDirectory;
+        result["network_enabled"] = sandboxConfig["allowNetwork"];
+        result["exit_code"] = sandboxResult.exitCode;
+        result["timed_out"] = sandboxResult.timedOut;
+        result["stdout"] = sandboxResult.stdoutText;
+        result["stderr"] = sandboxResult.stderrText;
+        result["risk_assessment"] = riskAssessment.toJson();
+
+        if (sandboxResult.success) {
+            if (!sandboxResult.stdoutText.empty()) {
+                result["output"] = sandboxResult.stdoutText;
+            } else if (!sandboxResult.stderrText.empty()) {
+                result["output"] = sandboxResult.stderrText;
+            } else {
+                result["output"] = "Command completed with no output.";
+            }
+            return result;
+        }
+
+        result["error"] = sandboxResult.error.empty()
+            ? "Command exited with code " + std::to_string(sandboxResult.exitCode)
+            : sandboxResult.error;
         return result;
     }
 
@@ -2331,7 +2446,8 @@ bool ToolSystem::requiresApproval(const std::string& taskId, const std::string& 
     if (!toolOpt.has_value()) {
         return false;
     }
-    return toolOpt->policy.get("approvalMode", "auto").asString() == "prompt";
+    const std::string approvalMode = toolOpt->policy.get("approvalMode", "auto").asString();
+    return approvalMode == "prompt" || approvalMode == "conditional";
 }
 
 ToolSystem::ExecutionResult ToolSystem::executeToolCall(
@@ -2426,7 +2542,18 @@ ToolSystem::ExecutionResult ToolSystem::executeToolCall(
         return success;
     };
 
-    const bool needsApproval = tool.policy.get("approvalMode", "auto").asString() == "prompt";
+    const ApprovalDecision approvalDecision = impl_->approvalDecision(tool, arguments);
+    if (!approvalDecision.riskTier.empty()) {
+        toolCall["riskTier"] = approvalDecision.riskTier;
+    }
+    if (!approvalDecision.reason.empty()) {
+        toolCall["approvalReason"] = approvalDecision.reason;
+    }
+    if (approvalDecision.details.isObject() && !approvalDecision.details.empty()) {
+        toolCall["approvalDetails"] = approvalDecision.details;
+    }
+
+    const bool needsApproval = approvalDecision.requiresApproval;
     if (needsApproval) {
         if (const auto preflightResult = impl_->preflightToolCall(*sessionPtr, tool, arguments); preflightResult.has_value()) {
             return finishWithRawResult(*preflightResult);
@@ -2441,7 +2568,11 @@ ToolSystem::ExecutionResult ToolSystem::executeToolCall(
         approval->title = tool.title;
         approval->packId = tool.packId;
         approval->executor = tool.executor;
-        approval->riskTier = tool.policy.get("riskTier", "read").asString();
+        approval->riskTier = approvalDecision.riskTier.empty()
+            ? tool.policy.get("riskTier", "read").asString()
+            : approvalDecision.riskTier;
+        approval->reason = approvalDecision.reason;
+        approval->details = approvalDecision.details;
         approval->input = arguments;
         {
             std::lock_guard<std::mutex> lock(impl_->mutex);
@@ -2451,6 +2582,8 @@ ToolSystem::ExecutionResult ToolSystem::executeToolCall(
         toolCall["status"] = "waiting_approval";
         toolCall["approval"]["id"] = approval->id;
         toolCall["approval"]["status"] = "pending";
+        toolCall["approval"]["reason"] = approval->reason;
+        toolCall["approval"]["details"] = approval->details;
         if (emitEvent) {
             emitEvent(impl_->makeToolEvent("approval_required", toolCall));
         }

@@ -179,6 +179,7 @@ set(SOURCES
     src/services/mcp_registry.cpp
     src/services/tools/assistant_workspace_tool.cpp
     src/services/tools/calculator_tool.cpp
+    src/services/tools/cli_tool.cpp
     src/services/tools/file_edit_tool.cpp
     src/services/tools/file_reader_tool.cpp
     src/services/tools/filesystem_tool.cpp
@@ -288,6 +289,7 @@ if(NOT CMAKE_CROSSCOMPILING)
         src/services/tools/tool_system.cpp
         src/services/tools/assistant_workspace_tool.cpp
         src/services/tools/calculator_tool.cpp
+        src/services/tools/cli_tool.cpp
         src/services/tools/file_edit_tool.cpp
         src/services/tools/file_reader_tool.cpp
         src/services/tools/filesystem_tool.cpp

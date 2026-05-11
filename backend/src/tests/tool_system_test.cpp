@@ -1,4 +1,5 @@
 #include "config/config.h"
+#include "services/tools/cli_tool.h"
 #include "services/tools/file_reader_tool.h"
 #include "services/tools/tool_system.h"
 
@@ -175,6 +176,38 @@ void installAssistantWorkspacePack(const fs::path& root) {
         makeTool("todo_list", "TODO List", "assistant_workspace_todo_list"));
 }
 
+void installCliPack(const fs::path& root) {
+    Json::Value pack(Json::objectValue);
+    pack["id"] = "cli";
+    pack["title"] = "Sandboxed CLI";
+    pack["version"] = "test";
+    pack["description"] = "Test CLI pack";
+    pack["sourceType"] = "system";
+    pack["defaultEnabled"] = false;
+    writeJsonFile(root / "cli" / "pack.json", pack);
+
+    Json::Value tool(Json::objectValue);
+    tool["id"] = "run_command";
+    tool["title"] = "Run CLI Command";
+    tool["description"] = "Run a sandboxed shell command";
+    tool["executor"] = "native";
+    tool["alwaysVisible"] = true;
+    tool["inputSchema"]["type"] = "object";
+    tool["inputSchema"]["additionalProperties"] = true;
+    tool["inputSchema"]["required"] = Json::Value(Json::arrayValue);
+    tool["inputSchema"]["required"].append("command");
+    tool["selection"]["summary"] = "Run sandboxed shell commands";
+    tool["selection"]["tags"] = Json::Value(Json::arrayValue);
+    tool["selection"]["whenToUse"] = "Use for tests";
+    tool["selection"]["whenNotToUse"] = "Do not use outside tests";
+    tool["policy"]["riskTier"] = "write";
+    tool["policy"]["approvalMode"] = "conditional";
+    tool["policy"]["network"] = false;
+    tool["policy"]["idempotent"] = false;
+    tool["native"]["handler"] = "cli_run_command";
+    writeJsonFile(root / "cli" / "tools" / "run_command.json", tool);
+}
+
 ToolSystem::RuntimePaths makeRuntimePaths(const fs::path& systemPackRoot, const fs::path& dataRoot) {
     ToolSystem::RuntimePaths paths;
     paths.systemPackRoot = systemPackRoot.string();
@@ -199,6 +232,12 @@ Json::Value localEcosystemScope() {
 Json::Value assistantWorkspaceScope() {
     Json::Value scope(Json::objectValue);
     scope["enabledPackIds"].append("assistant_workspace");
+    return scope;
+}
+
+Json::Value cliScope() {
+    Json::Value scope(Json::objectValue);
+    scope["enabledPackIds"].append("cli");
     return scope;
 }
 
@@ -505,6 +544,99 @@ void testAssistantWorkspacePersistsPerChat() {
     toolSystem.endTaskSession("task_workspace_isolated");
 }
 
+void testCliRiskAssessment() {
+    Json::Value args(Json::objectValue);
+    args["command"] = "ls -la";
+    cli_tool::RiskAssessment assessment = cli_tool::assessRisk(args);
+    expect(!assessment.requiresApproval, "read-only ls should not require approval");
+    expect(assessment.riskTier == "read", "read-only ls should stay read risk");
+
+    args["command"] = "grep rm TODO.md";
+    assessment = cli_tool::assessRisk(args);
+    expect(!assessment.requiresApproval, "rm as a grep argument should not require approval");
+
+    args["command"] = "rm -rf build";
+    assessment = cli_tool::assessRisk(args);
+    expect(assessment.requiresApproval, "rm should require approval");
+    expect(assessment.riskTier == "destructive", "rm should be destructive risk");
+
+    args["command"] = "sh -c \"rm -f scratch.txt\"";
+    assessment = cli_tool::assessRisk(args);
+    expect(assessment.requiresApproval, "rm inside sh -c should require approval");
+
+    args["command"] = "find . -name '*.tmp' -delete";
+    assessment = cli_tool::assessRisk(args);
+    expect(assessment.requiresApproval, "find -delete should require approval");
+
+    args["command"] = "printf '%s\\0' target.txt | xargs -0 -n 1 rm";
+    assessment = cli_tool::assessRisk(args);
+    expect(assessment.requiresApproval, "xargs rm should require approval");
+
+    args["command"] = "printf hello > out.txt";
+    assessment = cli_tool::assessRisk(args);
+    expect(assessment.requiresApproval, "output redirection should require approval");
+    expect(assessment.riskTier == "write", "output redirection should be write risk");
+
+    args["command"] = "pwd";
+    args["allow_network"] = true;
+    assessment = cli_tool::assessRisk(args);
+    expect(assessment.requiresApproval, "network-enabled CLI commands should require approval");
+}
+
+void testCliTouchyCommandRequestsApprovalBeforeExecution() {
+    ScopedDir temp;
+    const fs::path packRoot = temp.path() / "packs";
+    const fs::path dataRoot = temp.path() / "data";
+    installCliPack(packRoot);
+    writeFile(temp.path() / "target.txt", "keep\n");
+
+    Config config((dataRoot / "settings.json").string());
+    config.load();
+    setDefaultWorkingDirectory(config, temp.path());
+    ToolSystem toolSystem(makeRuntimePaths(packRoot, dataRoot), nullptr, &config);
+    toolSystem.initialize();
+
+    const Json::Value sandboxHealth = toolSystem.getSandboxHealth();
+    if (!sandboxHealth.get("available", false).asBool()) {
+        return;
+    }
+
+    ToolSystem::SessionOptions options;
+    options.taskId = "task_cli_approval";
+    options.toolScope = cliScope();
+    toolSystem.beginTaskSession(options);
+
+    Json::Value args(Json::objectValue);
+    args["command"] = "rm target.txt";
+
+    bool sawApproval = false;
+    const ToolSystem::ExecutionResult result = toolSystem.executeToolCall(
+        "task_cli_approval",
+        "cli__run_command",
+        "call_cli_rm",
+        args,
+        [&](const Json::Value& event) {
+            if (event.get("event", "").asString() == "approval_required") {
+                sawApproval = true;
+            }
+            return true;
+        },
+        [&]() {
+            return sawApproval;
+        });
+
+    expect(sawApproval, "rm command should emit an approval_required event");
+    expect(!result.success, "cancelled approval should not execute successfully");
+    expect(result.toolCall.get("status", "").asString() == "cancelled", "approval cancel should cancel the tool call");
+    expect(fs::exists(temp.path() / "target.txt"), "rm command should not run before approval");
+
+    const Json::Value approvals = toolSystem.listApprovals("task_cli_approval");
+    expect(!approvals.empty(), "approval record should be stored");
+    expect(approvals[0].get("riskTier", "").asString() == "destructive", "approval should carry destructive risk");
+
+    toolSystem.endTaskSession("task_cli_approval");
+}
+
 } // namespace
 
 int main() {
@@ -514,6 +646,8 @@ int main() {
         testRevisionModeActivatesDraftEditor();
         testLocalEcosystemInspectionCompletes();
         testAssistantWorkspacePersistsPerChat();
+        testCliRiskAssessment();
+        testCliTouchyCommandRequestsApprovalBeforeExecution();
         return 0;
     } catch (const std::exception& exception) {
         std::cerr << "tool_system_test failed: " << exception.what() << "\n";

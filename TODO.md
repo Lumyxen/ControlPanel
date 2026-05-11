@@ -46,22 +46,19 @@
   - [x] Restrained to set workspace directory
   - [x] Remote editing, so for example, it could work on a project on duyfken despite running on skidbladnir
   - [x] Checkpoints before each AI file edit to keep edits reversible
-- [ ] Sandboxed CLI tool
-  - [ ] Approval gate for touchy commands like `rm`
+- [x] Sandboxed CLI tool
+  - [x] Approval gate for touchy commands like `rm`
 - [ ] Headless browser tool
-- [ ] Tool discovery/search agent tool
-  - [ ] Use when the model wants to preserve context window space and avoid exposing tools it will not use
 - [ ] Fact-checking AI tool
-- [ ] GitHub repo viewer tool
 - [x] Personal per-chat notes tool
   - [x] Capability for easy planning for the AI
 - [x] TODO list tool for the AI
-- [ ] Local ecosystem inspection tool
-  - [ ] OS type & version
-  - [ ] OS age
-  - [ ] Hardware
-  - [ ] Kernel version
-  - [ ] Software stuff
+- [x] Local ecosystem inspection tool
+  - [x] OS type & version
+  - [x] OS age
+  - [x] Hardware
+  - [x] Kernel version
+  - [x] Software stuff
 - [ ] Summarise tool
 - [ ] Deep research tool
 - [ ] Internet testing tool

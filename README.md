@@ -4,7 +4,7 @@ A highly personal web interface to give me the information and tools I need all 
 ## Features
 - Password-gated local web UI with encrypted stored chat data, bearer-authenticated APIs, a zero-knowledge secondary password vault, and a bundled Firefox password-fill extension
 - AI chat harness with threaded chats, background task streaming, exact context metering, inline tool-call rendering, settings, themes, and model management
-- Supports LM Studio, built-in `llama-server` backends from llama.cpp, HuggingFace GGUF downloads, and a schema-first tool system with pack discovery, approvals, MCP bridging, and bundled calculator, web-search, file-reading, filesystem, weather, and assistant-workspace packs
+- Supports LM Studio, built-in `llama-server` backends from llama.cpp, HuggingFace GGUF downloads, and a schema-first tool system with pack discovery, approvals, MCP bridging, and bundled calculator, web-search, file-reading, filesystem, sandboxed CLI, weather, and assistant-workspace packs
 - Detailed shipped feature breakdown: [FEATURES.md](FEATURES.md)
 
 ## Installation
@@ -68,7 +68,7 @@ The app creates runtime state next to the binary on first start:
 - `data/chats/`, `data/models/`, `data/libs/`, `data/logs/`, `data/build-cache/`, `data/web-search/`, and `data/assistant-workspace/`
 - `toolpacks/` for system packs and `data/toolpacks/` for user packs
 
-Fresh installs bundle system `calculator`, `websearch`, `file_reader`, `filesystem`, `weather`, `local_ecosystem`, and `assistant_workspace` packs in `toolpacks/`, alongside the synthetic internal control-plane pack used for deferred tool discovery and schema loading.
+Fresh installs bundle system `calculator`, `websearch`, `file_reader`, `filesystem`, `cli`, `weather`, `local_ecosystem`, and `assistant_workspace` packs in `toolpacks/`, alongside the synthetic internal control-plane pack used for deferred tool discovery and schema loading.
 Bundled source packs live under `backend/toolpacks/`, are embedded into the backend binary at build time, and are synced into runtime `toolpacks/` on startup.
 
 The authenticated frontend is restricted to the exact origin `http://127.0.0.1:8080`. Protected `/api/*` and `/mcp` requests are rejected unless `Origin` or `Referer` resolve to that exact frontend base URL. Firefox extension vault routes under `/api/extension/*` are accepted only from `moz-extension://` origins or extension-marked requests. `/health` remains exempt for local startup and smoke checks.
@@ -84,6 +84,7 @@ The bundled `websearch` pack stores its crawl/index state under `data/web-search
 
 The bundled `file_reader` pack exposes a `read_file` tool for reading bounded exact-text slices from local text files by path, including document versions, EOL state, and compact line metadata for targeted follow-up edits.
 The bundled `filesystem` pack exposes tools for listing directories, rendering bounded directory trees, inspecting/changing the AI tool working directory, and checkpointed file editing with version-guarded range, line, and whole-file operations. New tool sessions start in the configured default AI working directory, which defaults to the user's home directory.
+The bundled `cli` pack exposes a sandboxed `run_command` tool rooted at the active AI working directory, with automatic approval prompts for touchy commands such as `rm`, output redirects, metadata changes, destructive git operations, and network-enabled runs.
 The bundled `assistant_workspace` pack stores per-chat assistant notes and TODO lists under `data/assistant-workspace/`; it exposes `chat_notes` for durable notes and quick `set_plan` planning, plus `todo_list` for chat-scoped task tracking.
 
 The backend watches `settings.json`, `mcp.json`, `tooling.json`, and tool-pack manifests for changes. The Settings page also polls for external `settings.json` edits so updates show up without restarting the server.
