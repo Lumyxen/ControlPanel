@@ -405,6 +405,7 @@ void handleStreaming(
     if (toolSystem) {
         ToolSystem::SessionOptions options;
         options.taskId = toolSessionId;
+        options.chatId = body.get("chat_id", "").asString();
         options.toolScope = toolScope;
         options.legacyTools = tools;
         toolSystem->beginTaskSession(options);

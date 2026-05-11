@@ -1,0 +1,91 @@
+{
+    "id": "todo_list",
+    "title": "TODO List",
+    "description": "Manage a durable TODO list scoped to the current chat for assistant task tracking, execution plans, and progress updates.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["list", "add", "update", "delete", "clear", "clear_completed", "replace_all"],
+                "description": "list returns TODOs. add creates one item. update modifies one item. delete removes one item. clear removes all items or items matching status. clear_completed removes done/cancelled items. replace_all replaces the full TODO list from items."
+            },
+            "item_id": {
+                "type": "string",
+                "description": "Required for update and delete."
+            },
+            "title": {
+                "type": "string",
+                "description": "TODO title. Required for add, optional for update."
+            },
+            "details": {
+                "type": "string",
+                "description": "Optional TODO details."
+            },
+            "status": {
+                "type": "string",
+                "enum": ["pending", "in_progress", "done", "cancelled"],
+                "description": "TODO status for update, or a list/clear filter."
+            },
+            "priority": {
+                "type": "string",
+                "enum": ["low", "normal", "high"],
+                "description": "Optional priority for add, update, or replace_all items."
+            },
+            "items": {
+                "type": "array",
+                "maxItems": 500,
+                "description": "Replacement items for replace_all.",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "item_id": {
+                            "type": "string"
+                        },
+                        "title": {
+                            "type": "string"
+                        },
+                        "details": {
+                            "type": "string"
+                        },
+                        "status": {
+                            "type": "string",
+                            "enum": ["pending", "in_progress", "done", "cancelled"]
+                        },
+                        "priority": {
+                            "type": "string",
+                            "enum": ["low", "normal", "high"]
+                        }
+                    },
+                    "required": ["title"]
+                }
+            },
+            "max_items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 500,
+                "description": "Maximum TODO items to return. Defaults to 100."
+            }
+        },
+        "required": ["action"]
+    },
+    "selection": {
+        "summary": "Track a per-chat assistant TODO list with statuses, priorities, and replace-all planning.",
+        "tags": ["todo", "tasks", "planning", "checklist", "progress", "per-chat"],
+        "whenToUse": "Use when the work benefits from a durable checklist, progress tracking, or a replaceable task plan across later turns in this same chat.",
+        "whenNotToUse": "Do not use for final answers, hidden reasoning, calendar reminders, cross-chat task management, or user files."
+    },
+    "policy": {
+        "riskTier": "write",
+        "approvalMode": "auto",
+        "network": false,
+        "idempotent": false
+    },
+    "native": {
+        "handler": "assistant_workspace_todo_list"
+    }
+}

@@ -133,6 +133,48 @@ void installLocalEcosystemPack(const fs::path& root) {
     writeJsonFile(root / "local_ecosystem" / "tools" / "inspect_local_ecosystem.json", tool);
 }
 
+void installAssistantWorkspacePack(const fs::path& root) {
+    Json::Value pack(Json::objectValue);
+    pack["id"] = "assistant_workspace";
+    pack["title"] = "Assistant Workspace";
+    pack["version"] = "test";
+    pack["description"] = "Test assistant workspace pack";
+    pack["sourceType"] = "system";
+    pack["defaultEnabled"] = false;
+    writeJsonFile(root / "assistant_workspace" / "pack.json", pack);
+
+    auto makeTool = [](const std::string& id, const std::string& title, const std::string& handler) {
+        Json::Value tool(Json::objectValue);
+        tool["id"] = id;
+        tool["title"] = title;
+        tool["description"] = title;
+        tool["executor"] = "native";
+        tool["alwaysVisible"] = true;
+        tool["inputSchema"]["type"] = "object";
+        tool["inputSchema"]["additionalProperties"] = true;
+        tool["inputSchema"]["properties"]["action"]["type"] = "string";
+        tool["inputSchema"]["required"] = Json::Value(Json::arrayValue);
+        tool["inputSchema"]["required"].append("action");
+        tool["selection"]["summary"] = title;
+        tool["selection"]["tags"] = Json::Value(Json::arrayValue);
+        tool["selection"]["whenToUse"] = "Use for tests";
+        tool["selection"]["whenNotToUse"] = "Do not use outside tests";
+        tool["policy"]["riskTier"] = "write";
+        tool["policy"]["approvalMode"] = "auto";
+        tool["policy"]["network"] = false;
+        tool["policy"]["idempotent"] = false;
+        tool["native"]["handler"] = handler;
+        return tool;
+    };
+
+    writeJsonFile(
+        root / "assistant_workspace" / "tools" / "chat_notes.json",
+        makeTool("chat_notes", "Chat Notes", "assistant_workspace_chat_notes"));
+    writeJsonFile(
+        root / "assistant_workspace" / "tools" / "todo_list.json",
+        makeTool("todo_list", "TODO List", "assistant_workspace_todo_list"));
+}
+
 ToolSystem::RuntimePaths makeRuntimePaths(const fs::path& systemPackRoot, const fs::path& dataRoot) {
     ToolSystem::RuntimePaths paths;
     paths.systemPackRoot = systemPackRoot.string();
@@ -151,6 +193,12 @@ Json::Value filesystemScope() {
 Json::Value localEcosystemScope() {
     Json::Value scope(Json::objectValue);
     scope["enabledPackIds"].append("local_ecosystem");
+    return scope;
+}
+
+Json::Value assistantWorkspaceScope() {
+    Json::Value scope(Json::objectValue);
+    scope["enabledPackIds"].append("assistant_workspace");
     return scope;
 }
 
@@ -352,6 +400,111 @@ void testLocalEcosystemInspectionCompletes() {
     toolSystem.endTaskSession("task_local_ecosystem");
 }
 
+void testAssistantWorkspacePersistsPerChat() {
+    ScopedDir temp;
+    const fs::path packRoot = temp.path() / "packs";
+    const fs::path dataRoot = temp.path() / "data";
+    installAssistantWorkspacePack(packRoot);
+    ToolSystem toolSystem(makeRuntimePaths(packRoot, dataRoot));
+    toolSystem.initialize();
+
+    ToolSystem::SessionOptions firstOptions;
+    firstOptions.taskId = "task_workspace_first";
+    firstOptions.chatId = "chat-alpha";
+    firstOptions.toolScope = assistantWorkspaceScope();
+    toolSystem.beginTaskSession(firstOptions);
+
+    const Json::Value tools = toolSystem.getModelToolsForTask("task_workspace_first");
+    expect(hasModelTool(tools, "assistant_workspace__chat_notes"),
+        "assistant workspace notes tool should be exposed");
+    expect(hasModelTool(tools, "assistant_workspace__todo_list"),
+        "assistant workspace TODO tool should be exposed");
+
+    Json::Value planArgs(Json::objectValue);
+    planArgs["action"] = "set_plan";
+    planArgs["content"] = "1. Read context\n2. Implement change\n3. Verify";
+    const ToolSystem::ExecutionResult planResult = toolSystem.executeToolCall(
+        "task_workspace_first",
+        "assistant_workspace__chat_notes",
+        "call_plan",
+        planArgs,
+        nullptr);
+    expect(planResult.success, "set_plan should complete");
+    expect(planResult.toolCall["output"]["note"].get("id", "").asString() == "plan",
+        "set_plan should write the special plan note");
+
+    Json::Value replaceArgs(Json::objectValue);
+    replaceArgs["action"] = "replace_all";
+    Json::Value firstItem(Json::objectValue);
+    firstItem["title"] = "Read context";
+    firstItem["priority"] = "high";
+    Json::Value secondItem(Json::objectValue);
+    secondItem["title"] = "Verify";
+    replaceArgs["items"].append(firstItem);
+    replaceArgs["items"].append(secondItem);
+    const ToolSystem::ExecutionResult replaceResult = toolSystem.executeToolCall(
+        "task_workspace_first",
+        "assistant_workspace__todo_list",
+        "call_replace",
+        replaceArgs,
+        nullptr);
+    expect(replaceResult.success, "replace_all TODO should complete");
+    expect(replaceResult.toolCall["output"]["count"].asInt() == 2,
+        "replace_all should persist two TODO items");
+
+    toolSystem.endTaskSession("task_workspace_first");
+
+    ToolSystem::SessionOptions secondOptions;
+    secondOptions.taskId = "task_workspace_second";
+    secondOptions.chatId = "chat-alpha";
+    secondOptions.toolScope = assistantWorkspaceScope();
+    toolSystem.beginTaskSession(secondOptions);
+
+    Json::Value listArgs(Json::objectValue);
+    listArgs["action"] = "list";
+    const ToolSystem::ExecutionResult notesList = toolSystem.executeToolCall(
+        "task_workspace_second",
+        "assistant_workspace__chat_notes",
+        "call_list_notes",
+        listArgs,
+        nullptr);
+    expect(notesList.success, "notes list should complete");
+    expect(notesList.toolCall["output"]["notes"].isArray() &&
+           notesList.toolCall["output"]["notes"].size() == 1,
+        "notes should persist across sessions in the same chat");
+
+    const ToolSystem::ExecutionResult todosList = toolSystem.executeToolCall(
+        "task_workspace_second",
+        "assistant_workspace__todo_list",
+        "call_list_todos",
+        listArgs,
+        nullptr);
+    expect(todosList.success, "TODO list should complete");
+    expect(todosList.toolCall["output"]["todos"].isArray() &&
+           todosList.toolCall["output"]["todos"].size() == 2,
+        "TODOs should persist across sessions in the same chat");
+
+    toolSystem.endTaskSession("task_workspace_second");
+
+    ToolSystem::SessionOptions isolatedOptions;
+    isolatedOptions.taskId = "task_workspace_isolated";
+    isolatedOptions.chatId = "chat-beta";
+    isolatedOptions.toolScope = assistantWorkspaceScope();
+    toolSystem.beginTaskSession(isolatedOptions);
+
+    const ToolSystem::ExecutionResult isolatedNotes = toolSystem.executeToolCall(
+        "task_workspace_isolated",
+        "assistant_workspace__chat_notes",
+        "call_isolated_notes",
+        listArgs,
+        nullptr);
+    expect(isolatedNotes.success, "isolated notes list should complete");
+    expect(isolatedNotes.toolCall["output"]["notes"].empty(),
+        "notes should not leak across chats");
+
+    toolSystem.endTaskSession("task_workspace_isolated");
+}
+
 } // namespace
 
 int main() {
@@ -360,6 +513,7 @@ int main() {
         testNoopPromptToolCompletesWithoutApproval();
         testRevisionModeActivatesDraftEditor();
         testLocalEcosystemInspectionCompletes();
+        testAssistantWorkspacePersistsPerChat();
         return 0;
     } catch (const std::exception& exception) {
         std::cerr << "tool_system_test failed: " << exception.what() << "\n";

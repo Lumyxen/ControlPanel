@@ -1,6 +1,7 @@
 #include "services/tools/tool_system.h"
 
 #include "config/config.h"
+#include "services/tools/assistant_workspace_tool.h"
 #include "services/tools/calculator_tool.h"
 #include "services/tools/file_edit_tool.h"
 #include "services/tools/file_reader_tool.h"
@@ -855,6 +856,28 @@ struct ToolSystem::Impl {
     std::unordered_map<std::string, std::shared_ptr<ApprovalRequestState>> approvals;
     std::unordered_map<std::string, std::string> chatWorkingDirectories;
 
+    fs::path assistantWorkspaceRoot() const {
+        fs::path dataRoot;
+        if (!paths.toolingConfigPath.empty()) {
+            dataRoot = fs::path(paths.toolingConfigPath).parent_path();
+        }
+        if (dataRoot.empty() && !paths.userPackRoot.empty()) {
+            dataRoot = fs::path(paths.userPackRoot).parent_path();
+        }
+        if (dataRoot.empty()) {
+            std::error_code ec;
+            dataRoot = fs::current_path(ec);
+            if (ec) {
+                ec.clear();
+                dataRoot = fs::temp_directory_path(ec);
+                if (ec) {
+                    dataRoot = ".";
+                }
+            }
+        }
+        return dataRoot / "assistant-workspace";
+    }
+
     void clearUnlocked() {
         packs.clear();
         packOrder.clear();
@@ -1617,6 +1640,8 @@ struct ToolSystem::Impl {
                 handler.rfind("draft_editor_", 0) == 0 ||
                 handler == "calculator_calculate" ||
                 handler == "calculator_calculate_batch" ||
+                handler == "assistant_workspace_chat_notes" ||
+                handler == "assistant_workspace_todo_list" ||
                 handler == "file_reader_read_file" ||
                 handler == "filesystem_get_working_directory" ||
                 handler == "filesystem_change_working_directory" ||
@@ -1817,6 +1842,14 @@ struct ToolSystem::Impl {
                 return error;
             }
             return parsed;
+        }
+
+        if (handler == "assistant_workspace_chat_notes") {
+            return assistant_workspace_tool::manageChatNotes(args, assistantWorkspaceRoot(), session.chatId);
+        }
+
+        if (handler == "assistant_workspace_todo_list") {
+            return assistant_workspace_tool::manageTodoList(args, assistantWorkspaceRoot(), session.chatId);
         }
 
         if (handler == "file_reader_read_file") {

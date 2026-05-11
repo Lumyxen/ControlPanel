@@ -53,9 +53,9 @@
   - [ ] Use when the model wants to preserve context window space and avoid exposing tools it will not use
 - [ ] Fact-checking AI tool
 - [ ] GitHub repo viewer tool
-- [ ] Personal per-chat notes tool
-  - [ ] Capability for easy planning for the AI
-- [ ] TODO list tool for the AI
+- [x] Personal per-chat notes tool
+  - [x] Capability for easy planning for the AI
+- [x] TODO list tool for the AI
 - [ ] Local ecosystem inspection tool
   - [ ] OS type & version
   - [ ] OS age

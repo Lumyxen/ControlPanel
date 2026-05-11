@@ -27,7 +27,7 @@ It is intentionally separate from `TODO.md`:
 | Tuning and personalisation | Theme palettes, AI behavior settings, token-confidence display/history controls, title-generation settings, default AI tool working directory, and weather location/unit settings |
 | Integration surface | REST API, backend lifecycle/status endpoints, task endpoints, tool-pack discovery/reload, approval and file-edit rollback endpoints, extension-isolated vault routes, MCP client loading/bridging, built-in MCP config tools, `/mcp` JSON-RPC surface |
 
-The tool system ships with real bundled calculator, web-search, file-reader, filesystem, and weather packs plus the synthetic internal control-plane pack used for deferred discovery and schema loading. Additional packs can still be added locally or bridged in from MCP servers.
+The tool system ships with real bundled calculator, web-search, file-reader, filesystem, weather, local-ecosystem, and assistant-workspace packs plus the synthetic internal control-plane pack used for deferred discovery and schema loading. Additional packs can still be added locally or bridged in from MCP servers.
 
 ---
 
@@ -85,6 +85,7 @@ The tool system ships with real bundled calculator, web-search, file-reader, fil
 | Bundled filesystem pack | Ships local directory listing, bounded directory trees, active-folder inspection, session working-directory changes, and checkpointed file editing with version-guarded range, line, and whole-file operations. |
 | Configurable AI tool working directory | New tool sessions start in the configured default working directory, which is normalised from Settings and falls back to the user's home directory. |
 | Bundled weather pack | Ships a read-only native weather tool for the configured user location, with current conditions, daily forecasts, and historical daily weather lookups. |
+| Bundled assistant-workspace pack | Ships per-chat `chat_notes` and `todo_list` tools so the AI can keep durable notes, an active plan, and chat-scoped task progress. |
 | Web search ranking and fallback | `search_web` ranks indexed pages with SQLite FTS5 and can fall back to live web results when the local index misses. |
 | Stored result opening | `open_result` returns cleaned indexed text, metadata, and discovered links by `doc_id`. |
 | Live fetch and indexing | `fetch_url` fetches live pages, obeys robots/sitemaps, canonicalises URLs, deduplicates content, and updates the local index. |
@@ -341,7 +342,7 @@ The backend exposes API groups for:
 | Bundled filesystem pack | Fresh installs include directory listing, bounded tree rendering, working-directory management, and checkpointed file editing. |
 | Bundled weather pack | Fresh installs include read-only weather lookup for the configured location, with current conditions, daily forecast/archive output, geocoding, and configurable units. |
 | File-edit rollback API | Checkpoint descriptors from filesystem edits can be restored through `/api/tools/file-edits/rollback`. |
-| Current shipped tool state | The repository ships the internal control-plane pack plus bundled calculator, web-search, file-reader, filesystem, and weather packs out of the box; additional packs can be added locally or via MCP. |
+| Current shipped tool state | The repository ships the internal control-plane pack plus bundled calculator, web-search, file-reader, filesystem, weather, local-ecosystem, and assistant-workspace packs out of the box; additional packs can be added locally or via MCP. |
 
 ### MCP Support
 

@@ -177,6 +177,7 @@ set(SOURCES
     src/services/mcp_client.cpp
     src/services/mcp_stdio_client.cpp
     src/services/mcp_registry.cpp
+    src/services/tools/assistant_workspace_tool.cpp
     src/services/tools/calculator_tool.cpp
     src/services/tools/file_edit_tool.cpp
     src/services/tools/file_reader_tool.cpp
@@ -285,6 +286,7 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_executable(ctrlpanel_tool_system_test
         src/tests/tool_system_test.cpp
         src/services/tools/tool_system.cpp
+        src/services/tools/assistant_workspace_tool.cpp
         src/services/tools/calculator_tool.cpp
         src/services/tools/file_edit_tool.cpp
         src/services/tools/file_reader_tool.cpp

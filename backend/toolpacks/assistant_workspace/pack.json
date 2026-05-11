@@ -1,0 +1,8 @@
+{
+    "id": "assistant_workspace",
+    "title": "Assistant Workspace",
+    "version": "1",
+    "description": "Per-chat assistant notes and TODOs for lightweight planning, decisions, and task tracking inside a chat.",
+    "sourceType": "system",
+    "defaultEnabled": true
+}

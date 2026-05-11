@@ -1,0 +1,57 @@
+{
+    "id": "chat_notes",
+    "title": "Chat Notes",
+    "description": "Manage durable assistant notes scoped to the current chat. Use set_plan for quick planning, and use notes for decisions, assumptions, preferences, open questions, and context that should remain available later in this chat.",
+    "executor": "native",
+    "alwaysVisible": true,
+    "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["list", "upsert", "set_plan", "delete", "clear"],
+                "description": "list returns notes. upsert creates or updates a note. set_plan creates or replaces the special active plan note. delete removes one note. clear removes all notes, or notes matching category when category is provided."
+            },
+            "note_id": {
+                "type": "string",
+                "description": "Required for delete. Optional for upsert; omit to create a generated note id. set_plan always uses note_id plan."
+            },
+            "title": {
+                "type": "string",
+                "description": "Short note title. Optional for upsert and set_plan."
+            },
+            "content": {
+                "type": "string",
+                "description": "Note body. Required when creating a note and always required for set_plan."
+            },
+            "category": {
+                "type": "string",
+                "enum": ["note", "plan", "decision", "preference", "context", "question"],
+                "description": "Optional note category. list and clear can filter by category."
+            },
+            "max_notes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 200,
+                "description": "Maximum notes to return. Defaults to 100."
+            }
+        },
+        "required": ["action"]
+    },
+    "selection": {
+        "summary": "Store and retrieve per-chat assistant notes, including one-step active plan capture.",
+        "tags": ["notes", "memory", "planning", "plan", "per-chat", "decisions", "preferences", "context"],
+        "whenToUse": "Use when you need to remember a plan, decision, assumption, preference, open question, or compact context across later turns in this same chat.",
+        "whenNotToUse": "Do not use for final answers, hidden reasoning, cross-chat memory, long documents, or user files."
+    },
+    "policy": {
+        "riskTier": "write",
+        "approvalMode": "auto",
+        "network": false,
+        "idempotent": false
+    },
+    "native": {
+        "handler": "assistant_workspace_chat_notes"
+    }
+}
