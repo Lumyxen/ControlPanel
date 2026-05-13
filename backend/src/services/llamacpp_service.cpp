@@ -2437,6 +2437,33 @@ std::string LlamaCppService::generateTitle(const std::string& model,
     return title;
 }
 
+Json::Value LlamaCppService::chat(
+    const std::string& model,
+    const std::string& prompt,
+    int maxTokens,
+    const std::string& systemPrompt,
+    double temperature) {
+    if (!ensureServerRunning()) {
+        Json::Value error(Json::objectValue);
+        error["error"] = "llama.cpp server unavailable";
+        return error;
+    }
+
+    Json::Value body(Json::objectValue);
+    body["model"] = normalizeModelId(model);
+    body["messages"] = buildMessages(prompt, systemPrompt);
+    body["max_tokens"] = maxTokens;
+    body["stream"] = false;
+    if (temperature >= 0.0) {
+        body["temperature"] = temperature;
+    }
+    body["chat_template_kwargs"]["enable_thinking"] = false;
+    body["thinking_budget_tokens"] = 0;
+    body["reasoning_format"] = "none";
+
+    return postJson("/v1/chat/completions", body, 120);
+}
+
 std::string LlamaCppService::streamOneRound(
     const Json::Value& requestBody,
     std::function<bool(const std::string&)> onChunk,

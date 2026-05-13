@@ -2,6 +2,7 @@ export function createChatSessionState() {
 	return {
 		editingNodeId: null,
 		editingDraft: '',
+		editingMode: null,
 		editingSaveMode: null,
 		typingEl: null,
 		typingTimeout: null,

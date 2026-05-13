@@ -92,6 +92,9 @@ export function ensureGraph(chat) {
 		if (m.revisionTrace || m.revision_trace) {
 			node.revisionTrace = cloneStructured(m.revisionTrace || m.revision_trace);
 		}
+		if (m.research && typeof m.research === "object") {
+			node.research = cloneStructured(m.research);
+		}
 		normalizeStoredNode(node);
 
 		graph.nodes[nodeId] = node;
@@ -228,6 +231,7 @@ export function createSiblingCopy(graph, nodeId, { content, timestamp, parts, at
     }
 
     if (node.toolCalls) sibling.toolCalls = JSON.parse(JSON.stringify(node.toolCalls));
+    if (node.research) sibling.research = JSON.parse(JSON.stringify(node.research));
     if (node.fileEditsRolledBackAt) sibling.fileEditsRolledBackAt = node.fileEditsRolledBackAt;
     if (node.fileEditsRolledBackCount) sibling.fileEditsRolledBackCount = node.fileEditsRolledBackCount;
 

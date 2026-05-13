@@ -40,6 +40,7 @@ import {
 	getTaskByChat,
 	cancelTask,
 	generateAiTitle,
+	generateResearchPlan,
 	approveToolApproval,
 	denyToolApproval,
 	rollbackFileEdit,
@@ -281,6 +282,270 @@ function buildSystemPromptForMessages(apiMessages, settings) {
 		systemPrompt = systemPrompt ? `${systemPrompt}\n\n${hint}` : hint;
 	}
 	return systemPrompt;
+}
+
+const RESEARCH_MAX_TOKENS = 12288;
+const RESEARCH_WORKFLOW_STEPS = [
+	{ id: 'plan', label: 'Plan', instruction: 'Break the request into answerable research tasks and source targets.' },
+	{ id: 'gather', label: 'Gather evidence', instruction: 'Use available retrieval tools and collect source-grounded evidence.' },
+	{ id: 'verify', label: 'Verify', instruction: 'Cross-check material claims, dates, numbers, and source quality.' },
+	{ id: 'draft', label: 'Draft', instruction: 'Write a user-facing answer from the verified evidence.' },
+	{ id: 'review', label: 'Review and refine', instruction: 'Review the draft, revise material issues, and repeat until acceptable or the review budget is exhausted.' },
+	{ id: 'final', label: 'Final response', instruction: 'Present only the final answer to the user.' },
+];
+const RESEARCH_DELIVERABLES = [
+	'final_answer',
+	'inline_citations',
+	'source_list',
+	'caveats',
+	'conflict_notes',
+];
+const RESEARCH_START_DELAY_MS = 60000;
+
+function isResearchEnabled(root) {
+	const toggle = root?.querySelector?.('#chatResearchToggle');
+	return root?.dataset?.researchEnabled === 'true' ||
+		toggle?.getAttribute('aria-pressed') === 'true' ||
+		toggle?.dataset?.enabled === 'true';
+}
+
+function setResearchEnabled(root, enabled) {
+	const active = Boolean(enabled);
+	const toggle = root?.querySelector?.('#chatResearchToggle');
+	if (root?.dataset) root.dataset.researchEnabled = String(active);
+	root?.classList?.toggle('research-enabled', active);
+	if (toggle) {
+		toggle.dataset.enabled = String(active);
+		toggle.setAttribute('aria-pressed', String(active));
+	}
+}
+
+function truncateResearchText(value, maxLength) {
+	const text = String(value || '').trim().replace(/\s+/g, ' ');
+	if (text.length <= maxLength) return text;
+	return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function buildResearchTitle(query) {
+	const text = truncateResearchText(query, 96);
+	if (!text) return 'Research Brief';
+	return truncateResearchText(`Research: ${text}`, 96);
+}
+
+function buildResearchTasks(query) {
+	const subject = String(query || '').trim() || 'the request';
+	return [
+		{ id: 'scope', label: `Clarify the exact question and break ${subject} into researchable parts.` },
+		{ id: 'sources', label: 'Find relevant primary or high-quality sources before drafting.' },
+		{ id: 'verify', label: 'Cross-check important facts, dates, numbers, and source conflicts.' },
+		{ id: 'answer', label: 'Write a concise final answer with citations and caveats.' },
+	];
+}
+
+function normalizeResearchTaskId(value, index) {
+	const id = String(value || '')
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '_')
+		.replace(/^_+|_+$/g, '');
+	return truncateResearchText(id || `task_${index + 1}`, 48);
+}
+
+function normalizeResearchTasks(tasks, query) {
+	if (!Array.isArray(tasks) || tasks.length === 0) return buildResearchTasks(query);
+	const normalized = tasks
+		.map((task, index) => {
+			if (typeof task === 'string') {
+				const label = truncateResearchText(task, 220);
+				return label ? { id: normalizeResearchTaskId(label, index), label } : null;
+			}
+			if (!task || typeof task !== 'object') return null;
+			const label = truncateResearchText(task.label || task.title || task.task || task.step || '', 220);
+			if (!label) return null;
+			return {
+				id: normalizeResearchTaskId(task.id || label, index),
+				label,
+			};
+		})
+		.filter(Boolean)
+		.slice(0, 8);
+	return normalized.length > 0 ? normalized : buildResearchTasks(query);
+}
+
+function parseResearchTaskEditDraft(text) {
+	return String(text || '')
+		.split(/\r?\n/)
+		.map((line) => line.trim().replace(/^[-*•]\s+/, '').replace(/^\d+[.)]\s+/, '').trim())
+		.filter(Boolean);
+}
+
+function formatResearchTaskEditDraft(researchPart) {
+	return normalizeResearchTasks(researchPart?.tasks || researchPart?.workflow, researchPart?.query)
+		.map((task) => task.label)
+		.join('\n');
+}
+
+function getEditableResearchPart(node) {
+	const researchPart = getNodeResearchPart(node);
+	const status = researchPart?.status;
+	return status === 'pending' || status === 'planning' ? researchPart : null;
+}
+
+function buildResearchPartWithEditedTasks(researchPart, draft) {
+	const tasks = normalizeResearchTasks(parseResearchTaskEditDraft(draft), researchPart?.query);
+	const next = {
+		...researchPart,
+		tasks,
+		workflow: tasks.map((task) => ({ id: task.id, label: task.label })),
+		autoStartAt: Date.now() + RESEARCH_START_DELAY_MS,
+	};
+	if (next.status === 'planning') {
+		next.status = 'pending';
+	}
+	return next;
+}
+
+function normalizeResearchList(value, fallback) {
+	if (!Array.isArray(value)) return [...fallback];
+	const normalized = value
+		.map((item) => truncateResearchText(typeof item === 'string' ? item : item?.label || item?.id || '', 64))
+		.filter(Boolean)
+		.slice(0, 8);
+	return normalized.length > 0 ? normalized : [...fallback];
+}
+
+function buildResearchPart(_root, query, overrides = {}) {
+	const normalizedQuery = String(query || '').trim();
+	const part = {
+		type: 'research',
+		query: normalizedQuery,
+		title: buildResearchTitle(normalizedQuery),
+		tasks: buildResearchTasks(normalizedQuery),
+		status: 'pending',
+		autoStartAt: Date.now() + RESEARCH_START_DELAY_MS,
+		sourceClasses: ['web', 'academic'],
+		deliverables: [...RESEARCH_DELIVERABLES],
+		workflow: RESEARCH_WORKFLOW_STEPS.map(({ id, label }) => ({ id, label })),
+	};
+	const next = { ...part, ...overrides };
+	next.tasks = normalizeResearchTasks(next.tasks, normalizedQuery);
+	next.sourceClasses = normalizeResearchList(next.sourceClasses, ['web', 'academic']);
+	next.deliverables = normalizeResearchList(next.deliverables, RESEARCH_DELIVERABLES);
+	if (Array.isArray(next.workflow) && next.workflow.length > 0) {
+		next.workflow = normalizeResearchTasks(next.workflow, normalizedQuery);
+	} else {
+		next.workflow = next.tasks.map((task) => ({ id: task.id, label: task.label }));
+	}
+	if (next.autoStartAt == null) delete next.autoStartAt;
+	return next;
+}
+
+function buildResearchPlanningPart(root, query) {
+	return buildResearchPart(root, query, {
+		title: 'Preparing Research Plan',
+		tasks: [{ id: 'planning', label: 'Generating a tailored header and task list.' }],
+		status: 'planning',
+		autoStartAt: null,
+	});
+}
+
+function normalizeGeneratedResearchPart(root, query, generated) {
+	const fallback = buildResearchPart(root, query, { autoStartAt: null });
+	const title = truncateResearchText(generated?.title || generated?.header || fallback.title, 96) || fallback.title;
+	const tasks = normalizeResearchTasks(generated?.tasks || generated?.steps || generated?.workflow, query);
+	const sourceClasses = normalizeResearchList(
+		generated?.sourceClasses || generated?.source_classes,
+		fallback.sourceClasses,
+	);
+	const deliverables = normalizeResearchList(generated?.deliverables, fallback.deliverables);
+	return {
+		...fallback,
+		query: String(generated?.query || query || '').trim(),
+		title,
+		tasks,
+		sourceClasses,
+		deliverables,
+		workflow: tasks.map((task) => ({ id: task.id, label: task.label })),
+	};
+}
+
+async function buildGeneratedResearchPart(root, query, { signal } = {}) {
+	const settings = SettingsStore.get() || {};
+	const selectedModel = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected')?.dataset?.value || '';
+	const model = selectedModel || settings.defaultModel || '';
+	if (!model) return buildResearchPart(root, query, { autoStartAt: null });
+
+	try {
+		const generated = await generateResearchPlan({
+			model,
+			message: query,
+			planner_system_prompt: settings.aiResearchPlannerSystemPrompt || '',
+			max_tokens: 768,
+		}, { signal });
+		return normalizeGeneratedResearchPart(root, query, generated);
+	} catch (err) {
+		if (signal?.aborted || err?.name === 'AbortError') throw err;
+		console.error('[ChatPage] Research plan generation failed:', err);
+		return buildResearchPart(root, query, { autoStartAt: null });
+	}
+}
+
+function getNodeResearchPart(node) {
+	if (node?.research && typeof node.research === 'object') return node.research;
+	if (!Array.isArray(node?.parts)) return null;
+	return node.parts.find((part) => part?.type === 'research' && typeof part === 'object') || null;
+}
+
+function buildPartsWithResearchPart(parts, researchPart) {
+	const nextParts = Array.isArray(parts)
+		? parts.filter((part) => part?.type !== 'research').map((part) => ({ ...part }))
+		: [];
+	if (researchPart && typeof researchPart === 'object') {
+		nextParts.push({ ...researchPart });
+	}
+	return nextParts;
+}
+
+function setNodeResearchPart(node, researchPart) {
+	if (!node || !researchPart || typeof researchPart !== 'object') return;
+	node.research = { ...researchPart };
+	node.parts = buildPartsWithResearchPart(node.parts, node.research);
+}
+
+function setNodeResearchMetadata(node, researchPart) {
+	if (!node || !researchPart || typeof researchPart !== 'object') return;
+	node.research = { ...researchPart };
+}
+
+function getPendingResearchChild(graph, userNode) {
+	if (!graph || !userNode || userNode.role !== 'user') return null;
+	for (const childId of userNode.children || []) {
+		const child = getNode(graph, childId);
+		const status = getNodeResearchPart(child)?.status;
+		if (child?.role === 'assistant' && (status === 'pending' || status === 'planning')) {
+			return child;
+		}
+	}
+	return null;
+}
+
+function buildResearchSystemPrompt(basePrompt, researchPart) {
+	if (!researchPart) return basePrompt;
+	const previewTasks = normalizeResearchTasks(researchPart.tasks || researchPart.workflow, researchPart.query);
+	const researchPrompt = [
+		'Research mode is enabled for the latest user message. Use the dedicated research workflow before presenting the final answer.',
+		'Task preview generated for this request:',
+		...previewTasks.map((step) => `- ${step.label}`),
+		'Workflow:',
+		...RESEARCH_WORKFLOW_STEPS.map((step) => `- ${step.label}: ${step.instruction}`),
+		'Use only tools that are available in this chat turn. If retrieval tools are unavailable, say that research tools are not enabled instead of fabricating sources.',
+		'When retrieval tools are available, prefer official, primary, standards, regulator, original dataset, and peer-reviewed sources.',
+		'Bind non-trivial claims to inline citations from sources actually retrieved in this chat turn.',
+		'Include an executive summary, findings, caveats, timeline when relevant, and a source list in the final answer.',
+		'Use evidence confidence, not token confidence. Surface unresolved conflicts instead of hiding them.',
+		'Do not present intermediate workflow notes as the final answer.',
+	].join('\n');
+	return basePrompt ? `${basePrompt}\n\n${researchPrompt}` : researchPrompt;
 }
 
 function normalizeContextToolScope(toolScope) {
@@ -1134,9 +1399,10 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			|| resolvePreferredModelId(activeChatId)
 			|| '';
 		const contextInfo = getModelContextInfoFromUI(root);
-		const toolScope = getActiveToolScope(activeChatId);
+		let toolScope = getActiveToolScope(activeChatId);
 		const revisionMode = settings?.chatResponseMode === 'live';
 		const effectiveNodes = [];
+		let draftResearchPart = null;
 
 		if (chatLoaded) {
 			const graph = ensureGraph(chat);
@@ -1145,7 +1411,17 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				const node = getNode(graph, nodeId);
 				if (!node || (node.role !== 'user' && node.role !== 'assistant')) continue;
 
-				if (uiState.editingNodeId === node.id) {
+				if (uiState.editingNodeId === node.id && uiState.editingMode === 'research-tasks') {
+					const researchPart = getEditableResearchPart(node);
+					const editedResearchPart = researchPart
+						? buildResearchPartWithEditedTasks(researchPart, uiState.editingDraft)
+						: null;
+					effectiveNodes.push({
+						...node,
+						research: editedResearchPart || node.research,
+						parts: editedResearchPart ? buildPartsWithResearchPart(node.parts, editedResearchPart) : node.parts,
+					});
+				} else if (uiState.editingNodeId === node.id) {
 					const assistantDraft = node.role === 'assistant'
 						? parseAssistantEditDraft(uiState.editingDraft)
 						: null;
@@ -1176,6 +1452,14 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 
 		if (!uiState.editingNodeId) {
 			const draftParts = attachmentManager.extractParts();
+			const draftText = draftParts
+				.filter((part) => part?.type === 'text')
+				.map((part) => String(part.content || ''))
+				.join('')
+				.trim();
+			if (isResearchEnabled(root) && draftText) {
+				draftResearchPart = buildResearchPart(root, draftText);
+			}
 			if (draftParts?.length > 0) {
 				effectiveNodes.push({ role: 'user', parts: draftParts });
 			}
@@ -1186,7 +1470,10 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		}
 
 		const messages = buildApiMessagesFromNodes(effectiveNodes, settings);
-		const systemPrompt = buildSystemPromptForMessages(messages, settings);
+		let systemPrompt = buildSystemPromptForMessages(messages, settings);
+		if (draftResearchPart) {
+			systemPrompt = buildResearchSystemPrompt(systemPrompt, draftResearchPart);
+		}
 		return {
 			model,
 			messages,
@@ -1467,6 +1754,20 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	initDropdowns(root, signal);
 	initTools(root, signal);
 	initUpload(root, input, attachmentManager, signal);
+	const researchToggle = root.querySelector('#chatResearchToggle');
+	const syncResearchComposerState = () => {
+		const enabled = isResearchEnabled(root);
+		setResearchEnabled(root, enabled);
+		root._updateLiveContext?.();
+	};
+	setResearchEnabled(root, false);
+	researchToggle?.addEventListener('click', (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		setResearchEnabled(root, !isResearchEnabled(root));
+		syncResearchComposerState();
+	}, { capture: true, signal });
+	syncResearchComposerState();
 	const resizeInput = initAutoResize(input, signal);
 	input.addEventListener('input', () => updateLiveContext(120), { signal });
 	approvalPanel?.addEventListener('click', (e) => {
@@ -1513,6 +1814,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		if (empty) empty.hidden = computeThreadNodeIds(ensureGraph(chat)).length > 0;
 		root._syncToolPackPicker?.();
 		updateLiveContext(0);
+		refreshResearchCountdown();
 		scheduleMessageNudgePlacementRefresh();
 	};
 
@@ -1543,6 +1845,112 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		const uuid = globalThis.crypto?.randomUUID?.();
 		if (uuid) return `task_${uuid}`;
 		return `task_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+	};
+
+	let researchCountdownTimer = 0;
+
+	const formatResearchStartLabel = (autoStartAt) => {
+		const at = Number(autoStartAt);
+		if (!Number.isFinite(at) || at <= 0) return 'Start';
+		const seconds = Math.max(0, Math.ceil((at - Date.now()) / 1000));
+		return seconds > 0 ? `Start (${seconds}s)` : 'Start';
+	};
+
+	const updateResearchCountdownLabels = () => {
+		if (uiState.editingMode === 'research-tasks') return;
+		for (const button of messages.querySelectorAll('.chat-research-start[data-auto-start-at]')) {
+			button.textContent = formatResearchStartLabel(button.dataset.autoStartAt);
+		}
+	};
+
+	const getPendingResearchNodes = () => {
+		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+		const graph = chat ? ensureGraph(chat) : null;
+		if (!graph) return [];
+		return computeThreadNodeIds(graph)
+			.map((nodeId) => getNode(graph, nodeId))
+			.filter((node) => {
+				const researchPart = getNodeResearchPart(node);
+				return node?.role === 'assistant' &&
+					researchPart?.status === 'pending';
+			});
+	};
+
+	const scheduleResearchCountdown = () => {
+		if (researchCountdownTimer) return;
+		researchCountdownTimer = window.setInterval(() => {
+			if (uiState.editingMode === 'research-tasks') return;
+			updateResearchCountdownLabels();
+			const pendingNodes = getPendingResearchNodes();
+			if (pendingNodes.length === 0) {
+				window.clearInterval(researchCountdownTimer);
+				researchCountdownTimer = 0;
+				return;
+			}
+			for (const node of pendingNodes) {
+				const autoStartAt = Number(getNodeResearchPart(node)?.autoStartAt || 0);
+				if (!Number.isFinite(autoStartAt) || autoStartAt <= 0 || Date.now() < autoStartAt) continue;
+				if (uiState.isGenerating || uiState.isSubmitting || uiState.editingNodeId === node.id) continue;
+				startPendingResearch(node.id);
+				break;
+			}
+		}, 1000);
+		updateResearchCountdownLabels();
+	};
+
+	const refreshResearchCountdown = () => {
+		if (uiState.editingMode === 'research-tasks') return;
+		updateResearchCountdownLabels();
+		if (getPendingResearchNodes().length > 0) scheduleResearchCountdown();
+	};
+
+	const applyGeneratedResearchPlan = async (chatId, researchNodeId, query) => {
+		let generatedPart;
+		try {
+			generatedPart = await buildGeneratedResearchPart(root, query, { signal });
+		} catch (err) {
+			if (signal.aborted || err?.name === 'AbortError') return;
+			generatedPart = buildResearchPart(root, query, { autoStartAt: null });
+		}
+		if (signal.aborted) return;
+
+		const chat = chatId ? getChatById(chatId) : null;
+		const graph = chat ? ensureGraph(chat) : null;
+		const node = graph ? getNode(graph, researchNodeId) : null;
+		const currentPart = getNodeResearchPart(node);
+		if (!chat || !graph || !node || currentPart?.status !== 'planning') return;
+
+		const pendingPart = {
+			...generatedPart,
+			status: 'pending',
+			autoStartAt: Date.now() + RESEARCH_START_DELAY_MS,
+		};
+		setNodeResearchPart(node, pendingPart);
+		chat.updatedAt = Date.now();
+		await saveChatAwaitable(chat.id).catch((err) => {
+			console.error('[Chat] Failed to save generated research plan:', err);
+		});
+		rerender();
+		renderChatList();
+		setActiveCallback?.();
+		refreshResearchCountdown();
+	};
+
+	const addResearchPlanningNode = (chat, userNode, query) => {
+		if (!chat || !userNode || !query) return null;
+		const planningPart = buildResearchPlanningPart(root, query);
+		const researchNode = addChildMessageToChat(
+			chat.id,
+			userNode.id,
+			'assistant',
+			'',
+			null,
+			buildPartsWithResearchPart([], planningPart),
+		);
+		if (researchNode?.id) {
+			applyGeneratedResearchPlan(chat.id, researchNode.id, query);
+		}
+		return researchNode;
 	};
 
 	const createStreamController = (typingEl) => createStreamingMessageController({
@@ -1688,8 +2096,24 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	};
 
 	signal.addEventListener('abort', detachFromRunningTask);
+	signal.addEventListener('abort', () => {
+		if (researchCountdownTimer) {
+			window.clearInterval(researchCountdownTimer);
+			researchCountdownTimer = 0;
+		}
+	}, { once: true });
 
 	const startReply = async (replyChatId, parentUserNodeId) => {
+		const pendingChat = replyChatId ? getChatById(replyChatId) : null;
+		const pendingGraph = pendingChat ? ensureGraph(pendingChat) : null;
+		const pendingParentNode = pendingGraph && parentUserNodeId ? getNode(pendingGraph, parentUserNodeId) : null;
+		const parentResearchStatus = getNodeResearchPart(pendingParentNode)?.status;
+		const childResearchStatus = getNodeResearchPart(getPendingResearchChild(pendingGraph, pendingParentNode))?.status;
+		if (parentResearchStatus === 'pending' || parentResearchStatus === 'planning' ||
+			childResearchStatus === 'pending' || childResearchStatus === 'planning') {
+			refreshResearchCountdown();
+			return;
+		}
 		clearApprovalPanel();
 		stopTyping();
 		uiState.typingEl = showTyping(messages);
@@ -1723,13 +2147,19 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 
 		let apiMessages = buildApiMessages(graph, threadIds, settings);
 		if (apiMessages.length === 0 && parentUserNodeId) apiMessages = buildApiMessages(graph, [parentUserNodeId], settings);
+		const parentUserNode = parentUserNodeId ? getNode(graph, parentUserNodeId) : null;
+		const researchPart = getNodeResearchPart(parentUserNode);
 
 		const streamController = createStreamController(uiState.typingEl);
 		let isSaved = false;
 
 		let systemPrompt = buildSystemPromptForMessages(apiMessages, settings);
 		let temperature = settings?.temperature ?? 1.0;
-		const toolScope = getChatToolScope(activeChatId);
+		let toolScope = getChatToolScope(activeChatId);
+		if (researchPart) {
+			systemPrompt = buildResearchSystemPrompt(systemPrompt, researchPart);
+			maxTokens = Math.max(maxTokens, RESEARCH_MAX_TOKENS);
+		}
 		const revisionMode = settings?.chatResponseMode === 'live';
 		const hasActiveToolPacks = toolScope.useDefaultPacks === true ||
 			(Array.isArray(toolScope?.enabledPackIds) && toolScope.enabledPackIds.length > 0);
@@ -1768,13 +2198,20 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				errorFromStream,
 			} = streamController.buildFinalResult();
 			if (finalContent || finalReasoning || activeToolCalls.length > 0) {
+				let assistantParts = finalParts.length > 0 ? finalParts : null;
+				if (researchPart) {
+					assistantParts = [
+						{ ...researchPart },
+						...(assistantParts || (finalContent ? [{ type: 'text', content: finalContent }] : [])),
+					];
+				}
 				const node = addChildMessageToChat(
 					activeChatId,
 					parentUserNodeId,
 					'assistant',
 					finalContent,
 					null,
-					finalParts.length > 0 ? finalParts : null,
+					assistantParts,
 					activeToolCalls.length > 0 ? activeToolCalls : null,
 					finalRevisionTrace,
 				);
@@ -1810,6 +2247,18 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			parent_user_node_id: parentUserNodeId || '',
 			tool_scope: toolScope,
 		};
+		if (researchPart) {
+			taskPayload.job_type = 'research';
+			taskPayload.research = {
+				query: researchPart.query || '',
+				title: researchPart.title || '',
+				status: 'running',
+				tasks: researchPart.tasks || [],
+				source_classes: researchPart.sourceClasses || ['web', 'academic'],
+				deliverables: researchPart.deliverables || [],
+				workflow: researchPart.workflow || researchPart.tasks || [],
+			};
+		}
 		if (apiMessages.length > 0) taskPayload.messages = apiMessages;
 
 		try {
@@ -1918,6 +2367,35 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		}
 	};
 
+	const startPendingResearch = async (nodeId) => {
+		const chatId = getCurrentChatId();
+		const chat = chatId ? getChatById(chatId) : null;
+		const graph = chat ? ensureGraph(chat) : null;
+		const node = graph ? getNode(graph, nodeId) : null;
+		if (!chat || !graph || !node || node.role !== 'assistant') return;
+		const researchPart = getNodeResearchPart(node);
+		if (researchPart?.status !== 'pending') return;
+		if (uiState.isGenerating || uiState.isSubmitting) return;
+		const userNode = node.parentId ? getNode(graph, node.parentId) : null;
+		if (!userNode || userNode.role !== 'user') return;
+
+		const runningResearch = {
+			...researchPart,
+			status: 'running',
+			startedAt: Date.now(),
+		};
+		delete runningResearch.autoStartAt;
+		setNodeResearchMetadata(userNode, runningResearch);
+		deleteSubtree(graph, node.id);
+		setSelectedChildId(graph, userNode.parentId, userNode.id);
+		recomputeLeafId(graph);
+		chat.updatedAt = Date.now();
+		await saveChatAwaitable(chat.id);
+		rerender();
+		if (empty) empty.hidden = true;
+		startReply(chat.id, userNode.id);
+	};
+
 	// ── Reconnect: check backend for any running/completed task on this chat ──
 	const reconnectCheck = async () => {
 		const chatId = getCurrentChatId();
@@ -2014,14 +2492,14 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	document.addEventListener('keydown', (e) => {
 		if ((e.key === 'Escape' || e.key === 'Esc') && uiState.editingNodeId) {
 			e.preventDefault();
-			uiState.editingNodeId = null; uiState.editingDraft = ''; uiState.editingSaveMode = null;
+			uiState.editingNodeId = null; uiState.editingDraft = ''; uiState.editingMode = null; uiState.editingSaveMode = null;
 			rerender();
 		}
 	}, { capture: true, signal });
 
 	document.addEventListener('keyup', (e) => {
 		if ((e.key === 'Escape' || e.key === 'Esc') && uiState.editingNodeId) {
-			uiState.editingNodeId = null; uiState.editingDraft = ''; uiState.editingSaveMode = null;
+			uiState.editingNodeId = null; uiState.editingDraft = ''; uiState.editingMode = null; uiState.editingSaveMode = null;
 			rerender();
 		}
 	}, { signal });
@@ -2097,20 +2575,49 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		const node  = getNode(graph, nodeId);
 		if (!node) return;
 
-		const resetEdit = () => { uiState.editingNodeId = null; uiState.editingDraft = ''; uiState.editingSaveMode = null; };
+		const resetEdit = () => { uiState.editingNodeId = null; uiState.editingDraft = ''; uiState.editingMode = null; uiState.editingSaveMode = null; };
+		const focusEditInput = (targetNodeId) => {
+			setTimeout(() => {
+				const el = messages.querySelector(`[data-node-id="${targetNodeId}"] [data-research-task-edit], [data-node-id="${targetNodeId}"] .chat-edit-input`);
+				if (el) {
+					el.focus();
+					const s = window.getSelection();
+					const r = document.createRange();
+					r.selectNodeContents(el);
+					r.collapse(false);
+					s.removeAllRanges();
+					s.addRange(r);
+				}
+			}, 0);
+		};
+		const startResearchTaskEdit = (researchNode) => {
+			const researchPart = getEditableResearchPart(researchNode);
+			if (!researchPart) return;
+			uiState.editingNodeId = researchNode.id;
+			uiState.editingDraft = formatResearchTaskEditDraft(researchPart);
+			uiState.editingMode = 'research-tasks';
+			uiState.editingSaveMode = null;
+			const patched = patchMessageEditState(messages, graph, researchNode, true, uiState.editingDraft, SettingsStore.get(), uiState.editingMode);
+			if (!patched) rerender();
+			updateLiveContext();
+			refreshResearchCountdown();
+			focusEditInput(researchNode.id);
+		};
 
 		const handlers = {
 			edit: () => {
+				if (getEditableResearchPart(node)) {
+					startResearchTaskEdit(node);
+					return;
+				}
 				uiState.editingNodeId = nodeId;
 				uiState.editingDraft  = node.role === 'assistant' ? getNodeRawTextContent(node) : getNodeTextContent(node);
+				uiState.editingMode = null;
 				uiState.editingSaveMode = null;
 				const patched = patchMessageEditState(messages, graph, node, true, uiState.editingDraft, SettingsStore.get());
 				if (!patched) rerender();
 				updateLiveContext();
-				setTimeout(() => {
-					const el = messages.querySelector(`[data-node-id="${nodeId}"] .chat-edit-input`);
-					if (el) { el.focus(); const s=window.getSelection(),r=document.createRange(); r.selectNodeContents(el); r.collapse(false); s.removeAllRanges(); s.addRange(r); }
-				}, 0);
+				focusEditInput(nodeId);
 			},
 			cancel: () => {
 				const escNode = uiState.editingNodeId ? getNode(graph, uiState.editingNodeId) : null;
@@ -2120,9 +2627,28 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			},
 			save: () => {
 				if (!uiState.editingNodeId) return;
+				const taskEditEls = [...msgEl.querySelectorAll('[data-research-task-edit]')];
 				const editEl = msgEl.querySelector('.chat-edit-input');
-				const next   = (editEl?.innerText ?? '').replace(/\n$/, '');
+				const next = taskEditEls.length > 0
+					? taskEditEls.map((el) => (el.innerText ?? '').replace(/\n/g, ' ').trim()).filter(Boolean).join('\n')
+					: (editEl?.innerText ?? '').replace(/\n$/, '');
 				const saveMode = uiState.editingSaveMode;
+				if (uiState.editingMode === 'research-tasks') {
+					const researchNode = getNode(graph, uiState.editingNodeId);
+					const researchPart = getEditableResearchPart(researchNode);
+					if (!researchNode || !researchPart) return;
+					setNodeResearchPart(researchNode, buildResearchPartWithEditedTasks(researchPart, next));
+					researchNode.editedAt = Date.now();
+					chat.updatedAt = Date.now();
+					saveChats();
+					resetEdit();
+					rerender();
+					renderChatList();
+					setActiveCallback?.();
+					refreshResearchCountdown();
+					checkScroll();
+					return;
+				}
 
 				const assistantDraft = node.role === 'assistant' ? parseAssistantEditDraft(next) : null;
 				const siblingOptions = {
@@ -2151,6 +2677,14 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				} else if (sibling.parts) {
 					sibling.parts = buildPartsWithUpdatedText(sibling, next);
 				} else { sibling.content = next; }
+				const editedResearchPart = node.role === 'user'
+					? (getNodeResearchPart(node) || getNodeResearchPart(getPendingResearchChild(graph, node)))
+					: null;
+				let editedPendingResearchNode = null;
+				if (node.role === 'user' && (editedResearchPart?.status === 'pending' || editedResearchPart?.status === 'planning')) {
+					[...(sibling.children || [])].forEach((childId) => deleteSubtree(graph, childId));
+					editedPendingResearchNode = addResearchPlanningNode(chat, sibling, next);
+				}
 				sibling.editedAt = Date.now();
 				recomputeLeafId(graph);
 				chat.updatedAt = Date.now();
@@ -2160,7 +2694,9 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				setActiveCallback?.();
 				// Only auto-regenerate when editing a user message (to get a new AI response).
 				// Editing an assistant message should just update the text, not trigger a new generation.
-				if (saveMode !== 'preserve' && sibling.role === 'user') {
+				if (editedPendingResearchNode) {
+					refreshResearchCountdown();
+				} else if (saveMode !== 'preserve' && sibling.role === 'user') {
 					if (empty) empty.hidden = true;
 					startReply(chat.id, sibling.id);
 				}
@@ -2197,15 +2733,49 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				[...(userNode.children||[])].forEach(cid => deleteSubtree(graph, cid));
 				delete graph.selections[userNodeId];
 				if (userNode.parentId) setSelectedChildId(graph, userNode.parentId, userNodeId);
+				const shouldPrepareResearch = isResearchEnabled(root) || Boolean(userNode.research);
+				let pendingResearchNode = null;
+				if (shouldPrepareResearch) {
+					const query = getNodeTextContent(userNode).trim();
+					if (query) {
+						pendingResearchNode = addResearchPlanningNode(chat, userNode, query);
+					}
+				}
 				markGraphForReplacement(graph);
 				recomputeLeafId(graph); chat.updatedAt = Date.now(); saveChats();
 				resetEdit(); rerender(); setActiveCallback?.();
 				if (empty) empty.hidden = true;
-				startReply(chat.id, userNodeId);
+				if (pendingResearchNode) {
+					refreshResearchCountdown();
+				} else {
+					startReply(chat.id, userNodeId);
+				}
 				checkScroll();
 			},
 			'rollback-files': () => {
 				handleMessageFileEditRollback(node, btn);
+			},
+			'research-edit': () => {
+				startResearchTaskEdit(node);
+			},
+			'research-cancel': () => {
+				const status = getNodeResearchPart(node)?.status;
+				if (status !== 'pending' && status !== 'planning') return;
+				stopTyping();
+				deleteSubtree(graph, nodeId);
+				markGraphForReplacement(graph);
+				recomputeLeafId(graph);
+				chat.updatedAt = Date.now();
+				saveChatAwaitable(chat.id).catch((err) => {
+					console.error('[Chat] Failed to cancel research message:', err);
+				});
+				resetEdit();
+				rerender();
+				renderChatList();
+				setActiveCallback?.();
+			},
+			'research-start': () => {
+				startPendingResearch(nodeId);
 			},
 			copy: async () => {
 				const rawText = getNodeRawTextContent(node);
@@ -2238,7 +2808,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	}, { capture: true, signal });
 
 	messages.addEventListener('keydown', (e) => {
-		const editEl = e.target.closest('.chat-edit-input');
+		const editEl = e.target.closest('.chat-edit-input, [data-research-task-edit]');
 		if (!editEl) return;
 		const msgEl  = editEl.closest('.chat-message');
 		const nodeId = msgEl?.dataset.nodeId;
@@ -2247,13 +2817,18 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			e.preventDefault();
 			uiState.editingSaveMode = e.shiftKey ? 'preserve' : 'reset';
 			msgEl.querySelector('button[data-action="save"]')?.click();
+		} else if (e.key === 'Enter' && editEl.matches('[data-research-task-edit]')) {
+			e.preventDefault();
+			const taskEditEls = [...msgEl.querySelectorAll('[data-research-task-edit]')];
+			const index = taskEditEls.indexOf(editEl);
+			(taskEditEls[index + 1] || editEl).focus();
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
 			document.execCommand('insertText', false, '\n');
 		} else if (e.key === 'Escape' || e.key === 'Esc') {
 			e.preventDefault();
 			const escNodeId = uiState.editingNodeId;
-			uiState.editingNodeId = null; uiState.editingDraft = ''; uiState.editingSaveMode = null;
+			uiState.editingNodeId = null; uiState.editingDraft = ''; uiState.editingMode = null; uiState.editingSaveMode = null;
 			const chat2 = getChatById(getCurrentChatId());
 			const g2    = chat2 ? ensureGraph(chat2) : null;
 			const escNode = (escNodeId && g2) ? getNode(g2, escNodeId) : null;
@@ -2263,11 +2838,14 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	}, { signal });
 
 	messages.addEventListener('input', (e) => {
-		const editEl = e.target.closest('.chat-edit-input');
+		const editEl = e.target.closest('.chat-edit-input, [data-research-task-edit]');
 		if (!editEl) return;
 		const nodeId = editEl.closest('.chat-message')?.dataset?.nodeId;
 		if (nodeId && uiState.editingNodeId === nodeId) {
-			uiState.editingDraft = (editEl.innerText ?? '').replace(/\n$/, '');
+			const taskEditEls = [...editEl.closest('.chat-message')?.querySelectorAll('[data-research-task-edit]') || []];
+			uiState.editingDraft = taskEditEls.length > 0
+				? taskEditEls.map((el) => (el.innerText ?? '').replace(/\n/g, ' ').trim()).filter(Boolean).join('\n')
+				: (editEl.innerText ?? '').replace(/\n$/, '');
 			updateLiveContext();
 		}
 	}, { signal });
@@ -2344,11 +2922,17 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		if (!parts || parts.length === 0) return;
 		// Debounce: prevent rapid-fire duplicate submissions
 		if (uiState.isSubmitting) return;
+		const submittedText = parts
+			.filter((part) => part?.type === 'text')
+			.map((part) => String(part.content || ''))
+			.join('')
+			.trim();
+		const shouldPrepareResearch = isResearchEnabled(root) && Boolean(submittedText);
 		uiState.isSubmitting = true;
 		ensureChatExists(setActiveCallback);
 		if (empty) empty.hidden = true;
 		stopTyping();
-		uiState.editingNodeId = null; uiState.editingDraft = ''; uiState.editingSaveMode = null;
+		uiState.editingNodeId = null; uiState.editingDraft = ''; uiState.editingMode = null; uiState.editingSaveMode = null;
 
 		// Check if this is the first message (for AI title generation after chat completes)
 		const submittedChatId = getCurrentChatId();
@@ -2359,6 +2943,12 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 
 		// Add user message immediately (shows in UI)
 		const userNode = await addMessageToChat(submittedChatId, 'user', '', null, parts);
+		if (userNode && shouldPrepareResearch) {
+			addResearchPlanningNode(getChatById(submittedChatId), userNode, submittedText);
+			saveChatAwaitable(submittedChatId).catch((err) => {
+				console.error('[Chat] Failed to save pending research message:', err);
+			});
+		}
 		attachmentManager.clear();
 		const uploadBtn = root.querySelector('#chatUploadBtn');
 		if (uploadBtn) delete uploadBtn.dataset.count;
@@ -2367,7 +2957,9 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 
 		const sendNoReply = form.dataset.sendNoReply === '1';
 		delete form.dataset.sendNoReply;
-		if (!sendNoReply && userNode?.id) {
+		if (shouldPrepareResearch && userNode?.id) {
+			uiState.isSubmitting = false;
+		} else if (!sendNoReply && userNode?.id) {
 			startReply(submittedChatId, userNode.id).finally(() => {
 				// Release the submit debounce guard once the reply completes
 				uiState.isSubmitting = false;

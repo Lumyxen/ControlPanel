@@ -444,8 +444,8 @@ body.sidebar-collapsed.is-chat-page .quick-new-chat {
 .nav-chat-list {
     display: grid;
     gap: 2px;
-    /* doubled list height */
-    max-height: 240px;
+    /* Keep a sliver of the next chat visible so the list reads as scrollable. */
+    max-height: 252px;
     overflow-y: auto;
     position: relative;
 }

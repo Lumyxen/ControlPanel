@@ -30,7 +30,8 @@ async function throwResponseError(response) {
 	const errMsg = typeof error.error === 'object' && error.error !== null
 		? (error.error.message || JSON.stringify(error.error))
 		: error.error;
-	throw new Error(errMsg || `HTTP ${response.status}`);
+	const problemMsg = error.detail || error.title;
+	throw new Error(errMsg || problemMsg || `HTTP ${response.status}`);
 }
 
 export async function requestJson(endpoint, options = {}) {
@@ -111,8 +112,8 @@ function emitSseFrame(frame, onChunk, onDone) {
 	return false;
 }
 
-export async function streamTask(taskId, resumeOffset, onChunk, signal = null, onDone = null) {
-	const response = await fetch(apiUrl(`/tasks/${taskId}/stream`), {
+async function streamEventEndpoint(endpoint, resumeOffset, onChunk, signal = null, onDone = null, statusLoader = null) {
+	const response = await fetch(apiUrl(endpoint), {
 		headers: resumeOffset > 0 ? { 'X-Chunk-Offset': String(resumeOffset) } : {},
 		signal,
 	});
@@ -147,7 +148,7 @@ export async function streamTask(taskId, resumeOffset, onChunk, signal = null, o
 				if (buffer.trim()) {
 					emitSseFrame(buffer, onChunk, onDone);
 				}
-				const status = await getTaskStatus(taskId).catch(() => null);
+				const status = statusLoader ? await statusLoader().catch(() => null) : null;
 				const taskStatus = status?.status || '';
 				if (taskStatus === 'failed') {
 					throw new Error(status?.error || 'Generation failed');
@@ -162,6 +163,17 @@ export async function streamTask(taskId, resumeOffset, onChunk, signal = null, o
 		}
 		throw error;
 	}
+}
+
+export async function streamTask(taskId, resumeOffset, onChunk, signal = null, onDone = null) {
+	return streamEventEndpoint(
+		`/tasks/${taskId}/stream`,
+		resumeOffset,
+		onChunk,
+		signal,
+		onDone,
+		() => getTaskStatus(taskId),
+	);
 }
 
 export async function cancelTask(taskId, options = {}) {
@@ -249,6 +261,14 @@ export async function generateAiTitle(params) {
 	return requestJson('/chat/generate-title', {
 		method: 'POST',
 		body: JSON.stringify(params),
+	});
+}
+
+export async function generateResearchPlan(params, options = {}) {
+	return requestJson('/chat/generate-research-plan', {
+		method: 'POST',
+		body: JSON.stringify(params),
+		...options,
 	});
 }
 

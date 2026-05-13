@@ -93,6 +93,185 @@ function buildInlineAttachment(attachment) {
 	return wrap;
 }
 
+const DEFAULT_RESEARCH_WORKFLOW = [
+	{ id: 'plan', label: 'Plan' },
+	{ id: 'gather', label: 'Gather evidence' },
+	{ id: 'verify', label: 'Verify' },
+	{ id: 'draft', label: 'Draft' },
+	{ id: 'review', label: 'Review and refine' },
+	{ id: 'final', label: 'Final response' },
+];
+
+function getResearchWorkflow(part) {
+	if (Array.isArray(part?.tasks) && part.tasks.length > 0) {
+		return part.tasks
+			.map((task, index) => {
+				if (typeof task === 'string') return { id: `task_${index + 1}`, label: task };
+				if (!task || typeof task !== 'object') return null;
+				return {
+					id: String(task.id || task.label || `task_${index + 1}`),
+					label: String(task.label || task.title || task.id || ''),
+				};
+			})
+			.filter((step) => step?.label);
+	}
+	if (Array.isArray(part?.workflow) && part.workflow.length > 0) {
+		return part.workflow
+			.map((step) => {
+				if (typeof step === 'string') return { id: step, label: step };
+				if (!step || typeof step !== 'object') return null;
+				return {
+					id: String(step.id || step.label || ''),
+					label: String(step.label || step.id || ''),
+				};
+			})
+			.filter((step) => step?.label);
+	}
+	return DEFAULT_RESEARCH_WORKFLOW;
+}
+
+function formatResearchListValue(value) {
+	return String(value || '').replace(/_/g, ' ');
+}
+
+function buildResearchPartElement(part) {
+	const wrap = document.createElement('section');
+	wrap.className = 'chat-research-message';
+	if (part?.status) wrap.dataset.status = String(part.status);
+	wrap.setAttribute('aria-label', 'Research workflow');
+
+	const query = String(part?.query || part?.content || '').trim();
+	const title = String(part?.title || part?.header || query || 'Research brief').trim();
+	if (title) {
+		const header = document.createElement('div');
+		header.className = 'chat-research-message-title';
+		header.textContent = title;
+		wrap.appendChild(header);
+	}
+	if (query && title && query !== title && part?.status !== 'pending') {
+		const body = document.createElement('div');
+		body.className = 'chat-research-message-query';
+		body.textContent = query;
+		wrap.appendChild(body);
+	}
+
+	const workflow = document.createElement('ol');
+	workflow.className = 'chat-research-message-workflow';
+	for (const step of getResearchWorkflow(part)) {
+		const item = document.createElement('li');
+		item.className = 'chat-research-message-step';
+		item.textContent = step.label;
+		workflow.appendChild(item);
+	}
+	wrap.appendChild(workflow);
+
+	if (part?.status === 'pending' || part?.status === 'planning') {
+		const actions = document.createElement('div');
+		actions.className = 'chat-research-message-actions';
+
+		const edit = document.createElement('button');
+		edit.type = 'button';
+		edit.className = 'chat-research-action secondary';
+		edit.dataset.action = 'research-edit';
+		edit.textContent = 'Edit';
+
+		const right = document.createElement('div');
+		right.className = 'chat-research-message-actions-right';
+
+		const cancel = document.createElement('button');
+		cancel.type = 'button';
+		cancel.className = 'chat-research-action secondary';
+		cancel.dataset.action = 'research-cancel';
+		cancel.textContent = 'Cancel';
+
+		right.appendChild(cancel);
+		if (part?.status === 'pending') {
+			const start = document.createElement('button');
+			start.type = 'button';
+			start.className = 'chat-research-action primary chat-research-start';
+			start.dataset.action = 'research-start';
+			if (part?.autoStartAt) start.dataset.autoStartAt = String(part.autoStartAt);
+			const autoStartAt = Number(part?.autoStartAt || 0);
+			const seconds = Number.isFinite(autoStartAt) && autoStartAt > 0
+				? Math.max(0, Math.ceil((autoStartAt - Date.now()) / 1000))
+				: 0;
+			start.textContent = seconds > 0 ? `Start (${seconds}s)` : 'Start';
+			right.appendChild(start);
+		} else {
+			const planning = document.createElement('span');
+			planning.className = 'chat-research-message-meta';
+			planning.textContent = 'Generating plan...';
+			right.appendChild(planning);
+		}
+		actions.append(edit, right);
+		wrap.appendChild(actions);
+	} else {
+		const meta = document.createElement('div');
+		meta.className = 'chat-research-message-meta';
+		const sources = Array.isArray(part?.sourceClasses) && part.sourceClasses.length > 0
+			? part.sourceClasses.map(formatResearchListValue).join(', ')
+			: 'web, academic';
+		const deliverables = Array.isArray(part?.deliverables) && part.deliverables.length > 0
+			? part.deliverables.map(formatResearchListValue).join(', ')
+			: 'final answer, inline citations, source list, caveats';
+		meta.textContent = `Sources: ${sources} • Deliverables: ${deliverables}`;
+		wrap.appendChild(meta);
+	}
+
+	return wrap;
+}
+
+function buildResearchEditElement(part, editingDraft) {
+	const draftTasks = String(editingDraft || '')
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean);
+	const workflow = draftTasks.length > 0
+		? draftTasks.map((label, index) => ({ id: `task_${index + 1}`, label }))
+		: getResearchWorkflow(part);
+
+	const wrap = document.createElement('section');
+	wrap.className = 'chat-research-message editing';
+	if (part?.status) wrap.dataset.status = String(part.status);
+	wrap.setAttribute('aria-label', 'Edit research workflow');
+
+	const query = String(part?.query || part?.content || '').trim();
+	const title = String(part?.title || part?.header || query || 'Research brief').trim();
+	if (title) {
+		const header = document.createElement('div');
+		header.className = 'chat-research-message-title';
+		header.textContent = title;
+		wrap.appendChild(header);
+	}
+
+	const list = document.createElement('ol');
+	list.className = 'chat-research-message-workflow chat-research-edit-list';
+	for (const step of workflow) {
+		const item = document.createElement('li');
+		item.className = 'chat-research-message-step chat-research-edit-step';
+
+		const edit = document.createElement('div');
+		edit.className = 'chat-research-task-edit';
+		edit.dataset.researchTaskEdit = 'true';
+		edit.contentEditable = 'true';
+		edit.setAttribute('role', 'textbox');
+		edit.setAttribute('aria-label', 'Edit research task');
+		edit.spellcheck = true;
+		edit.innerText = step.label;
+
+		item.appendChild(edit);
+		list.appendChild(item);
+	}
+	wrap.appendChild(list);
+	return wrap;
+}
+
+function getNodeResearchPart(node) {
+	if (node?.research && typeof node.research === 'object') return node.research;
+	if (!Array.isArray(node?.parts)) return null;
+	return node.parts.find((part) => part?.type === 'research' && typeof part === 'object') || null;
+}
+
 // ─── Tool call element ────────────────────────────────────────────────────────
 
 function formatToolName(name) {
@@ -426,7 +605,7 @@ function buildRevisionModelTextElement(text) {
 	return content;
 }
 
-function buildRevisionModelOutputElement(modelOutputs, { live = false } = {}) {
+function buildRevisionModelOutputElement(modelOutputs, { live = false, mode = '' } = {}) {
 	if (!Array.isArray(modelOutputs) || modelOutputs.length === 0) return null;
 
 	const wrap = document.createElement('details');
@@ -434,9 +613,10 @@ function buildRevisionModelOutputElement(modelOutputs, { live = false } = {}) {
 	wrap.open = live && modelOutputs.some((output) => !isRevisionModelOutputComplete(output));
 
 	const summary = document.createElement('summary');
+	const isResearch = mode === 'research';
 	summary.textContent = modelOutputs.length === 1
-		? 'Model output'
-		: `Model output (${modelOutputs.length} phases)`;
+		? (isResearch ? 'Research task' : 'Model output')
+		: (isResearch ? `Research tasks (${modelOutputs.length})` : `Model output (${modelOutputs.length} phases)`);
 	const body = document.createElement('div');
 	body.className = 'revision-model-output-body';
 
@@ -515,6 +695,16 @@ function normalizeRevisionTrace(trace) {
 }
 
 function formatRevisionStage(trace) {
+	if (trace.mode === 'research') {
+		if (trace.committed) return 'Research complete';
+		if (trace.stage === 'plan') return 'Planning research';
+		if (trace.stage === 'research') return 'Gathering evidence';
+		if (trace.stage === 'verify') return 'Verifying evidence';
+		if (trace.stage === 'review') return 'Reviewing answer';
+		if (trace.stage === 'revise') return 'Refining answer';
+		if (trace.stage === 'commit') return 'Finalizing answer';
+		return 'Researching';
+	}
 	if (trace.committed) return 'Committed';
 	if (trace.stage === 'review') return 'Reviewing';
 	if (trace.stage === 'revise') return 'Revising';
@@ -536,6 +726,7 @@ export function buildRevisionTraceElement(traceValue, { live = false } = {}) {
 
 	const wrap = document.createElement('div');
 	wrap.className = 'message-revision-trace';
+	if (trace.mode === 'research') wrap.classList.add('research');
 	if (trace.committed) wrap.classList.add('committed');
 	if (live) wrap.classList.add('live');
 
@@ -546,12 +737,14 @@ export function buildRevisionTraceElement(traceValue, { live = false } = {}) {
 	label.textContent = formatRevisionStage(trace);
 	const meta = document.createElement('span');
 	meta.className = 'revision-meta';
-	const editLabel = trace.events.length === 1 ? '1 edit' : `${trace.events.length} edits`;
-	meta.textContent = [formatRevisionElapsed(trace), editLabel].filter(Boolean).join(' • ');
+	const activityLabel = trace.mode === 'research'
+		? (trace.events.length === 1 ? '1 task' : `${trace.events.length} tasks`)
+		: (trace.events.length === 1 ? '1 edit' : `${trace.events.length} edits`);
+	meta.textContent = [formatRevisionElapsed(trace), activityLabel].filter(Boolean).join(' • ');
 	header.append(label, meta);
 	wrap.appendChild(header);
 
-	const modelOutputEl = buildRevisionModelOutputElement(trace.modelOutputs, { live });
+	const modelOutputEl = buildRevisionModelOutputElement(trace.modelOutputs, { live, mode: trace.mode });
 	if (modelOutputEl) {
 		wrap.appendChild(modelOutputEl);
 	}
@@ -584,7 +777,9 @@ export function buildRevisionTraceElement(traceValue, { live = false } = {}) {
 	detail.className = 'revision-draft';
 	detail.open = live && !trace.committed;
 	const detailSummary = document.createElement('summary');
-	detailSummary.textContent = trace.committed ? 'Changes made' : 'Working draft';
+	detailSummary.textContent = trace.mode === 'research'
+		? (trace.committed ? 'Workflow notes' : 'Working answer')
+		: (trace.committed ? 'Changes made' : 'Working draft');
 	const body = document.createElement('div');
 	body.className = 'revision-draft-body';
 	if (trace.committed && trace.changeSummary) {
@@ -642,7 +837,7 @@ export function buildToolCallsElement({
 
 // ─── Content container ────────────────────────────────────────────────────────
 
-export function buildContentContainer(node, isEditing, editingDraft, settings = null) {
+export function buildContentContainer(node, isEditing, editingDraft, settings = null, editingMode = null) {
 	const container = document.createElement('div');
 	container.className = 'chat-message-content';
 	const inlineRenderableParts = getInlineRenderableParts(node, isEditing);
@@ -685,7 +880,9 @@ export function buildContentContainer(node, isEditing, editingDraft, settings = 
 		if (toolCallsEl) container.appendChild(toolCallsEl);
 	}
 
-	if (isEditing) {
+	if (isEditing && editingMode === 'research-tasks') {
+		container.appendChild(buildResearchEditElement(getNodeResearchPart(node), editingDraft));
+	} else if (isEditing) {
 		// Using contenteditable avoids Firefox's native ESC interception on <textarea>
 		const editEl = document.createElement('div');
 		editEl.className = 'chat-edit-input';
@@ -704,6 +901,8 @@ export function buildContentContainer(node, isEditing, editingDraft, settings = 
 				wrapper.className = 'chat-message-text';
 				renderMessageTextInto(wrapper, part.content);
 				container.appendChild(wrapper);
+			} else if (part.type === 'research') {
+				container.appendChild(buildResearchPartElement(part));
 			} else if (node.role === 'assistant' && part.type === 'reasoning') {
 				const reasoningEl = buildReasoningElement({
 					reasoning: getReasoningPartContent(part),
@@ -861,6 +1060,7 @@ function buildMessageGroupElement({
 	node,
 	isEditing,
 	editingDraft,
+	editingMode,
 	canBranchBack,
 	canBranchForward,
 	canResend,
@@ -877,7 +1077,7 @@ function buildMessageGroupElement({
 	div.setAttribute('aria-label', node.role === 'user' ? 'You' : 'Assistant');
 	div.dataset.nodeId = node.id;
 
-	div.appendChild(buildContentContainer(node, isEditing, editingDraft, settings));
+	div.appendChild(buildContentContainer(node, isEditing, editingDraft, settings, editingMode));
 	group.append(
 		div,
 		buildMessageNudgeElement({
@@ -928,6 +1128,7 @@ export function renderThread(messagesEl, chat, uiState, settings = null) {
 			node,
 			isEditing:        uiState?.editingNodeId === node.id,
 			editingDraft:     uiState?.editingDraft,
+			editingMode:      uiState?.editingNodeId === node.id ? uiState?.editingMode : null,
 			canBranchBack:    nav.canBack,
 			canBranchForward: nav.canForward,
 			canResend:        Boolean(node.parentId) && node.role !== 'system',
@@ -973,13 +1174,13 @@ export function refreshRenderedMessageNudges(messagesEl, graph, uiState = null, 
  * rebuilding the entire thread. Avoids the Chromium flash during full re-renders.
  * Returns false if the element wasn't found — caller should fall back to renderThread.
  */
-export function patchMessageEditState(messagesEl, graph, node, isEditing, editingDraft, settings = null) {
+export function patchMessageEditState(messagesEl, graph, node, isEditing, editingDraft, settings = null, editingMode = null) {
 	const groupEl = messagesEl.querySelector(`.chat-message-group[data-node-id="${node.id}"]`);
 	const msgEl = groupEl?.querySelector(':scope > .chat-message') || messagesEl.querySelector(`.chat-message[data-node-id="${node.id}"]`);
 	if (!msgEl) return false;
 
 	const oldContent = msgEl.querySelector('.chat-message-content');
-	const newContent = buildContentContainer(node, isEditing, editingDraft, settings);
+	const newContent = buildContentContainer(node, isEditing, editingDraft, settings, editingMode);
 	if (oldContent) msgEl.replaceChild(newContent, oldContent);
 	else {
 		const nudge = msgEl.querySelector('.chat-message-nudge');

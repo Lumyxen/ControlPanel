@@ -80,6 +80,14 @@ public:
     Json::Value buildMessages(const std::string& prompt,
                               const std::string& systemPrompt) const;
 
+    Json::Value chat(
+        const std::string& model,
+        const std::string& prompt,
+        int maxTokens = 2048,
+        const std::string& systemPrompt = "",
+        double temperature = -1.0
+    );
+
     std::string generateTitle(const std::string& model,
                               const std::string& userMessage,
                               const std::string& systemPrompt = "");

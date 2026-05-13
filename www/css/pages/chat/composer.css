@@ -26,6 +26,14 @@
     display: none !important;
 }
 
+.chat-research-toggle[aria-pressed="true"] .chat-dropdown-icon {
+    color: var(--accent);
+}
+
+.chat-research-toggle[aria-pressed="true"] {
+    background: var(--ctp-mantle);
+}
+
 .tool-approval-card {
     border: 1px solid var(--accent);
     background: color-mix(in srgb, var(--panel) 88%, var(--accent));

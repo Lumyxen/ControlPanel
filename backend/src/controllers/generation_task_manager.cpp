@@ -200,7 +200,9 @@ void ensureRevisionTrace(Json::Value& trace, Json::Int64 startedAt = nowMillis()
     if (!trace.isObject()) {
         trace = Json::Value(Json::objectValue);
     }
-    trace["mode"] = "live_revision";
+    if (!trace.isMember("mode") || !trace["mode"].isString() || trace["mode"].asString().empty()) {
+        trace["mode"] = "live_revision";
+    }
     if (!trace.isMember("events") || !trace["events"].isArray()) {
         trace["events"] = Json::Value(Json::arrayValue);
     }
@@ -245,6 +247,9 @@ void applyDraftEditorOutput(Json::Value& trace, const Json::Value& toolCall) {
 
     const Json::Int64 timestamp = output.get("timestamp", nowMillis()).asInt64();
     ensureRevisionTrace(trace, timestamp);
+    if (output.isMember("mode") && output["mode"].isString() && !output["mode"].asString().empty()) {
+        trace["mode"] = output["mode"];
+    }
     trace["updatedAt"] = timestamp;
     trace["stage"] = output.get("stage", "draft");
     trace["committed"] = output.get("final", false).asBool();
@@ -559,7 +564,8 @@ Json::Value makeRevisionEvent(
     const std::string& summary,
     bool final = false,
     const std::string& changeSummary = "",
-    const Json::Value& issues = Json::Value(Json::arrayValue)) {
+    const Json::Value& issues = Json::Value(Json::arrayValue),
+    const std::string& traceMode = "") {
     Json::Value output(Json::objectValue);
     output["operation"] = operation;
     output["stage"] = stage;
@@ -567,6 +573,9 @@ Json::Value makeRevisionEvent(
     output["content"] = content;
     output["summary"] = summary;
     output["event_id"] = eventId;
+    if (!traceMode.empty()) {
+        output["mode"] = traceMode;
+    }
     if (final) {
         output["final"] = true;
     }
@@ -615,7 +624,8 @@ bool emitRevisionEvent(
     const std::string& summary,
     bool final = false,
     const std::string& changeSummary = "",
-    const Json::Value& issues = Json::Value(Json::arrayValue)) {
+    const Json::Value& issues = Json::Value(Json::arrayValue),
+    const std::string& traceMode = "") {
     if (!onChunk) {
         return true;
     }
@@ -628,7 +638,8 @@ bool emitRevisionEvent(
         summary,
         final,
         changeSummary,
-        issues);
+        issues,
+        traceMode);
     return onChunk("data: " + writeJson(event) + "\n\n");
 }
 
@@ -639,7 +650,8 @@ bool emitRevisionModelOutputEvent(
     const std::string& label,
     const std::string& status,
     const std::string& contentDelta = "",
-    const std::string& reasoningDelta = "") {
+    const std::string& reasoningDelta = "",
+    const std::string& traceMode = "") {
     if (!onChunk) {
         return true;
     }
@@ -654,6 +666,9 @@ bool emitRevisionModelOutputEvent(
     event["label"] = label;
     event["status"] = status.empty() ? "streaming" : status;
     event["timestamp"] = nowMillis();
+    if (!traceMode.empty()) {
+        event["mode"] = traceMode;
+    }
     if (!contentDelta.empty()) {
         event["delta"] = contentDelta;
     }
@@ -668,7 +683,8 @@ bool emitRevisionModelToolEvent(
     const std::string& phaseId,
     const std::string& stage,
     const std::string& label,
-    const Json::Value& sourceEvent) {
+    const Json::Value& sourceEvent,
+    const std::string& traceMode = "") {
     if (!onChunk || phaseId.empty() || !sourceEvent.isObject() ||
         !sourceEvent.isMember("tool_call") || !sourceEvent["tool_call"].isObject()) {
         return true;
@@ -681,6 +697,9 @@ bool emitRevisionModelToolEvent(
     event["label"] = label;
     event["status"] = "streaming";
     event["timestamp"] = nowMillis();
+    if (!traceMode.empty()) {
+        event["mode"] = traceMode;
+    }
     event["tool_call"] = sourceEvent["tool_call"];
     if (sourceEvent.isMember("event")) {
         event["tool_event"] = sourceEvent["event"];
@@ -696,7 +715,8 @@ bool emitRevisionModelDeltasFromChunk(
     const std::string& phaseId,
     const std::string& stage,
     const std::string& label,
-    const std::string& chunk) {
+    const std::string& chunk,
+    const std::string& traceMode = "") {
     if (!onChunk || phaseId.empty()) {
         return true;
     }
@@ -717,7 +737,7 @@ bool emitRevisionModelDeltasFromChunk(
 
         const std::string type = json.get("type", "").asString();
         if ((type == "tool_execution" || type == "tool_event") && json.isMember("tool_call")) {
-            if (!emitRevisionModelToolEvent(onChunk, phaseId, stage, label, json)) {
+            if (!emitRevisionModelToolEvent(onChunk, phaseId, stage, label, json, traceMode)) {
                 return false;
             }
             continue;
@@ -746,7 +766,8 @@ bool emitRevisionModelDeltasFromChunk(
                 label,
                 "streaming",
                 contentDelta,
-                reasoningDelta)) {
+                reasoningDelta,
+                traceMode)) {
             return false;
         }
     }
@@ -765,6 +786,9 @@ void applyRevisionModelOutputEvent(Json::Value& trace, const Json::Value& event)
 
     const Json::Int64 timestamp = event.get("timestamp", nowMillis()).asInt64();
     ensureRevisionTrace(trace, timestamp);
+    if (event.isMember("mode") && event["mode"].isString() && !event["mode"].asString().empty()) {
+        trace["mode"] = event["mode"];
+    }
     if (!trace.isMember("modelOutputs") || !trace["modelOutputs"].isArray()) {
         trace["modelOutputs"] = Json::Value(Json::arrayValue);
     }
@@ -1056,6 +1080,448 @@ bool runScriptedRevisionFlow(
     return !onChunk || onChunk("data: [DONE]\n\n");
 }
 
+std::string getResearchQuery(const Json::Value& researchRequest) {
+    if (researchRequest.isObject()) {
+        std::string query = researchRequest.get("query", "").asString();
+        trimWhitespace(query);
+        if (!query.empty()) {
+            return query;
+        }
+    }
+    return "the user's latest research request";
+}
+
+std::string buildResearchWorkflowText(const Json::Value& researchRequest) {
+    if (researchRequest.isObject() &&
+        researchRequest.isMember("workflow") &&
+        researchRequest["workflow"].isArray() &&
+        !researchRequest["workflow"].empty()) {
+        std::string text;
+        for (const auto& step : researchRequest["workflow"]) {
+            std::string label;
+            if (step.isString()) {
+                label = step.asString();
+            } else if (step.isObject()) {
+                label = step.get("label", step.get("id", "")).asString();
+            }
+            trimWhitespace(label);
+            if (label.empty()) {
+                continue;
+            }
+            if (!text.empty()) {
+                text += "\n";
+            }
+            text += "- " + label;
+        }
+        if (!text.empty()) {
+            return text;
+        }
+    }
+
+    return
+        "- Plan\n"
+        "- Gather evidence\n"
+        "- Verify\n"
+        "- Draft\n"
+        "- Review and refine\n"
+        "- Final response";
+}
+
+std::string buildResearchSourceText(const Json::Value& researchRequest) {
+    if (!researchRequest.isObject() ||
+        !researchRequest.isMember("source_classes") ||
+        !researchRequest["source_classes"].isArray() ||
+        researchRequest["source_classes"].empty()) {
+        return "web, academic, official, primary, regulator, standards, original dataset, and peer-reviewed sources where available";
+    }
+
+    std::string text;
+    for (const auto& source : researchRequest["source_classes"]) {
+        const std::string value = source.asString();
+        if (value.empty()) {
+            continue;
+        }
+        if (!text.empty()) {
+            text += ", ";
+        }
+        text += value;
+    }
+    return text.empty()
+        ? "web, academic, official, primary, regulator, standards, original dataset, and peer-reviewed sources where available"
+        : text;
+}
+
+std::string buildResearchPlanPrompt(const Json::Value& researchRequest) {
+    return
+        "Research workflow step 1: plan the work for the user's latest request.\n"
+        "Query: " + truncateForPrompt(getResearchQuery(researchRequest), 4000) + "\n\n"
+        "Workflow:\n" + buildResearchWorkflowText(researchRequest) + "\n\n"
+        "Return a compact research plan with the key subquestions, source targets, likely searches, "
+        "verification criteria, and any assumptions that must be checked. Do not answer the user yet.";
+}
+
+std::string buildResearchEvidencePrompt(
+    const Json::Value& researchRequest,
+    const std::string& plan) {
+    return
+        "Research workflow step 2: gather evidence for the user's request.\n"
+        "Use available retrieval tools when they exist. If no retrieval tools are available, state that clearly "
+        "and use only the conversation context instead of fabricating sources.\n"
+        "Prefer these source classes: " + buildResearchSourceText(researchRequest) + ".\n\n"
+        "Research plan:\n" + truncateForPrompt(plan, 12000) + "\n\n"
+        "Return evidence notes only: sources consulted, source reliability, important facts, quotes or figures "
+        "that need citation, gaps, contradictions, and links or source identifiers actually retrieved. "
+        "Do not write the final answer yet.";
+}
+
+std::string buildResearchVerificationPrompt(
+    const std::string& plan,
+    const std::string& evidence) {
+    return
+        "Research workflow step 3: verify the evidence before drafting.\n"
+        "Cross-check dates, numbers, named entities, causal claims, and anything likely to have changed recently. "
+        "Prefer primary or official sources over summaries. Flag unresolved conflicts instead of smoothing them over.\n\n"
+        "Research plan:\n" + truncateForPrompt(plan, 8000) + "\n\n"
+        "Evidence notes:\n" + truncateForPrompt(evidence, 18000) + "\n\n"
+        "Return JSON only with this shape: "
+        "{\"issues\":[{\"label\":\"...\",\"severity\":\"low|medium|high|none\","
+        "\"span\":\"optional short span\",\"note\":\"verification note\","
+        "\"recommended_action\":\"targeted edit or source check\"}]}. "
+        "Use 1 to 4 concrete issues. If everything needed for the answer is adequately verified, return one issue "
+        "with label \"none\" and severity \"none\".";
+}
+
+std::string buildResearchDraftPrompt(
+    const std::string& plan,
+    const std::string& evidence,
+    const Json::Value& verificationIssues) {
+    return
+        "Research workflow step 4: write the user-facing answer from the verified evidence.\n"
+        "Return only the answer for the user. Do not mention drafts, internal workflow, hidden reasoning, or review passes. "
+        "Cite retrieved sources inline for non-trivial claims when source identifiers or links are available. "
+        "State caveats and unresolved conflicts clearly.\n\n"
+        "Research plan:\n" + truncateForPrompt(plan, 6000) + "\n\n"
+        "Evidence notes:\n" + truncateForPrompt(evidence, 20000) + "\n\n"
+        "Verification notes:\n" + truncateForPrompt(buildRevisionNotesText(verificationIssues), 8000);
+}
+
+std::string buildResearchReviewPrompt(
+    const std::string& answer,
+    const std::string& evidence,
+    const Json::Value& verificationIssues,
+    int iteration) {
+    return
+        "Research workflow step 5: review the answer before it is shown to the user. "
+        "This is review pass " + std::to_string(iteration) + ". Check whether the answer is complete, source-grounded, "
+        "directly answers the request, cites available evidence, avoids unsupported claims, and preserves caveats.\n\n"
+        "Answer draft:\n" + truncateForPrompt(answer, 18000) + "\n\n"
+        "Evidence notes:\n" + truncateForPrompt(evidence, 14000) + "\n\n"
+        "Verification notes:\n" + truncateForPrompt(buildRevisionNotesText(verificationIssues), 6000) + "\n\n"
+        "Return JSON only with this shape: "
+        "{\"issues\":[{\"label\":\"...\",\"severity\":\"low|medium|high|none\","
+        "\"span\":\"optional short span\",\"note\":\"user-visible review note\","
+        "\"recommended_action\":\"targeted edit\"}]}. "
+        "If the answer is good enough to present, return one issue with label \"none\" and severity \"none\".";
+}
+
+std::string buildResearchRevisePrompt(
+    const std::string& answer,
+    const Json::Value& reviewIssues,
+    const std::string& evidence,
+    const Json::Value& verificationIssues) {
+    return
+        "Research workflow step 5: revise the answer using the review notes. "
+        "Return only the revised user-facing answer. Preserve useful citations, caveats, and directness. "
+        "Do not mention the review process.\n\n"
+        "Review notes:\n" + truncateForPrompt(buildRevisionNotesText(reviewIssues), 8000) + "\n\n"
+        "Verification notes:\n" + truncateForPrompt(buildRevisionNotesText(verificationIssues), 6000) + "\n\n"
+        "Evidence notes:\n" + truncateForPrompt(evidence, 14000) + "\n\n"
+        "Current answer:\n" + truncateForPrompt(answer, 18000);
+}
+
+bool runScriptedResearchFlow(
+    const std::string& taskId,
+    const Json::Value& baseMessages,
+    const Json::Value& researchRequest,
+    int maxTokens,
+    const std::function<bool(const std::string&)>& onChunk,
+    const std::function<void(const std::string&)>& onError,
+    const std::function<bool()>& cancelCheck,
+    const MessageStreamer& streamMessages) {
+    const std::string traceMode = "research";
+    auto emitPhaseStart = [&](const std::string& phaseId, const std::string& stage, const std::string& label) {
+        return emitRevisionModelOutputEvent(onChunk, phaseId, stage, label, "streaming", "", "", traceMode);
+    };
+    auto emitPhaseDone = [&](const std::string& phaseId, const std::string& stage, const std::string& label) {
+        return emitRevisionModelOutputEvent(onChunk, phaseId, stage, label, "completed", "", "", traceMode);
+    };
+    auto emitPhaseChunk = [&](const std::string& phaseId,
+                              const std::string& stage,
+                              const std::string& label,
+                              const std::string& chunk) {
+        return emitRevisionModelDeltasFromChunk(onChunk, phaseId, stage, label, chunk, traceMode);
+    };
+    auto emitResearchEvent = [&](const std::string& eventId,
+                                 const std::string& operation,
+                                 const std::string& stage,
+                                 const std::string& content,
+                                 const std::string& summary,
+                                 bool final = false,
+                                 const std::string& changeSummary = "",
+                                 const Json::Value& issues = Json::Value(Json::arrayValue)) {
+        return emitRevisionEvent(
+            onChunk,
+            taskId,
+            eventId,
+            operation,
+            stage,
+            content,
+            summary,
+            final,
+            changeSummary,
+            issues,
+            traceMode);
+    };
+
+    if (!emitResearchEvent("setup", "research_setup", "plan", "", "Started the research workflow.")) {
+        return false;
+    }
+
+    Json::Value planMessages = baseMessages;
+    appendSystemMessage(planMessages, buildResearchPlanPrompt(researchRequest));
+
+    std::string plan;
+    const int planningMaxTokens = std::clamp(maxTokens / 4, 512, 2048);
+    if (!emitPhaseStart("research_plan", "plan", "Research plan")) {
+        return false;
+    }
+    if (!collectRevisionPhaseText(
+            streamMessages,
+            planMessages,
+            planningMaxTokens,
+            onError,
+            cancelCheck,
+            plan,
+            [&](const std::string& chunk) {
+                return emitPhaseChunk("research_plan", "plan", "Research plan", chunk);
+            })) {
+        return false;
+    }
+    if (!emitPhaseDone("research_plan", "plan", "Research plan")) {
+        return false;
+    }
+    if (plan.empty()) {
+        plan = "No separate research plan was produced.";
+    }
+    if (!emitResearchEvent("plan", "research_plan", "plan", plan, "Built a research plan.")) {
+        return false;
+    }
+
+    Json::Value evidenceMessages = baseMessages;
+    appendSystemMessage(evidenceMessages, buildResearchEvidencePrompt(researchRequest, plan));
+
+    std::string evidence;
+    if (!emitPhaseStart("research_evidence", "research", "Evidence gathering")) {
+        return false;
+    }
+    if (!collectRevisionPhaseText(
+            streamMessages,
+            evidenceMessages,
+            maxTokens,
+            onError,
+            cancelCheck,
+            evidence,
+            [&](const std::string& chunk) {
+                return emitPhaseChunk("research_evidence", "research", "Evidence gathering", chunk);
+            })) {
+        return false;
+    }
+    if (!emitPhaseDone("research_evidence", "research", "Evidence gathering")) {
+        return false;
+    }
+    if (evidence.empty()) {
+        evidence = "No evidence notes were produced.";
+    }
+    if (!emitResearchEvent("evidence", "research_evidence", "research", evidence, "Gathered evidence.")) {
+        return false;
+    }
+
+    Json::Value verifyMessages = baseMessages;
+    appendSystemMessage(verifyMessages, buildResearchVerificationPrompt(plan, evidence));
+
+    std::string verificationText;
+    const int reviewMaxTokens = std::clamp(maxTokens / 4, 512, 2048);
+    if (!emitPhaseStart("research_verify", "verify", "Verification")) {
+        return false;
+    }
+    if (!collectRevisionPhaseText(
+            streamMessages,
+            verifyMessages,
+            reviewMaxTokens,
+            onError,
+            cancelCheck,
+            verificationText,
+            [&](const std::string& chunk) {
+                return emitPhaseChunk("research_verify", "verify", "Verification", chunk);
+            })) {
+        return false;
+    }
+    if (!emitPhaseDone("research_verify", "verify", "Verification")) {
+        return false;
+    }
+    Json::Value verificationIssues = parseRevisionIssues(verificationText);
+    if (!emitResearchEvent(
+            "verify",
+            "research_verify",
+            "verify",
+            evidence,
+            "Verified the evidence.",
+            false,
+            "",
+            verificationIssues)) {
+        return false;
+    }
+
+    Json::Value draftMessages = baseMessages;
+    appendSystemMessage(draftMessages, buildResearchDraftPrompt(plan, evidence, verificationIssues));
+
+    std::string finalText;
+    if (!emitPhaseStart("research_draft", "draft", "Answer draft")) {
+        return false;
+    }
+    if (!collectRevisionPhaseText(
+            streamMessages,
+            draftMessages,
+            maxTokens,
+            onError,
+            cancelCheck,
+            finalText,
+            [&](const std::string& chunk) {
+                return emitPhaseChunk("research_draft", "draft", "Answer draft", chunk);
+            })) {
+        return false;
+    }
+    if (!emitPhaseDone("research_draft", "draft", "Answer draft")) {
+        return false;
+    }
+    if (finalText.empty()) {
+        if (onError) {
+            onError("Research workflow produced no answer draft");
+        }
+        return false;
+    }
+    if (!emitResearchEvent("draft", "create_draft", "draft", finalText, "Drafted the answer.")) {
+        return false;
+    }
+
+    Json::Value lastReviewIssues = verificationIssues;
+    bool reviewPassed = false;
+    for (int iteration = 1; iteration <= 2; ++iteration) {
+        Json::Value reviewMessages = baseMessages;
+        appendTextMessage(reviewMessages, "assistant", finalText);
+        appendTextMessage(reviewMessages, "user", buildResearchReviewPrompt(finalText, evidence, verificationIssues, iteration));
+
+        const std::string reviewPhaseId = "research_review_" + std::to_string(iteration);
+        const std::string reviewLabel = iteration == 1 ? "Final review" : "Final review pass " + std::to_string(iteration);
+        std::string reviewText;
+        if (!emitPhaseStart(reviewPhaseId, "review", reviewLabel)) {
+            return false;
+        }
+        if (!collectRevisionPhaseText(
+                streamMessages,
+                reviewMessages,
+                reviewMaxTokens,
+                onError,
+                cancelCheck,
+                reviewText,
+                [&](const std::string& chunk) {
+                    return emitPhaseChunk(reviewPhaseId, "review", reviewLabel, chunk);
+                })) {
+            return false;
+        }
+        if (!emitPhaseDone(reviewPhaseId, "review", reviewLabel)) {
+            return false;
+        }
+
+        lastReviewIssues = parseRevisionIssues(reviewText);
+        const std::string reviewEventId = "review_" + std::to_string(iteration);
+        if (!emitResearchEvent(
+                reviewEventId,
+                "research_review",
+                "review",
+                finalText,
+                "Reviewed the answer draft.",
+                false,
+                "",
+                lastReviewIssues)) {
+            return false;
+        }
+
+        if (!revisionIssuesAreMaterial(lastReviewIssues)) {
+            reviewPassed = true;
+            break;
+        }
+
+        Json::Value reviseMessages = baseMessages;
+        appendTextMessage(reviseMessages, "assistant", finalText);
+        appendTextMessage(reviseMessages, "user", buildResearchRevisePrompt(
+            finalText,
+            lastReviewIssues,
+            evidence,
+            verificationIssues));
+
+        const std::string revisePhaseId = "research_revise_" + std::to_string(iteration);
+        const std::string reviseLabel = iteration == 1 ? "Refined answer" : "Refined answer pass " + std::to_string(iteration);
+        std::string revisedText;
+        if (!emitPhaseStart(revisePhaseId, "revise", reviseLabel)) {
+            return false;
+        }
+        if (!collectRevisionPhaseText(
+                streamMessages,
+                reviseMessages,
+                maxTokens,
+                onError,
+                cancelCheck,
+                revisedText,
+                [&](const std::string& chunk) {
+                    return emitPhaseChunk(revisePhaseId, "revise", reviseLabel, chunk);
+                })) {
+            return false;
+        }
+        if (!emitPhaseDone(revisePhaseId, "revise", reviseLabel)) {
+            return false;
+        }
+        if (!revisedText.empty()) {
+            finalText = revisedText;
+        }
+        if (!emitResearchEvent(
+                "revise_" + std::to_string(iteration),
+                "replace_text",
+                "revise",
+                finalText,
+                "Refined the answer.")) {
+            return false;
+        }
+    }
+
+    const std::string changeSummary = reviewPassed
+        ? "Research workflow completed and the answer passed final review."
+        : "Research workflow completed and the answer was finalized after the review budget.";
+    if (!emitResearchEvent(
+            "commit",
+            "commit_final",
+            "commit",
+            finalText,
+            "Committed the final research answer.",
+            true,
+            changeSummary,
+            lastReviewIssues)) {
+        return false;
+    }
+
+    return !onChunk || onChunk("data: [DONE]\n\n");
+}
+
 void appendReasoningTextPart(Json::Value& reasoningParts, const std::string& text) {
     if (text.empty()) {
         return;
@@ -1214,6 +1680,74 @@ Json::Value normalizeMessageParts(
     return parsedParts;
 }
 
+Json::Value buildResearchPartFromRequest(const Json::Value& request) {
+    if (!request.isMember("research") || !request["research"].isObject()) {
+        return Json::Value();
+    }
+
+    const Json::Value& research = request["research"];
+    Json::Value part(Json::objectValue);
+    part["type"] = "research";
+    if (research.isMember("mode")) {
+        part["mode"] = research["mode"];
+    }
+    if (research.isMember("query")) {
+        part["query"] = research["query"];
+    }
+    if (research.isMember("title")) {
+        part["title"] = research["title"];
+    } else if (research.isMember("header")) {
+        part["title"] = research["header"];
+    }
+    if (research.isMember("status")) {
+        part["status"] = research["status"];
+    }
+    if (research.isMember("source_classes")) {
+        part["sourceClasses"] = research["source_classes"];
+    } else if (research.isMember("sourceClasses")) {
+        part["sourceClasses"] = research["sourceClasses"];
+    }
+    if (research.isMember("deliverables")) {
+        part["deliverables"] = research["deliverables"];
+    }
+    if (research.isMember("tasks") && research["tasks"].isArray()) {
+        part["tasks"] = research["tasks"];
+    } else if (research.isMember("steps") && research["steps"].isArray()) {
+        part["tasks"] = research["steps"];
+    }
+    if (research.isMember("workflow") && research["workflow"].isArray()) {
+        part["workflow"] = research["workflow"];
+    }
+    return part;
+}
+
+Json::Value buildChatMessagePartsForTask(
+    const std::shared_ptr<GenerationTask>& task,
+    const ParsedTaskOutput& output) {
+    const Json::Value researchPart = buildResearchPartFromRequest(task->request);
+    if (!researchPart.isObject() || researchPart.empty()) {
+        return output.parts;
+    }
+
+    Json::Value parts(Json::arrayValue);
+    if (researchPart.isObject() && !researchPart.empty()) {
+        parts.append(researchPart);
+    }
+
+    if (output.parts.isArray() && !output.parts.empty()) {
+        for (const auto& part : output.parts) {
+            parts.append(part);
+        }
+    } else if (!output.content.empty()) {
+        Json::Value textPart(Json::objectValue);
+        textPart["type"] = "text";
+        textPart["content"] = output.content;
+        parts.append(textPart);
+    }
+
+    return parts;
+}
+
 ParsedTaskOutput parseTaskOutput(const std::deque<std::string>& chunks) {
     ParsedTaskOutput output;
     Json::Value rawParts(Json::arrayValue);
@@ -1360,7 +1894,7 @@ void persistParsedOutputToChat(
         parentUserId,
         output.content,
         output.reasoning,
-        output.parts,
+        buildChatMessagePartsForTask(task, output),
         output.reasoningParts,
         output.toolCalls,
         output.logprobs,
@@ -1454,6 +1988,12 @@ Json::Value TaskManager::buildSnapshot(const std::shared_ptr<GenerationTask>& ta
     result["status"] = taskStatusToString(task->status);
     result["finalized"] = task->finalized.load();
     result["chunkCount"] = static_cast<int>(task->chunks.size());
+    if (task->request.isMember("job_type") && task->request["job_type"].isString()) {
+        result["type"] = task->request["job_type"];
+    }
+    if (task->request.isMember("research") && task->request["research"].isObject()) {
+        result["research"] = task->request["research"];
+    }
     if (!task->error.empty()) {
         result["error"] = task->error;
     }
@@ -1645,22 +2185,19 @@ void TaskManager::cleanupOldTasks(int maxAgeSeconds) {
     }
 }
 
-void handleTaskSubmit(
-    const httplib::Request& req,
+bool submitGenerationTaskFromBody(
+    const Json::Value& body,
     httplib::Response& res,
     LmStudioService& lmstudioService,
     LlamaCppService* llamaCppService,
     McpRegistry* registry,
     ChatStore* chatStore,
-    ToolSystem* toolSystem) {
-    Json::Value body;
-    if (!parseJsonBody(req.body, body, res)) {
-        return;
-    }
-
+    ToolSystem* toolSystem,
+    Json::Value& result,
+    int& responseStatus) {
     if (!body.isMember("model") || !body.isMember("prompt")) {
         setJsonError(res, 400, "Missing required fields: model, prompt");
-        return;
+        return false;
     }
 
     Json::Value request(Json::objectValue);
@@ -1672,6 +2209,12 @@ void handleTaskSubmit(
     request["context_window"] = body.get("context_window", 0);
     request["logprobs"] = body.get("logprobs", false);
     request["revision_mode"] = body.get("revision_mode", false);
+    if (body.isMember("job_type") && body["job_type"].isString() && !body["job_type"].asString().empty()) {
+        request["job_type"] = body["job_type"];
+    }
+    if (body.isMember("research") && body["research"].isObject()) {
+        request["research"] = body["research"];
+    }
 
     if (body.isMember("task_id") && body["task_id"].isString() && !body["task_id"].asString().empty()) {
         request["task_id"] = body["task_id"];
@@ -1700,17 +2243,16 @@ void handleTaskSubmit(
     if (isLlamaCpp) {
         if (!llamaCppService) {
             setJsonError(res, 503, "llama.cpp service not available");
-            return;
+            return false;
         }
     }
 
     auto [taskId, task] = TaskManager::instance().createTask(request);
     if (!task || task->cancelled.load()) {
-        Json::Value result(Json::objectValue);
         result["task_id"] = taskId;
         result["status"] = "cancelled";
-        setJson(res, result, 202);
-        return;
+        responseStatus = 202;
+        return true;
     }
 
     const bool hasPrebuiltMessages =
@@ -1787,13 +2329,57 @@ void handleTaskSubmit(
             const int contextWindow = task->request.get("context_window", 0).asInt();
             const bool emitLogprobs = task->request.get("logprobs", false).asBool();
             const bool revisionMode = task->request.get("revision_mode", false).asBool();
+            const bool researchMode = task->request.get("job_type", "").asString() == "research";
 
             try {
                 if (isLlamaCpp) {
                     Json::Value messages = hasPrebuiltMessages
                         ? mergeSystemPromptIntoMessages(task->request["messages"], systemPrompt)
                         : llamaCppService->buildMessages(prompt, systemPrompt);
-                    if (revisionMode) {
+                    if (researchMode) {
+                        MessageStreamer streamMessages =
+                            [llamaCppService, toolSystem, taskId = task->id, tools, &model, temperature, contextWindow, &cancelCheck](
+                                const Json::Value& phaseMessages,
+                                int phaseMaxTokens,
+                                std::function<bool(const std::string&)> phaseOnChunk,
+                                std::function<void(const std::string&)> phaseOnError) {
+                                if (toolSystem || (tools.isArray() && !tools.empty())) {
+                                    llamaCppService->streamingChatWithTools(
+                                        model,
+                                        phaseMessages,
+                                        tools,
+                                        taskId,
+                                        phaseMaxTokens,
+                                        std::move(phaseOnChunk),
+                                        std::move(phaseOnError),
+                                        toolSystem,
+                                        temperature,
+                                        contextWindow,
+                                        cancelCheck,
+                                        false);
+                                } else {
+                                    llamaCppService->streamingMessagesWithCallback(
+                                        model,
+                                        phaseMessages,
+                                        phaseMaxTokens,
+                                        std::move(phaseOnChunk),
+                                        std::move(phaseOnError),
+                                        temperature,
+                                        contextWindow,
+                                        cancelCheck,
+                                        false);
+                                }
+                            };
+                        runScriptedResearchFlow(
+                            task->id,
+                            messages,
+                            task->request.get("research", Json::Value(Json::objectValue)),
+                            maxTokens,
+                            onChunk,
+                            onError,
+                            cancelCheck,
+                            streamMessages);
+                    } else if (revisionMode) {
                         MessageStreamer streamMessages =
                             [llamaCppService, toolSystem, taskId = task->id, tools, &model, temperature, contextWindow, &cancelCheck](
                                 const Json::Value& phaseMessages,
@@ -1852,7 +2438,53 @@ void handleTaskSubmit(
                     }
                 } else {
                     const bool useTools = tools.isArray() && !tools.empty();
-                    if (revisionMode) {
+                    if (researchMode) {
+                        Json::Value messages = hasPrebuiltMessages
+                            ? mergeSystemPromptIntoMessages(task->request["messages"], systemPrompt)
+                            : lmstudioService.buildMessages(prompt, systemPrompt);
+                        MessageStreamer streamMessages =
+                            [&lmstudioService, toolSystem, taskId = task->id, tools, &model, temperature, contextWindow, &cancelCheck](
+                                const Json::Value& phaseMessages,
+                                int phaseMaxTokens,
+                                std::function<bool(const std::string&)> phaseOnChunk,
+                                std::function<void(const std::string&)> phaseOnError) {
+                                if (toolSystem || (tools.isArray() && !tools.empty())) {
+                                    lmstudioService.streamingChatWithTools(
+                                        model,
+                                        phaseMessages,
+                                        tools,
+                                        taskId,
+                                        phaseMaxTokens,
+                                        std::move(phaseOnChunk),
+                                        std::move(phaseOnError),
+                                        toolSystem,
+                                        temperature,
+                                        contextWindow,
+                                        cancelCheck,
+                                        false);
+                                } else {
+                                    lmstudioService.streamingMessagesWithCallback(
+                                        model,
+                                        phaseMessages,
+                                        phaseMaxTokens,
+                                        std::move(phaseOnChunk),
+                                        std::move(phaseOnError),
+                                        temperature,
+                                        contextWindow,
+                                        cancelCheck,
+                                        false);
+                                }
+                            };
+                        runScriptedResearchFlow(
+                            task->id,
+                            messages,
+                            task->request.get("research", Json::Value(Json::objectValue)),
+                            maxTokens,
+                            onChunk,
+                            onError,
+                            cancelCheck,
+                            streamMessages);
+                    } else if (revisionMode) {
                         Json::Value messages = hasPrebuiltMessages
                             ? mergeSystemPromptIntoMessages(task->request["messages"], systemPrompt)
                             : lmstudioService.buildMessages(prompt, systemPrompt);
@@ -1958,10 +2590,41 @@ void handleTaskSubmit(
 
     TaskManager::instance().startTask(task, std::move(future));
 
-    Json::Value result(Json::objectValue);
     result["task_id"] = taskId;
     result["status"] = "pending";
-    setJson(res, result, 202);
+    responseStatus = 202;
+    return true;
+}
+
+void handleTaskSubmit(
+    const httplib::Request& req,
+    httplib::Response& res,
+    LmStudioService& lmstudioService,
+    LlamaCppService* llamaCppService,
+    McpRegistry* registry,
+    ChatStore* chatStore,
+    ToolSystem* toolSystem) {
+    Json::Value body;
+    if (!parseJsonBody(req.body, body, res)) {
+        return;
+    }
+
+    Json::Value result(Json::objectValue);
+    int responseStatus = 202;
+    if (!submitGenerationTaskFromBody(
+            body,
+            res,
+            lmstudioService,
+            llamaCppService,
+            registry,
+            chatStore,
+            toolSystem,
+            result,
+            responseStatus)) {
+        return;
+    }
+
+    setJson(res, result, responseStatus);
 }
 
 void handleTaskStatus(const httplib::Request&, httplib::Response& res, const std::string& taskId) {

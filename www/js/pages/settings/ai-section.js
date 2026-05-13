@@ -60,6 +60,7 @@ export function mountAiSection(root) {
 			setToggle(root, '#ai-title-enabled', settings.aiTitleEnabled !== false);
 			setValue(root, '#ai-title-model-input', settings.aiTitleModel || '');
 			setValue(root, '#ai-title-system-prompt-input', settings.aiTitleSystemPrompt || '');
+			setValue(root, '#ai-research-planner-system-prompt-input', settings.aiResearchPlannerSystemPrompt || '');
 		},
 
 		read() {
@@ -82,6 +83,7 @@ export function mountAiSection(root) {
 				aiTitleEnabled: root.querySelector('#ai-title-enabled')?.checked ?? true,
 				aiTitleModel: root.querySelector('#ai-title-model-input')?.value?.trim() ?? '',
 				aiTitleSystemPrompt: root.querySelector('#ai-title-system-prompt-input')?.value ?? '',
+				aiResearchPlannerSystemPrompt: root.querySelector('#ai-research-planner-system-prompt-input')?.value ?? '',
 			};
 		},
 

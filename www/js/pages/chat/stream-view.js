@@ -399,6 +399,9 @@ export function createStreamingMessageController({
 
 		const timestamp = Number(output.timestamp || Date.now());
 		const trace = ensureRevisionTrace(timestamp);
+		if (typeof output.mode === 'string' && output.mode) {
+			trace.mode = output.mode;
+		}
 		trace.updatedAt = Number.isFinite(timestamp) ? timestamp : Date.now();
 		trace.stage = String(output.stage || 'draft');
 		trace.committed = Boolean(output.final);
@@ -445,6 +448,9 @@ export function createStreamingMessageController({
 
 		const timestamp = Number(event.timestamp || Date.now());
 		const trace = ensureRevisionTrace(timestamp);
+		if (typeof event.mode === 'string' && event.mode) {
+			trace.mode = event.mode;
+		}
 		if (!Array.isArray(trace.modelOutputs)) trace.modelOutputs = [];
 
 		let phase = trace.modelOutputs.find((candidate) => String(candidate?.id || '') === phaseId);

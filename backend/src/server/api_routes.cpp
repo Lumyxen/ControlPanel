@@ -2,12 +2,15 @@
 
 #include "app/server_app.h"
 #include <algorithm>
+#include <cctype>
 #include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "config/config.h"
 #include "controllers/auth_controller.h"
@@ -96,6 +99,365 @@ void handleTaskSubRoute(const httplib::Request& req, httplib::Response& res) {
     } else {
         handleTaskStatus(req, res, taskId);
     }
+}
+
+std::string trimCopy(std::string value) {
+    const auto start = value.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) {
+        return "";
+    }
+    const auto end = value.find_last_not_of(" \t\r\n");
+    return value.substr(start, end - start + 1);
+}
+
+std::string truncateText(std::string value, std::size_t maxLength) {
+    if (value.size() <= maxLength) {
+        return value;
+    }
+    if (maxLength <= 3) {
+        return value.substr(0, maxLength);
+    }
+    return value.substr(0, maxLength - 3) + "...";
+}
+
+std::string stripReasoningTags(std::string text) {
+    auto stripTag = [&text](const std::string& openTag, const std::string& closeTag) {
+        while (true) {
+            const std::string lower = [&text]() {
+                std::string copy = text;
+                std::transform(copy.begin(), copy.end(), copy.begin(), [](unsigned char ch) {
+                    return static_cast<char>(std::tolower(ch));
+                });
+                return copy;
+            }();
+            const std::size_t openPos = lower.find(openTag);
+            if (openPos == std::string::npos) {
+                break;
+            }
+            const std::size_t closePos = lower.find(closeTag, openPos);
+            if (closePos == std::string::npos) {
+                text.erase(openPos);
+                break;
+            }
+            text.erase(openPos, closePos + closeTag.size() - openPos);
+        }
+    };
+    stripTag("<think>", "</think>");
+    stripTag("<thinking>", "</thinking>");
+    stripTag("<reasoning>", "</reasoning>");
+    return trimCopy(text);
+}
+
+std::string extractAssistantContent(const Json::Value& response) {
+    if (!response.isObject() ||
+        !response.isMember("choices") ||
+        !response["choices"].isArray() ||
+        response["choices"].empty()) {
+        return "";
+    }
+
+    const Json::Value& choice = response["choices"][0];
+    if (choice.isMember("message") && choice["message"].isObject()) {
+        const Json::Value& message = choice["message"];
+        if (message.isMember("content") && message["content"].isString()) {
+            return stripReasoningTags(message["content"].asString());
+        }
+    }
+    if (choice.isMember("text") && choice["text"].isString()) {
+        return stripReasoningTags(choice["text"].asString());
+    }
+    return "";
+}
+
+std::string stripCodeFence(std::string text) {
+    text = trimCopy(text);
+    if (text.rfind("```", 0) != 0) {
+        return text;
+    }
+
+    const std::size_t firstNewline = text.find('\n');
+    if (firstNewline == std::string::npos) {
+        return text;
+    }
+    const std::size_t fenceEnd = text.rfind("```");
+    if (fenceEnd == std::string::npos || fenceEnd <= firstNewline) {
+        return text.substr(firstNewline + 1);
+    }
+    return trimCopy(text.substr(firstNewline + 1, fenceEnd - firstNewline - 1));
+}
+
+std::string extractFirstJsonObject(std::string text) {
+    text = stripCodeFence(std::move(text));
+    const std::size_t start = text.find('{');
+    if (start == std::string::npos) {
+        return text;
+    }
+
+    bool inString = false;
+    bool escaped = false;
+    int depth = 0;
+    for (std::size_t index = start; index < text.size(); ++index) {
+        const char ch = text[index];
+        if (inString) {
+            if (escaped) {
+                escaped = false;
+            } else if (ch == '\\') {
+                escaped = true;
+            } else if (ch == '"') {
+                inString = false;
+            }
+            continue;
+        }
+
+        if (ch == '"') {
+            inString = true;
+        } else if (ch == '{') {
+            ++depth;
+        } else if (ch == '}') {
+            --depth;
+            if (depth == 0) {
+                return text.substr(start, index - start + 1);
+            }
+        }
+    }
+    return text.substr(start);
+}
+
+bool parseJsonText(const std::string& text, Json::Value& out) {
+    Json::CharReaderBuilder reader;
+    std::string errors;
+    std::istringstream stream(text);
+    return Json::parseFromStream(reader, stream, &out, &errors);
+}
+
+std::string makeResearchFallbackTitle(const std::string& query) {
+    const std::string normalized = trimCopy(query);
+    if (normalized.empty()) {
+        return "Research Brief";
+    }
+    return truncateText("Research: " + normalized, 96);
+}
+
+std::string sanitizeResearchTaskId(const std::string& value, int fallbackIndex) {
+    std::string id;
+    for (const char ch : value) {
+        const unsigned char uch = static_cast<unsigned char>(ch);
+        if (std::isalnum(uch)) {
+            id.push_back(static_cast<char>(std::tolower(uch)));
+        } else if ((ch == ' ' || ch == '-' || ch == '_') && !id.empty() && id.back() != '_') {
+            id.push_back('_');
+        }
+    }
+    while (!id.empty() && id.back() == '_') {
+        id.pop_back();
+    }
+    if (id.empty()) {
+        id = "task_" + std::to_string(fallbackIndex);
+    }
+    return truncateText(id, 48);
+}
+
+Json::Value makeDefaultResearchTasks(const std::string& query) {
+    const std::string subject = trimCopy(query).empty() ? "the request" : trimCopy(query);
+    Json::Value tasks(Json::arrayValue);
+
+    auto appendTask = [&tasks](const std::string& id, const std::string& label) {
+        Json::Value task(Json::objectValue);
+        task["id"] = id;
+        task["label"] = label;
+        tasks.append(task);
+    };
+
+    appendTask("scope", "Clarify the exact question and break " + subject + " into researchable parts.");
+    appendTask("sources", "Find relevant primary or high-quality sources before drafting.");
+    appendTask("verify", "Cross-check important facts, dates, numbers, and source conflicts.");
+    appendTask("answer", "Write a concise final answer with citations and caveats.");
+    return tasks;
+}
+
+Json::Value normalizeStringList(
+    const Json::Value& value,
+    const std::vector<std::string>& fallback,
+    int maxItems) {
+    Json::Value list(Json::arrayValue);
+    if (value.isArray()) {
+        for (const auto& item : value) {
+            std::string text;
+            if (item.isString()) {
+                text = item.asString();
+            } else if (item.isObject()) {
+                text = item.get("label", item.get("id", "")).asString();
+            }
+            text = truncateText(trimCopy(text), 64);
+            if (!text.empty()) {
+                list.append(text);
+            }
+            if (static_cast<int>(list.size()) >= maxItems) {
+                break;
+            }
+        }
+    }
+
+    if (!list.empty()) {
+        return list;
+    }
+
+    for (const auto& item : fallback) {
+        list.append(item);
+    }
+    return list;
+}
+
+Json::Value normalizeResearchTasks(const Json::Value& value, const std::string& query) {
+    Json::Value tasks(Json::arrayValue);
+    if (value.isArray()) {
+        int index = 1;
+        for (const auto& item : value) {
+            std::string label;
+            std::string id;
+            if (item.isString()) {
+                label = item.asString();
+            } else if (item.isObject()) {
+                label = item.get("label", item.get("title", item.get("task", item.get("step", "")))).asString();
+                id = item.get("id", "").asString();
+            }
+            label = truncateText(trimCopy(label), 220);
+            if (label.empty()) {
+                continue;
+            }
+            if (id.empty()) {
+                id = sanitizeResearchTaskId(label, index);
+            } else {
+                id = sanitizeResearchTaskId(id, index);
+            }
+
+            Json::Value task(Json::objectValue);
+            task["id"] = id;
+            task["label"] = label;
+            tasks.append(task);
+            ++index;
+            if (static_cast<int>(tasks.size()) >= 8) {
+                break;
+            }
+        }
+    }
+
+    if (!tasks.empty()) {
+        return tasks;
+    }
+    return makeDefaultResearchTasks(query);
+}
+
+Json::Value normalizeResearchPlan(const Json::Value& raw, const std::string& query) {
+    Json::Value result(Json::objectValue);
+    std::string title = raw.get("title", raw.get("header", raw.get("name", ""))).asString();
+    title = truncateText(trimCopy(title), 96);
+    if (title.empty()) {
+        title = makeResearchFallbackTitle(query);
+    }
+
+    Json::Value taskSource;
+    if (raw.isMember("tasks")) {
+        taskSource = raw["tasks"];
+    } else if (raw.isMember("steps")) {
+        taskSource = raw["steps"];
+    } else if (raw.isMember("workflow")) {
+        taskSource = raw["workflow"];
+    }
+    const Json::Value tasks = normalizeResearchTasks(taskSource, query);
+
+    Json::Value sourceSource;
+    if (raw.isMember("sourceClasses")) {
+        sourceSource = raw["sourceClasses"];
+    } else if (raw.isMember("source_classes")) {
+        sourceSource = raw["source_classes"];
+    }
+
+    result["title"] = title;
+    result["tasks"] = tasks;
+    result["workflow"] = tasks;
+    result["sourceClasses"] = normalizeStringList(
+        sourceSource,
+        {"web", "academic"},
+        8);
+    result["deliverables"] = normalizeStringList(
+        raw["deliverables"],
+        {"final_answer", "inline_citations", "source_list", "caveats"},
+        8);
+    return result;
+}
+
+void handleResearchPlanGeneration(const httplib::Request& req, httplib::Response& res, ApiRouteContext& ctx) {
+    Json::Value body;
+    if (!parseJsonBody(req.body, body, res)) {
+        return;
+    }
+
+    std::string message = body.get("message", body.get("query", "")).asString();
+    message = trimCopy(message);
+    if (message.empty()) {
+        setJsonError(res, 400, "Missing required field: message");
+        return;
+    }
+
+    std::string model = trimCopy(body.get("model", "").asString());
+    if (model.empty()) {
+        setJsonError(res, 400, "Missing required field: model");
+        return;
+    }
+
+    std::string systemPrompt = body.get("planner_system_prompt", "").asString();
+    if (systemPrompt.empty()) {
+        systemPrompt = body.get("system_prompt", "").asString();
+    }
+    if (systemPrompt.empty()) {
+        systemPrompt = ctx.config.getAiResearchPlannerSystemPrompt();
+    }
+
+    const int maxTokens = std::clamp(body.get("max_tokens", 768).asInt(), 128, 4096);
+    const std::string plannerPrompt =
+        "User request:\n" + message + "\n\nReturn the research preview JSON now.";
+    const bool isLlamaCpp = model.rfind("llamacpp::", 0) == 0;
+
+    Json::Value response;
+    try {
+        if (isLlamaCpp) {
+            if (!ctx.llamaCppService) {
+                setJsonError(res, 503, "llama.cpp service not available");
+                return;
+            }
+            response = ctx.llamaCppService->chat(model, plannerPrompt, maxTokens, systemPrompt, 0.0);
+        } else {
+            response = ctx.lmstudioService.chat(model, plannerPrompt, maxTokens, systemPrompt, 0.0);
+        }
+    } catch (const std::exception& exception) {
+        std::cerr << "[ResearchPlan] Error: " << exception.what() << "\n";
+        setJsonError(res, 500, "Research plan generation failed");
+        return;
+    }
+
+    if (response.isMember("error")) {
+        const Json::Value& error = response["error"];
+        setJsonError(res, 502, error.isString() ? error.asString() : writeJson(error));
+        return;
+    }
+
+    const std::string content = extractAssistantContent(response);
+    Json::Value rawPlan;
+    if (content.empty() || !parseJsonText(extractFirstJsonObject(content), rawPlan) || !rawPlan.isObject()) {
+        Json::Value error(Json::objectValue);
+        error["error"] = "Research planner did not return valid JSON";
+        if (!content.empty()) {
+            error["raw"] = truncateText(content, 1000);
+        }
+        res.status = 502;
+        setJson(res, error);
+        return;
+    }
+
+    Json::Value result = normalizeResearchPlan(rawPlan, message);
+    result["query"] = message;
+    setJson(res, result);
 }
 
 } // namespace
@@ -664,6 +1026,11 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
         Json::Value result;
         result["title"] = title;
         setJson(res, result);
+    });
+
+    svr.Post("/api/chat/generate-research-plan", [&](const httplib::Request& req, httplib::Response& res) {
+        applyRouteHeaders(req, res);
+        handleResearchPlanGeneration(req, res, ctx);
     });
 
     svr.Post("/api/tasks/generate", [&](const httplib::Request& req, httplib::Response& res) {

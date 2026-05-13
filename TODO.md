@@ -60,7 +60,7 @@
   - [x] Kernel version
   - [x] Software stuff
 - [ ] Summarise tool
-- [ ] Deep research tool
+- [x] Deep research tool
 - [x] Internet testing tool
   - [x] Returns if WAN is available
   - [x] If so, the WAN speeds (a speed test), latency, and jitter
