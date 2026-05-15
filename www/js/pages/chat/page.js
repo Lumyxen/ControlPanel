@@ -300,7 +300,6 @@ const RESEARCH_DELIVERABLES = [
 	'caveats',
 	'conflict_notes',
 ];
-const RESEARCH_START_DELAY_MS = 60000;
 
 function isResearchEnabled(root) {
 	const toggle = root?.querySelector?.('#chatResearchToggle');
@@ -397,11 +396,11 @@ function buildResearchPartWithEditedTasks(researchPart, draft) {
 		...researchPart,
 		tasks,
 		workflow: tasks.map((task) => ({ id: task.id, label: task.label })),
-		autoStartAt: Date.now() + RESEARCH_START_DELAY_MS,
 	};
 	if (next.status === 'planning') {
 		next.status = 'pending';
 	}
+	delete next.autoStartAt;
 	return next;
 }
 
@@ -422,7 +421,6 @@ function buildResearchPart(_root, query, overrides = {}) {
 		title: buildResearchTitle(normalizedQuery),
 		tasks: buildResearchTasks(normalizedQuery),
 		status: 'pending',
-		autoStartAt: Date.now() + RESEARCH_START_DELAY_MS,
 		sourceClasses: ['web', 'academic'],
 		deliverables: [...RESEARCH_DELIVERABLES],
 		workflow: RESEARCH_WORKFLOW_STEPS.map(({ id, label }) => ({ id, label })),
@@ -436,7 +434,7 @@ function buildResearchPart(_root, query, overrides = {}) {
 	} else {
 		next.workflow = next.tasks.map((task) => ({ id: task.id, label: task.label }));
 	}
-	if (next.autoStartAt == null) delete next.autoStartAt;
+	delete next.autoStartAt;
 	return next;
 }
 
@@ -445,12 +443,11 @@ function buildResearchPlanningPart(root, query) {
 		title: 'Preparing Research Plan',
 		tasks: [{ id: 'planning', label: 'Generating a tailored header and task list.' }],
 		status: 'planning',
-		autoStartAt: null,
 	});
 }
 
 function normalizeGeneratedResearchPart(root, query, generated) {
-	const fallback = buildResearchPart(root, query, { autoStartAt: null });
+	const fallback = buildResearchPart(root, query);
 	const title = truncateResearchText(generated?.title || generated?.header || fallback.title, 96) || fallback.title;
 	const tasks = normalizeResearchTasks(generated?.tasks || generated?.steps || generated?.workflow, query);
 	const sourceClasses = normalizeResearchList(
@@ -473,7 +470,7 @@ async function buildGeneratedResearchPart(root, query, { signal } = {}) {
 	const settings = SettingsStore.get() || {};
 	const selectedModel = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected')?.dataset?.value || '';
 	const model = selectedModel || settings.defaultModel || '';
-	if (!model) return buildResearchPart(root, query, { autoStartAt: null });
+	if (!model) return buildResearchPart(root, query);
 
 	try {
 		const generated = await generateResearchPlan({
@@ -486,7 +483,7 @@ async function buildGeneratedResearchPart(root, query, { signal } = {}) {
 	} catch (err) {
 		if (signal?.aborted || err?.name === 'AbortError') throw err;
 		console.error('[ChatPage] Research plan generation failed:', err);
-		return buildResearchPart(root, query, { autoStartAt: null });
+		return buildResearchPart(root, query);
 	}
 }
 
@@ -1814,7 +1811,6 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		if (empty) empty.hidden = computeThreadNodeIds(ensureGraph(chat)).length > 0;
 		root._syncToolPackPicker?.();
 		updateLiveContext(0);
-		refreshResearchCountdown();
 		scheduleMessageNudgePlacementRefresh();
 	};
 
@@ -1847,70 +1843,13 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		return `task_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
 	};
 
-	let researchCountdownTimer = 0;
-
-	const formatResearchStartLabel = (autoStartAt) => {
-		const at = Number(autoStartAt);
-		if (!Number.isFinite(at) || at <= 0) return 'Start';
-		const seconds = Math.max(0, Math.ceil((at - Date.now()) / 1000));
-		return seconds > 0 ? `Start (${seconds}s)` : 'Start';
-	};
-
-	const updateResearchCountdownLabels = () => {
-		if (uiState.editingMode === 'research-tasks') return;
-		for (const button of messages.querySelectorAll('.chat-research-start[data-auto-start-at]')) {
-			button.textContent = formatResearchStartLabel(button.dataset.autoStartAt);
-		}
-	};
-
-	const getPendingResearchNodes = () => {
-		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
-		const graph = chat ? ensureGraph(chat) : null;
-		if (!graph) return [];
-		return computeThreadNodeIds(graph)
-			.map((nodeId) => getNode(graph, nodeId))
-			.filter((node) => {
-				const researchPart = getNodeResearchPart(node);
-				return node?.role === 'assistant' &&
-					researchPart?.status === 'pending';
-			});
-	};
-
-	const scheduleResearchCountdown = () => {
-		if (researchCountdownTimer) return;
-		researchCountdownTimer = window.setInterval(() => {
-			if (uiState.editingMode === 'research-tasks') return;
-			updateResearchCountdownLabels();
-			const pendingNodes = getPendingResearchNodes();
-			if (pendingNodes.length === 0) {
-				window.clearInterval(researchCountdownTimer);
-				researchCountdownTimer = 0;
-				return;
-			}
-			for (const node of pendingNodes) {
-				const autoStartAt = Number(getNodeResearchPart(node)?.autoStartAt || 0);
-				if (!Number.isFinite(autoStartAt) || autoStartAt <= 0 || Date.now() < autoStartAt) continue;
-				if (uiState.isGenerating || uiState.isSubmitting || uiState.editingNodeId === node.id) continue;
-				startPendingResearch(node.id);
-				break;
-			}
-		}, 1000);
-		updateResearchCountdownLabels();
-	};
-
-	const refreshResearchCountdown = () => {
-		if (uiState.editingMode === 'research-tasks') return;
-		updateResearchCountdownLabels();
-		if (getPendingResearchNodes().length > 0) scheduleResearchCountdown();
-	};
-
 	const applyGeneratedResearchPlan = async (chatId, researchNodeId, query) => {
 		let generatedPart;
 		try {
 			generatedPart = await buildGeneratedResearchPart(root, query, { signal });
 		} catch (err) {
 			if (signal.aborted || err?.name === 'AbortError') return;
-			generatedPart = buildResearchPart(root, query, { autoStartAt: null });
+			generatedPart = buildResearchPart(root, query);
 		}
 		if (signal.aborted) return;
 
@@ -1923,7 +1862,6 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		const pendingPart = {
 			...generatedPart,
 			status: 'pending',
-			autoStartAt: Date.now() + RESEARCH_START_DELAY_MS,
 		};
 		setNodeResearchPart(node, pendingPart);
 		chat.updatedAt = Date.now();
@@ -1933,7 +1871,6 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		rerender();
 		renderChatList();
 		setActiveCallback?.();
-		refreshResearchCountdown();
 	};
 
 	const addResearchPlanningNode = (chat, userNode, query) => {
@@ -2096,12 +2033,6 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	};
 
 	signal.addEventListener('abort', detachFromRunningTask);
-	signal.addEventListener('abort', () => {
-		if (researchCountdownTimer) {
-			window.clearInterval(researchCountdownTimer);
-			researchCountdownTimer = 0;
-		}
-	}, { once: true });
 
 	const startReply = async (replyChatId, parentUserNodeId) => {
 		const pendingChat = replyChatId ? getChatById(replyChatId) : null;
@@ -2111,7 +2042,6 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		const childResearchStatus = getNodeResearchPart(getPendingResearchChild(pendingGraph, pendingParentNode))?.status;
 		if (parentResearchStatus === 'pending' || parentResearchStatus === 'planning' ||
 			childResearchStatus === 'pending' || childResearchStatus === 'planning') {
-			refreshResearchCountdown();
 			return;
 		}
 		clearApprovalPanel();
@@ -2600,7 +2530,6 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			const patched = patchMessageEditState(messages, graph, researchNode, true, uiState.editingDraft, SettingsStore.get(), uiState.editingMode);
 			if (!patched) rerender();
 			updateLiveContext();
-			refreshResearchCountdown();
 			focusEditInput(researchNode.id);
 		};
 
@@ -2645,7 +2574,6 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 					rerender();
 					renderChatList();
 					setActiveCallback?.();
-					refreshResearchCountdown();
 					checkScroll();
 					return;
 				}
@@ -2694,9 +2622,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				setActiveCallback?.();
 				// Only auto-regenerate when editing a user message (to get a new AI response).
 				// Editing an assistant message should just update the text, not trigger a new generation.
-				if (editedPendingResearchNode) {
-					refreshResearchCountdown();
-				} else if (saveMode !== 'preserve' && sibling.role === 'user') {
+				if (!editedPendingResearchNode && saveMode !== 'preserve' && sibling.role === 'user') {
 					if (empty) empty.hidden = true;
 					startReply(chat.id, sibling.id);
 				}
@@ -2745,9 +2671,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 				recomputeLeafId(graph); chat.updatedAt = Date.now(); saveChats();
 				resetEdit(); rerender(); setActiveCallback?.();
 				if (empty) empty.hidden = true;
-				if (pendingResearchNode) {
-					refreshResearchCountdown();
-				} else {
+				if (!pendingResearchNode) {
 					startReply(chat.id, userNodeId);
 				}
 				checkScroll();

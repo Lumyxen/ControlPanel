@@ -190,12 +190,7 @@ function buildResearchPartElement(part) {
 			start.type = 'button';
 			start.className = 'chat-research-action primary chat-research-start';
 			start.dataset.action = 'research-start';
-			if (part?.autoStartAt) start.dataset.autoStartAt = String(part.autoStartAt);
-			const autoStartAt = Number(part?.autoStartAt || 0);
-			const seconds = Number.isFinite(autoStartAt) && autoStartAt > 0
-				? Math.max(0, Math.ceil((autoStartAt - Date.now()) / 1000))
-				: 0;
-			start.textContent = seconds > 0 ? `Start (${seconds}s)` : 'Start';
+			start.textContent = 'Start';
 			right.appendChild(start);
 		} else {
 			const planning = document.createElement('span');
