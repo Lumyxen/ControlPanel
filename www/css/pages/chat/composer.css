@@ -531,8 +531,12 @@
     background: color-mix(in srgb, var(--panel) 88%, transparent);
     padding: 6px 10px;
     height: 30px;
+    min-width: 5ch;
+    width: auto;
+    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     white-space: nowrap;
     user-select: none;
     transition: color 0.15s ease, border-color 0.15s ease,

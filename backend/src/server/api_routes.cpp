@@ -387,6 +387,41 @@ Json::Value normalizeResearchPlan(const Json::Value& raw, const std::string& que
     return result;
 }
 
+std::string buildResearchPlannerContextPrompt(const Json::Value& context) {
+    if (!context.isObject()) {
+        return "";
+    }
+
+    Json::Value compact(Json::objectValue);
+    const std::string originalRequest = truncateText(trimCopy(context.get("originalRequest", "").asString()), 2000);
+    if (!originalRequest.empty()) {
+        compact["originalRequest"] = originalRequest;
+    }
+
+    const Json::Value& currentPlan = context["currentPlan"];
+    if (currentPlan.isObject()) {
+        Json::Value plan(Json::objectValue);
+        const std::string query = truncateText(trimCopy(currentPlan.get("query", "").asString()), 1000);
+        const std::string title = truncateText(trimCopy(currentPlan.get("title", "").asString()), 160);
+        const std::string status = truncateText(trimCopy(currentPlan.get("status", "").asString()), 64);
+        if (!query.empty()) plan["query"] = query;
+        if (!title.empty()) plan["title"] = title;
+        if (!status.empty()) plan["status"] = status;
+        plan["tasks"] = normalizeResearchTasks(currentPlan["tasks"], query.empty() ? originalRequest : query);
+        plan["sourceClasses"] = normalizeStringList(currentPlan["sourceClasses"], {"web", "academic"}, 8);
+        plan["deliverables"] = normalizeStringList(
+            currentPlan["deliverables"],
+            {"final_answer", "inline_citations", "source_list", "caveats"},
+            8);
+        compact["currentPlan"] = plan;
+    }
+
+    if (compact.empty()) {
+        return "";
+    }
+    return "Prior research context:\n" + writeJson(compact) + "\n\n";
+}
+
 void handleResearchPlanGeneration(const httplib::Request& req, httplib::Response& res, ApiRouteContext& ctx) {
     Json::Value body;
     if (!parseJsonBody(req.body, body, res)) {
@@ -416,7 +451,11 @@ void handleResearchPlanGeneration(const httplib::Request& req, httplib::Response
 
     const int maxTokens = std::clamp(body.get("max_tokens", 768).asInt(), 128, 4096);
     const std::string plannerPrompt =
-        "User request:\n" + message + "\n\nReturn the research preview JSON now.";
+        buildResearchPlannerContextPrompt(body["context"]) +
+        "Latest user message:\n" + message + "\n\n"
+        "If prior research context is provided, treat the latest message as a possible suggestion, edit, aside, or addition to that existing research plan. "
+        "Preserve the original research intent unless the latest message clearly replaces it. "
+        "Return the updated research preview JSON now.";
     const bool isLlamaCpp = model.rfind("llamacpp::", 0) == 0;
 
     Json::Value response;
@@ -456,7 +495,17 @@ void handleResearchPlanGeneration(const httplib::Request& req, httplib::Response
     }
 
     Json::Value result = normalizeResearchPlan(rawPlan, message);
-    result["query"] = message;
+    std::string resultQuery = trimCopy(rawPlan.get("query", "").asString());
+    if (resultQuery.empty() && body["context"].isObject()) {
+        const Json::Value& currentPlan = body["context"]["currentPlan"];
+        if (currentPlan.isObject()) {
+            resultQuery = trimCopy(currentPlan.get("query", "").asString());
+        }
+        if (resultQuery.empty()) {
+            resultQuery = trimCopy(body["context"].get("originalRequest", "").asString());
+        }
+    }
+    result["query"] = resultQuery.empty() ? message : truncateText(resultQuery, 2000);
     setJson(res, result);
 }
 

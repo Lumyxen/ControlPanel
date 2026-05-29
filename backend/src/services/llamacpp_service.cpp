@@ -50,6 +50,7 @@ constexpr int kTitleGenerationMaxTokens = 24;
 constexpr std::string_view kMropeMetadataSuffix = ".rope.dimension_sections";
 constexpr const char* kMtmdDefaultMarker = "<__media__>";
 constexpr const char* kSanitizedMalformedToolArguments = "{}";
+constexpr int kMinimumStreamingMaxTokens = 1;
 
 struct StreamContext {
     std::function<bool(const std::string&)> onChunk;
@@ -81,6 +82,21 @@ bool messageContentHasRichParts(const Json::Value& content) {
     }
 
     return false;
+}
+
+Json::Value appendSyntheticToolContext(Json::Value messages, const Json::Value& tools) {
+    if (!messages.isArray()) {
+        messages = Json::Value(Json::arrayValue);
+    }
+    if (!tools.isArray() || tools.empty()) {
+        return messages;
+    }
+
+    Json::Value toolContext(Json::objectValue);
+    toolContext["role"] = "system";
+    toolContext["content"] = "Available tool schemas:\n" + writeJson(tools);
+    messages.append(toolContext);
+    return messages;
 }
 
 std::string flattenMessageContentForTemplate(const Json::Value& message) {
@@ -2650,11 +2666,23 @@ void LlamaCppService::streamingChatWithTools(
             ? toolSystem->getModelToolsForTask(taskId)
             : tools;
         const bool hasTools = currentTools.isArray() && !currentTools.empty();
+        int roundMaxTokens = maxTokens;
+        if (numCtx > 0) {
+            try {
+                const int promptTokens = countTokens(model, appendSyntheticToolContext(messages, currentTools));
+                if (promptTokens > 0 && promptTokens + roundMaxTokens > numCtx) {
+                    roundMaxTokens = std::max(kMinimumStreamingMaxTokens, numCtx - promptTokens);
+                }
+            } catch (const std::exception& exception) {
+                std::cerr << "[LlamaCpp] Warning: could not update tool context budget: "
+                          << exception.what() << "\n";
+            }
+        }
 
         Json::Value body(Json::objectValue);
         body["model"] = model;
         body["messages"] = messages;
-        body["max_tokens"] = maxTokens;
+        body["max_tokens"] = roundMaxTokens;
         body["stream"] = true;
         body["reasoning_format"] = "deepseek";
         body["top_p"] = config_.getLlamacppTopP();

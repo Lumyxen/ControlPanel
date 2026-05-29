@@ -180,26 +180,33 @@ export function estimatePartsTokens(parts) {
 	return estimateTokensForText(getNodeFullText({ parts }));
 }
 
-export function getModelContextInfoFromUI(root) {
-	const selected = root?.querySelector?.('[data-dropdown="model"] .chat-dropdown-item.selected');
-	if (!selected) {
-		return {
-			contextLimit: DEFAULT_CONTEXT_LIMIT,
-			isKnown: false,
-		};
+function getModelPickerItem(root, modelId = "") {
+	const normalizedModelId = String(modelId || "");
+	const items = root?.querySelectorAll?.('[data-dropdown="model"] .chat-dropdown-item') || [];
+	let selected = null;
+
+	for (const item of items) {
+		if (item.classList?.contains?.("selected")) {
+			selected = item;
+		}
+		if (normalizedModelId && item.dataset?.value === normalizedModelId) {
+			return item;
+		}
 	}
 
-	const modelId = selected.dataset.value;
+	return normalizedModelId ? null : selected;
+}
+
+export function getModelContextInfo(modelId = "", root = null) {
+	const normalizedModelId = String(modelId || "");
 	let contextLimit = null;
 
-	// Prefer metadata (now includes LM Studio models and normalizes fallback keys dynamically)
-	if (modelId && modelMetadata.has(modelId)) {
-		const model = getModelMetadata(modelId);
-		contextLimit = getModelContextLength(model);
+	if (normalizedModelId && modelMetadata.has(normalizedModelId)) {
+		contextLimit = getModelContextLength(getModelMetadata(normalizedModelId));
 	}
+
 	if (!contextLimit) {
-		// Fallback to data attribute (still works)
-		contextLimit = parsePositiveInt(selected.dataset.contextLength);
+		contextLimit = parsePositiveInt(getModelPickerItem(root, normalizedModelId)?.dataset?.contextLength);
 	}
 
 	if (contextLimit) {
@@ -213,6 +220,18 @@ export function getModelContextInfoFromUI(root) {
 		contextLimit: DEFAULT_CONTEXT_LIMIT,
 		isKnown: false,
 	};
+}
+
+export function getModelContextInfoFromUI(root) {
+	const selected = getModelPickerItem(root);
+	if (!selected) {
+		return {
+			contextLimit: DEFAULT_CONTEXT_LIMIT,
+			isKnown: false,
+		};
+	}
+
+	return getModelContextInfo(selected.dataset?.value || "", root);
 }
 
 export function getModelContextLimitFromUI(root) {
@@ -261,12 +280,18 @@ export function updateContextUI(root, {
 	const warningEl = root?.querySelector?.("#chatContextWarningIcon");
 	const contextInfo = getModelContextInfoFromUI(root);
 
-	const max = Number.isFinite(contextLimit) && contextLimit > 0
+	const passedMax = Number.isFinite(contextLimit) && contextLimit > 0
 		? contextLimit
-		: contextInfo.contextLimit;
-	const isContextLimitKnown = typeof contextLimitKnown === "boolean"
-		? contextLimitKnown
-		: contextInfo.isKnown;
+		: null;
+	const hasKnownContextFromUI = contextInfo.isKnown === true;
+	const max = hasKnownContextFromUI && contextLimitKnown !== true
+		? contextInfo.contextLimit
+		: passedMax || contextInfo.contextLimit;
+	const isContextLimitKnown = hasKnownContextFromUI || (
+		typeof contextLimitKnown === "boolean"
+			? contextLimitKnown
+			: contextInfo.isKnown
+	);
 	const used = Number.isFinite(usedTokens) && usedTokens >= 0
 		? Math.max(0, usedTokens)
 		: 0;

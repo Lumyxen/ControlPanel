@@ -10,17 +10,17 @@ import {
 } from './graph.js';
 import {
 	addChildMessageToChat, addMessageToChat, createNewChat,
-	ensureChatLoaded, getChatById, getCurrentChatId, getChatToolScope, isChatLoaded,
+	ensureChatLoaded, getChatById, getChatResearchEnabled, getCurrentChatId, getChatToolScope, isChatLoaded,
 	loadChats, saveChatAwaitable, saveChats, setChatModel, setCurrentChatId,
+	setChatResearchEnabled,
 	getLastSelectedModel, setLastSelectedModel, getLastSelectedToolScope,
 } from './repository.js';
 import { renderChatList } from './sidebar-list.js';
 import {
 	updateContextUI,
 	estimatePreparedMessagesTokens,
-	getModelContextInfoFromUI,
+	getModelContextInfo,
 	getModelMaxTokens,
-	getModelContextLimitFromUI,
 	getKnownModelContextLength,
 	hasKnownModel,
 } from './context.js';
@@ -47,7 +47,7 @@ import {
 	countChatTokens,
 } from '../../core/http.js';
 import * as SettingsStore from '../../services/settings.js';
-import { initDropdowns, initTools, loadAndPopulateModels } from './model-picker.js';
+import { initDropdowns, initTools, loadAndPopulateModels, selectModelForCurrentChat } from './model-picker.js';
 import { initUpload, initAutoResize } from './composer.js';
 import { buildNodeTextForHistory, buildApiMessages, buildApiMessagesFromNodes, buildConversationHistory, parseStreamReasoning } from './payloads.js';
 import { buildPartsWithUpdatedText, getNodeRawTextContent, getNodeTextContent } from './message-parts.js';
@@ -300,6 +300,7 @@ const RESEARCH_DELIVERABLES = [
 	'caveats',
 	'conflict_notes',
 ];
+const RESEARCH_CONTEXT_PREVIEW_TEXT = 'a';
 
 function isResearchEnabled(root) {
 	const toggle = root?.querySelector?.('#chatResearchToggle');
@@ -317,6 +318,10 @@ function setResearchEnabled(root, enabled) {
 		toggle.dataset.enabled = String(active);
 		toggle.setAttribute('aria-pressed', String(active));
 	}
+}
+
+function syncResearchEnabledFromChat(root, chatId) {
+	setResearchEnabled(root, chatId ? getChatResearchEnabled(chatId) : false);
 }
 
 function truncateResearchText(value, maxLength) {
@@ -466,7 +471,7 @@ function normalizeGeneratedResearchPart(root, query, generated) {
 	};
 }
 
-async function buildGeneratedResearchPart(root, query, { signal } = {}) {
+async function buildGeneratedResearchPart(root, query, { signal, context = null } = {}) {
 	const settings = SettingsStore.get() || {};
 	const selectedModel = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected')?.dataset?.value || '';
 	const model = selectedModel || settings.defaultModel || '';
@@ -476,6 +481,7 @@ async function buildGeneratedResearchPart(root, query, { signal } = {}) {
 		const generated = await generateResearchPlan({
 			model,
 			message: query,
+			context,
 			planner_system_prompt: settings.aiResearchPlannerSystemPrompt || '',
 			max_tokens: 768,
 		}, { signal });
@@ -491,6 +497,30 @@ function getNodeResearchPart(node) {
 	if (node?.research && typeof node.research === 'object') return node.research;
 	if (!Array.isArray(node?.parts)) return null;
 	return node.parts.find((part) => part?.type === 'research' && typeof part === 'object') || null;
+}
+
+function buildResearchPlannerContext(graph, userNode) {
+	if (!graph || !userNode) return null;
+	let current = userNode.parentId ? getNode(graph, userNode.parentId) : null;
+	while (current && current.id !== graph.rootId) {
+		const researchPart = getNodeResearchPart(current);
+		if (researchPart) {
+			const sourceUser = current.parentId ? getNode(graph, current.parentId) : null;
+			return {
+				originalRequest: sourceUser?.role === 'user' ? getNodeTextContent(sourceUser).trim() : '',
+				currentPlan: {
+					query: researchPart.query || '',
+					title: researchPart.title || '',
+					status: researchPart.status || '',
+					tasks: normalizeResearchTasks(researchPart.tasks || researchPart.workflow, researchPart.query),
+					sourceClasses: normalizeResearchList(researchPart.sourceClasses, ['web', 'academic']),
+					deliverables: normalizeResearchList(researchPart.deliverables, RESEARCH_DELIVERABLES),
+				},
+			};
+		}
+		current = current.parentId ? getNode(graph, current.parentId) : null;
+	}
+	return null;
 }
 
 function buildPartsWithResearchPart(parts, researchPart) {
@@ -629,14 +659,14 @@ function buildStaticContextCountPayload(chatId, settings) {
 	const toolScope = getActiveToolScope(chatId);
 	const revisionMode = settings?.chatResponseMode === 'live';
 	const cachedIndicator = getCachedContextIndicator({ chatId, model });
-	const knownModelContextLimit = getKnownModelContextLength(model);
+	const modelContextInfo = getModelContextInfo(model);
 	const contextLimitKnown = Boolean(
-		(Number.isFinite(knownModelContextLimit) && knownModelContextLimit > 0)
+		modelContextInfo.isKnown
 		|| (cachedIndicator?.scope === 'model' && cachedIndicator.contextLimitKnown === true)
 	);
-	const contextLimit = knownModelContextLimit
+	const contextLimit = (modelContextInfo.isKnown ? modelContextInfo.contextLimit : null)
 		|| cachedIndicator?.contextLimit
-		|| 65536;
+		|| modelContextInfo.contextLimit;
 	const effectiveNodes = [];
 
 	if (chatLoaded) {
@@ -865,6 +895,10 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 	root._modelPickerPopulated = false;
 	seedChatPageShell(root, currentRouteGetter);
 	await SettingsStore.init();
+	const routeChatId = getRouteChatId(currentRouteGetter());
+	if (routeChatId && getChatById(routeChatId)) {
+		setCurrentChatId(routeChatId);
+	}
 
 	const attachmentManager = new InlineAttachmentManager(input);
 
@@ -1395,11 +1429,18 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		const model = modelSelect?.dataset?.value
 			|| resolvePreferredModelId(activeChatId)
 			|| '';
-		const contextInfo = getModelContextInfoFromUI(root);
+		const contextInfo = getModelContextInfo(model, root);
 		let toolScope = getActiveToolScope(activeChatId);
 		const revisionMode = settings?.chatResponseMode === 'live';
 		const effectiveNodes = [];
-		let draftResearchPart = null;
+		let contextResearchPart = null;
+
+		const rememberContextResearchPart = (researchPart) => {
+			const status = researchPart?.status;
+			if (!contextResearchPart && (status === 'pending' || status === 'planning')) {
+				contextResearchPart = researchPart;
+			}
+		};
 
 		if (chatLoaded) {
 			const graph = ensureGraph(chat);
@@ -1413,6 +1454,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 					const editedResearchPart = researchPart
 						? buildResearchPartWithEditedTasks(researchPart, uiState.editingDraft)
 						: null;
+					rememberContextResearchPart(editedResearchPart);
 					effectiveNodes.push({
 						...node,
 						research: editedResearchPart || node.research,
@@ -1442,6 +1484,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 						});
 					}
 				} else {
+					rememberContextResearchPart(getNodeResearchPart(node));
 					effectiveNodes.push(node);
 				}
 			}
@@ -1449,16 +1492,23 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 
 		if (!uiState.editingNodeId) {
 			const draftParts = attachmentManager.extractParts();
+			const hasDraftParts = draftParts?.length > 0;
 			const draftText = draftParts
 				.filter((part) => part?.type === 'text')
 				.map((part) => String(part.content || ''))
 				.join('')
 				.trim();
-			if (isResearchEnabled(root) && draftText) {
-				draftResearchPart = buildResearchPart(root, draftText);
-			}
-			if (draftParts?.length > 0) {
+			if (hasDraftParts) {
 				effectiveNodes.push({ role: 'user', parts: draftParts });
+				if (isResearchEnabled(root) && draftText) {
+					contextResearchPart = buildResearchPart(root, draftText);
+				}
+			} else if (isResearchEnabled(root)) {
+				effectiveNodes.push({
+					role: 'user',
+					parts: [{ type: 'text', content: RESEARCH_CONTEXT_PREVIEW_TEXT }],
+				});
+				contextResearchPart = buildResearchPart(root, RESEARCH_CONTEXT_PREVIEW_TEXT);
 			}
 		}
 
@@ -1468,8 +1518,8 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 
 		const messages = buildApiMessagesFromNodes(effectiveNodes, settings);
 		let systemPrompt = buildSystemPromptForMessages(messages, settings);
-		if (draftResearchPart) {
-			systemPrompt = buildResearchSystemPrompt(systemPrompt, draftResearchPart);
+		if (contextResearchPart) {
+			systemPrompt = buildResearchSystemPrompt(systemPrompt, contextResearchPart);
 		}
 		return {
 			model,
@@ -1568,22 +1618,39 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		const cachedIndicator = getCachedContextIndicator({ chatId: activeChatId, model });
 		const staleTokens = getCachedScopeContextCount({ chatId: activeChatId, model });
 		const displayedUsedTokens = readDisplayedUsedTokens();
-		const canReuseScopeTokens = (
+		const sameChatAndModelAsRendered = (
 			getDisplayScopeKey(lastRenderedContextScope.chatId, lastRenderedContextScope.model)
 			=== getDisplayScopeKey(activeChatId, model)
+		);
+		const canReuseScopeTokens = (
+			sameChatAndModelAsRendered
 			&& lastRenderedContextScope.scopeSignature === scopeSignature
 		) && lastRenderedContextScope.exactCountUnavailable !== true;
 		const canReuseDisplayedTokens = canReuseScopeTokens
 			&& Number.isFinite(displayedUsedTokens);
-		const fallbackUsedTokens = canReuseDisplayedTokens
+		const canUseDisplayedFloor = sameChatAndModelAsRendered
+			&& lastRenderedContextScope.exactCountUnavailable !== true
+			&& Number.isFinite(displayedUsedTokens);
+		const estimatedFallbackTokens = Number.isFinite(estimatedUsedTokens) ? estimatedUsedTokens : 0;
+		const reusedFallbackTokens = canReuseDisplayedTokens
 			? displayedUsedTokens
 			: canReuseScopeTokens && Number.isFinite(staleTokens)
 			? staleTokens
-			: Number.isFinite(estimatedUsedTokens)
-			? estimatedUsedTokens
-			: Number.isFinite(cachedIndicator?.usedTokens)
-				? cachedIndicator.usedTokens
-				: 0;
+			: 0;
+		const cachedIndicatorTokens = cachedIndicator?.exactCountUnavailable !== true
+			&& Number.isFinite(cachedIndicator?.usedTokens)
+			&& cachedIndicator.usedTokens >= 0
+			? cachedIndicator.usedTokens
+			: 0;
+		// Research previews can mutate the system prompt on every keystroke, which
+		// changes the scope signature before the exact counter resolves.
+		const stableFallbackTokens = Math.max(
+			reusedFallbackTokens,
+			canUseDisplayedFloor ? displayedUsedTokens : 0,
+			Number.isFinite(staleTokens) ? staleTokens : 0,
+			cachedIndicatorTokens,
+		);
+		const fallbackUsedTokens = Math.max(estimatedFallbackTokens, stableFallbackTokens);
 		const fallbackContextLimit = Number.isFinite(cachedIndicator?.contextLimit) && cachedIndicator.contextLimit > 0
 			? cachedIndicator.contextLimit
 			: contextLimit;
@@ -1602,10 +1669,13 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			} = {},
 		) => {
 			exactCountUnavailable = nextExactCountUnavailable === true;
-			resolvedContextLimitKnown = nextContextLimitKnown === true;
-			const resolvedContextLimit = Number.isFinite(nextContextLimit) && nextContextLimit > 0
-				? nextContextLimit
-				: fallbackContextLimit;
+			const latestContextInfo = getModelContextInfo(model, root);
+			resolvedContextLimitKnown = nextContextLimitKnown === true || latestContextInfo.isKnown === true;
+			const resolvedContextLimit = latestContextInfo.isKnown && latestContextInfo.contextLimit > 0
+				? latestContextInfo.contextLimit
+				: Number.isFinite(nextContextLimit) && nextContextLimit > 0
+					? nextContextLimit
+					: fallbackContextLimit;
 			if (persistIndicator && activeChatId && model) {
 				rememberContextIndicator({
 					chatId: activeChatId,
@@ -1757,11 +1827,16 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		setResearchEnabled(root, enabled);
 		root._updateLiveContext?.();
 	};
-	setResearchEnabled(root, false);
+	const persistResearchComposerState = () => {
+		const chatId = getCurrentChatId();
+		if (chatId) setChatResearchEnabled(chatId, isResearchEnabled(root));
+	};
+	syncResearchEnabledFromChat(root, getCurrentChatId());
 	researchToggle?.addEventListener('click', (event) => {
 		event.preventDefault();
 		event.stopPropagation();
 		setResearchEnabled(root, !isResearchEnabled(root));
+		persistResearchComposerState();
 		syncResearchComposerState();
 	}, { capture: true, signal });
 	syncResearchComposerState();
@@ -1786,12 +1861,14 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		}
 	}, { signal });
 
-	const urlParams = new URLSearchParams(location.hash.split('?')[1] || '');
-	const chatIdFromUrl = urlParams.get('chat');
+	const chatIdFromUrl = routeChatId || getRouteChatId(location.hash);
 	if (chatIdFromUrl && getChatById(chatIdFromUrl)) { setCurrentChatId(chatIdFromUrl); }
 	if (getCurrentChatId()) {
 		try {
 			await ensureChatLoaded(getCurrentChatId());
+			selectModelForCurrentChat(root);
+			syncResearchEnabledFromChat(root, getCurrentChatId());
+			syncResearchComposerState();
 		} catch (err) {
 			console.error('[ChatPage] Failed to load chat:', err);
 		}
@@ -1799,6 +1876,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 
 	const rerender = () => {
 		const chat = getCurrentChatId() ? getChatById(getCurrentChatId()) : null;
+		syncResearchEnabledFromChat(root, chat?.id || null);
 		if (!chat || !isChatLoaded(chat)) {
 			messages.querySelectorAll('.chat-message-group, .chat-message, .chat-typing').forEach(el => el.remove());
 			if (empty) empty.hidden = false;
@@ -1843,10 +1921,10 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		return `task_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
 	};
 
-	const applyGeneratedResearchPlan = async (chatId, researchNodeId, query) => {
+	const applyGeneratedResearchPlan = async (chatId, researchNodeId, query, context = null) => {
 		let generatedPart;
 		try {
-			generatedPart = await buildGeneratedResearchPart(root, query, { signal });
+			generatedPart = await buildGeneratedResearchPart(root, query, { signal, context });
 		} catch (err) {
 			if (signal.aborted || err?.name === 'AbortError') return;
 			generatedPart = buildResearchPart(root, query);
@@ -1875,6 +1953,8 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 
 	const addResearchPlanningNode = (chat, userNode, query) => {
 		if (!chat || !userNode || !query) return null;
+		const graph = ensureGraph(chat);
+		const context = buildResearchPlannerContext(graph, userNode);
 		const planningPart = buildResearchPlanningPart(root, query);
 		const researchNode = addChildMessageToChat(
 			chat.id,
@@ -1885,7 +1965,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 			buildPartsWithResearchPart([], planningPart),
 		);
 		if (researchNode?.id) {
-			applyGeneratedResearchPlan(chat.id, researchNode.id, query);
+			applyGeneratedResearchPlan(chat.id, researchNode.id, query, context);
 		}
 		return researchNode;
 	};
@@ -2056,14 +2136,14 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		let taskId            = createTaskId();
 		uiState.activeTaskId  = taskId;
 
+		const chat  = getChatById(activeChatId);
+		if (!chat) { stopTyping(); return; }
 		const modelSelect = root.querySelector('[data-dropdown="model"] .chat-dropdown-item.selected');
-		const model = modelSelect?.dataset?.value || '';
+		const model = modelSelect?.dataset?.value || chat.model || resolvePreferredModelId(activeChatId) || '';
 		if (activeChatId && model) setChatModel(activeChatId, model);
 
 		let maxTokens      = getModelMaxTokens(model);
-		const contextLimit = getModelContextLimitFromUI(root);
-		const chat  = getChatById(activeChatId);
-		if (!chat) { stopTyping(); return; }
+		const contextLimit = getModelContextInfo(model, root).contextLimit;
 		const graph = ensureGraph(chat);
 		const threadIds = computeThreadNodeIds(graph);
 
@@ -2854,6 +2934,7 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		const shouldPrepareResearch = isResearchEnabled(root) && Boolean(submittedText);
 		uiState.isSubmitting = true;
 		ensureChatExists(setActiveCallback);
+		persistResearchComposerState();
 		if (empty) empty.hidden = true;
 		stopTyping();
 		uiState.editingNodeId = null; uiState.editingDraft = ''; uiState.editingMode = null; uiState.editingSaveMode = null;

@@ -73,11 +73,14 @@ Core principles:
         std::string aiResearchPlannerSystemPrompt = R"SYS(You generate a compact research preview for a pending chat research task.
 
 Return JSON only with this shape:
-{"title":"short header","tasks":[{"id":"scope","label":"specific task"}],"sourceClasses":["web","academic"],"deliverables":["final_answer","inline_citations","source_list","caveats"]}
+{"query":"research topic","title":"short header","tasks":[{"id":"scope","label":"specific task"}],"sourceClasses":["web","academic"],"deliverables":["final_answer","inline_citations","source_list","caveats"]}
 
 Rules:
 - The title must be a short human-readable header, not the user's exact text.
 - Generate 3 to 6 concrete tasks tailored to the user's request.
+- If prior research context is provided, treat the latest user message as a possible suggestion, edit, aside, or addition to the existing plan instead of starting over.
+- Preserve the original research topic unless the latest user message clearly replaces it.
+- Use query for the research topic the final run should answer, not for minor edit instructions.
 - Tasks should describe the work the assistant should do before writing the final answer.
 - Prefer sourceClasses that match the request. Use web, academic, official, primary, regulator, standards, original_dataset, or peer_reviewed when relevant.
 - Output only valid JSON. No markdown, code fences, commentary, or extra keys.)SYS";

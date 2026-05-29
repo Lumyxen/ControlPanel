@@ -4,6 +4,7 @@
 #include "server/http_utils.h"
 #include <curl/curl.h>
 #include <json/json.h>
+#include <algorithm>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -15,6 +16,7 @@
 namespace {
 constexpr int kTitleGenerationMaxTokens = 24;
 constexpr const char* kSanitizedMalformedToolArguments = "{}";
+constexpr int kMinimumStreamingMaxTokens = 1;
 
 bool messageContentHasRichParts(const Json::Value& content) {
     if (content.isArray()) {
@@ -676,10 +678,22 @@ void LmStudioService::streamingChatWithTools(
             ? toolSystem->getModelToolsForTask(taskId)
             : tools;
         const bool hasTools = currentTools.isArray() && !currentTools.empty();
+        int roundMaxTokens = maxTokens;
+        if (numCtx > 0) {
+            try {
+                const int promptTokens = countTokens(model, messages, currentTools);
+                if (promptTokens > 0 && promptTokens + roundMaxTokens > numCtx) {
+                    roundMaxTokens = std::max(kMinimumStreamingMaxTokens, numCtx - promptTokens);
+                }
+            } catch (const std::exception& exception) {
+                std::cerr << "[LmStudio] Warning: could not update tool context budget: "
+                          << exception.what() << "\n";
+            }
+        }
         Json::Value body;
         body["model"]      = model;
         body["messages"]   = messages;
-        body["max_tokens"] = maxTokens;
+        body["max_tokens"] = roundMaxTokens;
         body["stream"]     = true;
         if (temperature >= 0.0) body["temperature"] = temperature;
         if (numCtx > 0)         body["num_ctx"]     = numCtx;

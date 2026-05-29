@@ -215,6 +215,10 @@ Json::Value mergeChatState(const Json::Value& currentChat, const Json::Value& in
         merged["toolScope"] = currentChat["toolScope"];
     }
 
+    if (!merged.isMember("researchEnabled") && currentChat.isMember("researchEnabled")) {
+        merged["researchEnabled"] = currentChat["researchEnabled"];
+    }
+
     const std::string incomingTitle = merged.get("title", "").asString();
     const std::string currentTitle = currentChat.get("title", "").asString();
     if ((incomingTitle.empty() || incomingTitle == "New Chat") &&
@@ -410,6 +414,12 @@ Json::Value ChatStore::normalizeChat(Json::Value chat) const {
         normalized["toolScope"] = chat["toolScope"];
     } else {
         normalized.removeMember("toolScope");
+    }
+
+    if (chat.isMember("researchEnabled") && chat["researchEnabled"].isBool()) {
+        normalized["researchEnabled"] = chat["researchEnabled"].asBool();
+    } else {
+        normalized.removeMember("researchEnabled");
     }
 
     if (chat.isMember("graph") && chat["graph"].isObject()) {

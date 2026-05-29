@@ -58,6 +58,7 @@ import { buildApiMessages, buildConversationHistory, parseStreamReasoning, parse
 import { getResolvedReasoningParts } from './www/js/pages/chat/reasoning-parts.js';
 import { shouldAutoOpenReasoningPhase } from './www/js/pages/chat/stream-view.js';
 import { buildContentContainer, buildReasoningElement, buildToolCallsElement, getMessageFileEditRollbacks } from './www/js/pages/chat/thread-view.js';
+import { getModelContextInfo, setModelMetadata, updateContextUI } from './www/js/pages/chat/context.js';
 import { coerceTheme } from './www/js/pages/settings/theme-section.js';
 import { renderMessageTextHtml } from './www/js/render/message.js';
 import { isFormattingOnlyTextContent, mapDomTextToTokenLogprobs } from './www/js/render/token-highlighting.js';
@@ -227,6 +228,9 @@ assert.match(markdownCss, /\.md-link\s*\{[^}]*border-bottom:\s*none;/s);
 assert.match(markdownCss, /\.md-link:hover\s*\{[^}]*border-bottom:\s*none;/s);
 assert.match(markdownCss, /\.md-table-wrapper\s*\{[^}]*overflow-x:\s*auto;/s);
 
+const composerCss = readFileSync('./www/css/pages/chat/composer.css', 'utf8');
+assert.match(composerCss, /\.chat-context\s*\{[^}]*min-width:\s*5ch;/s);
+
 const adjacentTableHtml = renderMessageTextHtml('Daily Outlook:\n| Date | Conditions |\n| :--- | :--- |\n| May 11 | Clear |');
 assert.match(adjacentTableHtml, /<p class="md-paragraph">Daily Outlook:<\/p>/);
 assert.match(adjacentTableHtml, /<table class="md-table">/);
@@ -235,6 +239,82 @@ assert.match(adjacentTableHtml, /<td class="md-table-cell" align="left">Clear<\/
 
 const tokenHighlightingCss = readFileSync('./www/css/components/content/token-highlighting.css', 'utf8');
 assert.match(tokenHighlightingCss, /\.token-logprob-tooltip\s*\{/);
+
+setModelMetadata([{ id: 'lmstudio::route-model', context_length: 32768 }]);
+assert.deepEqual(getModelContextInfo('lmstudio::route-model'), {
+	contextLimit: 32768,
+	isKnown: true,
+});
+assert.deepEqual(getModelContextInfo('lmstudio::missing-model'), {
+	contextLimit: 65536,
+	isKnown: false,
+});
+
+function fakeClassList(initial = []) {
+	const values = new Set(initial);
+	return {
+		add(...names) {
+			names.forEach((name) => values.add(name));
+		},
+		remove(...names) {
+			names.forEach((name) => values.delete(name));
+		},
+		contains(name) {
+			return values.has(name);
+		},
+		toggle(name, force) {
+			if (force === undefined) {
+				if (values.has(name)) values.delete(name);
+				else values.add(name);
+				return values.has(name);
+			}
+			if (force) values.add(name);
+			else values.delete(name);
+			return Boolean(force);
+		},
+	};
+}
+
+setModelMetadata([{ id: 'lmstudio::stale-window-model', context_length: 32768 }]);
+const selectedContextModel = {
+	dataset: { value: 'lmstudio::stale-window-model' },
+	classList: fakeClassList(['selected']),
+};
+const contextEl = {
+	dataset: {},
+	classList: fakeClassList(),
+	textContent: '',
+	title: '',
+};
+const warningEl = {
+	hidden: false,
+	setAttribute(name, value) {
+		this[name] = String(value);
+	},
+	removeAttribute(name) {
+		delete this[name];
+	},
+};
+const contextRoot = {
+	querySelector(selector) {
+		if (selector === '#chatContext') return contextEl;
+		if (selector === '#chatContextWarningIcon') return warningEl;
+		return null;
+	},
+	querySelectorAll(selector) {
+		return selector === '[data-dropdown="model"] .chat-dropdown-item'
+			? [selectedContextModel]
+			: [];
+	},
+};
+updateContextUI(contextRoot, {
+	usedTokens: 2162,
+	contextLimit: 65536,
+	contextLimitKnown: false,
+	showUnknownContextWarning: true,
+});
+assert.equal(contextEl.textContent, '2162/32768');
+assert.equal(warningEl.hidden, true);
 
 class FakeElement {
 	constructor(tagName) {

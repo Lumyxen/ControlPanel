@@ -19,6 +19,12 @@
 - [ ] Cloud storage page
 - [ ] Search bar functionality with AI chat-box
 - [ ] GitHub/GitLab/Codeberg/Directory LoC display
+- [ ] Full custom UI system
+  - [ ] Drag and drop where UI elements live
+  - [ ] Customise UI animations
+  - [ ] Create custom themes with RGB or Hex values
+  - [ ] Export and import custom thematic profiles
+  - [ ] Accessible edit-mode toggle button, possibly to the right of the "Control Panel" text in the sidebar
 
 ### AI Chat-box
 #### Planned Features

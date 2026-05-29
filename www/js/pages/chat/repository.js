@@ -157,6 +157,9 @@ export async function ensureChatLoaded(chatId, options = {}) {
 	};
 	if (!merged.model && existing?.model) merged.model = existing.model;
 	if (!merged.toolScope && existing?.toolScope) merged.toolScope = existing.toolScope;
+	if (typeof merged.researchEnabled !== 'boolean' && typeof existing?.researchEnabled === 'boolean') {
+		merged.researchEnabled = existing.researchEnabled;
+	}
 	replaceChatAt(index, merged);
 	return chats[index];
 }
@@ -208,6 +211,7 @@ export function createNewChat() {
 		updatedAt: createdAt,
 		graph: createEmptyGraph(),
 		toolScope: normalizeToolScope(getLastSelectedToolScope() || DEFAULT_TOOL_SCOPE),
+		researchEnabled: false,
 	};
 
 	chats.unshift(chat);
@@ -278,6 +282,10 @@ export function getChatToolScope(chatId) {
 	return normalizeToolScope(toolScope);
 }
 
+export function getChatResearchEnabled(chatId) {
+	return getChatById(chatId)?.researchEnabled === true;
+}
+
 export function setChatModel(chatId, model) {
 	const chat = getChatById(chatId);
 	if (!chat) return;
@@ -295,6 +303,21 @@ export function setChatToolScope(chatId, enabledPackIds, options = {}) {
 	});
 	setLastSelectedToolScope(chat.toolScope);
 	saveChats();
+}
+
+export function setChatResearchEnabled(chatId, enabled) {
+	const chat = getChatById(chatId);
+	if (!chat) return;
+	const nextEnabled = enabled === true;
+	chat.researchEnabled = nextEnabled;
+	(async () => {
+		const loaded = await ensureChatLoaded(chat.id);
+		if (!loaded) return;
+		loaded.researchEnabled = nextEnabled;
+		await saveChatAwaitable(chat.id);
+	})().catch((err) => {
+		console.error("[Store] Failed to save chat research state:", err);
+	});
 }
 
 export function getLastSelectedModel() {
