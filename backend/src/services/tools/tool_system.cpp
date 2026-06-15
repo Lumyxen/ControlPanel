@@ -2061,7 +2061,7 @@ struct ToolSystem::Impl {
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWriteToString);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, std::max(1000, getIntArg(config, "timeoutMs", 15000)));
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, static_cast<long>(std::max(1000, getIntArg(config, "timeoutMs", 15000))));
         curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method.c_str());
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
         curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);

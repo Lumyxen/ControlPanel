@@ -25,7 +25,6 @@
 #include "controllers/chat_controller.h"
 #include "controllers/generation_task_manager.h"
 #include "controllers/lmstudio_controller.h"
-#include "controllers/vault_controller.h"
 #include "embedded_frontend.h"
 #include "embedded_toolpacks.h"
 #include "server/api_routes.h"
@@ -787,7 +786,6 @@ void runHttpServer(
         (paths.dataDir / "chats").string(),
         &authStore,
         (paths.dataDir / "chats.json").string());
-    VaultStore vaultStore((paths.dataDir / "password-vault.json").string());
     auto huggingFaceService = HuggingFaceService::create();
 
     server.set_logger([](const httplib::Request& req, const httplib::Response& res) {
@@ -803,8 +801,7 @@ void runHttpServer(
     server.Options(".*", [](const httplib::Request& req, httplib::Response& res) {
         addSecurityHeaders(res);
         addCorsHeaders(res, req);
-        const bool allowedExtensionRoute = isExtensionApiPath(req.path) && isAllowedExtensionRequest(req);
-        if (isProtectedApiPath(req.path) && !isAllowedFrontendRequest(req) && !allowedExtensionRoute) {
+        if (isProtectedApiPath(req.path) && !isAllowedFrontendRequest(req)) {
             res.status = 403;
             return;
         }
@@ -822,14 +819,6 @@ void runHttpServer(
 
         addSecurityHeaders(res);
         addCorsHeaders(res, req);
-        if (isExtensionApiPath(req.path)) {
-            if (!isAllowedExtensionRequest(req)) {
-                setJsonError(res, 403, "Blocked by extension origin policy");
-                return httplib::Server::HandlerResponse::Handled;
-            }
-            return httplib::Server::HandlerResponse::Unhandled;
-        }
-
         if (!isAllowedFrontendRequest(req)) {
             setJsonError(res, 403, "Blocked by frontend origin policy");
             return httplib::Server::HandlerResponse::Handled;
@@ -867,7 +856,6 @@ void runHttpServer(
         toolSystem,
         authStore,
         chatStore,
-        vaultStore,
         huggingFaceService,
         &llamaService,
         gBuildState,

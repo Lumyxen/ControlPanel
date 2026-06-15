@@ -160,8 +160,8 @@ HttpTiming performDownload(const std::string& url, std::uint64_t bytes, int time
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discardWriteCallback);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, timeoutMs);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, std::min(timeoutMs, 3000));
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, static_cast<long>(timeoutMs));
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, static_cast<long>(std::min(timeoutMs, 3000)));
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "ctrlpanel-internet-test/1.0");
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 
@@ -206,8 +206,8 @@ HttpTiming performUpload(const std::string& url, std::uint64_t bytes, int timeou
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(bytes));
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, discardWriteCallback);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, timeoutMs);
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, std::min(timeoutMs, 3000));
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, static_cast<long>(timeoutMs));
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, static_cast<long>(std::min(timeoutMs, 3000)));
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "ctrlpanel-internet-test/1.0");
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 

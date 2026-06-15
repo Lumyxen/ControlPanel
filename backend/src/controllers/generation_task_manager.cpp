@@ -2573,7 +2573,12 @@ bool submitGenerationTaskFromBody(
                 chunkCopy = task->chunks;
             }
 
-            const ParsedTaskOutput output = parseTaskOutput(chunkCopy);
+            ParsedTaskOutput output = parseTaskOutput(chunkCopy);
+            if (researchMode &&
+                output.revisionTrace.isObject() &&
+                !output.revisionTrace.empty()) {
+                output.revisionTrace["mode"] = "research";
+            }
             saveParsedOutputToTask(task, output);
             persistParsedOutputToChat(chatStore, task, output);
 

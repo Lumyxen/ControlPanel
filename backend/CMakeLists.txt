@@ -121,6 +121,25 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/third_party/httplib/httplib.h")
     endif()
 endif()
 
+# The main ctrlpanel binary loads llama.cpp dynamically at runtime, but it
+# still needs the public llama.cpp type definitions at compile time.
+set(LLAMA_CPP_HEADERS_TAG "b8846" CACHE STRING "llama.cpp tag used for compile-time headers")
+FetchContent_Declare(llama_cpp_headers
+    DOWNLOAD_EXTRACT_TIMESTAMP true
+    URL https://github.com/ggml-org/llama.cpp/archive/${LLAMA_CPP_HEADERS_TAG}.tar.gz
+)
+FetchContent_GetProperties(llama_cpp_headers)
+if(NOT llama_cpp_headers_POPULATED)
+    if(POLICY CMP0169)
+        cmake_policy(PUSH)
+        cmake_policy(SET CMP0169 OLD)
+        FetchContent_Populate(llama_cpp_headers)
+        cmake_policy(POP)
+    else()
+        FetchContent_Populate(llama_cpp_headers)
+    endif()
+endif()
+
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/src)
 include_directories("${CMAKE_SOURCE_DIR}/third_party/httplib")
@@ -129,25 +148,13 @@ include_directories("${CMAKE_BINARY_DIR}/_deps/llama_cpp_headers-src/ggml/includ
 
 set(EMBED_H   "${CMAKE_BINARY_DIR}/embedded_frontend.h")
 set(EMBED_CPP "${CMAKE_BINARY_DIR}/embedded_frontend.cpp")
-set(FIREFOX_EXTENSION_SOURCE_DIR "${CMAKE_SOURCE_DIR}/../extensions/firefox/ctrlpanel-passwords")
-set(FIREFOX_EXTENSION_XPI "${CMAKE_BINARY_DIR}/ctrlpanel-passwords-firefox.xpi")
 file(GLOB_RECURSE FRONTEND_FILES "${CMAKE_SOURCE_DIR}/../www/*")
-file(GLOB_RECURSE FIREFOX_EXTENSION_FILES CONFIGURE_DEPENDS "${FIREFOX_EXTENSION_SOURCE_DIR}/*")
-add_custom_command(
-    OUTPUT ${FIREFOX_EXTENSION_XPI}
-    COMMAND Python3::Interpreter
-            "${CMAKE_SOURCE_DIR}/scripts/package_firefox_extension.py"
-            "${FIREFOX_EXTENSION_SOURCE_DIR}"
-            "${FIREFOX_EXTENSION_XPI}"
-    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/package_firefox_extension.py" ${FIREFOX_EXTENSION_FILES}
-    COMMENT "Packaging Firefox password extension...")
 add_custom_command(
     OUTPUT ${EMBED_H} ${EMBED_CPP}
     COMMAND Python3::Interpreter
             "${CMAKE_SOURCE_DIR}/scripts/embed_frontend.py"
             "${CMAKE_SOURCE_DIR}/../www" "${EMBED_H}" "${EMBED_CPP}"
-            --extra-file "${FIREFOX_EXTENSION_XPI}" "/assets/extensions/ctrlpanel-passwords-firefox.xpi"
-    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/embed_frontend.py" ${FRONTEND_FILES} ${FIREFOX_EXTENSION_XPI}
+    DEPENDS "${CMAKE_SOURCE_DIR}/scripts/embed_frontend.py" ${FRONTEND_FILES}
     COMMENT "Embedding frontend files...")
 include_directories("${CMAKE_BINARY_DIR}")
 set(TOOLPACKS_SOURCE_DIR "${CMAKE_SOURCE_DIR}/toolpacks")
@@ -197,7 +204,6 @@ set(SOURCES
     src/controllers/auth_controller.cpp
     src/controllers/chat_controller.cpp
     src/controllers/mcp_controller.cpp
-    src/controllers/vault_controller.cpp
     src/controllers/generation_task_manager.cpp
     ${EMBED_CPP}
     ${EMBED_TOOLPACKS_CPP}
@@ -315,15 +321,14 @@ if(NOT CMAKE_CROSSCOMPILING)
     )
     add_test(NAME ctrlpanel_tool_system_test COMMAND ctrlpanel_tool_system_test)
 
-    add_executable(ctrlpanel_auth_vault_test
-        src/tests/auth_vault_test.cpp
+    add_executable(ctrlpanel_auth_test
+        src/tests/auth_test.cpp
         src/controllers/auth_controller.cpp
         src/controllers/chat_controller.cpp
-        src/controllers/vault_controller.cpp
         src/server/http_utils.cpp
         src/services/crypto_service.cpp
     )
-    target_link_libraries(ctrlpanel_auth_vault_test
+    target_link_libraries(ctrlpanel_auth_test
         ${JSONCPP_LIBRARIES}
         ${LIBCURL_LIBRARIES}
         ${SQLITE3_LIBRARIES}
@@ -332,5 +337,5 @@ if(NOT CMAKE_CROSSCOMPILING)
         ssl
         crypto
     )
-    add_test(NAME ctrlpanel_auth_vault_test COMMAND ctrlpanel_auth_vault_test)
+    add_test(NAME ctrlpanel_auth_test COMMAND ctrlpanel_auth_test)
 endif()

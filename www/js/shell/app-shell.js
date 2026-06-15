@@ -2,8 +2,6 @@ import { createHashRouter, currentRoute, navigateTo } from '../core/router.js';
 import { loadFragment, prefetchFragment } from '../core/fragment-loader.js';
 import { initNavGroups, initSidebarToggle, setActive } from './navigation.js';
 import { bindQuickNewChat } from './sidebar.js';
-import { mountHomePage } from '../pages/home.js';
-import { mountPasswordManagerPage } from '../pages/password-manager.js';
 import { mountChatPage, prepareChatPageFragment } from '../pages/chat/page.js';
 import { renderChatList } from '../pages/chat/sidebar-list.js';
 import {
@@ -18,7 +16,6 @@ import { initTheme } from '../pages/settings/theme-section.js';
 import * as SettingsStore from '../services/settings.js';
 import { checkAndSuggest } from '../services/backend-suggest.js';
 import { logout } from '../services/auth.js';
-import { mountIdleLockService } from '../services/idle-lock.js';
 import {
 	startMonitoring,
 	stopMonitoring,
@@ -136,6 +133,10 @@ function startNewChat() {
 }
 
 async function renderRoute(route) {
+	if (!route.includes('pages/settings.html') && !route.includes('pages/ai-chat.html')) {
+		navigateTo('pages/ai-chat.html');
+		return;
+	}
 	cleanupPage();
 	const root = await loadFragment(route, route.includes('pages/ai-chat.html')
 		? { prepareFragment: (fragment) => prepareChatPageFragment(fragment, { route }) }
@@ -143,13 +144,9 @@ async function renderRoute(route) {
 	if (!root) return;
 	if (route.includes('pages/settings.html')) {
 		activeCleanup = mountSettingsPage(root, buildPageContext());
-	} else if (route.includes('pages/password-manager.html')) {
-		activeCleanup = mountPasswordManagerPage(root, buildPageContext());
 	} else if (route.includes('pages/ai-chat.html')) {
 		activeCleanup = mountChatPage(root, buildPageContext());
 		void checkAndSuggest().catch(() => {});
-	} else {
-		activeCleanup = mountHomePage(root, buildPageContext());
 	}
 	setActive(route, getCurrentChatId());
 }
@@ -161,7 +158,6 @@ export async function mountAppShell() {
 
 	SettingsStore.init().catch(console.warn);
 	SettingsStore.startPolling();
-	const stopIdleLock = mountIdleLockService();
 
 	setConnectionChangeCallback(handleConnectionChange);
 	startMonitoring();
@@ -194,7 +190,7 @@ export async function mountAppShell() {
 		if (!anchor || anchor.classList.contains('editing')) return;
 		event.preventDefault();
 		const href = anchor.getAttribute('href');
-		const route = (href?.startsWith('#') ? href.slice(1) : href) || 'pages/home.html';
+		const route = (href?.startsWith('#') ? href.slice(1) : href) || 'pages/ai-chat.html';
 		if (anchor.hasAttribute('data-new-chat')) clearCurrentChatId();
 		if (anchor.dataset.chatId) setCurrentChatId(anchor.dataset.chatId);
 		if (`#${route}` !== location.hash) navigateTo(route);
@@ -204,7 +200,7 @@ export async function mountAppShell() {
 	const handlePointerOver = (event) => {
 		const anchor = event.target.closest('a[data-route]');
 		if (!anchor) return;
-		prefetchFragment((anchor.getAttribute('href')?.replace(/^#\/?/, '')) || 'pages/home.html');
+		prefetchFragment((anchor.getAttribute('href')?.replace(/^#\/?/, '')) || 'pages/ai-chat.html');
 	};
 
 	const logoutBtn = document.getElementById('logoutBtn');
@@ -223,7 +219,6 @@ export async function mountAppShell() {
 	return () => {
 		router.stop();
 		stopMonitoring();
-		stopIdleLock();
 		hideConnectionModal();
 		stopQuickNewChat();
 		cleanupPage();

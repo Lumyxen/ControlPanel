@@ -20,12 +20,12 @@ It is intentionally separate from `TODO.md`:
 
 | Area | Included |
 | --- | --- |
-| Secure local shell | Password setup/login, bearer-authenticated protected routes, exact-origin request gating, encrypted saved chat data, zero-knowledge password vault, Firefox password-fill extension, and backend health monitoring |
+| Secure local shell | Password setup/login, bearer-authenticated protected routes, exact-origin request gating, encrypted saved chat data, and backend health monitoring |
 | AI chat workflow | Graph-threaded chats, lazy chat loading, background generation tasks, reconnectable streaming, reasoning blocks, per-chat tool-pack scope, inline tool-call rendering |
 | Transcript UX | Message editing, regenerate-from-here, branching, raw-copy behavior, markdown rendering, code-block actions, colour previews |
 | Model management | LM Studio configuration, built-in `llama.cpp` backend building/switching, HuggingFace GGUF search/download/delete/tokenizer install |
 | Tuning and personalisation | Theme palettes, AI behavior settings, token-confidence display/history controls, title-generation settings, default AI tool working directory, and weather location/unit settings |
-| Integration surface | REST API, backend lifecycle/status endpoints, task endpoints, tool-pack discovery/reload, approval and file-edit rollback endpoints, extension-isolated vault routes, MCP client loading/bridging, built-in MCP config tools, `/mcp` JSON-RPC surface |
+| Integration surface | REST API, backend lifecycle/status endpoints, task endpoints, tool-pack discovery/reload, approval and file-edit rollback endpoints, MCP client loading/bridging, built-in MCP config tools, `/mcp` JSON-RPC surface |
 
 The tool system ships with real bundled calculator, web-search, file-reader, filesystem, sandboxed CLI, weather, local-ecosystem, and assistant-workspace packs plus the synthetic internal control-plane pack used for deferred discovery and schema loading. Additional packs can still be added locally or bridged in from MCP servers.
 
@@ -44,31 +44,13 @@ The tool system ships with real bundled calculator, web-search, file-reader, fil
 | Encrypted saved chat data | Persisted chat payloads are stored as AES-256-GCM encrypted envelopes. |
 | PBKDF2 password derivation | New panel auth setups use PBKDF2-HMAC-SHA256 at 600,000 iterations, with legacy 310,000-iteration setups transparently upgraded on successful login. |
 | Panel reauthentication | Protected settings changes can require a fresh panel-password reauth token instead of relying on the long-lived app session alone. |
-| Zero-knowledge password vault | The password manager has its own route-local lock screen, browser-side AES-256-GCM vault encryption, RAM-only vault keys, and a separate unlock flow from the main panel session. |
-| BroadcastChannel vault sharing | Unlocked vault keys can be shared across live tabs in RAM only, while page refreshes and browser restarts relock the vault. |
-| Idle vault relock | The app can automatically drop vault memory after a configurable panel-wide idle timeout. |
-| Device-scoped PIN unlock | Individual browsers can register a local PIN-wrapped unlock slot that depends on a server-side pepper returned only after successful online PIN verification. |
-| PIN lockout wipe | Repeated failed PIN attempts within the configured one-minute window delete that device slot until the master password is used again. |
 | Login presentation | The login page uses an animated starfield background rather than a static screen. |
-
-### Password Manager and Firefox Extension
-
-| Feature | What it does |
-| --- | --- |
-| Credential manager page | The Password Manager page can create, edit, delete, select, and lock saved credentials inside the encrypted vault. |
-| Credential fields | Vault entries store title, username, password, URL, notes, and created/updated timestamps. |
-| Separate vault setup and unlock screens | The vault has its own setup and unlock flow, including master-password unlock and device PIN unlock when configured. |
-| Firefox extension packaging | The build packages the bundled CtrlPanel Passwords WebExtension into an XPI and embeds it into the app for Settings-page installation. |
-| Login-field injection | The extension detects username/password fields on web pages and injects CtrlPanel chooser buttons/panels. |
-| Extension unlock modes | The extension can unlock the vault with the master password or a Firefox-profile PIN, and it keeps unlocked vault state in background memory for a short TTL. |
-| URL-matched credential fill | The extension filters saved credentials by URL host/path and fills username/password fields using native input/change events. |
-| Extension API isolation | `/api/extension/*` vault routes are accepted only from `moz-extension://` origins or extension-marked requests and do not rely on the main panel bearer session. |
 
 ### App Shell and Reliability
 
 | Feature | What it does |
 | --- | --- |
-| Multi-page shell | The app exposes dedicated Home, AI Chat, Password Manager, and Settings pages inside a shared shell. |
+| Multi-page shell | The app exposes dedicated AI Chat and Settings pages inside a shared shell. |
 | Collapsible sidebar | The main sidebar can be collapsed to free horizontal space. |
 | Collapsible AI chat group | The sidebar chat section can be expanded/collapsed independently. |
 | Quick new-chat action | A compact new-chat button remains available when the sidebar is collapsed. |
@@ -309,7 +291,6 @@ The tool system ships with real bundled calculator, web-search, file-reader, fil
 
 The backend exposes API groups for:
 - Health check plus authentication setup, login, logout, validation, and panel reauthentication
-- Password-vault status/setup/unlock/save/reauth, PIN registration/removal, and extension-scoped vault status/unlock/PIN routes
 - Chat summary CRUD and per-chat detail CRUD
 - Legacy chat endpoints, prompt token counting, and title generation
 - Task-based generation submit/list/by-chat/status/wait/stream/cancel endpoints
@@ -384,4 +365,3 @@ The backend exposes API groups for:
 | Linux | Primary development and build target |
 | Windows | Build output exists in the current CMake/build flow |
 | ARM | Optional ARM binary can be produced when the cross-toolchain and dependencies are available |
-| Firefox extension | The bundled password-fill WebExtension is packaged as an XPI and embedded into the frontend asset set during builds |

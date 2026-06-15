@@ -1,7 +1,6 @@
 #include "controllers/config_controller.h"
 
 #include "controllers/auth_controller.h"
-#include "controllers/vault_controller.h"
 #include "server/http_utils.h"
 
 #include <filesystem>
@@ -76,18 +75,15 @@ bool normalizeAndValidateWeatherSettings(Json::Value& body, httplib::Response& r
 
 void handleGetSettings(const httplib::Request&,
                        httplib::Response& res,
-                       Config& config,
-                       VaultStore& vaultStore) {
+                       Config& config) {
     Json::Value result = config.toJson();
-    result["vaultConfigured"] = vaultStore.exists();
     setJson(res, result);
 }
 
 void handleUpdateSettings(const httplib::Request& req,
                           httplib::Response& res,
                           Config& config,
-                          AuthStore&,
-                          VaultStore& vaultStore) {
+                          AuthStore&) {
     Json::Value body;
     if (!parseJsonBody(req.body, body, res)) {
         return;
@@ -103,12 +99,6 @@ void handleUpdateSettings(const httplib::Request& req,
     const bool changesPanelRateLimit =
         body.isMember("panelLoginRateLimitPerMinute") &&
         jsonValueDiffers(body["panelLoginRateLimitPerMinute"], current["panelLoginRateLimitPerMinute"]);
-    const bool changesVaultRateLimit =
-        body.isMember("vaultLoginRateLimitPerMinute") &&
-        jsonValueDiffers(body["vaultLoginRateLimitPerMinute"], current["vaultLoginRateLimitPerMinute"]);
-    const bool changesVaultIdleTimeout =
-        body.isMember("vaultIdleTimeoutSeconds") &&
-        jsonValueDiffers(body["vaultIdleTimeoutSeconds"], current["vaultIdleTimeoutSeconds"]);
 
     if (changesPanelRateLimit) {
         const std::string sessionToken = extractSessionToken(req);
@@ -119,15 +109,7 @@ void handleUpdateSettings(const httplib::Request& req,
         }
     }
 
-    if ((changesVaultRateLimit || changesVaultIdleTimeout) &&
-        vaultStore.exists() &&
-        !vaultStore.validateAccessToken(extractVaultAccessToken(req), true)) {
-        setJsonError(res, 401, "Fresh vault reauthentication required");
-        return;
-    }
-
     config.updateFromJson(body);
     Json::Value result = config.toJson();
-    result["vaultConfigured"] = vaultStore.exists();
     setJson(res, result);
 }

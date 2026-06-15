@@ -44,3 +44,26 @@
     gap: 12px;
     justify-content: flex-end;
 }
+
+.secret-dialog-form,
+.secret-dialog-fields {
+    display: grid;
+    gap: 14px;
+}
+
+.secret-dialog-fields {
+    margin-bottom: 20px;
+}
+
+.secret-dialog-field {
+    display: grid;
+    gap: 6px;
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+.secret-dialog-error {
+    margin-top: 12px;
+    color: var(--red, #ef4444);
+    font-size: 0.85rem;
+}

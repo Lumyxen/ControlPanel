@@ -9,6 +9,114 @@ import { formatAiMessageTimestamp } from './timestamps.js';
 // ─── buildNodeTextForHistory ──────────────────────────────────────────────────
 // Converts a single graph node into a flat string for the legacy prompt history.
 
+function truncateHistoryText(value, maxLength) {
+	const text = String(value ?? '').trim().replace(/\s+/g, ' ');
+	if (!text || text.length <= maxLength) return text;
+	return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function stringifyResearchListItem(item, fallback = '') {
+	if (typeof item === 'string') return truncateHistoryText(item, 320);
+	if (!item || typeof item !== 'object') return fallback;
+	return truncateHistoryText(
+		item.label || item.title || item.task || item.step || item.name || item.id || fallback,
+		320
+	);
+}
+
+function getResearchTasks(part) {
+	const source = Array.isArray(part?.tasks) && part.tasks.length > 0
+		? part.tasks
+		: Array.isArray(part?.workflow) && part.workflow.length > 0
+			? part.workflow
+			: [];
+	return source
+		.map((task, index) => stringifyResearchListItem(task, `Task ${index + 1}`))
+		.filter(Boolean)
+		.slice(0, 12);
+}
+
+function getResearchList(part, ...keys) {
+	for (const key of keys) {
+		const value = part?.[key];
+		if (!Array.isArray(value) || value.length === 0) continue;
+		const normalized = value
+			.map((item) => stringifyResearchListItem(item))
+			.filter(Boolean)
+			.slice(0, 12);
+		if (normalized.length > 0) return normalized;
+	}
+	return [];
+}
+
+function getNodeResearchParts(node, { includeNodeMetadata = node?.role === 'assistant' } = {}) {
+	const researchParts = [];
+	const seen = new Set();
+	const appendResearchPart = (part) => {
+		if (!part || typeof part !== 'object') return;
+		const normalized = { ...part, type: 'research' };
+		let key = '';
+		try {
+			key = JSON.stringify(normalized);
+		} catch {
+			key = `${normalized.query || ''}\n${normalized.title || ''}\n${normalized.status || ''}`;
+		}
+		if (seen.has(key)) return;
+		seen.add(key);
+		researchParts.push(normalized);
+	};
+
+	if (includeNodeMetadata) {
+		appendResearchPart(node?.research);
+	}
+	if (Array.isArray(node?.parts)) {
+		for (const part of node.parts) {
+			if (part?.type === 'research') appendResearchPart(part);
+		}
+	}
+	return researchParts;
+}
+
+function buildResearchBlockText(part) {
+	if (!part || typeof part !== 'object') return '';
+
+	const lines = ['<research_block>'];
+	const status = truncateHistoryText(part.status, 64);
+	const query = truncateHistoryText(part.query || part.content, 2000);
+	const title = truncateHistoryText(part.title || part.header || part.name, 200);
+	const mode = truncateHistoryText(part.mode, 64);
+	const tasks = getResearchTasks(part);
+	const sourceClasses = getResearchList(part, 'sourceClasses', 'source_classes');
+	const deliverables = getResearchList(part, 'deliverables');
+
+	if (mode) lines.push(`Mode: ${mode}`);
+	if (status) lines.push(`Status: ${status}`);
+	if (title) lines.push(`Title: ${title}`);
+	if (query) lines.push(`Query: ${query}`);
+	if (tasks.length > 0) {
+		lines.push('Tasks:');
+		for (const task of tasks) {
+			lines.push(`- ${task}`);
+		}
+	}
+	if (sourceClasses.length > 0) {
+		lines.push(`Source classes: ${sourceClasses.join(', ')}`);
+	}
+	if (deliverables.length > 0) {
+		lines.push(`Deliverables: ${deliverables.join(', ')}`);
+	}
+	lines.push('</research_block>');
+
+	return lines.length > 2 ? lines.join('\n') : '';
+}
+
+function buildResearchBlocksText(node, options = {}) {
+	return getNodeResearchParts(node, options)
+		.map(buildResearchBlockText)
+		.filter(Boolean)
+		.join('\n\n');
+}
+
 function buildAiTimestampAnnotation(node) {
 	const timestamp = formatAiMessageTimestamp(node?.timestamp);
 	return timestamp ? `[Message timestamp: ${timestamp}]` : '';
@@ -24,6 +132,7 @@ function prependAiTimestamp(node, text) {
 function buildNodeText(node, { includeToolCalls = true } = {}) {
 	if (!node) return '';
 	let nodeContent = '';
+	const researchBlocksText = buildResearchBlocksText(node);
 
 	const hasInlineReasoning = hasInlineReasoningParts(node.parts);
 
@@ -59,6 +168,10 @@ function buildNodeText(node, { includeToolCalls = true } = {}) {
 	}
 
 	if (node.reasoning && !hasInlineReasoning) nodeContent = `<think>\n${node.reasoning}\n</think>\n\n` + nodeContent;
+
+	if (researchBlocksText) {
+		nodeContent = nodeContent ? `${researchBlocksText}\n\n${nodeContent}` : researchBlocksText;
+	}
 
 	if (includeToolCalls && node.toolCalls && Array.isArray(node.toolCalls) && node.toolCalls.length > 0) {
 		let toolsText = '';
@@ -280,13 +393,17 @@ function buildApiMessagesFromNode(node, settings = null) {
 		}
 
 		const combinedText = textParts.join('');
+		const researchBlocksText = buildResearchBlocksText(node, { includeNodeMetadata: false });
+		const combinedWithResearch = researchBlocksText
+			? (combinedText ? `${researchBlocksText}\n\n${combinedText}` : researchBlocksText)
+			: combinedText;
 		if (hasImages) {
 			const timestamp = buildAiTimestampAnnotation(node);
 			if (timestamp) contentBlocks.unshift({ type: 'text', text: timestamp });
-			if (combinedText) contentBlocks.push({ type: 'text', text: combinedText });
+			if (combinedWithResearch) contentBlocks.push({ type: 'text', text: combinedWithResearch });
 			return [{ role, content: contentBlocks }];
 		}
-		const textContent = prependAiTimestamp(node, combinedText);
+		const textContent = prependAiTimestamp(node, combinedWithResearch);
 		if (textContent) {
 			return [{ role, content: textContent }];
 		}

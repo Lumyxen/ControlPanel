@@ -68,6 +68,31 @@ has_arm_openssl() {
     [[ "${has_headers}" == true && "${has_ssl}" == true && "${has_crypto}" == true ]]
 }
 
+reset_stale_cmake_build_dir() {
+    local build_dir="$1"
+    local expected_source_dir
+    local expected_build_dir
+    local cached_source_dir=""
+    local cached_build_dir=""
+
+    expected_source_dir=$(pwd -P)
+    expected_build_dir="${expected_source_dir}/${build_dir}"
+
+    if [[ ! -f "${build_dir}/CMakeCache.txt" ]]; then
+        return
+    fi
+
+    cached_source_dir=$(sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "${build_dir}/CMakeCache.txt")
+    cached_build_dir=$(sed -n 's/^CMAKE_CACHEFILE_DIR:INTERNAL=//p' "${build_dir}/CMakeCache.txt")
+
+    if [[ "${cached_source_dir}" != "${expected_source_dir}" || "${cached_build_dir}" != "${expected_build_dir}" ]]; then
+        echo "=== Removing stale CMake cache in ${build_dir} ==="
+        [[ -n "${cached_source_dir}" ]] && echo "Cached source: ${cached_source_dir}"
+        echo "Current source: ${expected_source_dir}"
+        rm -rf "${build_dir}"
+    fi
+}
+
 BUILD_JOBS=$(calculate_jobs)
 echo "=== Using $BUILD_JOBS parallel build jobs ==="
 
@@ -102,8 +127,9 @@ done
 
 # ── Main binary ───────────────────────────────────────────────────────────────
 echo "=== Building ctrlpanel ==="
+reset_stale_cmake_build_dir build
 mkdir -p build
-cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 
 if [[ "$TEST_BUILD" == true ]]; then
     echo "=== --test: building only Linux x86 binary ==="
@@ -117,8 +143,9 @@ else
         echo ""
         if has_arm_openssl; then
             echo "=== Building ARM64 target ==="
+            reset_stale_cmake_build_dir build-arm
             mkdir -p build-arm
-            cmake -B build-arm \
+            cmake -S . -B build-arm \
                 -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64-toolchain.cmake \
                 -DCMAKE_BUILD_TYPE=Release
             cmake --build build-arm --target ctrlpanel_arm -j"$BUILD_JOBS"

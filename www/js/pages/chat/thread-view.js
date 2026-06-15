@@ -177,14 +177,6 @@ function buildResearchPartElement(part) {
 
 		const right = document.createElement('div');
 		right.className = 'chat-research-message-actions-right';
-
-		const cancel = document.createElement('button');
-		cancel.type = 'button';
-		cancel.className = 'chat-research-action secondary';
-		cancel.dataset.action = 'research-cancel';
-		cancel.textContent = 'Cancel';
-
-		right.appendChild(cancel);
 		if (part?.status === 'pending') {
 			const start = document.createElement('button');
 			start.type = 'button';

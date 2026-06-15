@@ -740,40 +740,30 @@ bool isPublicHttpHost(const ParsedUrl& url, bool allowPrivateHosts, std::string&
         return true;
     }
 
-#ifndef _WIN32
-    addrinfo hints{};
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    addrinfo* result = nullptr;
-    if (getaddrinfo(url.host.c_str(), nullptr, &hints, &result) != 0) {
-        reasonOut = "Host could not be resolved";
-        return false;
+    // Hostname resolution can block outside libcurl's timeout handling on some
+    // systems. Let curl resolve names, then reject private targets in the socket
+    // open callback where the normal fetch timeout/cancellation still applies.
+    return true;
+}
+
+curl_socket_t curlOpenPublicHttpSocket(void*, curlsocktype purpose, curl_sockaddr* address) {
+    if (purpose != CURLSOCKTYPE_IPCXN || !address) {
+        return CURL_SOCKET_BAD;
     }
 
-    bool safe = true;
-    for (addrinfo* item = result; item != nullptr; item = item->ai_next) {
-        if (item->ai_family == AF_INET) {
-            const auto* addr = reinterpret_cast<sockaddr_in*>(item->ai_addr);
-            if (isPrivateIpv4(ntohl(addr->sin_addr.s_addr))) {
-                safe = false;
-                reasonOut = "Host resolves to a private IPv4 address";
-                break;
-            }
-        } else if (item->ai_family == AF_INET6) {
-            const auto* addr = reinterpret_cast<sockaddr_in6*>(item->ai_addr);
-            if (isPrivateIpv6(addr->sin6_addr)) {
-                safe = false;
-                reasonOut = "Host resolves to a private IPv6 address";
-                break;
-            }
+    if (address->family == AF_INET) {
+        const auto* addr = reinterpret_cast<const sockaddr_in*>(&address->addr);
+        if (addr && isPrivateIpv4(ntohl(addr->sin_addr.s_addr))) {
+            return CURL_SOCKET_BAD;
+        }
+    } else if (address->family == AF_INET6) {
+        const auto* addr = reinterpret_cast<const sockaddr_in6*>(&address->addr);
+        if (addr && isPrivateIpv6(addr->sin6_addr)) {
+            return CURL_SOCKET_BAD;
         }
     }
 
-    freeaddrinfo(result);
-    return safe;
-#else
-    return true;
-#endif
+    return socket(address->family, address->socktype, address->protocol);
 }
 
 struct RobotsRule {
@@ -2193,11 +2183,14 @@ struct WebSearchTool::Impl {
         curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
         curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
+        if (!options.allowPrivateHosts) {
+            curl_easy_setopt(curl, CURLOPT_OPENSOCKETFUNCTION, curlOpenPublicHttpSocket);
+        }
         curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
         curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &progress);
         curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, curlProgressAbortCheck);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, std::max(750, timeoutMs));
-        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, std::min(4000, std::max(500, timeoutMs / 3)));
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, static_cast<long>(std::max(750, timeoutMs)));
+        curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, static_cast<long>(std::min(4000, std::max(500, timeoutMs / 3))));
         if (options.lowSpeedLimitBytesPerSec > 0 && options.lowSpeedTimeSeconds > 0) {
             curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, static_cast<long>(options.lowSpeedLimitBytesPerSec));
             curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, static_cast<long>(options.lowSpeedTimeSeconds));

@@ -5,16 +5,13 @@
 #include "httplib.h"
 
 class AuthStore;
-class VaultStore;
 
 void handleGetSettings(const httplib::Request& req,
                        httplib::Response& res,
-                       Config& config,
-                       VaultStore& vaultStore);
+                       Config& config);
 void handleUpdateSettings(const httplib::Request& req,
                           httplib::Response& res,
                           Config& config,
-                          AuthStore& authStore,
-                          VaultStore& vaultStore);
+                          AuthStore& authStore);
 
 #endif // CONFIG_CONTROLLER_H

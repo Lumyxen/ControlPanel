@@ -16,16 +16,6 @@ import { formatKeepAlive, mountLlamacppSection } from './llamacpp-section.js';
 import { mountToolsSection } from './tools-section.js';
 import { requestSecretDialog } from '../../services/secret-dialog.js';
 import { reauthPanelPassword } from '../../services/auth.js';
-import {
-	getSnapshotState,
-	init as initVault,
-	reauthWithMasterPassword,
-	refreshStatus as refreshVaultStatus,
-	removePin,
-	setupPin,
-	subscribe as subscribeVault,
-	unlockWithMasterPassword,
-} from '../../services/vault.js';
 
 const BACKEND_LABELS = { auto: 'Auto', cpu: 'CPU', cuda: 'CUDA', rocm: 'ROCm', vulkan: 'Vulkan' };
 const BUILD_LOG_LINES = 120;
@@ -94,204 +84,17 @@ function setControlValue(root, selector, value) {
 
 function mountSecuritySection(root) {
 	const panelRate = root.querySelector('#panel-login-rate-limit');
-	const vaultRate = root.querySelector('#vault-login-rate-limit');
-	const vaultIdle = root.querySelector('#vault-idle-timeout');
-	const vaultNote = root.querySelector('#vault-security-disabled-note');
 
 	return {
 		populate(settings) {
 			if (!settings) return;
 			setControlValue(root, '#panel-login-rate-limit', settings.panelLoginRateLimitPerMinute);
-			setControlValue(root, '#vault-login-rate-limit', settings.vaultLoginRateLimitPerMinute);
-			setControlValue(root, '#vault-idle-timeout', settings.vaultIdleTimeoutSeconds);
-
-			const vaultConfigured = Boolean(settings.vaultConfigured);
-			if (vaultRate) vaultRate.disabled = !vaultConfigured;
-			if (vaultIdle) vaultIdle.disabled = !vaultConfigured;
-			if (vaultNote) vaultNote.hidden = vaultConfigured;
 		},
 
 		read() {
 			return {
 				panelLoginRateLimitPerMinute: Math.max(1, parseInt(panelRate?.value ?? '5', 10) || 5),
-				vaultLoginRateLimitPerMinute: Math.max(1, parseInt(vaultRate?.value ?? '5', 10) || 5),
-				vaultIdleTimeoutSeconds: Math.max(30, parseInt(vaultIdle?.value ?? '300', 10) || 300),
 			};
-		},
-	};
-}
-
-function mountVaultPinSection(root) {
-	const setupBtn = root.querySelector('#settings-vault-pin-setup');
-	const removeBtn = root.querySelector('#settings-vault-pin-remove');
-	const statusEl = root.querySelector('#vault-pin-status');
-	const actionStatus = root.querySelector('#settings-vault-pin-action-status');
-	let settings = SettingsStore.get();
-	let snapshot = getSnapshotState();
-	let busy = false;
-
-	function vaultConfigured() {
-		return Boolean(settings?.vaultConfigured || snapshot?.setup);
-	}
-
-	function setActionStatus(message = '', tone = '') {
-		if (!actionStatus) return;
-		actionStatus.textContent = message;
-		actionStatus.style.color = tone === 'success'
-			? 'var(--green,green)'
-			: tone === 'error'
-				? 'var(--red,red)'
-				: '';
-	}
-
-	function render() {
-		const configured = vaultConfigured();
-		const pinConfigured = Boolean(snapshot?.pin?.configured);
-		if (statusEl) {
-			statusEl.textContent = !configured
-				? 'Vault not configured'
-				: pinConfigured && snapshot?.hasLocalPinRecord
-					? 'Configured on this browser'
-					: pinConfigured
-						? 'Server slot exists, local record missing'
-						: 'Not configured';
-		}
-		if (setupBtn) {
-			setupBtn.disabled = busy || !configured;
-			setupBtn.textContent = pinConfigured ? 'Replace PIN' : 'Set Up PIN';
-		}
-		if (removeBtn) {
-			removeBtn.hidden = !pinConfigured;
-			removeBtn.disabled = busy || !configured;
-		}
-	}
-
-	async function ensureVaultReady(masterPassword) {
-		if (!getSnapshotState().unlocked) {
-			await unlockWithMasterPassword(masterPassword);
-		}
-		return reauthWithMasterPassword(masterPassword);
-	}
-
-	setupBtn?.addEventListener('click', async () => {
-		const values = await requestSecretDialog({
-			title: snapshot?.pin?.configured ? 'Replace Device PIN' : 'Create Device PIN',
-			description: 'Enter the vault master password and the device PIN to use for unlocks.',
-			confirmLabel: snapshot?.pin?.configured ? 'Replace PIN' : 'Save PIN',
-			fields: [
-				{ id: 'password', label: 'Vault master password', autocomplete: 'current-password' },
-				{ id: 'pin', label: 'Device PIN', type: 'password', autocomplete: 'new-password' },
-				{ id: 'confirm', label: 'Confirm PIN', type: 'password', autocomplete: 'new-password', matches: 'pin' },
-			],
-		});
-		if (!values) return;
-
-		busy = true;
-		render();
-		setActionStatus('Configuring...');
-		try {
-			const freshToken = await ensureVaultReady(String(values.password || ''));
-			await setupPin(String(values.pin || ''), freshToken);
-			snapshot = await refreshVaultStatus();
-			setActionStatus('PIN updated.', 'success');
-		} catch (err) {
-			setActionStatus('Error: ' + err.message, 'error');
-		} finally {
-			busy = false;
-			render();
-		}
-	});
-
-	removeBtn?.addEventListener('click', async () => {
-		const values = await requestSecretDialog({
-			title: 'Remove Device PIN',
-			description: 'Enter the vault master password to remove PIN unlock for this browser.',
-			confirmLabel: 'Remove PIN',
-			fields: [
-				{ id: 'password', label: 'Vault master password', autocomplete: 'current-password' },
-			],
-		});
-		if (!values) return;
-
-		busy = true;
-		render();
-		setActionStatus('Removing...');
-		try {
-			const freshToken = await reauthWithMasterPassword(String(values.password || ''));
-			await removePin(freshToken);
-			snapshot = await refreshVaultStatus();
-			setActionStatus('PIN removed.', 'success');
-		} catch (err) {
-			setActionStatus('Error: ' + err.message, 'error');
-		} finally {
-			busy = false;
-			render();
-		}
-	});
-
-	const unsubscribeVault = subscribeVault((nextSnapshot) => {
-		snapshot = nextSnapshot;
-		render();
-	});
-
-	initVault({ allowAutoShare: true })
-		.then((nextSnapshot) => {
-			snapshot = nextSnapshot;
-			render();
-		})
-		.catch((err) => {
-			if (statusEl) statusEl.textContent = `Could not load vault status: ${err.message}`;
-			if (setupBtn) setupBtn.disabled = true;
-			if (removeBtn) removeBtn.disabled = true;
-		});
-
-	render();
-
-	return {
-		populate(nextSettings) {
-			settings = nextSettings;
-			render();
-		},
-		cleanup() {
-			unsubscribeVault();
-		},
-	};
-}
-
-function mountBrowserExtensionSection(root) {
-	const installBtn = root.querySelector('#install-firefox-extension');
-	const statusEl = root.querySelector('#browser-extension-install-status');
-	const extensionUrl = '/assets/extensions/ctrlpanel-passwords-firefox.xpi';
-	const isFirefox = (navigator.userAgent || '').toLowerCase().includes('firefox');
-
-	function setStatus(message = '', tone = '') {
-		if (!statusEl) return;
-		statusEl.textContent = message;
-		statusEl.style.color = tone === 'success'
-			? 'var(--green,green)'
-			: tone === 'error'
-				? 'var(--red,red)'
-				: '';
-	}
-
-	if (!installBtn) {
-		return { cleanup() {} };
-	}
-
-	if (!isFirefox) {
-		installBtn.textContent = 'Download Firefox Extension';
-		setStatus('Open Settings in Firefox to get the install prompt.');
-	}
-
-	const onClick = () => {
-		setStatus(isFirefox ? 'Opening Firefox install prompt...' : 'Downloading XPI...');
-		window.location.href = extensionUrl;
-	};
-	installBtn.addEventListener('click', onClick);
-
-	return {
-		cleanup() {
-			installBtn.removeEventListener('click', onClick);
 		},
 	};
 }
@@ -759,8 +562,6 @@ function initSettingsPage(root) {
 	const backendSection = mountBackendSection(root);
 	const llamacppSection = mountLlamacppSection(root, backendSection);
 	const securitySection = mountSecuritySection(root);
-	const vaultPinSection = mountVaultPinSection(root);
-	const browserExtensionSection = mountBrowserExtensionSection(root);
 
 	const paletteList = root.querySelector('[data-palette-list]');
 	const flavourList = root.querySelector('[data-flavour-list]');
@@ -839,7 +640,6 @@ function initSettingsPage(root) {
 		toolsSection.populate(cached);
 		llamacppSection.populate(cached);
 		securitySection.populate(cached);
-		vaultPinSection.populate(cached);
 	}
 
 	initBackendSelector(root, backendSection).catch(console.warn);
@@ -957,7 +757,7 @@ function initSettingsPage(root) {
 		loadAppBackendStatus(root).catch(() => {});
 	}, 5000);
 
-	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#chat-response-mode-fast','#chat-response-mode-live','#message-timestamps-24-hour','#system-prompt-input','#lmstudio-url-input','#ai-tools-working-directory-input','#weather-location-input','#weather-measurement-system','#weather-unit-temperature','#weather-unit-wind-speed','#weather-unit-precipitation','#llamacpp-flash-attn','#llamacpp-kv-cache-reuse','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-parallel-slots','#llamacpp-max-loaded-models','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty','#llamacpp-keep-alive-slider','#llamacpp-kv-cache-type','#llamacpp-concurrent-generation','#ai-title-enabled','#ai-title-model-input','#ai-title-system-prompt-input','#panel-login-rate-limit','#vault-login-rate-limit','#vault-idle-timeout'];
+	const watchedFields =['#default-model-input','#temperature-slider','#temperature-input','#max-tokens-input','#chat-response-mode-fast','#chat-response-mode-live','#message-timestamps-24-hour','#system-prompt-input','#lmstudio-url-input','#ai-tools-working-directory-input','#weather-location-input','#weather-measurement-system','#weather-unit-temperature','#weather-unit-wind-speed','#weather-unit-precipitation','#llamacpp-flash-attn','#llamacpp-kv-cache-reuse','#llamacpp-eval-batch-size','#llamacpp-ctx-size','#llamacpp-gpu-layers','#llamacpp-threads','#llamacpp-threads-batch','#llamacpp-parallel-slots','#llamacpp-max-loaded-models','#llamacpp-top-p-slider','#llamacpp-top-p','#llamacpp-min-p-slider','#llamacpp-min-p','#llamacpp-repeat-penalty-slider','#llamacpp-repeat-penalty','#llamacpp-keep-alive-slider','#llamacpp-kv-cache-type','#llamacpp-concurrent-generation','#ai-title-enabled','#ai-title-model-input','#ai-title-system-prompt-input','#panel-login-rate-limit'];
 	const unsub = SettingsStore.subscribe((s) => {
 		const focused = document.activeElement;
 		if (!watchedFields.some(sel => root.querySelector(sel) === focused)) {
@@ -965,7 +765,6 @@ function initSettingsPage(root) {
 			toolsSection.populate(s);
 			llamacppSection.populate(s);
 			securitySection.populate(s);
-			vaultPinSection.populate(s);
 		}
 	});
 	const obs = new MutationObserver(() => {
@@ -1079,10 +878,6 @@ function initSettingsPage(root) {
 				const patch = securitySection.read();
 				const current = SettingsStore.get() || {};
 				const changingPanelRate = patch.panelLoginRateLimitPerMinute !== current.panelLoginRateLimitPerMinute;
-				const changingVaultFields =
-					Boolean(current.vaultConfigured) &&
-					(patch.vaultLoginRateLimitPerMinute !== current.vaultLoginRateLimitPerMinute ||
-					 patch.vaultIdleTimeoutSeconds !== current.vaultIdleTimeoutSeconds);
 
 				const headers = {};
 
@@ -1100,22 +895,6 @@ function initSettingsPage(root) {
 						return;
 					}
 					headers['X-Panel-Reauth-Token'] = await reauthPanelPassword(String(values.password || ''));
-				}
-
-				if (changingVaultFields) {
-					const values = await requestSecretDialog({
-						title: 'Confirm Vault Master Password',
-						description: 'Changing vault timeout or vault rate-limit settings requires a fresh master-password prompt.',
-						confirmLabel: 'Verify',
-						fields: [
-							{ id: 'password', label: 'Vault master password', autocomplete: 'current-password' },
-						],
-					});
-					if (!values) {
-						if (securityStatus) securityStatus.textContent = '';
-						return;
-					}
-					headers['X-Vault-Access-Token'] = await reauthWithMasterPassword(String(values.password || ''));
 				}
 
 				await SettingsStore.save(patch, { headers });
@@ -1141,7 +920,6 @@ function initSettingsPage(root) {
 			toolsSection.populate(s);
 			llamacppSection.populate(s);
 			securitySection.populate(s);
-			vaultPinSection.populate(s);
 			toolsSection.refresh();
 		}).catch(console.warn);
 	}
@@ -1149,8 +927,6 @@ function initSettingsPage(root) {
 	return () => {
 		unsub();
 		aiSection.dispose?.();
-		vaultPinSection.cleanup();
-		browserExtensionSection.cleanup();
 		obs.disconnect();
 		window.clearInterval(appBackendStatusPollId);
 	};

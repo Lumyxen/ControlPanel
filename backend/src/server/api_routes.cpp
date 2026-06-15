@@ -19,7 +19,6 @@
 #include "controllers/generation_task_manager.h"
 #include "controllers/lmstudio_controller.h"
 #include "controllers/mcp_controller.h"
-#include "controllers/vault_controller.h"
 #include "server/http_utils.h"
 #include "services/backend_builder.h"
 #include "services/huggingface_service.h"
@@ -27,6 +26,7 @@
 #include "services/lmstudio_service.h"
 #include "services/mcp_registry.h"
 #include "services/mcp_service.h"
+#include "services/rate_limiter.h"
 #include "services/tools/file_edit_tool.h"
 #include "services/tools/tool_system.h"
 
@@ -1447,12 +1447,12 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
 
     svr.Get("/api/config/settings", [&](const httplib::Request& req, httplib::Response& res) {
         applyRouteHeaders(req, res);
-        handleGetSettings(req, res, ctx.config, ctx.vaultStore);
+        handleGetSettings(req, res, ctx.config);
     });
 
     svr.Put("/api/config/settings", [&](const httplib::Request& req, httplib::Response& res) {
         applyRouteHeaders(req, res);
-        handleUpdateSettings(req, res, ctx.config, ctx.authStore, ctx.vaultStore);
+        handleUpdateSettings(req, res, ctx.config, ctx.authStore);
     });
 
     svr.Get("/api/tools/catalog", [&](const httplib::Request& req, httplib::Response& res) {
@@ -1605,76 +1605,6 @@ void registerApiRoutes(httplib::Server& svr, ApiRouteContext& ctx) {
     svr.Post("/api/auth/reauth", [&](const httplib::Request& req, httplib::Response& res) {
         applyRouteHeaders(req, res);
         handlePanelReauthAuth(req, res, ctx.authStore);
-    });
-
-    svr.Get("/api/vault/status", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleGetVaultStatus(req, res, ctx.vaultStore);
-    });
-
-    svr.Get("/api/extension/vault/status", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleGetVaultStatus(req, res, ctx.vaultStore);
-    });
-
-    svr.Post("/api/vault/setup", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleSetupVault(req, res, ctx.vaultStore);
-    });
-
-    svr.Post("/api/vault/unlock/challenge", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleVaultUnlockChallenge(req, res, ctx.vaultStore);
-    });
-
-    svr.Post("/api/extension/vault/unlock/challenge", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleVaultUnlockChallenge(req, res, ctx.vaultStore);
-    });
-
-    svr.Post("/api/vault/unlock/master", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleVaultUnlockMaster(req, res, ctx.vaultStore, ctx.config.getVaultLoginRateLimitPerMinute());
-    });
-
-    svr.Post("/api/extension/vault/unlock/master", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleVaultUnlockMaster(req, res, ctx.vaultStore, ctx.config.getVaultLoginRateLimitPerMinute());
-    });
-
-    svr.Post("/api/vault/unlock/pin", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleVaultUnlockPin(req, res, ctx.vaultStore, ctx.config.getVaultLoginRateLimitPerMinute());
-    });
-
-    svr.Post("/api/extension/vault/unlock/pin", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleVaultUnlockPin(req, res, ctx.vaultStore, ctx.config.getVaultLoginRateLimitPerMinute());
-    });
-
-    svr.Post("/api/vault/reauth", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleVaultReauth(req, res, ctx.vaultStore, ctx.config.getVaultLoginRateLimitPerMinute());
-    });
-
-    svr.Put("/api/vault", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handlePutVault(req, res, ctx.vaultStore);
-    });
-
-    svr.Post("/api/vault/pin/setup", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleSetupVaultPin(req, res, ctx.vaultStore);
-    });
-
-    svr.Post("/api/extension/vault/pin/setup", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleSetupVaultPin(req, res, ctx.vaultStore);
-    });
-
-    svr.Delete(R"(/api/vault/pin/([^/]+))", [&](const httplib::Request& req, httplib::Response& res) {
-        applyRouteHeaders(req, res);
-        handleDeleteVaultPin(req, res, ctx.vaultStore, req.matches[1]);
     });
 
     svr.Post("/mcp", [&](const httplib::Request& req, httplib::Response& res) {

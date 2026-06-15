@@ -2,7 +2,7 @@
 A highly personal web interface to give me the information and tools I need all in 1 place
 
 ## Features
-- Password-gated local web UI with encrypted stored chat data, bearer-authenticated APIs, a zero-knowledge secondary password vault, and a bundled Firefox password-fill extension
+- Password-gated local web UI with encrypted stored chat data and bearer-authenticated APIs
 - AI chat harness with threaded chats, background task streaming, exact context metering, inline tool-call rendering, settings, themes, and model management
 - Supports LM Studio, built-in `llama-server` backends from llama.cpp, HuggingFace GGUF downloads, and a schema-first tool system with pack discovery, approvals, MCP bridging, and bundled calculator, web-search, file-reading, filesystem, sandboxed CLI, weather, and assistant-workspace packs
 - Detailed shipped feature breakdown: [FEATURES.md](FEATURES.md)
@@ -71,9 +71,7 @@ The app creates runtime state next to the binary on first start:
 Fresh installs bundle system `calculator`, `websearch`, `file_reader`, `filesystem`, `cli`, `weather`, `local_ecosystem`, and `assistant_workspace` packs in `toolpacks/`, alongside the synthetic internal control-plane pack used for deferred tool discovery and schema loading.
 Bundled source packs live under `backend/toolpacks/`, are embedded into the backend binary at build time, and are synced into runtime `toolpacks/` on startup.
 
-The authenticated frontend is restricted to the exact origin `http://127.0.0.1:8080`. Protected `/api/*` and `/mcp` requests are rejected unless `Origin` or `Referer` resolve to that exact frontend base URL. Firefox extension vault routes under `/api/extension/*` are accepted only from `moz-extension://` origins or extension-marked requests. `/health` remains exempt for local startup and smoke checks.
-
-The build packages the bundled Firefox password extension from `extensions/firefox/ctrlpanel-passwords/` and embeds it as `/assets/extensions/ctrlpanel-passwords-firefox.xpi` so the Settings page can offer it for installation.
+The authenticated frontend is restricted to the exact origin `http://127.0.0.1:8080`. Protected `/api/*` and `/mcp` requests are rejected unless `Origin` or `Referer` resolve to that exact frontend base URL. `/health` remains exempt for local startup and smoke checks.
 
 The bundled `websearch` pack stores its crawl/index state under `data/web-search/` and exposes:
 - `search_web` for BM25-ranked local web search with snippets and site filters
@@ -105,8 +103,6 @@ Representative `data/settings.json` keys:
     "aiTitleEnabled": true,
     "aiToolsDefaultWorkingDirectory": "/home/alice",
     "panelLoginRateLimitPerMinute": 5,
-    "vaultLoginRateLimitPerMinute": 5,
-    "vaultIdleTimeoutSeconds": 300,
     "aiTitleModel": "",
     "aiTitleSystemPrompt": "Describe the chat in 1-3 words. Output only the title text. No quotes. No explanation.",
     "llamacppBackend": "auto",
@@ -122,7 +118,7 @@ Additional llama.cpp tuning fields are also stored there and can be changed from
 
 ## API Endpoints
 
-Unless noted otherwise, protected `/api/*` routes and `/mcp` require `Authorization: Bearer <sessionToken>`. Public exceptions are `GET /health`, `GET /api/auth`, `POST /api/auth/setup`, `POST /api/auth/login`, and `GET /api/auth/validate`. Browser-extension vault routes under `/api/extension/*` are intentionally outside the panel bearer session; they are restricted by extension origin/header checks and then by vault challenge proofs or vault access tokens.
+Unless noted otherwise, protected `/api/*` routes and `/mcp` require `Authorization: Bearer <sessionToken>`. Public exceptions are `GET /health`, `GET /api/auth`, `POST /api/auth/setup`, `POST /api/auth/login`, and `GET /api/auth/validate`.
 
 **General**
 - `GET /health` - Check backend health status (public)
@@ -134,24 +130,6 @@ Unless noted otherwise, protected `/api/*` routes and `/mcp` require `Authorizat
 - `POST /api/auth/logout` - Revoke the current session
 - `GET /api/auth/validate` - Validate a supplied session token and return whether it is still valid (public)
 - `POST /api/auth/reauth` - Verify the panel password again and return a short-lived reauth token for protected settings changes
-
-**Password Vault**
-- `GET /api/vault/status` - Return vault setup state, public vault KDF metadata, current revision, and current-device PIN metadata
-- `POST /api/vault/setup` - Create the initial encrypted vault document or replace the existing vault when `replaceExisting: true`
-- `POST /api/vault/unlock/challenge` - Issue a short-lived challenge for `master` or `pin` unlock proofs
-- `POST /api/vault/unlock/master` - Verify a master-password-derived proof and return the encrypted vault blob plus a short-lived vault access token
-- `POST /api/vault/unlock/pin` - Verify a device PIN proof, then return the device pepper, encrypted vault blob, and a short-lived vault access token
-- `POST /api/vault/reauth` - Verify a master-password-derived proof and return a fresh vault access token for sensitive vault actions
-- `PUT /api/vault` - Save a new encrypted vault blob when the supplied `expectedRevision` matches the current server revision
-- `POST /api/vault/pin/setup` - Register or replace the current device PIN slot using a fresh master-verified vault access token
-- `DELETE /api/vault/pin/:deviceId` - Remove the current device PIN slot using a fresh master-verified vault access token
-
-**Firefox Extension Vault API**
-- `GET /api/extension/vault/status` - Extension-scoped vault status and current Firefox-profile PIN metadata
-- `POST /api/extension/vault/unlock/challenge` - Extension-scoped challenge for `master` or `pin` unlock proofs
-- `POST /api/extension/vault/unlock/master` - Verify a master-password-derived proof for extension unlock and return the encrypted vault blob
-- `POST /api/extension/vault/unlock/pin` - Verify a Firefox-profile PIN proof and return the encrypted vault blob plus the device pepper
-- `POST /api/extension/vault/pin/setup` - Register or replace the Firefox profile's PIN slot after a fresh master unlock
 
 **Legacy Chat**
 - `POST /api/chat` - Legacy non-streaming LM Studio chat endpoint
@@ -183,7 +161,7 @@ Unless noted otherwise, protected `/api/*` routes and `/mcp` require `Authorizat
 
 **Configuration**
 - `GET /api/config/settings` - Get current control panel settings
-- `PUT /api/config/settings` - Update control panel settings, with panel-password reauth for `panelLoginRateLimitPerMinute` and vault-master reauth for vault security settings when a vault exists
+- `PUT /api/config/settings` - Update control panel settings, with panel-password reauth for `panelLoginRateLimitPerMinute`
 
 **Application Backend**
 - `GET /api/app/backend/status` - Get full backend lifecycle state plus managed llama.cpp router status
@@ -224,14 +202,6 @@ Unless noted otherwise, protected `/api/*` routes and `/mcp` require `Authorizat
 - `POST /api/mcp/reload` - Reload `data/mcp.json` configuration
 - `POST /mcp` - Dispatch a JSON-RPC 2.0 request to an MCP server
 - `GET /mcp` - MCP Server-Sent Events (SSE) channel stub
-
-## Password Vault Notes
-
-The password manager lives inside `pages/password-manager.html` as a route-local secondary lock screen. The main panel session stays authenticated independently, but vault contents use browser-side AES-256-GCM encryption, PBKDF2-HMAC-SHA256 with a 600,000-iteration master-password KDF, RAM-only key handling, BroadcastChannel-based cross-tab unlock sharing, configurable idle relock, and device-scoped PIN unlock.
-
-The backend stores only public KDF metadata, a server-side vault auth key for challenge verification, the encrypted vault blob, and device PIN registrations. It never stores vault plaintext, the vault master password, or the vault encryption key. PIN unlock is device-scoped and uses a server-side pepper that is returned only after successful online PIN verification.
-
-The bundled Firefox extension injects CtrlPanel password chooser widgets into login fields, unlocks the vault with the master password or a Firefox-profile PIN, matches saved credentials by URL host/path, and fills usernames/passwords without requiring the main panel bearer session.
 
 ## Attribution
 

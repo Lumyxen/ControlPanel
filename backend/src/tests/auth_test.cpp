@@ -1,5 +1,4 @@
 #include "controllers/auth_controller.h"
-#include "controllers/vault_controller.h"
 #include "server/http_utils.h"
 #include "services/crypto_service.h"
 
@@ -17,7 +16,7 @@ namespace {
 class ScopedDir {
 public:
     ScopedDir() {
-        path_ = fs::temp_directory_path() / ("ctrlpanel-auth-vault-test-" + std::to_string(
+        path_ = fs::temp_directory_path() / ("ctrlpanel-auth-test-" + std::to_string(
             std::chrono::steady_clock::now().time_since_epoch().count()));
         fs::create_directories(path_);
     }
@@ -123,121 +122,19 @@ void testBearerExtractionAndSessionValidation() {
 
 void testOriginRefererAllowlist() {
     httplib::Request originAllowed;
-    originAllowed.path = "/api/vault/status";
+    originAllowed.path = "/api/config/settings";
     originAllowed.set_header("Origin", "http://127.0.0.1:8080");
     expect(isAllowedFrontendRequest(originAllowed), "exact allowed Origin should pass");
 
     httplib::Request refererAllowed;
-    refererAllowed.path = "/api/vault/status";
-    refererAllowed.set_header("Referer", "http://127.0.0.1:8080/#pages/password-manager.html");
+    refererAllowed.path = "/api/config/settings";
+    refererAllowed.set_header("Referer", "http://127.0.0.1:8080/#pages/settings.html");
     expect(isAllowedFrontendRequest(refererAllowed), "exact allowed Referer should pass");
 
     httplib::Request rejected;
-    rejected.path = "/api/vault/status";
+    rejected.path = "/api/config/settings";
     rejected.set_header("Origin", "http://localhost:8080");
     expect(!isAllowedFrontendRequest(rejected), "localhost origin should be rejected");
-}
-
-void testVaultMasterUnlockAndRevisionConflict() {
-    ScopedDir temp;
-    VaultStore store((temp.path() / "password-vault.json").string());
-
-    Json::Value kdf(Json::objectValue);
-    kdf["type"] = "pbkdf2";
-    kdf["hash"] = "sha256";
-    kdf["iterations"] = 600000;
-    kdf["salt"] = CryptoService::toHex(CryptoService::randomBytes(32));
-
-    const std::vector<uint8_t> authKey = CryptoService::randomBytes(32);
-    Json::Value vault(Json::objectValue);
-    vault["version"] = 1;
-    vault["revision"] = 1;
-    vault["createdAt"] = 1;
-    vault["updatedAt"] = 1;
-    vault["iv"] = "iv";
-    vault["ct"] = "ct";
-
-    const auto setupResult = store.setup(kdf, CryptoService::toHex(authKey), vault, false);
-    expect(setupResult.httpStatus == 200, "vault setup should succeed");
-
-    const auto challenge = store.issueChallenge("master");
-    expect(challenge.httpStatus == 200, "master challenge should succeed");
-    const std::string challengeId = challenge.body["challenge"].asString();
-
-    const std::string proof = CryptoService::toHex(
-        CryptoService::hmacSha256(authKey, "vault:master:" + challengeId));
-    const auto unlockResult = store.unlockWithMaster(challengeId, proof, "master-test", 5);
-    expect(unlockResult.httpStatus == 200, "master unlock proof should validate");
-
-    const auto badChallenge = store.issueChallenge("master");
-    const auto badUnlock = store.unlockWithMaster(
-        badChallenge.body["challenge"].asString(),
-        std::string(64, '0'),
-        "master-test",
-        5);
-    expect(badUnlock.httpStatus == 401, "bad master proof should fail");
-
-    Json::Value nextVault = vault;
-    nextVault["revision"] = 2;
-    nextVault["updatedAt"] = 2;
-    const auto conflict = store.saveVault(nextVault, 0);
-    expect(conflict.httpStatus == 409, "stale vault revision should return 409");
-}
-
-void testPinUnlockAndLockout() {
-    ScopedDir temp;
-    VaultStore store((temp.path() / "password-vault.json").string());
-
-    Json::Value kdf(Json::objectValue);
-    kdf["type"] = "pbkdf2";
-    kdf["hash"] = "sha256";
-    kdf["iterations"] = 600000;
-    kdf["salt"] = CryptoService::toHex(CryptoService::randomBytes(32));
-
-    const std::vector<uint8_t> authKey = CryptoService::randomBytes(32);
-    Json::Value vault(Json::objectValue);
-    vault["version"] = 1;
-    vault["revision"] = 1;
-    vault["createdAt"] = 1;
-    vault["updatedAt"] = 1;
-    vault["iv"] = "iv";
-    vault["ct"] = "ct";
-    expect(store.setup(kdf, CryptoService::toHex(authKey), vault, false).httpStatus == 200, "vault setup should succeed");
-
-    Json::Value pinKdf(Json::objectValue);
-    pinKdf["type"] = "pbkdf2";
-    pinKdf["hash"] = "sha256";
-    pinKdf["iterations"] = 310000;
-    pinKdf["salt"] = CryptoService::toHex(CryptoService::randomBytes(16));
-    const std::vector<uint8_t> pinKey = CryptoService::randomBytes(32);
-
-    expect(
-        store.registerPin("device-1", pinKdf, CryptoService::toHex(pinKey)).httpStatus == 200,
-        "PIN registration should succeed");
-
-    const auto challenge = store.issueChallenge("pin", "device-1");
-    const std::string challengeId = challenge.body["challenge"].asString();
-    const std::string proof = CryptoService::toHex(
-        CryptoService::hmacSha256(pinKey, "vault:pin:" + challengeId));
-    expect(store.unlockWithPin("device-1", challengeId, proof, 5).httpStatus == 200, "PIN proof should validate");
-
-    for (int attempt = 0; attempt < 5; ++attempt) {
-        const auto badChallenge = store.issueChallenge("pin", "device-1");
-        const auto failure = store.unlockWithPin(
-            "device-1",
-            badChallenge.body["challenge"].asString(),
-            std::string(64, 'f'),
-            5);
-        if (attempt < 4) {
-            expect(failure.httpStatus == 401, "bad PIN proof should fail");
-        } else {
-            expect(failure.httpStatus == 401, "lockout response should still be an auth failure");
-            expect(failure.body["pinDisabled"].asBool(), "fifth failed PIN attempt should disable the slot");
-        }
-    }
-
-    const Json::Value status = store.getStatus("device-1");
-    expect(!status["pin"]["configured"].asBool(), "PIN slot should be deleted after repeated failures");
 }
 
 } // namespace
@@ -248,8 +145,6 @@ int main() {
         testLegacyLoginUpgradesKdf();
         testBearerExtractionAndSessionValidation();
         testOriginRefererAllowlist();
-        testVaultMasterUnlockAndRevisionConflict();
-        testPinUnlockAndLockout();
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

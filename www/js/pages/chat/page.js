@@ -2398,12 +2398,22 @@ async function initChatPage(root, currentRouteGetter, setActiveCallback) {
 		setNodeResearchMetadata(userNode, runningResearch);
 		deleteSubtree(graph, node.id);
 		setSelectedChildId(graph, userNode.parentId, userNode.id);
+		markGraphForReplacement(graph);
 		recomputeLeafId(graph);
 		chat.updatedAt = Date.now();
-		await saveChatAwaitable(chat.id);
+		await saveChatAwaitable(chat.id).catch((err) => {
+			console.error('[Chat] Failed to save started research message:', err);
+		});
 		rerender();
+		renderChatList();
+		setActiveCallback?.();
 		if (empty) empty.hidden = true;
-		startReply(chat.id, userNode.id);
+		startReply(chat.id, userNode.id).catch((err) => {
+			console.error('[Chat] Failed to start research reply:', err);
+			rerender();
+			renderChatList();
+			setActiveCallback?.();
+		});
 	};
 
 	// ── Reconnect: check backend for any running/completed task on this chat ──

@@ -532,7 +532,8 @@
     padding: 6px 10px;
     height: 30px;
     min-width: 5ch;
-    width: auto;
+    width: var(--chat-context-width, 11ch);
+    box-sizing: border-box;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;

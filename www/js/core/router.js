@@ -1,4 +1,4 @@
-const DEFAULT_ROUTE = "pages/home.html";
+const DEFAULT_ROUTE = "pages/ai-chat.html";
 export const normalise = (hash) => hash.replace(/^#\/?/, "");
 export const currentRoute = () => normalise(location.hash) || DEFAULT_ROUTE;
 

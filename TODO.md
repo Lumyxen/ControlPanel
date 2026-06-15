@@ -199,10 +199,6 @@
   - [ ] Randomise questions via using a different AI model
     - [ ] Warn user if selected AI model is from the same company as the AI model being benchmarked
 
-### Password Manager
-#### Planned Features
-- [ ] None
-
 ---
 
 ## Idea Storage
@@ -261,14 +257,4 @@
   - AFAIK, this is unfixable, due to Firefox not providing the keyup or keydown signal for ESC if the key is bluring a text field or contenteditable field
 
 #### Misc Bugs
-- [ ] None
-
-### Password Manager
-#### UI
-- [ ] None
-
-#### UX
-- [ ] None
-
-#### Misc
 - [ ] None

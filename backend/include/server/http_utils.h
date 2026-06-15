@@ -12,8 +12,6 @@ void addSecurityHeaders(httplib::Response& res);
 void addCorsHeaders(httplib::Response& res, const httplib::Request& req);
 bool isProtectedApiPath(std::string_view path);
 bool isAllowedFrontendRequest(const httplib::Request& req);
-bool isExtensionApiPath(std::string_view path);
-bool isAllowedExtensionRequest(const httplib::Request& req);
 std::string extractOriginFromUrl(const std::string& value);
 
 std::string getMimeType(const std::string& path);

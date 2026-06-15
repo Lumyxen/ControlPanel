@@ -305,10 +305,15 @@ export function updateContextUI(root, {
 	const displayMax = isContextLimitKnown && Number.isFinite(max) && max > 0
 		? String(max)
 		: "?";
+	const displayChars = Math.max(
+		String(used).length,
+		displayMax === "?" ? 5 : displayMax.length,
+	) + displayMax.length + 1;
 
 	el.dataset.usedTokens = String(used);
 	el.dataset.contextLimitKnown = String(isContextLimitKnown);
 	el.dataset.exactCountUnavailable = String(hasExactCountIssue);
+	el.style.setProperty("--chat-context-width", `${displayChars}ch`);
 	el.textContent = `${used}/${displayMax}`;
 	el.title = (isContextLimitKnown && max > 0
 		? `Context Window: ${used} tokens used / ${max} total`

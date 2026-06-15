@@ -386,6 +386,34 @@ int main() {
             expect(elapsedMs < 5000, "Cancelled fetch took too long to stop");
         }
 
+        {
+            ScopedDir timeoutDir;
+            WebSearchTool::Options timeoutOptions;
+            timeoutOptions.storageRoot = timeoutDir.path().string();
+            timeoutOptions.databasePath = (timeoutDir.path() / "index.sqlite3").string();
+            timeoutOptions.enableBackgroundWorker = false;
+            timeoutOptions.allowPrivateHosts = true;
+            timeoutOptions.userAgent = "ctrlpanel-websearch-test/1.0";
+            timeoutOptions.httpTimeoutMs = 800;
+            timeoutOptions.robotsTimeoutMs = 500;
+
+            WebSearchTool timeoutTool(timeoutOptions);
+            std::string timeoutInitError;
+            expect(timeoutTool.initialize(&timeoutInitError), "Timeout web search initialization failed: " + timeoutInitError);
+
+            auto started = std::chrono::steady_clock::now();
+            Json::Value slowArgs(Json::objectValue);
+            slowArgs["url"] = "http://127.0.0.1:" + std::to_string(port) + "/slow";
+            slowArgs["queue_discovered"] = false;
+            const Json::Value timeoutResult = timeoutTool.fetchUrl(slowArgs);
+            const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started).count();
+
+            expect(timeoutResult.get("status", "").asString() == "error", "Slow fetch did not return an error");
+            expect(timeoutResult.get("timed_out", false).asBool(), "Slow fetch was not marked timed_out");
+            expect(elapsedMs < 5000, "Slow fetch ignored the configured timeout");
+        }
+
         sleepForHostDelay();
 
         Json::Value fetchRootArgs(Json::objectValue);
